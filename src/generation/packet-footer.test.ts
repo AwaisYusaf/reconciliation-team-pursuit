@@ -105,4 +105,27 @@ describe("size ceiling (packet-pdf-spec §Size)", () => {
     expect(warning).toContain("downloaded anyway");
     expect(warning).toContain("DocuSign may reject it");
   });
+
+  /**
+   * The warning travels in an HTTP header, and header values are ByteStrings: a raw em dash
+   * or curly apostrophe makes constructing the Response throw. That throw happened after the
+   * packet was built and pinned, so the one path the spec says must always deliver was the
+   * only one that could never deliver.
+   */
+  it("survives being put in a response header", () => {
+    const warning = oversizeWarning(30 * 1024 * 1024);
+    expect(warning).toMatch(/[^\x00-\xff]/); // it really does contain non-Latin-1 text
+
+    expect(
+      () => new Response("x", { headers: { "X-Packet-Warning": warning } }),
+    ).toThrow();
+
+    // Encoded, it is pure ASCII and round-trips back to the original.
+    const encoded = encodeURIComponent(warning);
+    expect(encoded).toMatch(/^[\x20-\x7e]*$/);
+    expect(
+      () => new Response("x", { headers: { "X-Packet-Warning": encoded } }),
+    ).not.toThrow();
+    expect(decodeURIComponent(encoded)).toBe(warning);
+  });
 });

@@ -106,6 +106,40 @@ describe.skipIf(!hasPoppler())("rasterizePdf", () => {
   it("refuses a file that is not a PDF rather than producing a broken page", async () => {
     await expect(rasterizePdf(Buffer.from("this is not a pdf"), () => {})).rejects.toThrow();
   });
+
+  /**
+   * `pdftoppm` can exit zero having rendered fewer pages than the document holds. Without
+   * this check the packet would simply not contain that page — no error, no log, gate
+   * satisfied — which is the worst outcome the system has.
+   */
+  it("refuses when fewer pages are rendered than the document is known to have", async () => {
+    const pdf = await makePdf(3);
+    await expect(rasterizePdf(pdf, () => {}, RASTER_LADDER[0], 5)).rejects.toThrow(
+      /Expected 5 page\(s\) but rendered 3/,
+    );
+  });
+
+  it("accepts a render that matches the expected page count", async () => {
+    const seen: number[] = [];
+    await rasterizePdf(await makePdf(3), (page) => void seen.push(page.pageNumber), RASTER_LADDER[0], 3);
+    expect(seen).toEqual([1, 2, 3]);
+  });
+
+  /**
+   * An absurd page geometry makes pdftoppm emit a 1x1 pixel image and exit zero. Embedded at
+   * scale that is an invisible speck on an otherwise blank page — a page of evidence
+   * replaced by nothing at all.
+   */
+  it("refuses a degenerate render rather than embedding an invisible speck", async () => {
+    const pdf = await PDFDocument.create();
+    // 14400pt is the PDF format maximum, 200 inches square.
+    pdf.addPage([14400, 14400]);
+    const huge = Buffer.from(await pdf.save());
+
+    await expect(rasterizePdf(huge, () => {})).rejects.toThrow(
+      /not a readable page|Expected|exceeds/,
+    );
+  }, 120_000);
 });
 
 describe("normalizeImage", () => {

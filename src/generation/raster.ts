@@ -35,6 +35,9 @@ export const DEFAULT_QUALITY = RASTER_LADDER[0];
 /** Generous enough for a long scanned statement, short enough to fail a hung child. */
 const RASTER_TIMEOUT_MS = 120_000;
 
+/** Below this, the output is a degenerate placeholder rather than a rendered page. */
+const MIN_RENDERED_PIXELS = 16;
+
 export type RasterPage = {
   /** 1-based, matching the source document's page numbering. */
   pageNumber: number;
@@ -126,6 +129,12 @@ export async function rasterizePdf(
   pdf: Buffer,
   onPage: (page: RasterPage) => Promise<void> | void,
   quality: RasterQuality = DEFAULT_QUALITY,
+  /**
+   * Pages the caller knows this document has, recorded when it was attached. Supplying it
+   * turns a partial rasterisation into an error instead of a packet that is quietly missing
+   * evidence.
+   */
+  expectedPages?: number | null,
 ): Promise<number> {
   const dir = await mkdtemp(path.join(tmpdir(), "ngo-raster-"));
   try {
@@ -157,10 +166,28 @@ export async function rasterizePdf(
 
     if (files.length === 0) throw new RasterError("That PDF produced no pages.");
 
+    // pdftoppm can exit 0 having rendered only some pages, so the count is checked rather
+    // than trusted: a missing page of a bank statement would otherwise reach the City as a
+    // packet that simply does not contain it.
+    if (expectedPages && files.length !== expectedPages) {
+      throw new RasterError(
+        `Expected ${expectedPages} page(s) but rendered ${files.length}. The file may be damaged.`,
+      );
+    }
+
     for (const file of files) {
       const absolute = path.join(dir, file.name);
       const jpeg = await readFile(absolute);
       const { width, height } = await sharp(jpeg).metadata();
+
+      // pdftoppm answers an absurd page geometry with a 1x1 pixel image and a zero exit
+      // status. Embedded at scale that is an invisible speck on a blank page, so a page of
+      // evidence would vanish without any error at all.
+      if ((width ?? 0) < MIN_RENDERED_PIXELS || (height ?? 0) < MIN_RENDERED_PIXELS) {
+        throw new RasterError(
+          `Page ${file.pageNumber} rendered at ${width}x${height}px, which is not a readable page.`,
+        );
+      }
 
       await onPage({
         pageNumber: file.pageNumber,

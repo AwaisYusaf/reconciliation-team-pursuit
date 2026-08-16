@@ -90,10 +90,23 @@ describe.skipIf(!available)("convertDocxToPdf", () => {
   }, 200_000);
 
   it("leaves no temp directory behind", async () => {
-    const before = (await readdir(tmpdir())).filter((name) => name.startsWith("ngo-soffice-"));
+    const listDirs = async () =>
+      (await readdir(tmpdir())).filter((name) => name.startsWith("ngo-soffice-"));
+
+    const before = new Set(await listDirs());
     await convertDocxToPdf(await coverSheet());
-    const after = (await readdir(tmpdir())).filter((name) => name.startsWith("ngo-soffice-"));
-    expect(after.length).toBe(before.length);
+
+    // Other test files convert concurrently and share this prefix, so a single sample can
+    // catch someone else's live directory. A leaked directory never disappears; a
+    // concurrent one does — so the assertion waits for the difference to clear.
+    let leaked: string[] = [];
+    for (let attempt = 0; attempt < 40; attempt += 1) {
+      leaked = (await listDirs()).filter((name) => !before.has(name));
+      if (leaked.length === 0) break;
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+
+    expect(leaked).toEqual([]);
   }, 200_000);
 
   /**

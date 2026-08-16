@@ -21,24 +21,12 @@ import {
 } from "@/src/db/schema";
 import { isValidIsoDate } from "@/src/domain/dates";
 import { parseMoneyToCents } from "@/src/domain/money";
-import { fail, ok, SESSION_EXPIRED, type ActionResult } from "@/src/lib/action-result";
+import { fail, ok, type ActionResult } from "@/src/lib/action-result";
+import { actionSession } from "@/src/lib/action-session";
 import { isUuid } from "@/src/lib/ids";
 import { hashPassword, validatePasswordPolicy, verifyPassword } from "@/src/services/auth/passwords";
-import {
-  requireSession,
-  revokeOtherSessions,
-  UnauthenticatedError,
-  type SessionContext,
-} from "@/src/services/auth/session";
+import { revokeOtherSessions } from "@/src/services/auth/session";
 
-async function session(): Promise<SessionContext | { expired: ActionResult<never> }> {
-  try {
-    return await requireSession();
-  } catch (error) {
-    if (error instanceof UnauthenticatedError) return { expired: fail(SESSION_EXPIRED) };
-    throw error;
-  }
-}
 
 /* --------------------------------------------------------- organisation */
 
@@ -46,7 +34,7 @@ export async function updateOrganisationAction(input: {
   name: string;
   docName: string;
 }): Promise<ActionResult> {
-  const current = await session();
+  const current = await actionSession();
   if ("expired" in current) return current.expired;
 
   const name = input.name.trim();
@@ -76,7 +64,7 @@ export async function updateContractAction(input: {
   contractEnd: string;
   fiduciaryName: string;
 }): Promise<ActionResult> {
-  const current = await session();
+  const current = await actionSession();
   if ("expired" in current) return current.expired;
 
   const contractValueCents = parseMoneyToCents(input.contractValue) ?? 0;
@@ -115,7 +103,7 @@ export async function updateGrantSettingsAction(input: {
   perfGrantBilled: string;
   advancesReceived: string;
 }): Promise<ActionResult> {
-  const current = await session();
+  const current = await actionSession();
   if ("expired" in current) return current.expired;
 
   const perfGrantScheduledCents = parseMoneyToCents(input.perfGrantScheduled) ?? 0;
@@ -159,7 +147,7 @@ export async function saveLabelAction(input: {
   id?: string;
   label: string;
 }): Promise<ActionResult> {
-  const current = await session();
+  const current = await actionSession();
   if ("expired" in current) return current.expired;
 
   const label = input.label.trim();
@@ -208,7 +196,7 @@ export async function setLabelActiveAction(input: {
   id: string;
   active: boolean;
 }): Promise<ActionResult> {
-  const current = await session();
+  const current = await actionSession();
   if ("expired" in current) return current.expired;
   if (!isUuid(input.id)) return fail("That entry no longer exists.");
 
@@ -242,7 +230,7 @@ export async function saveVendorAction(input: {
   defaultLineItemId: string | null;
   defaultDescription: string;
 }): Promise<ActionResult> {
-  const current = await session();
+  const current = await actionSession();
   if ("expired" in current) return current.expired;
   if (!isUuid(input.id)) return fail("That vendor no longer exists.");
 
@@ -278,7 +266,7 @@ export async function saveVendorAction(input: {
 
 /** Forget a vendor. Expenses keep their own values; only the autofill entry goes. */
 export async function deleteVendorAction(id: string): Promise<ActionResult> {
-  const current = await session();
+  const current = await actionSession();
   if ("expired" in current) return current.expired;
   if (!isUuid(id)) return fail("That vendor no longer exists.");
 
@@ -305,7 +293,7 @@ export async function changePasswordAction(input: {
   newPassword: string;
   confirmPassword: string;
 }): Promise<ActionResult> {
-  const current = await session();
+  const current = await actionSession();
   if ("expired" in current) return current.expired;
 
   const [user] = await db

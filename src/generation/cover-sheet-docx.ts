@@ -194,6 +194,15 @@ function imageParagraph(image: CoverImage): Paragraph {
 
 /** Build the cover sheet for one line item. */
 export async function buildCoverSheetDocx(input: CoverSheetInput): Promise<Buffer> {
+  // `images` is index-aligned with `rows`. A short array would render headings with no
+  // proofs beneath them — a sheet that looks finished while documenting nothing — so the
+  // alignment is asserted rather than assumed.
+  if (input.images.length !== input.rows.length) {
+    throw new Error(
+      `Cover sheet has ${input.rows.length} rows but ${input.images.length} image groups.`,
+    );
+  }
+
   const children: (Paragraph | Table)[] = [
     new Paragraph({
       alignment: AlignmentType.CENTER,

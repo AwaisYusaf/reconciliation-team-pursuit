@@ -78,6 +78,10 @@ export async function GET(request: Request) {
 
   // Derived from the bytes actually being sent rather than from the build, so a packet
   // served from the cache carries the same warning the build would have produced.
+  //
+  // Percent-encoded because header values are ByteStrings: the warning contains an em dash
+  // and a curly apostrophe, and passing either raw makes constructing the Response throw —
+  // which would turn "deliver anyway" into the one path that can never deliver.
   const warning = body.byteLength > MAX_PACKET_BYTES ? oversizeWarning(body.byteLength) : null;
 
   return new NextResponse(new Uint8Array(body), {
@@ -86,7 +90,7 @@ export async function GET(request: Request) {
       "Content-Length": String(body.byteLength),
       "Content-Disposition": attachmentHeader(packetFilename(snapshot.docName, label)),
       // Surfaced by the client as a warning toast; the download still succeeds.
-      ...(warning ? { "X-Packet-Warning": warning } : {}),
+      ...(warning ? { "X-Packet-Warning": encodeURIComponent(warning) } : {}),
       "X-Content-Type-Options": "nosniff",
       "Cache-Control": "private, no-store",
     },

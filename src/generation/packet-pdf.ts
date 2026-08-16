@@ -83,11 +83,15 @@ function addImagePage(
 async function appendUpload(
   pdf: PDFDocument,
   orgId: string,
-  document: { s3Key: string; mimeType: string; filename: string },
+  document: { s3Key: string; mimeType: string; filename: string; pageCount: number | null },
   quality: RasterQuality,
 ): Promise<void> {
-  // The key came from our own row; the organisation prefix stays an enforced invariant.
-  if (!keyBelongsToOrg(document.s3Key, orgId)) return;
+  // The key came from our own row, so this should be unreachable. It fails closed anyway:
+  // a guard that exists to catch "this evidence does not belong here" must never resolve
+  // by quietly leaving the document out of a claim.
+  if (!keyBelongsToOrg(document.s3Key, orgId)) {
+    throw new Error(`Refusing to include ${document.filename}: it does not belong to this organisation.`);
+  }
 
   const bytes = await storage().get(document.s3Key);
 
@@ -102,6 +106,8 @@ async function appendUpload(
         });
       },
       quality,
+      // Checked against what was recorded when the file was attached.
+      document.pageCount,
     );
     return;
   }
@@ -183,6 +189,9 @@ export async function buildPacketPdf(
     }
   }
 
-  const bytes = Buffer.from(await pdf.save());
+  // Wrapped, not copied: `save()` already returns a fresh array, and copying a 100 MB
+  // packet again doubles peak memory at the worst possible moment.
+  const saved = await pdf.save();
+  const bytes = Buffer.from(saved.buffer, saved.byteOffset, saved.byteLength);
   return { pdf: bytes, pageCount: pdf.getPageCount() };
 }

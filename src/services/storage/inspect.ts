@@ -120,11 +120,19 @@ async function inspectImage(body: Buffer, mimeType: string): Promise<InspectionR
     const image = sharp(body, { limitInputPixels: MAX_PIXELS });
     const metadata = await image.metadata();
 
-    const width = metadata.width ?? 0;
-    const height = metadata.height ?? 0;
-    if (width === 0 || height === 0) {
+    const storedWidth = metadata.width ?? 0;
+    const storedHeight = metadata.height ?? 0;
+    if (storedWidth === 0 || storedHeight === 0) {
       return { ok: false, error: "That image could not be read — it may be damaged." };
     }
+
+    // EXIF orientations 5–8 rotate by a quarter turn, so the stored pixel dimensions are
+    // transposed relative to how the image is actually displayed. Every consumer rotates
+    // before rendering, so the displayed dimensions are what get recorded — otherwise the
+    // packet's page estimate fits a portrait photo into a landscape box.
+    const quarterTurned = (metadata.orientation ?? 1) >= 5;
+    const width = quarterTurned ? storedHeight : storedWidth;
+    const height = quarterTurned ? storedWidth : storedHeight;
 
     // HEIC (iPhone photos) and WebP are converted so Word, Excel and the packet can embed
     // them; JPEG and PNG are stored untouched to avoid a needless re-encode.

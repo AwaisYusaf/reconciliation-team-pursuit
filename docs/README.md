@@ -20,6 +20,7 @@ Docs-first, AI-native project. **These files are the source of truth.** Code ser
 | `04-engineering/review-2026-08-16.md` | Adversarial review of the documentation (4 auditors) — findings + dispositions, all applied |
 | `04-engineering/review-2026-08-16-implementation.md` | Adversarial review of the first implementation phase |
 | `04-engineering/review-2026-08-16-generation.md` | Adversarial review of the generation layer (snapshot, workbook, artifact cache, download route) |
+| `04-engineering/review-2026-08-17-outputs.md` | Adversarial review of the cover sheet and packet generators — two critical defects, fixes, and deferred scheduling work |
 
 Reference inputs (not authored by us) live in `../context/`:
 - `Reconciliation System MVP For Team Pursuit Global By Mantaq.pdf` — signed scope of work
@@ -45,7 +46,7 @@ Each `03-modules/m*.md` is one unit of work that flows through five gates:
 | m03 Expenses list | ✅ | ✅ | ✅ | ✅ | ✅ |
 | m04 Cover sheets | ✅ | ✅ | ✅ | ✅ | ✅ |
 | m05 Recurring items | ✅ | ✅ | ✅ | ✅ | ✅ |
-| m06 Month-end packet | ✅ | ✅ | ✅ | ☐ | ☐ |
+| m06 Month-end packet | ✅ | ✅ | ✅ | ✅ | ✅ |
 | m07 Contract summary | ✅ | ✅ | ✅ | ✅ | ✅ |
 | m08 Line items | ✅ | ✅ | ✅ | ✅ | ✅ |
 | m09 Settings | ✅ | ✅ | ✅ | ✅ | ✅ |
@@ -69,11 +70,12 @@ Working software so far, all verified against a running app with a real database
 | Foundation | Drizzle schema (14 tables) + migrations + seed + dev fixture; custom session auth; Tailwind design tokens and the shared component library; m00 auth/onboarding/app shell |
 | Domain | money · format · dates · strings · budget-math (R3) · gate (R4) · summary (R7) · line-item-rules (R9) · recurring-rules (R8) — all pure, all unit-tested |
 | Storage | Driver abstraction (S3 + local, D-29), key rules, upload inspection, server-proxied ingestion (D-30), download-by-id route |
-| Screens | m00 shell/auth · m01 dashboard · m02 expense entry · m03 expenses list · m04 cover sheets · m05 recurring · m07 contract summary · m08 line items · m09 settings |
+| Screens | All ten: m00 shell/auth · m01 dashboard · m02 expense entry · m03 expenses list · m04 cover sheets · m05 recurring · m06 month-end packet · m07 contract summary · m08 line items · m09 settings |
 | Generators | All three outputs: summary workbook (xlsx) · cover sheet (docx canonical + PDF) · month-end packet (merged, ordered, footer-stamped, size ladder). Shared month snapshot, rasterization (pdftoppm 150 DPI, page-at-a-time), artifact cache with inputs-hash and download pinning (R10.4, R10.6), gated download routes |
 
-**Remaining:** m06 month-end packet · hardening (Playwright, Docker, the
-February test).
+**Remaining:** full-application scenario testing · the generation scheduling work
+deferred in `review-2026-08-17-outputs.md` (single-flight lock, rate limit, wall-clock
+bound) · hardening (Playwright, Docker, the February test).
 
 ### Running it locally
 

@@ -7,6 +7,8 @@ import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 
 import { packetFooter } from "@/src/domain/strings";
 
+import { winAnsiSafe } from "./pdf-text";
+
 import { inchesToPoints } from "./layout-constants";
 
 const FOOTER_SIZE = 9;
@@ -32,7 +34,7 @@ export async function stampFooters(
   const pages = pdf.getPages();
 
   pages.forEach((page, index) => {
-    const text = packetFooter(docName, monthLabel, index + 1, pages.length);
+    const text = winAnsiSafe(packetFooter(docName, monthLabel, index + 1, pages.length));
     const width = font.widthOfTextAtSize(text, FOOTER_SIZE);
     page.drawText(text, {
       // Centred on the page's own width, so a page of any size is still centred.
@@ -44,7 +46,8 @@ export async function stampFooters(
     });
   });
 
-  return Buffer.from(await pdf.save());
+  const saved = await pdf.save();
+  return Buffer.from(saved.buffer, saved.byteOffset, saved.byteLength);
 }
 
 export type SizeOutcome = {

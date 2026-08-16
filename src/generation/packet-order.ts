@@ -32,10 +32,15 @@ function byOrderThenId(
 export function orderedMonthDocuments(
   documents: readonly SnapshotMonthDocument[],
 ): SnapshotMonthDocument[] {
+  // An unrecognised category sorts last, not first: `indexOf` returns -1, which would put
+  // a future enum value ahead of the bank statement at the very front of the submission.
+  const rank = (category: string) => {
+    const index = CATEGORY_ORDER.indexOf(category);
+    return index === -1 ? CATEGORY_ORDER.length : index;
+  };
+
   return [...documents].sort(
-    (a, b) =>
-      CATEGORY_ORDER.indexOf(a.category) - CATEGORY_ORDER.indexOf(b.category) ||
-      byOrderThenId(a, b),
+    (a, b) => rank(a.category) - rank(b.category) || byOrderThenId(a, b),
   );
 }
 

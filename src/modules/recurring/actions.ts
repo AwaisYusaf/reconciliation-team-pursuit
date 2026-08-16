@@ -18,23 +18,11 @@ import {
 import { isValidMonthKey, todayIso } from "@/src/domain/dates";
 import { parseMoneyToCents } from "@/src/domain/money";
 import { addedState, validateRecurring } from "@/src/domain/recurring-rules";
-import { fail, ok, SESSION_EXPIRED, type ActionResult } from "@/src/lib/action-result";
-import {
-  requireSession,
-  UnauthenticatedError,
-  type SessionContext,
-} from "@/src/services/auth/session";
+import { fail, ok, type ActionResult } from "@/src/lib/action-result";
+import { actionSession } from "@/src/lib/action-session";
 import { deleteExpenseDocument } from "@/src/services/storage/documents";
 import { isUuid } from "@/src/lib/ids";
 
-async function session(): Promise<SessionContext | { expired: ActionResult<never> }> {
-  try {
-    return await requireSession();
-  } catch (error) {
-    if (error instanceof UnauthenticatedError) return { expired: fail(SESSION_EXPIRED) };
-    throw error;
-  }
-}
 
 export async function saveRecurringItemAction(input: {
   id?: string;
@@ -43,7 +31,7 @@ export async function saveRecurringItemAction(input: {
   lineItemId: string;
   defaultDescription: string;
 }): Promise<ActionResult> {
-  const current = await session();
+  const current = await actionSession();
   if ("expired" in current) return current.expired;
 
   const amountCents = parseMoneyToCents(input.amount);
@@ -91,7 +79,7 @@ export async function saveRecurringItemAction(input: {
 }
 
 export async function deleteRecurringItemAction(id: string): Promise<ActionResult> {
-  const current = await session();
+  const current = await actionSession();
   if ("expired" in current) return current.expired;
   if (!isUuid(id)) return fail("That recurring item no longer exists.");
 
@@ -117,7 +105,7 @@ export async function addRecurringToMonthAction(
   id: string,
   month: string,
 ): Promise<ActionResult> {
-  const current = await session();
+  const current = await actionSession();
   if ("expired" in current) return current.expired;
   if (!isUuid(id)) return fail("That recurring item no longer exists.");
   if (!isValidMonthKey(month)) return fail("That is not a valid month.");
@@ -186,7 +174,7 @@ export async function removeRecurringFromMonthAction(
   month: string,
   confirmed = false,
 ): Promise<ActionResult<{ requiresConfirmation?: string }>> {
-  const current = await session();
+  const current = await actionSession();
   if ("expired" in current) return current.expired;
   if (!isUuid(id)) return fail("That recurring item no longer exists.");
   if (!isValidMonthKey(month)) return fail("That is not a valid month.");

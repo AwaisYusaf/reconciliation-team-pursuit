@@ -42,7 +42,12 @@ export function fitWithin(
   source: { widthPx: number; heightPx: number },
   box: { widthPx: number; heightPx: number },
 ): { widthPx: number; heightPx: number } {
-  if (source.widthPx <= 0 || source.heightPx <= 0) return { ...box };
+  // A zero dimension means the dimensions were never recorded. Filling the box would invent
+  // an aspect ratio and stretch the image; a modest square is honest about knowing nothing.
+  if (source.widthPx <= 0 || source.heightPx <= 0) {
+    const side = Math.min(box.widthPx, box.heightPx);
+    return { widthPx: side, heightPx: side };
+  }
 
   const scale = Math.min(box.widthPx / source.widthPx, box.heightPx / source.heightPx, 1);
   return {

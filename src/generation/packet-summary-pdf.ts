@@ -16,6 +16,7 @@ import { packetSummaryTitle } from "@/src/domain/strings";
 import { contractSummary, type SummaryRow } from "@/src/domain/summary";
 
 import { PACKET_MARGIN_IN, inchesToPoints } from "./layout-constants";
+import { winAnsiSafe } from "./pdf-text";
 import type { MonthSnapshot } from "./month-snapshot";
 
 const PAGE_WIDTH = inchesToPoints(8.5);
@@ -71,7 +72,7 @@ function wrap(text: string, font: PDFFont, size: number, maxWidth: number): stri
 
 function drawCellText(
   page: PDFPage,
-  text: string,
+  rawText: string,
   options: {
     x: number;
     y: number;
@@ -81,6 +82,7 @@ function drawCellText(
     size: number;
   },
 ): void {
+  const text = winAnsiSafe(rawText);
   const textWidth = options.font.widthOfTextAtSize(text, options.size);
   const x =
     options.align === "right"
@@ -150,7 +152,8 @@ function drawRow(
 }
 
 /** A merged, shaded divider spanning the table. */
-function drawSectionRow(page: PDFPage, top: number, label: string, fonts: Fonts): number {
+function drawSectionRow(page: PDFPage, top: number, rawLabel: string, fonts: Fonts): number {
+  const label = winAnsiSafe(rawLabel);
   const height = ROW_HEIGHT;
   const bottom = top - height;
 
@@ -239,7 +242,7 @@ export async function buildSummarySectionPdf(snapshot: MonthSnapshot): Promise<B
   let page = pdf.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
   let y = PAGE_HEIGHT - MARGIN;
 
-  const title = packetSummaryTitle(snapshot.docName, label);
+  const title = winAnsiSafe(packetSummaryTitle(snapshot.docName, label));
   page.drawText(title, {
     x: MARGIN + (CONTENT_WIDTH - fonts.bold.widthOfTextAtSize(title, TITLE_SIZE)) / 2,
     y: y - TITLE_SIZE,
@@ -250,7 +253,8 @@ export async function buildSummarySectionPdf(snapshot: MonthSnapshot): Promise<B
   y -= TITLE_SIZE + 12;
 
   // One subtitle line carrying the R7.3 context, empty settings omitted.
-  const context = contractContextLine(
+  const context = winAnsiSafe(
+    contractContextLine(
     {
       contractNumber: snapshot.settings.contractNumber,
       basePoNumber: snapshot.settings.basePoNumber,
@@ -258,16 +262,23 @@ export async function buildSummarySectionPdf(snapshot: MonthSnapshot): Promise<B
       contractValueCents: snapshot.settings.contractValueCents,
       scheduledTotalCents: summary.totals.scheduledCents,
     },
-    snapshot.month,
+      snapshot.month,
+    ),
   );
-  page.drawText(context, {
-    x: MARGIN + (CONTENT_WIDTH - fonts.regular.widthOfTextAtSize(context, SUBTITLE_SIZE)) / 2,
-    y: y - SUBTITLE_SIZE,
-    size: SUBTITLE_SIZE,
-    font: fonts.regular,
-    color: rgb(0.35, 0.32, 0.28),
-  });
-  y -= SUBTITLE_SIZE + 18;
+  // A fully populated context line is wider than the page, and centring an over-wide string
+  // pushes it past the margin and eventually off the sheet entirely, so it wraps instead.
+  const contextLines = wrap(context, fonts.regular, SUBTITLE_SIZE, CONTENT_WIDTH);
+  for (const line of contextLines) {
+    page.drawText(line, {
+      x: MARGIN + (CONTENT_WIDTH - fonts.regular.widthOfTextAtSize(line, SUBTITLE_SIZE)) / 2,
+      y: y - SUBTITLE_SIZE,
+      size: SUBTITLE_SIZE,
+      font: fonts.regular,
+      color: rgb(0.35, 0.32, 0.28),
+    });
+    y -= SUBTITLE_SIZE + 3;
+  }
+  y -= 15;
 
   y = drawTableHeader(page, y, fonts);
 
@@ -310,7 +321,7 @@ export async function buildSummarySectionPdf(snapshot: MonthSnapshot): Promise<B
 
   for (const [labelText, value] of reconciliation) {
     ensureSpace(18);
-    page.drawText(labelText, {
+    page.drawText(winAnsiSafe(labelText), {
       x: MARGIN,
       y: y - BODY_SIZE,
       size: BODY_SIZE,

@@ -11,24 +11,12 @@ import { expenseDocuments, expenses, lineItems, vendorDefaults } from "@/src/db/
 import { isValidIsoDate, isValidMonthKey, todayIso } from "@/src/domain/dates";
 import { parseMoneyToCentsOrZero } from "@/src/domain/money";
 import { UI } from "@/src/domain/strings";
-import { fail, ok, SESSION_EXPIRED, type ActionResult } from "@/src/lib/action-result";
-import {
-  requireSession,
-  UnauthenticatedError,
-  type SessionContext,
-} from "@/src/services/auth/session";
+import { fail, ok, type ActionResult } from "@/src/lib/action-result";
+import { actionSession } from "@/src/lib/action-session";
 import { deleteExpenseDocument as removeStoredDocument } from "@/src/services/storage/documents";
 import { isUuid } from "@/src/lib/ids";
 import { isKnownPaymentSource } from "@/src/modules/settings/labels";
 
-async function session(): Promise<SessionContext | { expired: ActionResult<never> }> {
-  try {
-    return await requireSession();
-  } catch (error) {
-    if (error instanceof UnauthenticatedError) return { expired: fail(SESSION_EXPIRED) };
-    throw error;
-  }
-}
 
 export type ExpenseInput = {
   id?: string;
@@ -120,7 +108,7 @@ async function learnVendor(orgId: string, row: ReturnType<typeof toRow>): Promis
 export async function createExpenseAction(
   input: ExpenseInput,
 ): Promise<ActionResult<{ id: string }>> {
-  const current = await session();
+  const current = await actionSession();
   if ("expired" in current) return current.expired;
 
   const invalid = validate(input);
@@ -159,7 +147,7 @@ export async function createExpenseAction(
 }
 
 export async function updateExpenseAction(input: ExpenseInput): Promise<ActionResult> {
-  const current = await session();
+  const current = await actionSession();
   if ("expired" in current) return current.expired;
   if (!input.id) return fail("That expense no longer exists.");
 
@@ -234,7 +222,7 @@ export async function updateExpenseAction(input: ExpenseInput): Promise<ActionRe
 }
 
 export async function deleteExpenseAction(id: string): Promise<ActionResult> {
-  const current = await session();
+  const current = await actionSession();
   if ("expired" in current) return current.expired;
   if (!isUuid(id)) return fail("That expense no longer exists.");
 
@@ -261,7 +249,7 @@ export async function deleteExpenseAction(id: string): Promise<ActionResult> {
 
 /** Remove one attached file (immediate — the form warns that Cancel will not undo it). */
 export async function removeExpenseDocumentAction(documentId: string): Promise<ActionResult> {
-  const current = await session();
+  const current = await actionSession();
   if ("expired" in current) return current.expired;
   if (!isUuid(documentId)) return fail("That file is already gone.");
 
@@ -276,7 +264,7 @@ export async function removeExpenseDocumentAction(documentId: string): Promise<A
 export async function searchVendorsAction(
   query: string,
 ): Promise<ActionResult<Array<{ name: string; lineItemId: string | null; description: string }>>> {
-  const current = await session();
+  const current = await actionSession();
   if ("expired" in current) return current.expired;
 
   const term = query.trim();

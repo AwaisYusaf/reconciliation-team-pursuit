@@ -14,22 +14,10 @@ import { expenses, lineItems, recurringItems } from "@/src/db/schema";
 import { isDuplicateName, planLineItemDelete } from "@/src/domain/line-item-rules";
 import { parseMoneyToCents } from "@/src/domain/money";
 import { UI } from "@/src/domain/strings";
-import { fail, ok, SESSION_EXPIRED, type ActionResult } from "@/src/lib/action-result";
+import { fail, ok, type ActionResult } from "@/src/lib/action-result";
+import { actionSession } from "@/src/lib/action-session";
 import { isUuid } from "@/src/lib/ids";
-import {
-  requireSession,
-  UnauthenticatedError,
-  type SessionContext,
-} from "@/src/services/auth/session";
 
-async function session(): Promise<SessionContext | { expired: ActionResult<never> }> {
-  try {
-    return await requireSession();
-  } catch (error) {
-    if (error instanceof UnauthenticatedError) return { expired: fail(SESSION_EXPIRED) };
-    throw error;
-  }
-}
 
 /** Every screen reads line items, so a change invalidates the whole authenticated tree. */
 function revalidateAll(): void {
@@ -42,7 +30,7 @@ export async function saveLineItemAction(input: {
   scheduledValue: string;
   openingBilled: string;
 }): Promise<ActionResult> {
-  const current = await session();
+  const current = await actionSession();
   if ("expired" in current) return current.expired;
 
   const name = input.name.trim();
@@ -101,7 +89,7 @@ export async function deleteLineItemAction(
   id: string,
   confirmedRecurring = false,
 ): Promise<ActionResult<{ requiresConfirmation?: string[] }>> {
-  const current = await session();
+  const current = await actionSession();
   if ("expired" in current) return current.expired;
   if (!isUuid(id)) return fail("That line item no longer exists.");
 
@@ -144,7 +132,7 @@ export async function deleteLineItemAction(
 
 /** Persist a new display order; the order drives documents as well as screens. */
 export async function reorderLineItemsAction(orderedIds: string[]): Promise<ActionResult> {
-  const current = await session();
+  const current = await actionSession();
   if ("expired" in current) return current.expired;
 
   if (orderedIds.length === 0 || !orderedIds.every(isUuid)) {

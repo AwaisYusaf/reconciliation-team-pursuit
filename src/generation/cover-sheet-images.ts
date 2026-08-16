@@ -31,8 +31,11 @@ async function imagesFor(
   document: SnapshotDocument,
   quality: RasterQuality,
 ): Promise<CoverImage[]> {
-  // The key came from our own row, but the organisation prefix stays an enforced invariant.
-  if (!keyBelongsToOrg(document.s3Key, orgId)) return [];
+  // Fails closed rather than returning no images: a cover sheet that silently omits a proof
+  // looks complete and documents nothing.
+  if (!keyBelongsToOrg(document.s3Key, orgId)) {
+    throw new Error(`Refusing to include ${document.filename}: it does not belong to this organisation.`);
+  }
 
   const bytes = await storage().get(document.s3Key);
 
@@ -44,6 +47,7 @@ async function imagesFor(
         pages.push({ data: page.jpeg, widthPx: page.widthPx, heightPx: page.heightPx });
       },
       quality,
+      document.pageCount,
     );
     return pages;
   }

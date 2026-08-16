@@ -1,0 +1,185 @@
+"use client";
+
+import { useRouter } from "next/navigation";
+import { useRef, useState, useTransition } from "react";
+import toast from "react-hot-toast";
+
+import { Button } from "@/src/components/ui/button";
+import { Card } from "@/src/components/ui/surfaces";
+import { reportResult } from "@/src/components/ui/toast";
+import { removeMonthDocumentAction } from "@/src/modules/packet/actions";
+import type { MonthDocumentRow } from "@/src/modules/packet/queries";
+
+/** Fixed categories (R11.2), listed in the order the packet assembles them. */
+const CATEGORIES = [
+  { value: "bank_statement", label: "Bank statement" },
+  { value: "combined_hours", label: "Combined hours" },
+  { value: "timesheet", label: "Timesheet" },
+  { value: "fiduciary_invoice", label: "Fiduciary invoice" },
+  { value: "other", label: "Other" },
+] as const;
+
+const LABELS = new Map(CATEGORIES.map((category) => [category.value, category.label]));
+
+/**
+ * Month-level uploads: the bank statement, timesheets and the fiduciary invoice that belong
+ * to the month rather than to any one expense.
+ *
+ * These are never gated — they are optional supporting material, so a missing bank statement
+ * is a reminder rather than a blocker.
+ */
+export function MonthDocuments({
+  month,
+  documents,
+  monthLabel,
+  hasBankStatement,
+}: {
+  month: string;
+  documents: MonthDocumentRow[];
+  monthLabel: string;
+  hasBankStatement: boolean;
+}) {
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+  const [uploading, setUploading] = useState(false);
+  const formRef = useRef<HTMLFormElement>(null);
+
+  async function upload(form: FormData) {
+    setUploading(true);
+    try {
+      const response = await fetch("/api/files/upload", { method: "POST", body: form });
+      const result = (await response.json()) as { ok: boolean; error?: string };
+
+      if (!result.ok) {
+        toast.error(result.error ?? "That file could not be uploaded.");
+        return;
+      }
+      toast.success("Document added.");
+      formRef.current?.reset();
+      router.refresh();
+    } catch {
+      toast.error("Upload failed — check your connection and try again.");
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  function remove(id: string, name: string) {
+    if (!window.confirm(`Remove "${name}" from this month? This cannot be undone.`)) return;
+    startTransition(async () => {
+      if (reportResult(await removeMonthDocumentAction(id), "Document removed.")) {
+        router.refresh();
+      }
+    });
+  }
+
+  const grouped = CATEGORIES.map((category) => ({
+    ...category,
+    rows: documents.filter((document) => document.category === category.value),
+  })).filter((group) => group.rows.length > 0);
+
+  return (
+    <Card className="max-w-[720px]">
+      <h2 className="font-serif text-xl text-ink mb-1">Month documents</h2>
+      <p className="text-sm text-muted mb-4">
+        Bank statements, timesheets and the fiduciary invoice for {monthLabel}. These are
+        optional and never block a download.
+      </p>
+
+      {!hasBankStatement && (
+        <p className="text-sm text-danger mb-4">No bank statement attached for {monthLabel} yet.</p>
+      )}
+
+      {grouped.length === 0 ? (
+        <p className="text-sm text-muted mb-5">Nothing attached yet.</p>
+      ) : (
+        <div className="flex flex-col gap-4 mb-5">
+          {grouped.map((group) => (
+            <div key={group.value}>
+              <div className="text-[13px] font-bold uppercase tracking-[0.06em] text-muted mb-1.5">
+                {group.label}
+              </div>
+              <ul className="flex flex-col divide-y divide-line border border-line rounded-md">
+                {group.rows.map((document) => (
+                  <li
+                    key={document.id}
+                    className="flex flex-wrap items-center justify-between gap-3 px-3 py-2"
+                  >
+                    <span className="text-[15px] text-ink">
+                      {document.title ? `${document.title} — ` : ""}
+                      {document.filename}
+                      {document.pageCount ? (
+                        <span className="text-muted"> · {document.pageCount} page(s)</span>
+                      ) : null}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => remove(document.id, document.title || document.filename)}
+                      disabled={pending}
+                      className="text-sm text-danger underline disabled:opacity-60"
+                    >
+                      Remove
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <form
+        ref={formRef}
+        action={upload}
+        className="flex flex-wrap items-end gap-3 border-t border-line pt-4"
+      >
+        <input type="hidden" name="target" value="month" />
+        <input type="hidden" name="month" value={month} />
+
+        <label className="flex flex-col gap-1.5">
+          <span className="text-[13px] font-medium text-muted">Category</span>
+          <select
+            name="category"
+            required
+            defaultValue="bank_statement"
+            className="border border-line rounded-md px-3 py-2 text-[15px] bg-white"
+          >
+            {CATEGORIES.map((category) => (
+              <option key={category.value} value={category.value}>
+                {category.label}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className="flex flex-col gap-1.5">
+          <span className="text-[13px] font-medium text-muted">Title (optional)</span>
+          <input
+            name="title"
+            type="text"
+            maxLength={120}
+            placeholder="e.g. Operating account"
+            className="border border-line rounded-md px-3 py-2 text-[15px] bg-white"
+          />
+        </label>
+
+        <label className="flex flex-col gap-1.5">
+          <span className="text-[13px] font-medium text-muted">File</span>
+          <input
+            name="file"
+            type="file"
+            required
+            accept="image/jpeg,image/png,image/webp,image/heic,application/pdf"
+            className="text-[15px]"
+          />
+        </label>
+
+        <Button type="submit" variant="secondary" disabled={uploading}>
+          {uploading ? "Uploading…" : "Add document"}
+        </Button>
+      </form>
+    </Card>
+  );
+}
+
+export { LABELS as MONTH_DOCUMENT_LABELS };
