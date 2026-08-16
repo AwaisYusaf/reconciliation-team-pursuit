@@ -46,7 +46,7 @@ Each `03-modules/m*.md` is one unit of work that flows through five gates:
 | m06 Month-end packet | ✅ | ✅ | ✅ | ☐ | ☐ |
 | m07 Contract summary | ✅ | ✅ | ✅ | ☐ | ☐ |
 | m08 Line items | ✅ | ✅ | ✅ | ✅ | ✅ |
-| m09 Settings | ✅ | ✅ | ✅ | ☐ | ☐ |
+| m09 Settings | ✅ | ✅ | ✅ | ✅ | ✅ |
 
 Output generators (cover sheets, Excel, packet) are backend work items specced in `02-outputs/` and wired during m04/m06/m07.
 

@@ -1,0 +1,337 @@
+"use server";
+
+/**
+ * Settings (m09) — everything the prototype hardcoded.
+ *
+ * These values print on the documents the City receives (organisation name, PO numbers,
+ * contract figures) or govern what may be recorded (the label lists), so each section is
+ * validated and saved independently.
+ */
+import { and, eq, sql } from "drizzle-orm";
+import { revalidatePath } from "next/cache";
+
+import { db } from "@/src/db";
+import {
+  contractSettings,
+  organizations,
+  paymentSources,
+  supportingDocTypes,
+  users,
+  vendorDefaults,
+} from "@/src/db/schema";
+import { isValidIsoDate } from "@/src/domain/dates";
+import { parseMoneyToCents } from "@/src/domain/money";
+import { fail, ok, SESSION_EXPIRED, type ActionResult } from "@/src/lib/action-result";
+import { isUuid } from "@/src/lib/ids";
+import { hashPassword, validatePasswordPolicy, verifyPassword } from "@/src/services/auth/passwords";
+import {
+  requireSession,
+  revokeOtherSessions,
+  UnauthenticatedError,
+  type SessionContext,
+} from "@/src/services/auth/session";
+
+async function session(): Promise<SessionContext | { expired: ActionResult<never> }> {
+  try {
+    return await requireSession();
+  } catch (error) {
+    if (error instanceof UnauthenticatedError) return { expired: fail(SESSION_EXPIRED) };
+    throw error;
+  }
+}
+
+/* --------------------------------------------------------- organisation */
+
+export async function updateOrganisationAction(input: {
+  name: string;
+  docName: string;
+}): Promise<ActionResult> {
+  const current = await session();
+  if ("expired" in current) return current.expired;
+
+  const name = input.name.trim();
+  const docName = input.docName.trim();
+  if (!name) return fail("Enter your organisation's name.");
+  // The document name is part of every generated filename and title, so it cannot be blank.
+  if (!docName) return fail("Enter the name to print on documents.");
+
+  await db
+    .update(organizations)
+    .set({ name, docName })
+    .where(eq(organizations.id, current.orgId));
+
+  revalidatePath("/", "layout");
+  return ok();
+}
+
+/* ------------------------------------------------------------ contract */
+
+export async function updateContractAction(input: {
+  projectName: string;
+  contractNumber: string;
+  basePoNumber: string;
+  performancePoNumber: string;
+  contractValue: string;
+  contractStart: string;
+  contractEnd: string;
+  fiduciaryName: string;
+}): Promise<ActionResult> {
+  const current = await session();
+  if ("expired" in current) return current.expired;
+
+  const contractValueCents = parseMoneyToCents(input.contractValue) ?? 0;
+  if (contractValueCents < 0) return fail("Contract value cannot be negative.");
+
+  const start = input.contractStart.trim();
+  const end = input.contractEnd.trim();
+  if (start && !isValidIsoDate(start)) return fail("Enter a valid contract start date.");
+  if (end && !isValidIsoDate(end)) return fail("Enter a valid contract end date.");
+  if (start && end && end < start) return fail("The contract ends before it starts.");
+
+  const values = {
+    projectName: input.projectName.trim(),
+    contractNumber: input.contractNumber.trim(),
+    basePoNumber: input.basePoNumber.trim(),
+    performancePoNumber: input.performancePoNumber.trim(),
+    contractValueCents,
+    contractStart: start || null,
+    contractEnd: end || null,
+    fiduciaryName: input.fiduciaryName.trim(),
+  };
+
+  await db
+    .insert(contractSettings)
+    .values({ orgId: current.orgId, ...values })
+    .onConflictDoUpdate({ target: contractSettings.orgId, set: values });
+
+  revalidatePath("/", "layout");
+  return ok();
+}
+
+/* -------------------------------------------- performance grant & advances */
+
+export async function updateGrantSettingsAction(input: {
+  perfGrantScheduled: string;
+  perfGrantBilled: string;
+  advancesReceived: string;
+}): Promise<ActionResult> {
+  const current = await session();
+  if ("expired" in current) return current.expired;
+
+  const perfGrantScheduledCents = parseMoneyToCents(input.perfGrantScheduled) ?? 0;
+  const perfGrantBilledCents = parseMoneyToCents(input.perfGrantBilled) ?? 0;
+  const advancesReceivedCents = parseMoneyToCents(input.advancesReceived) ?? 0;
+
+  if (perfGrantScheduledCents < 0 || perfGrantBilledCents < 0 || advancesReceivedCents < 0) {
+    return fail("These figures cannot be negative.");
+  }
+  if (perfGrantBilledCents > perfGrantScheduledCents && perfGrantScheduledCents > 0) {
+    return fail("Billed to date is more than the grant's scheduled value.");
+  }
+
+  const values = { perfGrantScheduledCents, perfGrantBilledCents, advancesReceivedCents };
+
+  await db
+    .insert(contractSettings)
+    .values({ orgId: current.orgId, ...values })
+    .onConflictDoUpdate({ target: contractSettings.orgId, set: values });
+
+  revalidatePath("/", "layout");
+  return ok();
+}
+
+/* ------------------------------------------------------------- lists */
+
+type ListKind = "paymentSource" | "supportingDocType";
+
+function table(kind: ListKind) {
+  return kind === "paymentSource" ? paymentSources : supportingDocTypes;
+}
+
+/**
+ * Add or rename a label.
+ *
+ * Renaming changes what future entries offer; expenses already recorded keep the label
+ * they were saved with, which is what makes their documents reproducible (R5.1).
+ */
+export async function saveLabelAction(input: {
+  kind: ListKind;
+  id?: string;
+  label: string;
+}): Promise<ActionResult> {
+  const current = await session();
+  if ("expired" in current) return current.expired;
+
+  const label = input.label.trim();
+  if (!label) return fail("Enter a label.");
+  if (input.id && !isUuid(input.id)) return fail("That entry no longer exists.");
+
+  const target = table(input.kind);
+
+  const clash = await db
+    .select({ id: target.id })
+    .from(target)
+    .where(and(eq(target.orgId, current.orgId), sql`lower(${target.label}) = lower(${label})`))
+    .limit(1);
+  if (clash[0] && clash[0].id !== input.id) return fail("That label already exists.");
+
+  if (input.id) {
+    const updated = await db
+      .update(target)
+      .set({ label })
+      .where(and(eq(target.id, input.id), eq(target.orgId, current.orgId)))
+      .returning({ id: target.id });
+    if (updated.length === 0) return fail("That entry no longer exists.");
+  } else {
+    const [{ next }] = await db
+      .select({ next: sql<number>`coalesce(max(${target.sortOrder}), -1) + 1` })
+      .from(target)
+      .where(eq(target.orgId, current.orgId));
+    await db
+      .insert(target)
+      .values({ orgId: current.orgId, label, sortOrder: Number(next) });
+  }
+
+  revalidatePath("/", "layout");
+  return ok();
+}
+
+/**
+ * Activate or deactivate a label.
+ *
+ * Labels are never hard-deleted: an expense stores the label it was entered with, and
+ * keeping the row lets Settings still show what that history refers to. Deactivating just
+ * takes it out of the pickers.
+ */
+export async function setLabelActiveAction(input: {
+  kind: ListKind;
+  id: string;
+  active: boolean;
+}): Promise<ActionResult> {
+  const current = await session();
+  if ("expired" in current) return current.expired;
+  if (!isUuid(input.id)) return fail("That entry no longer exists.");
+
+  const target = table(input.kind);
+
+  // Expense entry requires a payment source, so the last active one cannot be turned off.
+  if (!input.active && input.kind === "paymentSource") {
+    const active = await db
+      .select({ id: target.id })
+      .from(target)
+      .where(and(eq(target.orgId, current.orgId), eq(target.active, true)));
+    if (active.length <= 1) return fail("Keep at least one payment source active.");
+  }
+
+  const updated = await db
+    .update(target)
+    .set({ active: input.active })
+    .where(and(eq(target.id, input.id), eq(target.orgId, current.orgId)))
+    .returning({ id: target.id });
+  if (updated.length === 0) return fail("That entry no longer exists.");
+
+  revalidatePath("/", "layout");
+  return ok();
+}
+
+/* --------------------------------------------------------- vendor library */
+
+export async function saveVendorAction(input: {
+  id: string;
+  name: string;
+  defaultLineItemId: string | null;
+  defaultDescription: string;
+}): Promise<ActionResult> {
+  const current = await session();
+  if ("expired" in current) return current.expired;
+  if (!isUuid(input.id)) return fail("That vendor no longer exists.");
+
+  const name = input.name.trim();
+  if (!name) return fail("Enter a name.");
+
+  const clash = await db
+    .select({ id: vendorDefaults.id })
+    .from(vendorDefaults)
+    .where(
+      and(
+        eq(vendorDefaults.orgId, current.orgId),
+        sql`lower(${vendorDefaults.name}) = lower(${name})`,
+      ),
+    )
+    .limit(1);
+  if (clash[0] && clash[0].id !== input.id) return fail("A vendor with that name already exists.");
+
+  const updated = await db
+    .update(vendorDefaults)
+    .set({
+      name,
+      defaultLineItemId: input.defaultLineItemId,
+      defaultDescription: input.defaultDescription.trim(),
+    })
+    .where(and(eq(vendorDefaults.id, input.id), eq(vendorDefaults.orgId, current.orgId)))
+    .returning({ id: vendorDefaults.id });
+  if (updated.length === 0) return fail("That vendor no longer exists.");
+
+  revalidatePath("/", "layout");
+  return ok();
+}
+
+/** Forget a vendor. Expenses keep their own values; only the autofill entry goes. */
+export async function deleteVendorAction(id: string): Promise<ActionResult> {
+  const current = await session();
+  if ("expired" in current) return current.expired;
+  if (!isUuid(id)) return fail("That vendor no longer exists.");
+
+  const deleted = await db
+    .delete(vendorDefaults)
+    .where(and(eq(vendorDefaults.id, id), eq(vendorDefaults.orgId, current.orgId)))
+    .returning({ id: vendorDefaults.id });
+  if (deleted.length === 0) return fail("That vendor no longer exists.");
+
+  revalidatePath("/", "layout");
+  return ok();
+}
+
+/* ------------------------------------------------------------- account */
+
+/**
+ * Change the password (D-06).
+ *
+ * Every other session is revoked, so a password changed because it may have been exposed
+ * actually ends the exposure. The caller stays signed in.
+ */
+export async function changePasswordAction(input: {
+  currentPassword: string;
+  newPassword: string;
+  confirmPassword: string;
+}): Promise<ActionResult> {
+  const current = await session();
+  if ("expired" in current) return current.expired;
+
+  const [user] = await db
+    .select({ id: users.id, passwordHash: users.passwordHash })
+    .from(users)
+    .where(eq(users.id, current.userId))
+    .limit(1);
+  if (!user) return fail("That account no longer exists.");
+
+  if (!(await verifyPassword(user.passwordHash, input.currentPassword))) {
+    return fail("That is not your current password.");
+  }
+
+  const policyError = validatePasswordPolicy(input.newPassword);
+  if (policyError) return fail(policyError);
+  if (input.newPassword !== input.confirmPassword) return fail("The new passwords don't match.");
+  if (input.newPassword === input.currentPassword) {
+    return fail("Choose a password different from the current one.");
+  }
+
+  await db
+    .update(users)
+    .set({ passwordHash: await hashPassword(input.newPassword) })
+    .where(eq(users.id, current.userId));
+
+  await revokeOtherSessions(current.userId);
+
+  return ok();
+}
