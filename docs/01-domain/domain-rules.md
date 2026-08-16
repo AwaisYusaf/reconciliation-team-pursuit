@@ -1,0 +1,113 @@
+# Domain Rules
+
+Binding rules for all screens and generators. Module specs and code reference these by section number — do not restate them elsewhere. (Revised per `04-engineering/review-2026-08-16.md`.)
+
+## 1. Money
+
+- **R1.1** All amounts are **integer cents** in code and DB. Convert only at render/parse edges.
+- **R1.2** Display format everywhere (UI and documents): `$#,##0.00` → `$3,916.70`, `$19,890.83`. Negative: `-$145.00`. No bare numbers, no dropped cents (fixes manual inconsistencies like `$1404`, `1015.99`, `$3.916.70`).
+- **R1.3** **Reimbursable amount = subtotal + fees.** Tax is captured but excluded — the City does not reimburse sales tax. All "amount", "spent", "billed" figures in the system mean reimbursable unless explicitly labeled.
+- **R1.4** Negative amounts are allowed (refunds — e.g., ClickUp −$145) and net into every total.
+- **R1.5** Percentages on documents and screens: whole numbers (`66%`), **rounded half away from zero** (84.92→85, 103.16→103), implemented once in `format.ts`. Division by zero → `0%`.
+
+## 2. Months, dates & time
+
+- **R2.1** Reporting month key: `YYYY-MM`. Display: `February 2026`. Ordering is chronological on the key.
+- **R2.2** Every expense belongs to exactly one month (defaults to the active month at creation; **editable from the expense form**). **Expense date is independent of month** — a February expense may be paid 03/09 (real case). Date defaults to today, is not constrained to the month, and prints nowhere on cover sheets (it appears in the Excel detail sheet).
+- **R2.3** The active month is app-wide UI state, persisted per organisation (`organizations.active_month`): dashboard, lists, cover sheets, packet, and summary all reflect it.
+- **R2.4** Invoice period string for documents: `M/1/YYYY to M/<lastday>/YYYY`.
+- **R2.5** **Timezone:** all date-only values, "today", "current month", and period boundaries are computed in the fixed organisation timezone **America/Detroit** — never via UTC conversion. (A UTC server must not flip Detroit's date after ~8 pm.)
+
+## 3. Budget math (per line item, per month)
+
+Let `opening` = line item's opening previously-billed balance (setup figure), `earlier` = Σ reimbursable of its expenses in months < M, `thisMonth` = Σ reimbursable in month M.
+
+- **R3.1** `previouslyBilled(M) = opening + earlier`
+- **R3.2** `spentThisMonth(M) = thisMonth`
+- **R3.3** `totalBilled(M) = previouslyBilled + spentThisMonth`
+- **R3.4** `remaining(M) = scheduledValue − totalBilled`
+- **R3.5** `%complete(M) = totalBilled / scheduledValue` (R1.5 rendering)
+- **R3.6** **Low-budget warning** (app screens only — never inside generated documents): `remaining / scheduledValue < 0.10` → red emphasis on Remaining. When `scheduledValue ≤ 0`, warn only if `remaining < 0`.
+- **R3.7** Add-expense projection: `remaining − currentFormReimbursable`, styled as warning when < 0. **Edit mode:** compute `remaining` excluding the expense being edited, then subtract the live form value (no double-count).
+
+## 4. Documentation gate
+
+- **R4.1** Every expense requires **≥ 1 proof of payment**. No exceptions, no overrides.
+- **R4.2** Every expense requires **≥ 1 receipt/justification document** (receipt, invoice, or timesheet) **unless** it is explicitly marked `noReceipt` with a non-empty reason. The reason prints on the cover sheet (R6.7). `noReceipt` and attached receipt documents are mutually exclusive: saving with `noReceipt = true` deletes the expense's receipt documents (after an in-form confirmation); the service layer rejects the combined state.
+- **R4.3** An expense violating R4.1/R4.2 is **documentation-incomplete**. While any expense in the active month is incomplete, packet PDF and summary Excel downloads are **blocked**; cover sheet downloads for a line item are blocked while that line item has an incomplete expense.
+- **R4.4** The blocking UI intro line is `The following records are missing a receipt/justification or proof of payment:` and each record renders exactly as `{name} — {line item} — missing {proof of payment | receipt/justification | both}`, with a direct link to edit that expense.
+- **R4.5** Recurring one-click adds create expenses with **no documents** — they are intentionally incomplete until the user attaches files (the gate is the reminder).
+- **R4.6** A file counts as attached only after the server-side **process & attach** step succeeds (validation, conversion, page count — see data-model §Upload processing). Failed files show a per-file error and do not satisfy R4.1/R4.2.
+
+## 5. Payment sources
+
+- **R5.1** Payment sources are an **org-configurable label list** (SOW §1 commitment), seeded at org creation with exactly these three defaults: `Paid by us, reimbursement requested` · `Invoiced to fiduciary in advance` · `Paid directly by fiduciary`. Editable in Settings (rename / add / deactivate; deactivated labels stop appearing in pickers). A payment source is required on every expense; the expense stores the label text as a historical snapshot.
+- **R5.2** Expenses screen shows one total card per **active** source for the active month (Σ reimbursable); expenses carrying retired labels are still shown and grouped under their stored label.
+
+## 6. Cover sheet composition (see `02-outputs/cover-sheet-spec.md` for typography/layout)
+
+- **R6.1** One cover sheet per line item per month. Title: `{docName} {Month YYYY} {Line Item} Breakdown` (docName = Settings "document display name", e.g. "Team Pursuit").
+- **R6.2** Table columns `Name | Role | Amount`: Name = expense name, Role = expense description verbatim, Amount = reimbursable (R1.2). Rows in expense insertion order (user-reorderable later; no auto-sort). No blank filler rows. Total row at bottom.
+- **R6.3** After the table, the canonical line: **`Please see below for additional information for some of the above items.`** (one wording, always — supersedes the manual docs' variants).
+- **R6.4** Then, for every expense, in table order: a bold heading `{Name}:` followed by its proof-of-payment images in upload order, full column width, aspect preserved. Heading names always equal table Names.
+- **R6.5** **Inline notes** (yellow-highlighted, appended to the heading, in this order): (a) the expense's custom note if set; (b) **whenever `tax > 0`**, the auto tax note — **`(Note: Statement includes tax which was excluded from reimbursement amount)`** — exact string, singular "Statement". Both print when both apply (SOW §2: the tax note is always appended; a custom note never suppresses it — decision D-22).
+- **R6.6** **Narrative note**: optional paragraph (plain text, not highlighted) rendered under the heading before the proof images — used for aggregated reimbursements and context (e.g., an out-of-pocket explanation).
+- **R6.7** **No-receipt disclosure:** when `noReceipt`, append a further yellow inline note: `(Note: No receipt available — {reason})`.
+- **R6.8** Salary is not special: people are expenses (name = person, role = description), so the Salary cover sheet is the per-person Name/Role/Amount sheet the City already receives.
+
+## 7. Contract summary
+
+- **R7.1** BASE section: one row per line item with Scheduled Value | Previously Billed | This Period | Total Billed to Date | % Complete | Balance to Finish, per §3 for the active month. Base subtotal row sums all.
+- **R7.2** PERFORMANCE GRANT section: single row from Settings — `Performance Grant 1`, scheduled = `perfGrantScheduled`, previously billed = `perfGrantBilledToDate` (manually maintained), this period = 0. (In-system perf billing is out of scope.)
+- **R7.3** Totals row = base + performance. **Context** (contract number, Base PO, Performance PO, invoice period per R2.4, contract total = `contractValue` if set else scheduled total): the m07 screen shows the full context strip; the packet's summary page shows it as one subtitle line under the title; the Excel contains no context rows (its layout is fixed in `summary-excel-spec.md`). Empty settings values are simply omitted.
+- **R7.4** Reconciliation block: `Total advances received` (Settings) · `Total reconciled to date` = grand total billed · `Balance remaining to reconcile` = advances − billed · `Percentage of advance payments reconciled` = billed / advances (R1.5).
+
+## 8. Vendor library & recurring
+
+- **R8.1** Library entries: name → default line item + default description. Add-expense autofill: exact case-insensitive match fills line item + description (visible highlight, still editable); otherwise substring suggestions (max 6).
+- **R8.2** **Auto-learn:** saving an expense upserts its name into the library with the line item + description used (latest write wins). Entries are editable/deletable in Settings.
+- **R8.3** Recurring items: name, fixed amount, line item, optional default description. Salaries are the canonical use (one person = one recurring item at monthly pay). "Add to {month}" creates a normal expense (R4.5); the row shows added-state when an expense with the same name (case-insensitive) + line item exists in the month. **Remove** targets the newest matching expense and requires a confirm dialog whenever that expense has ≥ 1 document. Nothing is ever added automatically.
+
+## 9. Line item lifecycle
+
+- **R9.1** Create: unique name (case-insensitive) + scheduled value; opening previously-billed defaults 0.
+- **R9.2** Rename cascades everywhere (historical expenses, vendor defaults, recurring, filters, generated future docs).
+- **R9.3** Delete is blocked only when expenses reference the line item (any month): `"{name}" has expenses recorded against it and cannot be deleted.` Deleting an unreferenced line item **cascade-deletes its recurring items** after a confirm dialog listing them; vendor defaults keep the name with their default line item set to null.
+- **R9.4** Budget/opening edits recompute all derived figures; documents regenerate on next download — **except pinned artifacts (R10.6), which are never regenerated or replaced**.
+
+## 10. Generation invariants
+
+- **R10.1** Deterministic: same records → same document bytes (timestamps only in file metadata).
+- **R10.2** Cover sheet totals, dashboard, summary sheet, and packet always agree — single calculation service.
+- **R10.3** File names: cover sheets `{DocName} {Month} {YYYY} {Line Item} Breakdown.docx|.pdf`; Excel `{DocName}_{Month}_{YYYY}_Summary.xlsx`; packet `{DocName}_{Month}_{YYYY}_Packet.pdf` (spaces → `_` in the latter two). All names/slugs pass the single sanitizer (data-model §S3).
+- **R10.4** Outputs generate on demand from live data, cached to S3 with an inputs-hash (canonical JSON of the full month snapshot incl. settings and document keys/sizes); a hash miss regenerates.
+- **R10.5** Packet page footer on every page: `{DocName} — {Month YYYY} — Page {i} of {N}`.
+- **R10.6** **Pinning (decision D-21):** every artifact the user actually downloads is retained permanently (`downloaded_at` set; exempt from cache replacement and lifecycle expiry) so the org can always reproduce what was submitted. A month can be marked **Submitted**; editing anything in a submitted month shows a warning banner ("This month was submitted on {date} — changes will not alter the downloaded packet, but regenerated documents will differ.").
+
+## 11. Supporting & month documents
+
+- **R11.1** Supporting document types are an **org-configurable label list** (SOW §1 commitment), seeded with: `Check copy | Request form | Vendor invoice | Event flyer | Narrative | Other`. Editable in Settings; each supporting document stores its label text.
+- **R11.2** Month document categories (fixed): `Bank statement | Combined hours | Timesheet | Fiduciary invoice | Other`, each with optional title. **Ordering authority is `packet-pdf-spec.md` §2**; UI groups mirror it.
+- **R11.3** Placement in the packet is defined in `packet-pdf-spec.md` — proofs render only on cover sheets; receipts, supporting docs, and month docs render as full pages.
+
+## 12. Canonical strings (verbatim; never paraphrase in output code)
+
+| Key | String |
+|---|---|
+| tax-note | `(Note: Statement includes tax which was excluded from reimbursement amount)` |
+| see-below | `Please see below for additional information for some of the above items.` |
+| no-receipt-note | `(Note: No receipt available — {reason})` |
+| reimburse-hint (UI) | `Sales tax is excluded. The city does not reimburse it.` |
+| blocked-title (UI) | `This packet cannot be downloaded yet.` |
+| blocked-title-line-item (UI) | `Downloads unavailable for this line item.` |
+| blocked-intro (UI) | `The following records are missing a receipt/justification or proof of payment:` |
+| delete-blocked (UI) | `"{name}" has expenses recorded against it and cannot be deleted.` |
+| duplicate-email (UI) | `An organisation with that email already exists — sign in instead.` |
+| no-receipt-reason-required (UI) | `Enter the reason no receipt is available.` |
+| upload-failed (UI) | `Upload failed — try again.` |
+| forgot-password (UI) | `Forgot your password? Contact Mantaq.` |
+
+## 13. Limits (enforced at presign/save; friendly errors)
+
+- **R13.1** ≤ 20 files per expense (all kinds combined) · ≤ 50 month documents per month · ≤ 500 MB total storage per org (soft cap: block new presigns with an explanatory message).
+- **R13.2** Per file: images (jpg/png/webp/heic) and PDFs only, ≤ 25 MB. Encrypted, corrupt, or 0-page PDFs are rejected at process & attach (R4.6).

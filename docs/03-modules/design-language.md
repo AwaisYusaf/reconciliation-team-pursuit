@@ -1,0 +1,72 @@
+# Design Language & Claude Design Preamble
+
+The visual system comes from the client-approved prototype. Every module's UI must read as one product; since each module is generated in Claude Design from a separate prompt, **always paste the preamble below first**, then the module prompt.
+
+Final prompt = `[PREAMBLE]` + blank line + `[module file → "Claude Design prompt" section]`.
+
+## Token reference (for implementation)
+
+| Token | Value | Use |
+|---|---|---|
+| paper | `#FBF9F5` | App background |
+| surface | `#FFFFFF` | Cards, tables, header bar |
+| ink | `#211B16` | Primary text |
+| sub | `#5B5147` | Secondary text, labels |
+| line | `#D8D0C4` | Borders, dividers |
+| accent | `#5B3A29` | Primary buttons, active nav, links |
+| accent-dark | `#3E2719` | Hover |
+| danger | `#8A2A22` / bg `#F6E7E4` | Errors, missing docs, negative/low budget |
+| success | `#2F4F3E` | Added/complete states |
+| doc-yellow | `#FFFF00` | ONLY inside document-preview tables (mimics the real submission docs) |
+| section-bg | `#F1ECE2` | Table section header rows |
+| autofill | `#F3E9DD` | Autofilled field flash |
+| Headings | Georgia serif | h1 28px, h2 20px, org name 24px |
+| Body | Arial/Helvetica 15–16px | Tables 16px, column headers 13–14px uppercase letterspaced |
+| Controls | min-height 44px (buttons 48px), radius 3–4px | Primary: accent bg/white text; Secondary: white bg/accent border+text |
+
+---
+
+## PREAMBLE (paste this block first, verbatim)
+
+```
+DESIGN SYSTEM — apply to everything below.
+
+Product: "Grant Expense Reconciliation" — a calm, serious internal tool for a small nonprofit
+that prepares monthly grant reimbursement packets for city government reviewers. The aesthetic
+is quiet, paper-like, government-document adjacent. No gradients, no glassmorphism, no
+illustrations, no emoji, no rounded-bubble SaaS styling. It should feel like well-organized
+paperwork: trustworthy, legible, unhurried.
+
+Palette: page background #FBF9F5 (warm paper). Cards/tables/header: #FFFFFF with 1px #D8D0C4
+borders, border-radius 3-4px, no shadows (or a bare minimum). Primary text #211B16, secondary
+#5B5147. Accent (primary buttons, active nav underline, links): deep brown #5B3A29, hover
+#3E2719. Danger/red #8A2A22 with soft background #F6E7E4. Success green #2F4F3E. Pure yellow
+#FFFF00 is reserved exclusively for cells inside document previews that mimic the real
+submission documents (header rows and total cells) — never use it for UI chrome.
+
+Typography: headings in Georgia (serif) — page titles 28px, section titles 20px. Everything
+else Arial/Helvetica — body 15-16px, table text 16px, column headers 13-14px uppercase with
+slight letter-spacing in #5B5147. Money always right-aligned, tabular numerals, formatted
+$1,234.56.
+
+Components: buttons min-height 48px (primary: brown bg, white bold text; secondary: white bg,
+1px brown border, brown text; quiet text-links in brown, underlined). Inputs/selects: white,
+1px #D8D0C4 border, 12-14px padding, 16px text, min-height 44px, 3px radius, visible labels
+above in 15px semibold. Tables: white background, header row with 2px solid #211B16 bottom
+border, 1px #D8D0C4 row dividers, 14-16px cell padding. Errors: #8A2A22 text on #F6E7E4
+panels with a 2px #8A2A22 border for blocking states. Empty states: dashed 1px #D8D0C4 box
+with centered secondary text.
+
+App chrome (when the prompt includes the shell): white header bar with 1px bottom border —
+left: organisation name in Georgia 24px bold with "Grant Expense Reconciliation" in 15px
+#5B5147 beneath; right: quiet "Log out" secondary button. Below it a "Month" labeled select
+(200px) and a horizontal nav of text tabs: Dashboard, Add Expense, Expenses, Cover Sheets,
+Recurring, Month-End Packet, Contract Summary, Line Items, Settings — active tab: bold #211B16
+with 3px #5B3A29 underline; inactive: #5B5147. Content area: max-width 1100px, centered,
+32px top padding, 24px side padding.
+
+Layout is desktop-first but must degrade gracefully to a 390px phone (tables scroll
+horizontally inside their card; nav wraps; touch targets ≥44px). Use realistic data from the
+prompt — never lorem ipsum. Interactions should work (tabs switch, forms validate, buttons
+change state) so the client can click through the mockup.
+```
