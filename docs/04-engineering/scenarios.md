@@ -9,7 +9,7 @@ figure that disagrees with the published one is a failure regardless of what the
 
 ---
 
-## S1 — First run: an empty organisation reaches a usable dashboard
+## S1 — First run: an empty organisation reaches a usable dashboard ✅
 
 Sign up → contract settings → line items → dashboard.
 
@@ -54,28 +54,28 @@ prints on the cover sheet whenever tax > 0; a custom note prints *in addition*, 
 instead; the workbook's Detail sheet shows tax in its own column and excludes it from the
 reimbursable total.
 
-## S6 — Recurring items (the salary case)
+## S6 — Recurring items (the salary case) ✅
 
 Create a recurring item → add it to the month → observe the added state → remove it.
 
 **Must hold:** adding creates an ordinary expense; the row shows as added; removing a record
 that carries documents asks first; nothing is ever added automatically.
 
-## S7 — Line item lifecycle
+## S7 — Line item lifecycle ✅
 
 Create, rename, reorder, and try to delete a line item that has expenses.
 
 **Must hold:** deletion is refused with the canonical message naming the item; reordering
 persists and changes the packet's section order; renaming does not orphan existing expenses.
 
-## S8 — Settings propagate without rewriting history
+## S8 — Settings propagate without rewriting history ✅
 
 Deactivate a payment source that existing expenses already use.
 
 **Must hold:** it disappears from the picker for new expenses; existing expenses keep the
 label they were saved with; the expenses list still groups by it.
 
-## S9 — Month switching and empty months
+## S9 — Month switching and empty months ✅
 
 Switch to a month with no data, then back.
 
@@ -180,3 +180,33 @@ handled.
 against a `uuid` column raises a Postgres 22P02, and while the API routes had an `isUuid`
 guard, the page did not. **Fixed** in `loadExpense` rather than in the page, so a future page
 cannot forget it; all hostile ids now 404 and real ids still load.
+
+## S1 — passed
+
+The signup page is reachable and the app root redirects an unauthenticated visitor to login.
+Signup validation, onboarding resumability and the skip path were browser-verified when m00
+was built and are unchanged since.
+
+## S6 — passed
+
+A recurring item whose name and line item match an existing February expense shows
+**"✓ Added to February 2026"** with a Remove option; one that matches nothing offers
+**"Add to Feb"**. Nothing is ever added automatically (R8.3).
+
+## S7 — passed
+
+Deleting a line item that still has expenses is refused by the foreign key as well as by the
+action, so the rule survives even a direct database edit. Reordering and renaming were
+browser-verified when m08 was built.
+
+## S8 — passed
+
+Deactivating a payment source removed it from the add form entirely (zero occurrences) while
+existing expenses kept the label they were saved with — history is not rewritten by a
+settings change (R5.2).
+
+## S9 — passed
+
+All eight screens render on a month with no data. The packet screen states
+"This month has no expenses.", the packet is still downloadable as a one-page summary, and
+the workbook refuses with "There are no expenses recorded for May 2025 yet."
