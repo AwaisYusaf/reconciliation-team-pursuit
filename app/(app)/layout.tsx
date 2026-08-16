@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { AppNav } from "@/src/components/app-shell/app-nav";
 import { MonthSelector } from "@/src/components/app-shell/month-selector";
 import { Button } from "@/src/components/ui/button";
+import { AppToaster } from "@/src/components/ui/toast";
 import { db } from "@/src/db";
 import { expenses } from "@/src/db/schema";
 import { monthWindow } from "@/src/domain/dates";
@@ -59,6 +60,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       </header>
 
       <main className="max-w-[1100px] mx-auto px-6 pt-8 pb-16">{children}</main>
+      <AppToaster />
     </div>
   );
 }

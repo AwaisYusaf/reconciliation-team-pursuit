@@ -73,6 +73,52 @@ describe("addedState (R8.3)", () => {
   });
 });
 
+describe("link matching beats name matching", () => {
+  it("targets the expense this item actually created", () => {
+    const state = addedState(
+      adobe,
+      [
+        // A manual entry the user typed themselves, same payee and line item.
+        expense({ id: "manual", sortOrder: 9, recurringItemId: null }),
+        // The one the recurring item created.
+        expense({ id: "created", sortOrder: 2, recurringItemId: "rec-1" }),
+      ],
+      "rec-1",
+    );
+    // Without the link this would pick "manual" for being newer, and Remove would delete
+    // work the user never meant to undo.
+    expect(state.targetExpenseId).toBe("created");
+  });
+
+  it("ignores expenses created by a different recurring item", () => {
+    const state = addedState(
+      adobe,
+      [expense({ id: "other", recurringItemId: "rec-2" })],
+      "rec-1",
+    );
+    // No link match, so it falls back to name matching — which this row satisfies.
+    expect(state.targetExpenseId).toBe("other");
+  });
+
+  it("falls back to name matching for rows added before the link existed", () => {
+    const state = addedState(adobe, [expense({ id: "legacy", recurringItemId: null })], "rec-1");
+    expect(state.added).toBe(true);
+    expect(state.targetExpenseId).toBe("legacy");
+  });
+
+  it("picks the newest among several the same item created", () => {
+    const state = addedState(
+      adobe,
+      [
+        expense({ id: "first", sortOrder: 1, recurringItemId: "rec-1" }),
+        expense({ id: "second", sortOrder: 7, recurringItemId: "rec-1" }),
+      ],
+      "rec-1",
+    );
+    expect(state.targetExpenseId).toBe("second");
+  });
+});
+
 describe("removeConfirmation", () => {
   it("says what will be lost", () => {
     expect(removeConfirmation("Adobe", 2)).toBe(

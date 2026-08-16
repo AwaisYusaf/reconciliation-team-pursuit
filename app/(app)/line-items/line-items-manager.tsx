@@ -7,6 +7,8 @@ import { Button } from "@/src/components/ui/button";
 import { Input, Label, MoneyInput } from "@/src/components/ui/field";
 import { Card, DangerPanel } from "@/src/components/ui/surfaces";
 import { TableCard, Td, Th } from "@/src/components/ui/table";
+import { reportResult } from "@/src/components/ui/toast";
+import type { ActionResult } from "@/src/lib/action-result";
 import { formatMoney } from "@/src/domain/format";
 import { cascadeConfirmation, moveInOrder } from "@/src/domain/line-item-rules";
 import {
@@ -34,14 +36,19 @@ export function LineItemsManager({ rows }: { rows: LineItemRow[] }) {
     null,
   );
 
-  function run(work: () => Promise<{ ok: boolean; error?: string }>, onDone?: () => void) {
+  function run(
+    work: () => Promise<ActionResult<unknown>>,
+    onDone?: () => void,
+    successMessage?: string,
+  ) {
     setError(null);
     startTransition(async () => {
       const result = await work();
-      if (result.ok) {
+      if (reportResult(result, successMessage)) {
         onDone?.();
         router.refresh();
       } else {
+        // Kept inline as well: a refusal explains a rule and should stay on screen.
         setError(result.error ?? "Something went wrong.");
       }
     });
@@ -60,7 +67,7 @@ export function LineItemsManager({ rows }: { rows: LineItemRow[] }) {
   function move(index: number, delta: number) {
     const next = moveInOrder(rows, index, delta);
     if (next[index] === rows[index]) return;
-    run(() => reorderLineItemsAction(next.map((row) => row.id)));
+    run(() => reorderLineItemsAction(next.map((row) => row.id)), undefined, "Order updated");
   }
 
   function remove(row: LineItemRow) {
@@ -69,6 +76,7 @@ export function LineItemsManager({ rows }: { rows: LineItemRow[] }) {
       const result = await deleteLineItemAction(row.id, false);
       if (!result.ok) {
         setError(result.error);
+        reportResult(result);
         return;
       }
       // Deleting also removes recurring items, so the user confirms the list first (R9.3).
@@ -96,8 +104,10 @@ export function LineItemsManager({ rows }: { rows: LineItemRow[] }) {
               variant="secondary"
               disabled={pending}
               onClick={() =>
-                run(() => deleteLineItemAction(confirmDelete.id, true), () =>
-                  setConfirmDelete(null),
+                run(
+                  () => deleteLineItemAction(confirmDelete.id, true),
+                  () => setConfirmDelete(null),
+                  "Line item deleted",
                 )
               }
             >
@@ -184,8 +194,10 @@ export function LineItemsManager({ rows }: { rows: LineItemRow[] }) {
                           className="min-h-11 px-4 text-[15px]"
                           disabled={pending}
                           onClick={() =>
-                            run(() => saveLineItemAction({ id: row.id, ...draft }), () =>
-                              setEditingId(null),
+                            run(
+                              () => saveLineItemAction({ id: row.id, ...draft }),
+                              () => setEditingId(null),
+                              "Line item saved",
                             )
                           }
                         >
@@ -275,10 +287,14 @@ export function LineItemsManager({ rows }: { rows: LineItemRow[] }) {
             <Button
               disabled={pending}
               onClick={() =>
-                run(() => saveLineItemAction(addDraft), () => {
-                  setShowAdd(false);
-                  setAddDraft({ name: "", scheduledValue: "", openingBilled: "" });
-                })
+                run(
+                  () => saveLineItemAction(addDraft),
+                  () => {
+                    setShowAdd(false);
+                    setAddDraft({ name: "", scheduledValue: "", openingBilled: "" });
+                  },
+                  "Line item added",
+                )
               }
             >
               Add line item

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useTransition } from "react";
 
 import { buttonClassName } from "@/src/components/ui/button";
+import { reportResult } from "@/src/components/ui/toast";
 import { dismissWelcomeAction } from "@/src/modules/auth/actions";
 
 /** First-run banner shown on the dashboard until dismissed (m00). */
@@ -26,8 +27,7 @@ export function WelcomeBanner() {
           disabled={pending}
           onClick={() =>
             startTransition(async () => {
-              await dismissWelcomeAction();
-              router.refresh();
+              if (reportResult(await dismissWelcomeAction())) router.refresh();
             })
           }
           className="py-3 text-[15px] text-accent underline hover:text-accent-dark disabled:text-disabled-ink"

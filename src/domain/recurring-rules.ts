@@ -18,6 +18,8 @@ export type ExpenseMatchable = {
   /** Later entries are newer; used to pick which one Remove targets. */
   sortOrder: number;
   documentCount: number;
+  /** Set when this expense was created by a one-click add. */
+  recurringItemId?: string | null;
 };
 
 export type AddedState = {
@@ -38,14 +40,26 @@ export type AddedState = {
 export function addedState(
   recurring: RecurringMatchable,
   monthExpenses: readonly ExpenseMatchable[],
+  /** The recurring item's id, when known — expenses it created are matched exactly. */
+  recurringItemId?: string,
 ): AddedState {
   const name = recurring.name.trim().toLowerCase();
 
-  const matches = monthExpenses.filter(
-    (expense) =>
-      expense.lineItemId === recurring.lineItemId &&
-      expense.name.trim().toLowerCase() === name,
-  );
+  // An expense this item actually created is an exact match. Falling back to name matching
+  // would risk targeting a manually entered expense that merely shares a payee and line
+  // item, deleting work the user never meant to undo.
+  const linked = recurringItemId
+    ? monthExpenses.filter((expense) => expense.recurringItemId === recurringItemId)
+    : [];
+
+  const matches =
+    linked.length > 0
+      ? linked
+      : monthExpenses.filter(
+          (expense) =>
+            expense.lineItemId === recurring.lineItemId &&
+            expense.name.trim().toLowerCase() === name,
+        );
 
   if (matches.length === 0) {
     return { added: false, targetExpenseId: null, requiresConfirmation: false };

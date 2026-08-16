@@ -169,6 +169,7 @@ export async function addRecurringToMonthAction(
     paymentSource: defaultSource?.label ?? "Paid by us, reimbursement requested",
     subtotalCents: item.amountCents,
     sortOrder: Number(next),
+    recurringItemId: id,
   });
 
   revalidatePath("/", "layout");
@@ -204,6 +205,7 @@ export async function removeRecurringFromMonthAction(
       name: expenses.name,
       lineItemId: expenses.lineItemId,
       sortOrder: expenses.sortOrder,
+      recurringItemId: expenses.recurringItemId,
       documentCount: count(expenseDocuments.id),
     })
     .from(expenses)
@@ -211,7 +213,10 @@ export async function removeRecurringFromMonthAction(
     .where(and(eq(expenses.orgId, current.orgId), eq(expenses.month, month)))
     .groupBy(expenses.id);
 
-  const state = addedState(item, monthRows);
+  // Prefer expenses this recurring item actually created. Name matching remains as a
+  // fallback for rows added before the link existed, but it must never be the first
+  // choice: it can point at a manually entered expense that merely shares a payee.
+  const state = addedState(item, monthRows, id);
   if (!state.added || !state.targetExpenseId) return fail("That expense is already gone.");
   if (state.requiresConfirmation && !confirmed) {
     const target = monthRows.find((row) => row.id === state.targetExpenseId)!;

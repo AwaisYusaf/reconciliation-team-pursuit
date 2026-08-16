@@ -250,10 +250,17 @@ export const expenses = pgTable(
     noReceiptReason: text("no_receipt_reason"),
     /** Per-month monotonic counter assigned at insert — orders the month list, cover sheet rows and Excel grouping. */
     sortOrder: integer("sort_order").notNull().default(0),
+    /**
+     * Set when the expense was created by one-click "Add to month" (R8.3).
+     * Remove targets this link rather than matching on name, so undoing an add can never
+     * delete a manually entered expense that happens to share a payee and line item.
+     */
+    recurringItemId: uuid("recurring_item_id"),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
   (t) => [
+    index("expenses_recurring_idx").on(t.recurringItemId),
     index("expenses_org_month_idx").on(t.orgId, t.month),
     index("expenses_line_item_idx").on(t.lineItemId),
     index("expenses_org_month_sort_idx").on(t.orgId, t.month, t.sortOrder),

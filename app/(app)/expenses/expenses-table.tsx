@@ -8,6 +8,7 @@ import { Button } from "@/src/components/ui/button";
 import { Label, Select } from "@/src/components/ui/field";
 import { Card, DangerPanel, EmptyState } from "@/src/components/ui/surfaces";
 import { TableCard, Td, Th } from "@/src/components/ui/table";
+import { reportResult } from "@/src/components/ui/toast";
 import { formatDateUS } from "@/src/domain/dates";
 import { formatMoney } from "@/src/domain/format";
 import { deleteExpenseAction } from "@/src/modules/expenses/actions";
@@ -118,8 +119,8 @@ export function ExpensesTable({
                 startTransition(async () => {
                   const result = await deleteExpenseAction(confirming.id);
                   setConfirming(null);
-                  if (!result.ok) setError(result.error);
-                  else router.refresh();
+                  if (reportResult(result, `${confirming.name} deleted`)) router.refresh();
+                  else setError(result.error);
                 })
               }
             >

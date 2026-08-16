@@ -13,6 +13,7 @@ import { and, eq, sql } from "drizzle-orm";
 import { v7 as uuidv7 } from "uuid";
 
 import { db } from "@/src/db";
+import { isKnownSupportingDocType } from "@/src/modules/settings/labels";
 import { expenseDocuments, expenses, monthDocuments } from "@/src/db/schema";
 import type { MonthDocumentCategory } from "@/src/db/schema";
 
@@ -63,8 +64,12 @@ export async function ingestExpenseDocument(input: {
   const failure = precheck(input.file);
   if (failure) return { ok: false, error: failure };
 
-  if (input.scope === "supporting" && !input.supportingType) {
-    return { ok: false, error: "Choose a document type first." };
+  if (input.scope === "supporting") {
+    // The type prints in the packet, so it must be one the organisation offers.
+    if (!input.supportingType) return { ok: false, error: "Choose a document type first." };
+    if (!(await isKnownSupportingDocType(input.orgId, input.supportingType))) {
+      return { ok: false, error: "That document type is not one of yours." };
+    }
   }
 
   const owner = await db

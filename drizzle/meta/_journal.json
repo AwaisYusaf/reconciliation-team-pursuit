@@ -8,6 +8,13 @@
       "when": 1786902887866,
       "tag": "0000_orange_doorman",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1786903449851,
+      "tag": "0001_far_jean_grey",
+      "breakpoints": true
     }
   ]
 }

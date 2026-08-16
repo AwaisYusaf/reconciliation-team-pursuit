@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 
 import { monthLabel } from "@/src/domain/dates";
+import { reportResult } from "@/src/components/ui/toast";
 import { setActiveMonthAction } from "@/src/modules/auth/actions";
 
 /**
@@ -31,7 +32,7 @@ export function MonthSelector({
     setError(null);
     startTransition(async () => {
       const result = await setActiveMonthAction(month);
-      if (result.ok) {
+      if (reportResult(result)) {
         setShowPicker(false);
         router.refresh();
       } else {

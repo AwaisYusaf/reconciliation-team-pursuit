@@ -7,6 +7,8 @@ import { Button } from "@/src/components/ui/button";
 import { Helper, Input, Label, MoneyInput, Select } from "@/src/components/ui/field";
 import { Card, DangerPanel, EmptyState } from "@/src/components/ui/surfaces";
 import { TableCard, Td, Th } from "@/src/components/ui/table";
+import { reportResult } from "@/src/components/ui/toast";
+import type { ActionResult } from "@/src/lib/action-result";
 import { formatMoney } from "@/src/domain/format";
 import { removeConfirmation } from "@/src/domain/recurring-rules";
 import {
@@ -52,11 +54,15 @@ export function RecurringManager({
   );
   const [justChanged, setJustChanged] = useState<string | null>(null);
 
-  function run(work: () => Promise<{ ok: boolean; error?: string }>, onDone?: () => void) {
+  function run(
+    work: () => Promise<ActionResult<unknown>>,
+    onDone?: () => void,
+    successMessage?: string,
+  ) {
     setError(null);
     startTransition(async () => {
       const result = await work();
-      if (!result.ok) {
+      if (!reportResult(result, successMessage)) {
         setError(result.error ?? "Something went wrong.");
         return;
       }
@@ -65,9 +71,15 @@ export function RecurringManager({
     });
   }
 
+  /** The green row flash is a transient confirmation, so it clears itself. */
+  function flash(id: string) {
+    setJustChanged(id);
+    setTimeout(() => setJustChanged((current) => (current === id ? null : current)), 2500);
+  }
+
   function add(row: RecurringRow) {
-    setJustChanged(row.id);
-    run(() => addRecurringToMonthAction(row.id, month));
+    flash(row.id);
+    run(() => addRecurringToMonthAction(row.id, month), undefined, `${row.name} added to ${monthLabel}`);
   }
 
   function remove(row: RecurringRow) {
@@ -76,6 +88,7 @@ export function RecurringManager({
       const result = await removeRecurringFromMonthAction(row.id, month, false);
       if (!result.ok) {
         setError(result.error);
+        reportResult(result);
         return;
       }
       // Removing an expense that already carries uploaded evidence is confirmed first.
@@ -86,7 +99,7 @@ export function RecurringManager({
         });
         return;
       }
-      setJustChanged(row.id);
+      flash(row.id);
       router.refresh();
     });
   }
@@ -110,6 +123,7 @@ export function RecurringManager({
                 run(
                   () => removeRecurringFromMonthAction(confirmRemove.row.id, month, true),
                   () => setConfirmRemove(null),
+                  "Removed from this month",
                 )
               }
             >
@@ -254,7 +268,13 @@ export function RecurringManager({
           <div className="flex flex-wrap gap-3 mt-5">
             <Button
               disabled={pending}
-              onClick={() => run(() => saveRecurringItemAction(draft), () => setDraft(null))}
+              onClick={() =>
+                run(
+                  () => saveRecurringItemAction(draft),
+                  () => setDraft(null),
+                  draft.id ? "Recurring item saved" : "Recurring item added",
+                )
+              }
             >
               {draft.id ? "Save changes" : "Add recurring item"}
             </Button>
@@ -266,7 +286,11 @@ export function RecurringManager({
                 variant="quiet"
                 disabled={pending}
                 onClick={() =>
-                  run(() => deleteRecurringItemAction(draft.id!), () => setDraft(null))
+                  run(
+                    () => deleteRecurringItemAction(draft.id!),
+                    () => setDraft(null),
+                    "Removed from the recurring list",
+                  )
                 }
               >
                 Delete from list

@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from
 import { Button } from "@/src/components/ui/button";
 import { Helper, Input, Label, MoneyInput, Select, Textarea } from "@/src/components/ui/field";
 import { Card, DangerPanel } from "@/src/components/ui/surfaces";
+import { reportResult } from "@/src/components/ui/toast";
 import { projectedRemainingCents } from "@/src/domain/budget-math";
 import { monthLabel } from "@/src/domain/dates";
 import { formatMoney } from "@/src/domain/format";
@@ -242,6 +243,12 @@ export function ExpenseForm({ options, remaining, today, activeMonth, existing }
         </DangerPanel>
       )}
 
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (!pending) save();
+        }}
+      >
       <Card className="p-7 flex flex-col gap-[22px]">
         <div className="relative">
           <Label htmlFor="name">Name</Label>
@@ -380,8 +387,9 @@ export function ExpenseForm({ options, remaining, today, activeMonth, existing }
           disabled={pending}
           onRemoveAttached={(id) =>
             startTransition(async () => {
-              await removeExpenseDocumentAction(id);
-              router.refresh();
+              if (reportResult(await removeExpenseDocumentAction(id), "File removed")) {
+                router.refresh();
+              }
             })
           }
         />
@@ -397,8 +405,9 @@ export function ExpenseForm({ options, remaining, today, activeMonth, existing }
             hidden={values.noReceipt}
             onRemoveAttached={(id) =>
               startTransition(async () => {
-                await removeExpenseDocumentAction(id);
-                router.refresh();
+                if (reportResult(await removeExpenseDocumentAction(id), "File removed")) {
+                  router.refresh();
+                }
               })
             }
           />
@@ -450,8 +459,9 @@ export function ExpenseForm({ options, remaining, today, activeMonth, existing }
             supportingTypes={options.supportingDocTypes}
             onRemoveAttached={(id) =>
               startTransition(async () => {
-                await removeExpenseDocumentAction(id);
-                router.refresh();
+                if (reportResult(await removeExpenseDocumentAction(id), "File removed")) {
+                  router.refresh();
+                }
               })
             }
           />
@@ -486,7 +496,7 @@ export function ExpenseForm({ options, remaining, today, activeMonth, existing }
         {status && <div className="text-[15px] text-sub">{status}</div>}
 
         <div className="flex flex-wrap items-center gap-5">
-          <Button onClick={save} disabled={pending}>
+          <Button type="submit" disabled={pending}>
             {pending ? "Saving…" : editing ? "Save changes" : "Save expense"}
           </Button>
           <Button variant="quiet" onClick={() => router.push("/expenses")} disabled={pending}>
@@ -531,6 +541,7 @@ export function ExpenseForm({ options, remaining, today, activeMonth, existing }
           </DangerPanel>
         )}
       </Card>
+      </form>
     </div>
   );
 }

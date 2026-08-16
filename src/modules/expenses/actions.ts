@@ -19,6 +19,7 @@ import {
 } from "@/src/services/auth/session";
 import { deleteExpenseDocument as removeStoredDocument } from "@/src/services/storage/documents";
 import { isUuid } from "@/src/lib/ids";
+import { isKnownPaymentSource } from "@/src/modules/settings/labels";
 
 async function session(): Promise<SessionContext | { expired: ActionResult<never> }> {
   try {
@@ -132,6 +133,12 @@ export async function createExpenseAction(
     .limit(1);
   if (owned.length === 0) return fail("Choose a line item.");
 
+  // The label is stored verbatim and prints on the submitted cover sheet, so it must be
+  // one this organisation actually offers rather than whatever the client posted.
+  if (!(await isKnownPaymentSource(current.orgId, input.paymentSource))) {
+    return fail("Choose a payment source.");
+  }
+
   const row = toRow(input);
 
   // One monotonic counter per month keeps the flat list, the cover sheet rows and the
@@ -169,12 +176,34 @@ export async function updateExpenseAction(input: ExpenseInput): Promise<ActionRe
     .where(and(eq(lineItems.id, input.lineItemId), eq(lineItems.orgId, current.orgId)))
     .limit(1);
   if (ownsLineItem.length === 0) return fail("Choose a line item.");
+  if (!(await isKnownPaymentSource(current.orgId, input.paymentSource))) {
+    return fail("Choose a payment source.");
+  }
 
   const row = toRow(input);
 
+  // Moving an expense to another month must give it that month's next counter value,
+  // otherwise it collides with a row already there and the packet ordering becomes
+  // ambiguous (the counter is per month).
+  const [existing] = await db
+    .select({ month: expenses.month, sortOrder: expenses.sortOrder })
+    .from(expenses)
+    .where(and(eq(expenses.id, input.id), eq(expenses.orgId, current.orgId)))
+    .limit(1);
+  if (!existing) return fail("That expense no longer exists.");
+
+  let sortOrder = existing.sortOrder;
+  if (existing.month !== row.month) {
+    const [{ next }] = await db
+      .select({ next: sql<number>`coalesce(max(${expenses.sortOrder}), -1) + 1` })
+      .from(expenses)
+      .where(and(eq(expenses.orgId, current.orgId), eq(expenses.month, row.month)));
+    sortOrder = Number(next);
+  }
+
   const updated = await db
     .update(expenses)
-    .set(row)
+    .set({ ...row, sortOrder })
     .where(and(eq(expenses.id, input.id), eq(expenses.orgId, current.orgId)))
     .returning({ id: expenses.id });
   if (updated.length === 0) return fail("That expense no longer exists.");
