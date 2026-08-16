@@ -74,9 +74,14 @@ Working software so far, all verified against a running app with a real database
 | Screens | All ten: m00 shell/auth · m01 dashboard · m02 expense entry · m03 expenses list · m04 cover sheets · m05 recurring · m06 month-end packet · m07 contract summary · m08 line items · m09 settings |
 | Generators | All three outputs: summary workbook (xlsx) · cover sheet (docx canonical + PDF) · month-end packet (merged, ordered, footer-stamped, size ladder). Shared month snapshot, rasterization (pdftoppm 150 DPI, page-at-a-time), artifact cache with inputs-hash and download pinning (R10.4, R10.6), gated download routes |
 
-**Remaining:** full-application scenario testing · the generation scheduling work
-deferred in `review-2026-08-17-outputs.md` (single-flight lock, rate limit, wall-clock
-bound) · hardening (Playwright, Docker, the February test).
+Every module has shipped and the twelve end-to-end scenarios in `scenarios.md` all
+pass, including the one that matters most: the same figure is identical on the
+dashboard, the contract summary screen, the packet, the cover sheet and the workbook
+(R10.2). The production build compiles.
+
+**Remaining:** the generation scheduling work deferred in
+`review-2026-08-17-outputs.md` (single-flight lock, rate limit, wall-clock bound, packet
+memory) · phase-4 hardening (Playwright, Docker, the February test).
 
 ### Running it locally
 
