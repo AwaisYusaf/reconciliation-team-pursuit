@@ -1,10 +1,15 @@
 "use client";
 
 import { useRef, useState } from "react";
+import toast from "react-hot-toast";
 
 import { Button } from "@/src/components/ui/button";
 import { Select } from "@/src/components/ui/field";
-import type { DocumentScope } from "@/src/services/storage/keys";
+import {
+  isAllowedMimeType,
+  MAX_UPLOAD_BYTES,
+  type DocumentScope,
+} from "@/src/services/storage/keys";
 
 import type { AttachedDocument } from "./queries";
 
@@ -22,7 +27,29 @@ export type PendingUpload = {
  * exists; in edit mode the expense is already there, so the same queue is flushed on save.
  * Already-attached files are listed with their page counts and can be removed immediately —
  * which the label states plainly, because Cancel will not bring them back.
+ *
+ * Size and type are checked when the file is picked, using the server's own limits. The
+ * server checks again and is the authority; doing it here as well means someone who picks a
+ * 40 MB scan learns immediately, rather than after filling in the whole form and saving.
  */
+
+const MAX_MB = Math.round(MAX_UPLOAD_BYTES / (1024 * 1024));
+
+/** Why this file cannot be attached, or null if it can. */
+function rejectionReason(file: File): string | null {
+  if (file.size > MAX_UPLOAD_BYTES) {
+    return `${file.name} is ${(file.size / (1024 * 1024)).toFixed(1)} MB — the limit is ${MAX_MB} MB.`;
+  }
+  if (file.size === 0) {
+    return `${file.name} is empty.`;
+  }
+  // A browser leaves the type blank for some files; the server inspects the actual bytes,
+  // so an unknown type is passed through rather than guessed at here.
+  if (file.type && !isAllowedMimeType(file.type)) {
+    return `${file.name} is not a PNG, JPG, HEIC or PDF.`;
+  }
+  return null;
+}
 export function UploadField({
   label,
   scope,
@@ -80,15 +107,25 @@ export function UploadField({
           disabled={disabled}
           onChange={(event) => {
             const files = Array.from(event.target.files ?? []);
-            setQueued((current) => [
-              ...current,
-              ...files.map((file, index) => ({
-                key: `${Date.now()}-${index}-${file.name}`,
-                scope,
-                supportingType: scope === "supporting" ? supportingType : undefined,
-                file,
-              })),
-            ]);
+            const accepted: File[] = [];
+
+            for (const file of files) {
+              const reason = rejectionReason(file);
+              if (reason) toast.error(reason);
+              else accepted.push(file);
+            }
+
+            if (accepted.length > 0) {
+              setQueued((current) => [
+                ...current,
+                ...accepted.map((file, index) => ({
+                  key: `${Date.now()}-${index}-${file.name}`,
+                  scope,
+                  supportingType: scope === "supporting" ? supportingType : undefined,
+                  file,
+                })),
+              ]);
+            }
             event.target.value = "";
           }}
         />
@@ -101,7 +138,7 @@ export function UploadField({
           Add files
         </Button>
         <div className="text-sm text-sub mt-2.5">
-          PNG, JPG, HEIC or PDF, up to 25 MB. You can attach more than one.
+          PNG, JPG, HEIC or PDF, up to {MAX_MB} MB. You can attach more than one.
         </div>
       </div>
 

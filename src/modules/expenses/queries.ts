@@ -6,6 +6,7 @@ import "server-only";
 import { and, asc, eq } from "drizzle-orm";
 
 import { db } from "@/src/db";
+import { isUuid } from "@/src/lib/ids";
 import {
   expenseDocuments,
   expenses,
@@ -103,6 +104,12 @@ async function documentsFor(orgId: string, expenseIds: string[]): Promise<Map<st
 
 /** One expense with its documents, org-scoped. */
 export async function loadExpense(orgId: string, id: string): Promise<ExpenseDetail | null> {
+  // Ids arrive from route parameters, where anything can be typed. Comparing a non-UUID
+  // against a uuid column raises a Postgres 22P02 that reaches the page as a 500; "not
+  // found" is both the truth and what a probe should learn. Guarded here rather than in each
+  // caller so a new page cannot forget it.
+  if (!isUuid(id)) return null;
+
   const rows = await db
     .select({
       id: expenses.id,
