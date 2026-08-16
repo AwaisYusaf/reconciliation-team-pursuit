@@ -70,10 +70,10 @@ Working software so far, all verified against a running app with a real database
 | Domain | money · format · dates · strings · budget-math (R3) · gate (R4) · summary (R7) · line-item-rules (R9) · recurring-rules (R8) — all pure, all unit-tested |
 | Storage | Driver abstraction (S3 + local, D-29), key rules, upload inspection, server-proxied ingestion (D-30), download-by-id route |
 | Screens | m00 shell/auth · m01 dashboard · m02 expense entry · m03 expenses list · m05 recurring · m07 contract summary · m08 line items · m09 settings |
-| Generators | Month snapshot loader · summary workbook (xlsx) · artifact cache with inputs-hash and download pinning (R10.4, R10.6) · gated download route |
+| Generators | Month snapshot loader · summary workbook (xlsx) · cover sheet (docx, canonical) with LibreOffice conversion to PDF · rasterization (pdftoppm, 150 DPI, page-at-a-time) · artifact cache with inputs-hash and download pinning (R10.4, R10.6) · gated download routes |
 
-**Remaining:** cover sheet generator (docx + pdf) · packet pdf assembly · m04 cover
-sheets · m06 month-end packet · hardening (Playwright, Docker, the February test).
+**Remaining:** packet pdf assembly · m04 cover sheets · m06 month-end packet ·
+hardening (Playwright, Docker, the February test).
 
 ### Running it locally
 
@@ -90,5 +90,18 @@ npm run dev
 Sign in with the credentials `db:seed` prints. Downloads stay blocked until every expense
 in the month carries its documents (R4.3), which is what `db:fixture -- docs` sets up.
 
-`npm test` runs unit and integration suites; integration skips cleanly without
-`DATABASE_URL`.
+Document generation shells out to two binaries, both of which the deployment container
+ships. Install them locally to generate cover sheets and packets:
+
+```bash
+brew install poppler                  # pdftoppm/pdfinfo — rasterizing PDF proofs
+brew install --cask libreoffice       # soffice — docx to PDF conversion
+```
+
+`SOFFICE_PATH` overrides the LibreOffice location if yours is elsewhere; the macOS app
+bundle path is already tried, so the cask needs no configuration.
+
+`npm test` runs unit and integration suites. Integration tests skip cleanly without
+`DATABASE_URL`, and the rasterization and conversion tests skip without their binaries —
+so the suite stays green on a bare machine, but only a fully equipped one proves the
+generators work.
