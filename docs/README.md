@@ -57,3 +57,33 @@ Output generators (cover sheets, Excel, packet) are backend work items specced i
 - Exact output wordings and formats come from `01-domain` + `02-outputs` — never improvise strings that print on documents.
 - New product decisions go to `04-engineering/decisions.md` the moment they're made; open questions live there too.
 - Update the module status table above as gates complete.
+
+## Build progress (updated as modules land)
+
+Working software so far, all verified against a running app with a real database:
+
+| Landed | What exists |
+|---|---|
+| Foundation | Drizzle schema (14 tables) + migrations + seed + dev fixture; custom session auth; Tailwind design tokens and the shared component library; m00 auth/onboarding/app shell |
+| Domain | money · format · dates · strings · budget-math (R3) · gate (R4) · summary (R7) · line-item-rules (R9) · recurring-rules (R8) — all pure, all unit-tested |
+| Storage | Driver abstraction (S3 + local, D-29), key rules, upload inspection, server-proxied ingestion (D-30), download-by-id route |
+| Screens | m00 shell/auth · m01 dashboard · m02 expense entry · m03 expenses list · m05 recurring · m08 line items |
+
+**Remaining:** m09 settings · m07 contract summary screen · the three generators
+(cover sheet docx+pdf, summary xlsx, packet pdf) · m04 cover sheets · m06 month-end
+packet · hardening (Playwright, Docker, the February test).
+
+### Running it locally
+
+```bash
+createdb ngo_expenses          # once
+cp .env.example .env.local     # set DATABASE_URL to your local Postgres
+npm run db:migrate
+npm run db:seed                # creates the client org (no PII)
+npm run db:fixture             # optional: February expenses for development
+npm run dev
+```
+
+Sign in with the credentials `db:seed` prints. `npm test` runs unit and integration
+suites (integration skips cleanly without `DATABASE_URL`); note that the session-sweep
+test is a genuinely global sweep, so it signs out any active development session.
