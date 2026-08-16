@@ -94,7 +94,12 @@ describe("filenames (R10.3)", () => {
 
   it("sanitises names that would break a path or an S3 key", () => {
     expect(sanitiseForFilename("Social Services / Support")).toBe("Social Services Support");
-    expect(sanitiseForFilename("../../etc/passwd")).toBe("....etcpasswd");
+    // Dot runs collapse, so a sanitised value can never contain ".." — the key builder
+    // and the keyBelongsToOrg guard must agree about what a legal key looks like.
+    expect(sanitiseForFilename("../../etc/passwd")).toBe("etcpasswd");
+    expect(sanitiseForFilename("..")).toBe("");
+    expect(sanitiseForFilename("report..final.pdf")).toBe("report.final.pdf");
+    expect(sanitiseForFilename(".hidden")).toBe("hidden");
     expect(sanitiseForFilename("Promo & Marketing")).toBe("Promo Marketing");
     expect(sanitiseForFilename("a".repeat(200))).toHaveLength(80);
     expect(sanitiseForFilename("  spaced   out  ")).toBe("spaced out");

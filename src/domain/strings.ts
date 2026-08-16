@@ -80,15 +80,20 @@ export function packetSummaryTitle(docName: string, monthLabel: string): string 
 /**
  * Sanitiser for every value that reaches a filename or an S3 key component
  * (data-model §S3). Keeps letters, digits, dot, underscore, space and hyphen.
+ *
+ * Runs of dots are collapsed and leading/trailing dots removed, so a `..` sequence can
+ * never survive into a key. Without that, a name like "../../etc" would be stripped of its
+ * slashes but keep its dots, producing a key that the `keyBelongsToOrg` guard would then
+ * reject — the builder and the validator have to agree.
  */
 export function sanitiseForFilename(value: string): string {
-  const cleaned = value
+  return value
     .replace(/[\\/:*?"<>|]/g, "")
     .replace(/[^A-Za-z0-9._ -]/g, "")
+    .replace(/\.{2,}/g, ".")
     .replace(/\s+/g, " ")
-    .trim()
+    .replace(/^[.\s]+|[.\s]+$/g, "")
     .slice(0, 80);
-  return cleaned;
 }
 
 /** `Team Pursuit February 2026 Salary Breakdown.docx` (R10.3). */

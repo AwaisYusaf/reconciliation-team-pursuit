@@ -1,0 +1,127 @@
+/**
+ * Upload inspection against real file bytes (R4.6).
+ *
+ * Fixtures are generated in-process rather than committed, so the suite carries no binary
+ * blobs and no client documents.
+ */
+import { PDFDocument } from "pdf-lib";
+import sharp from "sharp";
+import { beforeAll, describe, expect, it } from "vitest";
+
+import { inspectUpload } from "./inspect";
+
+let jpeg: Buffer;
+let png: Buffer;
+let webp: Buffer;
+let pdf: Buffer;
+let multipagePdf: Buffer;
+
+beforeAll(async () => {
+  const base = sharp({
+    create: { width: 600, height: 400, channels: 3, background: { r: 240, g: 240, b: 235 } },
+  });
+  jpeg = await base.clone().jpeg().toBuffer();
+  png = await base.clone().png().toBuffer();
+  webp = await base.clone().webp().toBuffer();
+
+  const single = await PDFDocument.create();
+  single.addPage([612, 792]);
+  pdf = Buffer.from(await single.save());
+
+  const many = await PDFDocument.create();
+  for (let i = 0; i < 11; i += 1) many.addPage([612, 792]);
+  multipagePdf = Buffer.from(await many.save());
+});
+
+describe("images", () => {
+  it("accepts a JPEG and records its dimensions", async () => {
+    const result = await inspectUpload({ body: jpeg, declaredMimeType: "image/jpeg" });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.mimeType).toBe("image/jpeg");
+    expect(result.widthPx).toBe(600);
+    expect(result.heightPx).toBe(400);
+    expect(result.pageCount).toBe(1);
+    expect(result.thumbnail).not.toBeNull();
+  });
+
+  it("stores JPEG and PNG untouched rather than re-encoding them", async () => {
+    const asJpeg = await inspectUpload({ body: jpeg, declaredMimeType: "image/jpeg" });
+    const asPng = await inspectUpload({ body: png, declaredMimeType: "image/png" });
+    expect(asJpeg.ok && asJpeg.body).toBe(jpeg);
+    expect(asPng.ok && asPng.body).toBe(png);
+    expect(asPng.ok && asPng.mimeType).toBe("image/png");
+  });
+
+  it("converts WebP to JPEG so the document generators can embed it", async () => {
+    const result = await inspectUpload({ body: webp, declaredMimeType: "image/webp" });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.mimeType).toBe("image/jpeg");
+    expect(result.body).not.toBe(webp);
+    expect(result.body.subarray(0, 3).toString("hex")).toBe("ffd8ff");
+  });
+
+  it("produces a thumbnail no wider than the preview size", async () => {
+    const result = await inspectUpload({ body: jpeg, declaredMimeType: "image/jpeg" });
+    if (!result.ok || !result.thumbnail) throw new Error("expected a thumbnail");
+    const meta = await sharp(result.thumbnail).metadata();
+    expect(meta.width).toBeLessThanOrEqual(320);
+  });
+});
+
+describe("PDFs", () => {
+  it("accepts a PDF and records its real page count", async () => {
+    const single = await inspectUpload({ body: pdf, declaredMimeType: "application/pdf" });
+    expect(single.ok && single.pageCount).toBe(1);
+
+    const many = await inspectUpload({ body: multipagePdf, declaredMimeType: "application/pdf" });
+    expect(many.ok && many.pageCount).toBe(11);
+  });
+
+  it("records page size, which the packet uses for its estimates", async () => {
+    const result = await inspectUpload({ body: pdf, declaredMimeType: "application/pdf" });
+    expect(result.ok && result.widthPx).toBe(612);
+    expect(result.ok && result.heightPx).toBe(792);
+  });
+
+  it("rejects a corrupt PDF with a message a user can act on", async () => {
+    const corrupt = Buffer.concat([Buffer.from("%PDF-1.7\n"), Buffer.from("not really a pdf")]);
+    const result = await inspectUpload({ body: corrupt, declaredMimeType: "application/pdf" });
+    expect(result.ok).toBe(false);
+    expect(result.ok === false && result.error).toMatch(/damaged/i);
+  });
+});
+
+describe("refusals", () => {
+  it("rejects an empty file", async () => {
+    const result = await inspectUpload({ body: Buffer.alloc(0), declaredMimeType: "image/png" });
+    expect(result.ok === false && result.error).toMatch(/empty/i);
+  });
+
+  it("rejects an unsupported type by its bytes, not its label", async () => {
+    const zip = Buffer.from("504b0304000000000000", "hex");
+    const result = await inspectUpload({ body: zip, declaredMimeType: "application/pdf" });
+    expect(result.ok).toBe(false);
+    expect(result.ok === false && result.error).toMatch(/not supported/i);
+  });
+
+  it("rejects a file whose contents disagree with the declared type", async () => {
+    // A PNG uploaded while claiming to be a PDF: either a mistake or an attack.
+    const result = await inspectUpload({ body: png, declaredMimeType: "application/pdf" });
+    expect(result.ok).toBe(false);
+    expect(result.ok === false && result.error).toMatch(/do not match/i);
+  });
+
+  it("rejects an HTML file dressed as an image", async () => {
+    const html = Buffer.from("<html><script>alert(1)</script></html>");
+    const result = await inspectUpload({ body: html, declaredMimeType: "image/png" });
+    expect(result.ok).toBe(false);
+  });
+
+  it("treats image/heif as the same family as image/heic", async () => {
+    // Bytes still have to agree; this only proves the declared alias is accepted.
+    const result = await inspectUpload({ body: png, declaredMimeType: "image/heif" });
+    expect(result.ok === false && result.error).toMatch(/do not match/i);
+  });
+});
