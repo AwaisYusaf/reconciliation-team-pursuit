@@ -84,7 +84,7 @@ One module (`services/auth.ts`), no framework. Sized for a single credentials pr
 
 Docker on Mantaq infra: app container (Next standalone + libreoffice + poppler-utils + fonts-crosextra-carlito), Postgres container + volume, reverse proxy (Caddy or nginx) terminating TLS with Let's Encrypt + baseline headers (HSTS, `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`). Host disk encryption per D-07. `/api/healthz` wired to a free external uptime monitor.
 
-Env: `DATABASE_URL`, `AUTH_SECRET`, `S3_BUCKET`, `S3_REGION`, `AWS_ACCESS_KEY_ID`/`SECRET` (or instance role), `APP_URL`, `SIGNUP_ENABLED` (**default false** — Team Pursuit's org is created via signup before gating; flipping to true later requires email verification first, D-15).
+Env: `DATABASE_URL`, `AUTH_SECRET`, `S3_BUCKET`, `S3_REGION`, `AWS_ACCESS_KEY_ID`/`SECRET` (or instance role), `APP_URL`, `TRUSTED_PROXY_HOPS` (**required in production** — login limits are keyed on the client address, and without it every visitor shares one bucket, so an attacker's wrong guesses lock out the real user; the app refuses to start without it, as it does without `S3_BUCKET`), `SIGNUP_ENABLED` (**default false** — Team Pursuit's org is created via signup before gating; flipping to true later requires email verification first, D-15).
 
 ## AI-native working rules (every session)
 

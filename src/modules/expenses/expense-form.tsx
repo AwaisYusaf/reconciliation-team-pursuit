@@ -6,12 +6,15 @@ import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from
 import { Button } from "@/src/components/ui/button";
 import { Helper, Input, Label, MoneyInput, Select, Textarea } from "@/src/components/ui/field";
 import { Card, DangerPanel } from "@/src/components/ui/surfaces";
+import toast from "react-hot-toast";
+
 import { reportResult } from "@/src/components/ui/toast";
 import { projectedRemainingCents } from "@/src/domain/budget-math";
 import { monthLabel } from "@/src/domain/dates";
 import { formatMoney } from "@/src/domain/format";
 import { parseMoneyToCentsOrZero } from "@/src/domain/money";
 import { TAX_NOTE, UI } from "@/src/domain/strings";
+import { SESSION_EXPIRED } from "@/src/lib/action-result";
 import {
   createExpenseAction,
   deleteExpenseAction,
@@ -45,7 +48,8 @@ export type ExpenseFormProps = {
     documents: AttachedDocument[];
     /** The saved reimbursable amount, restored before projecting so an edit cannot double-count. */
     savedReimbursableCents: number;
-    monthSubmitted: boolean;
+    /** The date the month was submitted, already formatted — null when it was not. */
+    monthSubmittedOn: string | null;
   };
 };
 
@@ -79,6 +83,13 @@ export function ExpenseForm({ options, remaining, today, activeMonth, existing }
     Array<{ name: string; lineItemId: string | null; description: string }>
   >([]);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+
+  // The active labels, plus whatever this expense was actually saved with. A retired label
+  // is only offered on the record that already carries it, so it can be kept but never
+  // newly chosen (R5.2).
+  const selectablePaymentSources = options.paymentSources.includes(values.paymentSource)
+    ? options.paymentSources
+    : [...options.paymentSources, values.paymentSource].filter(Boolean);
 
   // On the add form files are held until the expense exists, then uploaded against it.
   const [queued, setQueued] = useState<PendingUpload[]>([]);
@@ -130,7 +141,12 @@ export function ExpenseForm({ options, remaining, today, activeMonth, existing }
         return;
       }
       const result = await searchVendorsAction(term);
-      if (!result.ok) return;
+      if (!result.ok) {
+        // Autofill is a convenience, so a lookup failure must not interrupt typing — but an
+        // expired session would otherwise be invisible until the save is rejected.
+        if (result.error === SESSION_EXPIRED) toast.error(result.error);
+        return;
+      }
       const exact = result.data.find((row) => row.name.toLowerCase() === term.toLowerCase());
       if (exact && exact.lineItemId) {
         setValues((current) =>
@@ -161,6 +177,21 @@ export function ExpenseForm({ options, remaining, today, activeMonth, existing }
     setSuggestions([]);
     setAutofilled(true);
     setTimeout(() => setAutofilled(false), 1400);
+  }
+
+  /**
+   * What to say after a successful save.
+   *
+   * A record with no proof of payment will be held by the gate at month end, so the moment
+   * it is captured is when saying so is cheapest to act on (m02).
+   */
+  function savedMessage(): string {
+    const hasProof =
+      queued.some((item) => item.scope === "proof") ||
+      (existing?.documents ?? []).some(
+        (document) => document.kind === "proof" && document.status === "attached",
+      );
+    return hasProof ? "Expense saved." : UI.savedMissingProof;
   }
 
   async function uploadQueued(expenseId: string): Promise<string | null> {
@@ -207,6 +238,7 @@ export function ExpenseForm({ options, remaining, today, activeMonth, existing }
           router.refresh();
           return;
         }
+        toast.success(savedMessage());
         router.push("/expenses");
         router.refresh();
         return;
@@ -227,6 +259,7 @@ export function ExpenseForm({ options, remaining, today, activeMonth, existing }
         router.refresh();
         return;
       }
+      toast.success(savedMessage());
       router.push("/expenses");
       router.refresh();
     });
@@ -236,10 +269,10 @@ export function ExpenseForm({ options, remaining, today, activeMonth, existing }
 
   return (
     <div className="max-w-[560px]">
-      {existing?.monthSubmitted && (
+      {existing?.monthSubmittedOn && (
         <DangerPanel tone="notice" className="mb-5">
-          This month was already submitted. Changes will not alter the packet that was
-          downloaded, but regenerated documents will differ.
+          This month was submitted on {existing.monthSubmittedOn} — changes will not alter
+          the packet that was downloaded, but regenerated documents will differ.
         </DangerPanel>
       )}
 
@@ -300,9 +333,16 @@ export function ExpenseForm({ options, remaining, today, activeMonth, existing }
             onChange={(event) => set("paymentSource", event.target.value)}
           >
             <option value="">Choose a payment source</option>
-            {options.paymentSources.map((label) => (
+            {/*
+              An expense keeps the label it was saved with even after that label is retired
+              (R5.2). Without offering it here the control would render blank on every
+              historical expense, and saving would silently rewrite a snapshot that has
+              already printed on a submitted cover sheet.
+            */}
+            {selectablePaymentSources.map((label) => (
               <option key={label} value={label}>
                 {label}
+                {options.paymentSources.includes(label) ? "" : " (retired)"}
               </option>
             ))}
           </Select>

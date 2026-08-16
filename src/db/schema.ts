@@ -419,8 +419,14 @@ export const generatedArtifacts = pgTable(
       .references(() => organizations.id, { onDelete: "cascade" }),
     month: char({ length: 7 }).notNull(),
     type: artifactType().notNull(),
-    /** Set for cover sheets, null for packet/summary. */
-    lineItemId: uuid("line_item_id").references(() => lineItems.id, { onDelete: "cascade" }),
+    /**
+     * Set for cover sheets, null for packet/summary.
+     *
+     * Nulled rather than cascaded when the line item goes: a downloaded artifact is the
+     * permanent record of what the City received (R10.6, D-21), and deleting a line item
+     * years later must not erase the evidence that a cover sheet for it was submitted.
+     */
+    lineItemId: uuid("line_item_id").references(() => lineItems.id, { onDelete: "set null" }),
     /** Canonical-JSON hash of the full month snapshot (rows, settings, doc keys + sizes). */
     inputsHash: text("inputs_hash").notNull(),
     /** Set on first successful download → pinned forever. */

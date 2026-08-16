@@ -51,7 +51,7 @@ describe("UI copy (R12)", () => {
 
   it("quotes the line item name in the delete refusal", () => {
     expect(lineItemDeleteBlocked("Salary")).toBe(
-      "“Salary” has expenses recorded against it and cannot be deleted.",
+      '"Salary" has expenses recorded against it and cannot be deleted.',
     );
   });
 });

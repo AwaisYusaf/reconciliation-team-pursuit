@@ -96,8 +96,17 @@ async function clientIp(): Promise<string> {
     if (real) return real.trim();
   }
 
-  // No trusted proxy configured: a single shared bucket is still a real bound, and it
-  // cannot be escaped by forging headers.
+  // Without a proxy count the client cannot be identified, so every visitor shares one
+  // bucket — which turns the per-account limit into a weapon: an attacker's wrong guesses
+  // lock the real user out, exactly the denial of service the no-lockout design avoids.
+  // Production refuses to run that way, the same as it refuses the local storage driver.
+  if (process.env.NODE_ENV === "production") {
+    throw new Error(
+      "TRUSTED_PROXY_HOPS must be set in production — without it login rate limits cannot " +
+        "tell clients apart and become an account lockout. Set it to the number of reverse " +
+        "proxies in front of the app (Caddy or nginx terminating TLS is 1).",
+    );
+  }
   return "direct";
 }
 

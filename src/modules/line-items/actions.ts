@@ -53,6 +53,9 @@ export async function saveLineItemAction(input: {
   if (isDuplicateName(name, existing, input.id)) return fail(UI.lineItemDuplicate);
 
   if (input.id) {
+    // A malformed id would reach a uuid column and raise a Postgres 22P02 rather than a
+    // handled failure; "no longer exists" is both true and what a probe should learn.
+    if (!isUuid(input.id)) return fail("That line item no longer exists.");
     const updated = await db
       .update(lineItems)
       .set({ name, scheduledValueCents, openingBilledCents })

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { isValidMonthKey, monthLabel, type MonthKey } from "@/src/domain/dates";
+import { isValidMonthKey, type MonthKey } from "@/src/domain/dates";
 import { blockingRecords } from "@/src/domain/gate";
 import { resolveArtifact } from "@/src/generation/artifacts";
 import { inputsHash } from "@/src/generation/cache-key";
@@ -39,13 +39,6 @@ export async function GET(request: Request) {
   if (!isValidMonthKey(month)) return new NextResponse("Unknown month", { status: 400 });
 
   const snapshot = await loadMonthSnapshot(session.orgId, month as MonthKey);
-
-  if (snapshot.expenses.length === 0) {
-    return new NextResponse(
-      `There are no expenses recorded for ${monthLabel(month as MonthKey)} yet.`,
-      { status: 409 },
-    );
-  }
 
   const blocking = blockingRecords(gateExpenses(snapshot.expenses));
   if (blocking.length > 0) {

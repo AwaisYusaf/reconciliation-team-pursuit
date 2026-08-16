@@ -154,9 +154,19 @@ function CoverSheetSection({
       {blocking.length > 0 && (
         <DangerPanel title={UI.blockedTitleLineItem} className="mb-5 max-w-[820px]">
           <p className="mt-1.5">{UI.blockedIntro}</p>
-          <ul className="mt-2 list-disc pl-5">
+          <ul className="mt-2 flex flex-col gap-1">
             {blocking.map((record) => (
-              <li key={record.expenseId}>{record.label}</li>
+              <li key={record.expenseId} className="flex flex-wrap items-baseline gap-2">
+                <span>{record.label}</span>
+                {/* R4.4: each record links straight to the expense that needs fixing. This
+                    screen is where the gap is most often discovered. */}
+                <Link
+                  href={`/expenses/${record.expenseId}/edit`}
+                  className="underline text-danger font-medium"
+                >
+                  Open expense
+                </Link>
+              </li>
             ))}
           </ul>
         </DangerPanel>

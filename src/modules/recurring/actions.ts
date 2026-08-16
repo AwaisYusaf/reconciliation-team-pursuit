@@ -57,6 +57,8 @@ export async function saveRecurringItemAction(input: {
   };
 
   if (input.id) {
+    // As above: a non-UUID must fail as "not found", not as an unhandled database error.
+    if (!isUuid(input.id)) return fail("That recurring item no longer exists.");
     const updated = await db
       .update(recurringItems)
       .set(values)
@@ -173,7 +175,7 @@ export async function removeRecurringFromMonthAction(
   id: string,
   month: string,
   confirmed = false,
-): Promise<ActionResult<{ requiresConfirmation?: string }>> {
+): Promise<ActionResult<{ requiresConfirmation?: string; createdByThisItem?: boolean }>> {
   const current = await actionSession();
   if ("expired" in current) return current.expired;
   if (!isUuid(id)) return fail("That recurring item no longer exists.");
@@ -208,7 +210,12 @@ export async function removeRecurringFromMonthAction(
   if (!state.added || !state.targetExpenseId) return fail("That expense is already gone.");
   if (state.requiresConfirmation && !confirmed) {
     const target = monthRows.find((row) => row.id === state.targetExpenseId)!;
-    return ok({ requiresConfirmation: String(target.documentCount) });
+    // The client words the question differently when the expense was typed by hand rather
+    // than added from here, so it needs to know which case this is.
+    return ok({
+      requiresConfirmation: String(target.documentCount),
+      createdByThisItem: state.createdByThisItem,
+    });
   }
 
   const documents = await db

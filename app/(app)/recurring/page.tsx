@@ -42,6 +42,7 @@ export default async function RecurringPage() {
         id: expenses.id,
         name: expenses.name,
         lineItemId: expenses.lineItemId,
+        recurringItemId: expenses.recurringItemId,
         sortOrder: expenses.sortOrder,
         documentCount: count(expenseDocuments.id),
       })
@@ -52,7 +53,13 @@ export default async function RecurringPage() {
   ]);
 
   const rows: RecurringRow[] = items.map((item) => {
-    const state = addedState(item, monthRows);
+    // The recurring item's own id must be passed, exactly as `addRecurringToMonthAction`
+    // does. Without it `addedState` falls back to matching on name and line item, so the
+    // row and the action it triggers can disagree: a one-click expense later renamed reads
+    // as "not added" and adding again duplicates a salary line on the claim, while a
+    // manually entered expense that merely shares a payee reads as "added" and Remove
+    // deletes it.
+    const state = addedState(item, monthRows, item.id);
     return {
       id: item.id,
       name: item.name,

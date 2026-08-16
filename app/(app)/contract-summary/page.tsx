@@ -11,7 +11,7 @@ import { contractContextItems } from "@/src/domain/contract-context";
 import { monthLabel } from "@/src/domain/dates";
 import { formatMoney, formatPercent } from "@/src/domain/format";
 import { blockingRecords, type GateExpense } from "@/src/domain/gate";
-import { downloadBlockedReason, UI } from "@/src/domain/strings";
+import { downloadBlockedReason } from "@/src/domain/strings";
 import { contractSummary, type SummaryRow } from "@/src/domain/summary";
 import { loadMonthExpenses } from "@/src/modules/expenses/queries";
 import { getSession } from "@/src/services/auth/session";
@@ -86,13 +86,11 @@ export default async function ContractSummaryPage() {
     noReceipt: expense.noReceipt,
     documents: expense.documents,
   }));
+  // R4.3 is the only gate the specs put on a download. A month with no expenses still has
+  // a meaningful summary — opening balances, the performance grant and the advance
+  // reconciliation — and the packet route allows exactly that, so the workbook does too.
   const blockedCount = blockingRecords(gate).length;
-  const refusal =
-    monthExpenses.length === 0
-      ? UI.summaryNoExpenses
-      : blockedCount > 0
-        ? downloadBlockedReason(blockedCount)
-        : null;
+  const refusal = blockedCount > 0 ? downloadBlockedReason(blockedCount) : null;
 
   return (
     <div>

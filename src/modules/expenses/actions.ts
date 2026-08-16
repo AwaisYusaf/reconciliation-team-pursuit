@@ -8,7 +8,7 @@ import { revalidatePath } from "next/cache";
 
 import { db } from "@/src/db";
 import { expenseDocuments, expenses, lineItems, vendorDefaults } from "@/src/db/schema";
-import { isValidIsoDate, isValidMonthKey, todayIso } from "@/src/domain/dates";
+import { isValidIsoDate, isValidMonthKey } from "@/src/domain/dates";
 import { parseMoneyToCentsOrZero } from "@/src/domain/money";
 import { UI } from "@/src/domain/strings";
 import { fail, ok, type ActionResult } from "@/src/lib/action-result";
@@ -164,7 +164,27 @@ export async function updateExpenseAction(input: ExpenseInput): Promise<ActionRe
     .where(and(eq(lineItems.id, input.lineItemId), eq(lineItems.orgId, current.orgId)))
     .limit(1);
   if (ownsLineItem.length === 0) return fail("Choose a line item.");
-  if (!(await isKnownPaymentSource(current.orgId, input.paymentSource))) {
+
+  // An expense keeps the label it was saved with, even after that label is retired (R5.1,
+  // R5.2). Re-validating an unchanged value would make every historical expense
+  // uneditable the moment its payment source is deactivated — and the only way out would be
+  // to overwrite the snapshot that already printed on a submitted cover sheet. Only a
+  // *changed* label has to be one the organisation currently offers.
+  const [existing] = await db
+    .select({
+      month: expenses.month,
+      sortOrder: expenses.sortOrder,
+      paymentSource: expenses.paymentSource,
+    })
+    .from(expenses)
+    .where(and(eq(expenses.id, input.id), eq(expenses.orgId, current.orgId)))
+    .limit(1);
+  if (!existing) return fail("That expense no longer exists.");
+
+  if (
+    input.paymentSource !== existing.paymentSource &&
+    !(await isKnownPaymentSource(current.orgId, input.paymentSource))
+  ) {
     return fail("Choose a payment source.");
   }
 
@@ -173,12 +193,6 @@ export async function updateExpenseAction(input: ExpenseInput): Promise<ActionRe
   // Moving an expense to another month must give it that month's next counter value,
   // otherwise it collides with a row already there and the packet ordering becomes
   // ambiguous (the counter is per month).
-  const [existing] = await db
-    .select({ month: expenses.month, sortOrder: expenses.sortOrder })
-    .from(expenses)
-    .where(and(eq(expenses.id, input.id), eq(expenses.orgId, current.orgId)))
-    .limit(1);
-  if (!existing) return fail("That expense no longer exists.");
 
   let sortOrder = existing.sortOrder;
   if (existing.month !== row.month) {
@@ -289,7 +303,3 @@ export async function searchVendorsAction(
   return ok(rows);
 }
 
-/** Today's date in the organisation's timezone, for the form's default (R2.5). */
-export async function todayForOrgAction(): Promise<string> {
-  return todayIso();
-}

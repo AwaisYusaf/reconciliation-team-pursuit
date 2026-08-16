@@ -91,11 +91,17 @@ export function RecurringManager({
         reportResult(result);
         return;
       }
-      // Removing an expense that already carries uploaded evidence is confirmed first.
+      // Confirmed first when files would be lost, and always when the expense was entered
+      // by hand rather than added from here — deleting someone's own record is a different
+      // act from undoing a click.
       if (result.data?.requiresConfirmation) {
         setConfirmRemove({
           row,
-          message: removeConfirmation(row.name, Number(result.data.requiresConfirmation)),
+          message: removeConfirmation(
+            row.name,
+            Number(result.data.requiresConfirmation),
+            result.data.createdByThisItem !== false,
+          ),
         });
         return;
       }

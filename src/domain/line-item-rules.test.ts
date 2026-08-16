@@ -12,7 +12,7 @@ describe("planLineItemDelete (R9.3)", () => {
     const plan = planLineItemDelete({ name: "Salary", expenseCount: 9, recurringNames: [] });
     expect(plan.allowed).toBe(false);
     expect(plan.allowed === false && plan.reason).toBe(
-      "“Salary” has expenses recorded against it and cannot be deleted.",
+      '"Salary" has expenses recorded against it and cannot be deleted.',
     );
   });
 

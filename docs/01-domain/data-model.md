@@ -88,6 +88,7 @@ Same shape as payment_sources; seeded with the six defaults.
 | no_receipt | boolean | default false |
 | no_receipt_reason | text null | Required non-empty when no_receipt (R4.2, R6.7) |
 | sort_order | int | **Per-month monotonic counter** assigned at insert — orders m03's flat list, cover-sheet rows (within line item), and Excel grouping consistently |
+| recurring_item_id | uuid null | Set when the row was created by a recurring item's one-click add (R8.3). Deliberately **not** a foreign key: the link records provenance, and deleting the recurring item must not alter an expense that is already part of a submitted month. Indexed. |
 
 Derived (never stored): `reimbursable = subtotal + fees`; documentation status from documents (R4).
 
@@ -98,7 +99,7 @@ Derived (never stored): `reimbursable = subtotal + fees`; documentation status f
 | org_id / expense_id | uuid FK | cascade delete with expense (S3 cleanup via sweep) |
 | kind | enum | `proof` \| `receipt` \| `supporting` |
 | supporting_type | text null | Label snapshot from supporting_doc_types — required iff kind=supporting |
-| status | enum | `pending` (presigned) → `attached` (processed OK) \| `failed` (validation error). Only `attached` satisfies R4 |
+| status | enum | `attached` (processed OK) \| `failed` (validation error). Only `attached` satisfies R4. (`pending` predates D-30 server-proxied uploads and is no longer written — a row exists only once its bytes are stored.) |
 | s3_key, filename, mime_type, size_bytes | | filename = original name (DB only — never in the key) |
 | page_count | int null | PDFs: filled at processing; images: 1 |
 | width_px / height_px | int null | Filled at processing; drives cover-sheet/packet page estimates |

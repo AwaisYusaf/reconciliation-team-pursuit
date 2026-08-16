@@ -169,7 +169,7 @@ export default async function PacketPage() {
             <DownloadButton
               href={`/api/downloads/summary?month=${month}`}
               variant="secondary"
-              disabled={blocked || readiness.totalRecords === 0}
+              disabled={blocked}
             >
               Download Summary (Excel)
             </DownloadButton>

@@ -28,14 +28,26 @@ export type AddedState = {
   targetExpenseId: string | null;
   /** Removing a documented expense throws work away, so it is confirmed first. */
   requiresConfirmation: boolean;
+  /**
+   * Whether the target was created by this recurring item's one-click add, rather than
+   * merely sharing its payee and line item. Removing something the user typed themselves
+   * is a different act from undoing a click, and is worded differently.
+   */
+  createdByThisItem: boolean;
 };
 
 /**
  * Whether a recurring item has already been added to the month.
  *
- * Matching is by name (case-insensitively, since the user may have retyped it) plus line
- * item. When several match — a manual entry alongside a one-click add — Remove targets the
- * newest, so it undoes the most recent action rather than an arbitrary one.
+ * Display matching is by name (case-insensitively, since the user may have retyped it) plus
+ * line item, as R8.3 specifies — the row is telling the user this month already has such a
+ * record, whoever entered it. When several match, Remove targets the newest, so it undoes
+ * the most recent action rather than an arbitrary one.
+ *
+ * Removal is held to a stricter standard than display. An expense this item actually
+ * created can be removed on the same terms as any undo; one that merely shares a payee was
+ * typed by the user, and deleting it is always confirmed first even when it carries no
+ * documents.
  */
 export function addedState(
   recurring: RecurringMatchable,
@@ -62,25 +74,48 @@ export function addedState(
         );
 
   if (matches.length === 0) {
-    return { added: false, targetExpenseId: null, requiresConfirmation: false };
+    return {
+      added: false,
+      targetExpenseId: null,
+      requiresConfirmation: false,
+      createdByThisItem: false,
+    };
   }
 
   const newest = matches.reduce((latest, candidate) =>
     candidate.sortOrder > latest.sortOrder ? candidate : latest,
   );
 
+  const createdByThisItem = Boolean(
+    recurringItemId && newest.recurringItemId === recurringItemId,
+  );
+
   return {
     added: true,
     targetExpenseId: newest.id,
-    requiresConfirmation: newest.documentCount > 0,
+    // Confirmed when files would be lost, and always when the expense is not this item's
+    // to undo.
+    requiresConfirmation: newest.documentCount > 0 || !createdByThisItem,
+    createdByThisItem,
   };
 }
 
 /** Confirmation wording when Remove would discard attached files. */
-export function removeConfirmation(name: string, documentCount: number): string {
-  return `${name} already has ${documentCount} attached file${
-    documentCount === 1 ? "" : "s"
-  }. Removing it deletes the expense and those files.`;
+export function removeConfirmation(
+  name: string,
+  documentCount: number,
+  createdByThisItem = true,
+): string {
+  const files =
+    documentCount > 0
+      ? ` and ${documentCount} attached file${documentCount === 1 ? "" : "s"}`
+      : "";
+
+  // An expense this item did not create was entered by hand, and saying so is the whole
+  // point of asking — the user may not realise the two are being treated as the same record.
+  return createdByThisItem
+    ? `Remove ${name}? This deletes the expense${files}.`
+    : `The ${name} expense in this month was not added from this recurring item. Removing it deletes that expense${files}.`;
 }
 
 /** Validation for the add/edit form (R8.3). */

@@ -6,7 +6,7 @@ import { db } from "@/src/db";
 import { loadExpenseAmounts, loadLineItemBudgets } from "@/src/db/queries";
 import { monthStatuses } from "@/src/db/schema";
 import { allLineItemStats } from "@/src/domain/budget-math";
-import { monthWindow, todayIso } from "@/src/domain/dates";
+import { formatDateUS, monthWindow, todayIso } from "@/src/domain/dates";
 import { reimbursableCents } from "@/src/domain/money";
 import { ExpenseForm } from "@/src/modules/expenses/expense-form";
 import { loadExpense, loadExpenseFormOptions } from "@/src/modules/expenses/queries";
@@ -63,7 +63,7 @@ export default async function EditExpensePage({
           id: expense.id,
           documents: expense.documents,
           savedReimbursableCents: reimbursableCents(expense),
-          monthSubmitted: Boolean(submitted[0]?.submittedAt),
+          monthSubmittedOn: submitted[0]?.submittedAt ? formatDateUS(todayIso(submitted[0].submittedAt)) : null,
           values: {
             id: expense.id,
             name: expense.name,
