@@ -8,8 +8,12 @@ import "server-only";
  * previews, packet assembly and the February test all behave identically, and the only
  * difference is where bytes land. The driver is chosen by configuration, never by code
  * path, so there is one implementation of every caller.
+ *
+ * There is deliberately no signed-URL method. D-30 replaced presigned access with
+ * server-proxied downloads: bytes are served by `/api/files/[id]`, which authenticates the
+ * session and scopes the lookup to the organisation. That is strictly stronger than a
+ * bearer URL, and it means there is one download path rather than two.
  */
-import { createHash } from "node:crypto";
 import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 
@@ -19,20 +23,12 @@ export type PutOptions = {
   contentType: string;
 };
 
-export type SignedDownload = {
-  url: string;
-  /** Seconds the URL stays valid. */
-  expiresIn: number;
-};
-
 export interface StorageDriver {
   readonly name: "s3" | "local";
   put(options: PutOptions): Promise<void>;
   get(key: string): Promise<Buffer>;
   exists(key: string): Promise<boolean>;
   delete(key: string): Promise<void>;
-  /** Short-lived read URL. Originals are served as attachments (data-model §S3). */
-  signedDownloadUrl(key: string, options?: { expiresIn?: number }): Promise<SignedDownload>;
 }
 
 /* ------------------------------------------------------------------ local */
@@ -42,9 +38,8 @@ const LOCAL_ROOT = path.join(process.cwd(), ".storage");
 /**
  * Filesystem driver for development.
  *
- * Read URLs are signed with an HMAC over the key and an expiry so the download route
- * enforces the same short-lived, unguessable access the S3 driver gets from presigning —
- * development must not be quietly more permissive than production.
+ * Behaves identically to S3 from every caller's point of view; the only difference is where
+ * the bytes land.
  */
 export class LocalStorageDriver implements StorageDriver {
   readonly name = "local" as const;
@@ -83,29 +78,8 @@ export class LocalStorageDriver implements StorageDriver {
     await rm(this.absolute(key), { force: true });
   }
 
-  async signedDownloadUrl(key: string, options?: { expiresIn?: number }): Promise<SignedDownload> {
-    const expiresIn = options?.expiresIn ?? 300;
-    const expiresAt = Date.now() + expiresIn * 1000;
-    const signature = signLocalKey(key, expiresAt);
-    const params = new URLSearchParams({ key, expires: String(expiresAt), signature });
-    return { url: `/api/files/local?${params.toString()}`, expiresIn };
-  }
 }
 
-function localSecret(): string {
-  // Falls back to a per-process value so development still works without configuration;
-  // production never uses this driver.
-  return process.env.AUTH_SECRET ?? "local-development-storage-secret";
-}
-
-export function signLocalKey(key: string, expiresAt: number): string {
-  return createHash("sha256").update(`${key}:${expiresAt}:${localSecret()}`).digest("hex");
-}
-
-export function verifyLocalSignature(key: string, expiresAt: number, signature: string): boolean {
-  if (!Number.isFinite(expiresAt) || expiresAt < Date.now()) return false;
-  return signLocalKey(key, expiresAt) === signature;
-}
 
 /* --------------------------------------------------------------------- s3 */
 
@@ -163,22 +137,6 @@ export class S3StorageDriver implements StorageDriver {
     await client.send(new DeleteObjectCommand({ Bucket: this.bucket, Key: key }));
   }
 
-  async signedDownloadUrl(key: string, options?: { expiresIn?: number }): Promise<SignedDownload> {
-    const { GetObjectCommand } = await import("@aws-sdk/client-s3");
-    const { getSignedUrl } = await import("@aws-sdk/s3-request-presigner");
-    const expiresIn = options?.expiresIn ?? 300;
-    const client = await this.client();
-    const url = await getSignedUrl(
-      client,
-      new GetObjectCommand({
-        Bucket: this.bucket,
-        Key: key,
-        ResponseContentDisposition: "attachment",
-      }),
-      { expiresIn },
-    );
-    return { url, expiresIn };
-  }
 }
 
 /* ---------------------------------------------------------------- factory */
