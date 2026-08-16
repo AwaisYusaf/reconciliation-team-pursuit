@@ -15,8 +15,8 @@ CREATE TABLE "contract_settings" (
 	"perf_grant_scheduled_cents" bigint DEFAULT 0 NOT NULL,
 	"perf_grant_billed_cents" bigint DEFAULT 0 NOT NULL,
 	"advances_received_cents" bigint DEFAULT 0 NOT NULL,
-	"createdAt" timestamp with time zone DEFAULT now() NOT NULL,
-	"updatedAt" timestamp with time zone DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "expense_documents" (
@@ -34,8 +34,8 @@ CREATE TABLE "expense_documents" (
 	"width_px" integer,
 	"height_px" integer,
 	"sort_order" integer DEFAULT 0 NOT NULL,
-	"createdAt" timestamp with time zone DEFAULT now() NOT NULL,
-	"updatedAt" timestamp with time zone DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "expense_documents_supporting_type_ck" CHECK (("expense_documents"."kind" = 'supporting') = ("expense_documents"."supporting_type" is not null))
 );
 --> statement-breakpoint
@@ -56,8 +56,8 @@ CREATE TABLE "expenses" (
 	"no_receipt" boolean DEFAULT false NOT NULL,
 	"no_receipt_reason" text,
 	"sort_order" integer DEFAULT 0 NOT NULL,
-	"createdAt" timestamp with time zone DEFAULT now() NOT NULL,
-	"updatedAt" timestamp with time zone DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "expenses_no_receipt_reason_ck" CHECK (not "expenses"."no_receipt" or ("expenses"."no_receipt_reason" is not null and btrim("expenses"."no_receipt_reason") <> ''))
 );
 --> statement-breakpoint
@@ -72,8 +72,8 @@ CREATE TABLE "generated_artifacts" (
 	"s3_key" text NOT NULL,
 	"size_bytes" bigint DEFAULT 0 NOT NULL,
 	"page_count" integer,
-	"createdAt" timestamp with time zone DEFAULT now() NOT NULL,
-	"updatedAt" timestamp with time zone DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "line_items" (
@@ -83,8 +83,8 @@ CREATE TABLE "line_items" (
 	"scheduled_value_cents" bigint DEFAULT 0 NOT NULL,
 	"opening_billed_cents" bigint DEFAULT 0 NOT NULL,
 	"sort_order" integer DEFAULT 0 NOT NULL,
-	"createdAt" timestamp with time zone DEFAULT now() NOT NULL,
-	"updatedAt" timestamp with time zone DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "month_documents" (
@@ -102,16 +102,16 @@ CREATE TABLE "month_documents" (
 	"width_px" integer,
 	"height_px" integer,
 	"sort_order" integer DEFAULT 0 NOT NULL,
-	"createdAt" timestamp with time zone DEFAULT now() NOT NULL,
-	"updatedAt" timestamp with time zone DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "month_statuses" (
 	"org_id" uuid NOT NULL,
 	"month" char(7) NOT NULL,
 	"submitted_at" timestamp with time zone,
-	"createdAt" timestamp with time zone DEFAULT now() NOT NULL,
-	"updatedAt" timestamp with time zone DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "month_statuses_org_id_month_pk" PRIMARY KEY("org_id","month")
 );
 --> statement-breakpoint
@@ -122,8 +122,8 @@ CREATE TABLE "organizations" (
 	"active_month" char(7) NOT NULL,
 	"onboarded_at" timestamp with time zone,
 	"welcome_dismissed_at" timestamp with time zone,
-	"createdAt" timestamp with time zone DEFAULT now() NOT NULL,
-	"updatedAt" timestamp with time zone DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "payment_sources" (
@@ -132,8 +132,8 @@ CREATE TABLE "payment_sources" (
 	"label" text NOT NULL,
 	"sort_order" integer DEFAULT 0 NOT NULL,
 	"active" boolean DEFAULT true NOT NULL,
-	"createdAt" timestamp with time zone DEFAULT now() NOT NULL,
-	"updatedAt" timestamp with time zone DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "recurring_items" (
@@ -144,15 +144,15 @@ CREATE TABLE "recurring_items" (
 	"line_item_id" uuid NOT NULL,
 	"default_description" text,
 	"sort_order" integer DEFAULT 0 NOT NULL,
-	"createdAt" timestamp with time zone DEFAULT now() NOT NULL,
-	"updatedAt" timestamp with time zone DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "sessions" (
 	"id" text PRIMARY KEY NOT NULL,
 	"user_id" uuid NOT NULL,
 	"expires_at" timestamp with time zone NOT NULL,
-	"createdAt" timestamp with time zone DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "supporting_doc_types" (
@@ -161,8 +161,8 @@ CREATE TABLE "supporting_doc_types" (
 	"label" text NOT NULL,
 	"sort_order" integer DEFAULT 0 NOT NULL,
 	"active" boolean DEFAULT true NOT NULL,
-	"createdAt" timestamp with time zone DEFAULT now() NOT NULL,
-	"updatedAt" timestamp with time zone DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "users" (
@@ -170,8 +170,8 @@ CREATE TABLE "users" (
 	"org_id" uuid NOT NULL,
 	"email" text NOT NULL,
 	"password_hash" text NOT NULL,
-	"createdAt" timestamp with time zone DEFAULT now() NOT NULL,
-	"updatedAt" timestamp with time zone DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "vendor_defaults" (
@@ -180,8 +180,8 @@ CREATE TABLE "vendor_defaults" (
 	"name" text NOT NULL,
 	"default_line_item_id" uuid,
 	"default_description" text DEFAULT '' NOT NULL,
-	"createdAt" timestamp with time zone DEFAULT now() NOT NULL,
-	"updatedAt" timestamp with time zone DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 ALTER TABLE "contract_settings" ADD CONSTRAINT "contract_settings_org_id_organizations_id_fk" FOREIGN KEY ("org_id") REFERENCES "public"."organizations"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint

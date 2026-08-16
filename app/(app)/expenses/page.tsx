@@ -1,4 +1,4 @@
-import { asc, eq } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import { redirect } from "next/navigation";
 
 import { PageTitle, Subtext } from "@/src/components/ui/surfaces";
@@ -24,7 +24,7 @@ export default async function ExpensesPage() {
     db
       .select({ label: paymentSources.label })
       .from(paymentSources)
-      .where(eq(paymentSources.orgId, session.orgId))
+      .where(and(eq(paymentSources.orgId, session.orgId), eq(paymentSources.active, true)))
       .orderBy(asc(paymentSources.sortOrder)),
   ]);
 

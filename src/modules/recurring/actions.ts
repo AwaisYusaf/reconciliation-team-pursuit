@@ -25,6 +25,7 @@ import {
   type SessionContext,
 } from "@/src/services/auth/session";
 import { deleteExpenseDocument } from "@/src/services/storage/documents";
+import { isUuid } from "@/src/lib/ids";
 
 async function session(): Promise<SessionContext | { expired: ActionResult<never> }> {
   try {
@@ -92,6 +93,7 @@ export async function saveRecurringItemAction(input: {
 export async function deleteRecurringItemAction(id: string): Promise<ActionResult> {
   const current = await session();
   if ("expired" in current) return current.expired;
+  if (!isUuid(id)) return fail("That recurring item no longer exists.");
 
   // Deleting the list entry never touches expenses already recorded from it.
   const deleted = await db
@@ -117,6 +119,7 @@ export async function addRecurringToMonthAction(
 ): Promise<ActionResult> {
   const current = await session();
   if ("expired" in current) return current.expired;
+  if (!isUuid(id)) return fail("That recurring item no longer exists.");
   if (!isValidMonthKey(month)) return fail("That is not a valid month.");
 
   const rows = await db
@@ -184,6 +187,7 @@ export async function removeRecurringFromMonthAction(
 ): Promise<ActionResult<{ requiresConfirmation?: string }>> {
   const current = await session();
   if ("expired" in current) return current.expired;
+  if (!isUuid(id)) return fail("That recurring item no longer exists.");
   if (!isValidMonthKey(month)) return fail("That is not a valid month.");
 
   const rows = await db

@@ -68,12 +68,22 @@ export async function ingestExpenseDocument(input: {
   }
 
   const owner = await db
-    .select({ month: expenses.month })
+    .select({ month: expenses.month, noReceipt: expenses.noReceipt })
     .from(expenses)
     .where(and(eq(expenses.id, input.expenseId), eq(expenses.orgId, input.orgId)))
     .limit(1);
   const expense = owner[0];
   if (!expense) return { ok: false, error: "That expense no longer exists." };
+
+  // R4.2: "no receipt available" and an attached receipt are mutually exclusive. This is
+  // the only path that creates receipt rows, so enforcing it here closes the hole for
+  // every caller rather than trusting each one to check.
+  if (input.scope === "receipt" && expense.noReceipt) {
+    return {
+      ok: false,
+      error: 'This expense is marked "No receipt available" — untick that before attaching a receipt.',
+    };
+  }
 
   const [{ total }] = await db
     .select({ total: sql<number>`count(*)::int` })

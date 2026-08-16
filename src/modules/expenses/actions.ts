@@ -18,6 +18,7 @@ import {
   type SessionContext,
 } from "@/src/services/auth/session";
 import { deleteExpenseDocument as removeStoredDocument } from "@/src/services/storage/documents";
+import { isUuid } from "@/src/lib/ids";
 
 async function session(): Promise<SessionContext | { expired: ActionResult<never> }> {
   try {
@@ -157,11 +158,31 @@ export async function updateExpenseAction(input: ExpenseInput): Promise<ActionRe
 
   const invalid = validate(input);
   if (invalid) return fail(invalid);
+  if (!isUuid(input.id)) return fail("That expense no longer exists.");
+
+  // The line item must belong to this organisation. Without this check an update could
+  // rebind an expense to another organisation's line item — a cross-tenant reference that
+  // would then render that organisation's line item name on this one's screens.
+  const ownsLineItem = await db
+    .select({ id: lineItems.id })
+    .from(lineItems)
+    .where(and(eq(lineItems.id, input.lineItemId), eq(lineItems.orgId, current.orgId)))
+    .limit(1);
+  if (ownsLineItem.length === 0) return fail("Choose a line item.");
 
   const row = toRow(input);
 
+  const updated = await db
+    .update(expenses)
+    .set(row)
+    .where(and(eq(expenses.id, input.id), eq(expenses.orgId, current.orgId)))
+    .returning({ id: expenses.id });
+  if (updated.length === 0) return fail("That expense no longer exists.");
+
   // "No receipt available" and attached receipts are mutually exclusive (R4.2): saving
-  // with the box ticked removes the receipt files the user has confirmed away.
+  // with the box ticked removes the receipt files the user confirmed away. This runs only
+  // after the update has proven the expense exists and is writable — deleting first would
+  // destroy files irreversibly even when the save then failed.
   if (row.noReceipt) {
     const receipts = await db
       .select({ id: expenseDocuments.id })
@@ -178,13 +199,6 @@ export async function updateExpenseAction(input: ExpenseInput): Promise<ActionRe
     }
   }
 
-  const updated = await db
-    .update(expenses)
-    .set(row)
-    .where(and(eq(expenses.id, input.id), eq(expenses.orgId, current.orgId)))
-    .returning({ id: expenses.id });
-  if (updated.length === 0) return fail("That expense no longer exists.");
-
   await learnVendor(current.orgId, row);
   revalidatePath("/", "layout");
   return ok();
@@ -193,6 +207,7 @@ export async function updateExpenseAction(input: ExpenseInput): Promise<ActionRe
 export async function deleteExpenseAction(id: string): Promise<ActionResult> {
   const current = await session();
   if ("expired" in current) return current.expired;
+  if (!isUuid(id)) return fail("That expense no longer exists.");
 
   const documents = await db
     .select({ id: expenseDocuments.id })
@@ -219,6 +234,7 @@ export async function deleteExpenseAction(id: string): Promise<ActionResult> {
 export async function removeExpenseDocumentAction(documentId: string): Promise<ActionResult> {
   const current = await session();
   if ("expired" in current) return current.expired;
+  if (!isUuid(documentId)) return fail("That file is already gone.");
 
   const removed = await removeStoredDocument(current.orgId, documentId);
   if (!removed) return fail("That file is already gone.");

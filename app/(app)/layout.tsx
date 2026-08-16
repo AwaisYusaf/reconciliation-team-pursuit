@@ -27,10 +27,11 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     .from(expenses)
     .where(eq(expenses.orgId, session.orgId));
 
-  const months = monthWindow(monthRows.map((row) => row.month));
-  const activeMonth = months.includes(session.activeMonth)
-    ? session.activeMonth
-    : [...months, session.activeMonth].sort().reverse()[0];
+  // The persisted active month is always selectable, even when it sits outside the rolling
+  // window (any month reached through "Earlier month…" that holds no data). Without it the
+  // header would show one month while every page below rendered another.
+  const months = monthWindow([...monthRows.map((row) => row.month), session.activeMonth]);
+  const activeMonth = session.activeMonth;
 
   return (
     <div className="min-h-screen bg-paper">

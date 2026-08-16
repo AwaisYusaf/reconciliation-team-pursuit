@@ -68,11 +68,37 @@ async function requireSessionOrExpired(): Promise<
   }
 }
 
+/**
+ * The client's IP, for rate limiting.
+ *
+ * `X-Forwarded-For` is appended to by each hop, so the LAST entries are the ones our own
+ * proxies wrote and the leftmost are attacker-controlled. Taking the leftmost value let an
+ * attacker mint a fresh rate-limit bucket per request simply by varying the header, which
+ * defeated the login limiter entirely — and that limiter is deliberately the only
+ * brute-force bound, since lockout would be a denial of service against a shared account.
+ *
+ * `TRUSTED_PROXY_HOPS` says how many reverse proxies sit in front of the app (Caddy or
+ * nginx terminating TLS is 1). We count that many entries back from the right. With no
+ * proxies configured the header is ignored altogether.
+ */
 async function clientIp(): Promise<string> {
   const store = await headers();
-  const forwarded = store.get("x-forwarded-for");
-  if (forwarded) return forwarded.split(",")[0]!.trim();
-  return store.get("x-real-ip") ?? "unknown";
+  const hops = Number(process.env.TRUSTED_PROXY_HOPS ?? "0");
+
+  if (hops > 0) {
+    const forwarded = store.get("x-forwarded-for");
+    if (forwarded) {
+      const entries = forwarded.split(",").map((entry) => entry.trim()).filter(Boolean);
+      const candidate = entries[entries.length - hops];
+      if (candidate) return candidate;
+    }
+    const real = store.get("x-real-ip");
+    if (real) return real.trim();
+  }
+
+  // No trusted proxy configured: a single shared bucket is still a real bound, and it
+  // cannot be escaped by forging headers.
+  return "direct";
 }
 
 /* ------------------------------------------------------------------ sign in */
@@ -213,6 +239,9 @@ export async function saveOnboardingLineItemsAction(
 ): Promise<ActionResult> {
   const session = await requireSessionOrExpired();
   if ("expired" in session) return session.expired;
+  // Server Actions are directly invocable, so the page guard is not enough: a replayed or
+  // stale-tab call would otherwise wipe a live organisation's approved budget.
+  if (session.onboarded) return fail("Onboarding is already complete.");
 
   const names = formData.getAll("lineItemName").map((value) => String(value).trim());
   const budgets = formData.getAll("lineItemBudget").map((value) => String(value));
@@ -266,6 +295,7 @@ export async function completeOnboardingAction(
 ): Promise<ActionResult> {
   const session = await requireSessionOrExpired();
   if ("expired" in session) return session.expired;
+  if (session.onboarded) return fail("Onboarding is already complete.");
   const skip = formData.get("intent") === "skip";
 
   const parsed = contractSchema.safeParse({

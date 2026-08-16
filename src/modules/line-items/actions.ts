@@ -15,6 +15,7 @@ import { isDuplicateName, planLineItemDelete } from "@/src/domain/line-item-rule
 import { parseMoneyToCents } from "@/src/domain/money";
 import { UI } from "@/src/domain/strings";
 import { fail, ok, SESSION_EXPIRED, type ActionResult } from "@/src/lib/action-result";
+import { isUuid } from "@/src/lib/ids";
 import {
   requireSession,
   UnauthenticatedError,
@@ -102,6 +103,7 @@ export async function deleteLineItemAction(
 ): Promise<ActionResult<{ requiresConfirmation?: string[] }>> {
   const current = await session();
   if ("expired" in current) return current.expired;
+  if (!isUuid(id)) return fail("That line item no longer exists.");
 
   const rows = await db
     .select({ name: lineItems.name })
@@ -144,6 +146,10 @@ export async function deleteLineItemAction(
 export async function reorderLineItemsAction(orderedIds: string[]): Promise<ActionResult> {
   const current = await session();
   if ("expired" in current) return current.expired;
+
+  if (orderedIds.length === 0 || !orderedIds.every(isUuid)) {
+    return fail("That list is out of date — reload the page.");
+  }
 
   const owned = await db
     .select({ id: lineItems.id })

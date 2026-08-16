@@ -34,9 +34,12 @@ const id = () =>
     .primaryKey()
     .$defaultFn(() => uuidv7());
 const cents = (name: string) => bigint(name, { mode: "number" }).notNull().default(0);
-const createdAt = () => timestamp({ withTimezone: true }).notNull().defaultNow();
+// Column names are given explicitly: without them Drizzle uses the TypeScript property
+// name, which would put camelCase "createdAt" beside snake_case "org_id" and force every
+// hand-written query to quote it.
+const createdAt = () => timestamp("created_at", { withTimezone: true }).notNull().defaultNow();
 const updatedAt = () =>
-  timestamp({ withTimezone: true })
+  timestamp("updated_at", { withTimezone: true })
     .notNull()
     .defaultNow()
     .$onUpdate(() => new Date());

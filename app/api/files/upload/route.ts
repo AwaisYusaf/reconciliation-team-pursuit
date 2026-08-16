@@ -1,9 +1,10 @@
 import { NextResponse, type NextRequest } from "next/server";
 
+import { isValidMonthKey } from "@/src/domain/dates";
 import { consume } from "@/src/services/rate-limit";
 import { getSession } from "@/src/services/auth/session";
 import { ingestExpenseDocument, ingestMonthDocument } from "@/src/services/storage/documents";
-import type { DocumentScope } from "@/src/services/storage/keys";
+import { MAX_UPLOAD_BYTES, type DocumentScope } from "@/src/services/storage/keys";
 import type { MonthDocumentCategory } from "@/src/db/schema";
 
 export const runtime = "nodejs";
@@ -42,6 +43,16 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  // Reject oversized bodies before formData() buffers them into memory. Next applies its
+  // body size limit to Server Actions only, never to route handlers.
+  const declaredLength = Number(request.headers.get("content-length") ?? "0");
+  if (declaredLength > MAX_UPLOAD_BYTES + 1_000_000) {
+    return NextResponse.json(
+      { ok: false, error: "That file is larger than 25 MB." },
+      { status: 413 },
+    );
+  }
+
   let form: FormData;
   try {
     form = await request.formData();
@@ -56,12 +67,16 @@ export async function POST(request: NextRequest) {
 
   const target = String(form.get("target") ?? "expense");
 
+  try {
   if (target === "month") {
     const category = String(form.get("category") ?? "") as MonthDocumentCategory;
     if (!MONTH_CATEGORIES.includes(category)) {
       return NextResponse.json({ ok: false, error: "Choose a category." }, { status: 400 });
     }
     const month = String(form.get("month") ?? session.activeMonth);
+    if (!isValidMonthKey(month)) {
+      return NextResponse.json({ ok: false, error: "That is not a valid month." }, { status: 400 });
+    }
     const result = await ingestMonthDocument({
       orgId: session.orgId,
       month,
@@ -86,6 +101,17 @@ export async function POST(request: NextRequest) {
   });
 
   return NextResponse.json(result, { status: result.ok ? 200 : 400 });
+  } catch (error) {
+    // A storage or database failure must still answer with JSON: the client parses the
+    // body, and a non-JSON 500 would reject inside a transition and replace the user's
+    // half-filled form with the error screen.
+    console.error("upload failed", { orgId: session.orgId });
+    void error;
+    return NextResponse.json(
+      { ok: false, error: "That file could not be saved. Try again." },
+      { status: 500 },
+    );
+  }
 }
 
 /**

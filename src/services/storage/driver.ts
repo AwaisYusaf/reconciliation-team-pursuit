@@ -51,8 +51,12 @@ export class LocalStorageDriver implements StorageDriver {
 
   private absolute(key: string): string {
     const resolved = path.resolve(LOCAL_ROOT, key);
-    // Defence in depth: the key builders already forbid traversal.
-    if (!resolved.startsWith(LOCAL_ROOT)) throw new Error("Refusing to escape the storage root");
+    // Defence in depth: the key builders already forbid traversal. The separator matters —
+    // a bare startsWith would also accept a sibling directory whose name merely begins with
+    // the root's, e.g. ".storage-public".
+    if (resolved !== LOCAL_ROOT && !resolved.startsWith(LOCAL_ROOT + path.sep)) {
+      throw new Error("Refusing to escape the storage root");
+    }
     return resolved;
   }
 

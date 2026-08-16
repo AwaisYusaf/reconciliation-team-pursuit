@@ -100,10 +100,13 @@ export function ExpenseForm({ options, remaining, today, activeMonth, existing }
     if (!values.lineItemId) return null;
     const base = remaining[values.lineItemId];
     if (base === undefined) return null;
+    // The saved amount is only inside this line item's remaining figure when the expense
+    // has not been moved to a different line item.
+    const sameLineItem = existing?.values.lineItemId === values.lineItemId;
     return projectedRemainingCents({
       remainingCents: base,
       formReimbursableCents: reimbursableCents,
-      editingExistingCents: existing?.savedReimbursableCents,
+      editingExistingCents: sameLineItem ? existing?.savedReimbursableCents : 0,
     });
   }, [values.lineItemId, remaining, reimbursableCents, existing]);
 
@@ -113,12 +116,15 @@ export function ExpenseForm({ options, remaining, today, activeMonth, existing }
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     const term = values.name.trim();
+    const loadedName = existing?.values.name.trim();
     if (searchTimer.current) clearTimeout(searchTimer.current);
 
     // All state changes happen inside the debounce callback, never synchronously in the
     // effect body, so typing never triggers a render cascade.
     searchTimer.current = setTimeout(async () => {
-      if (term.length < 2) {
+      // In edit mode the name is prefilled; searching it would pop an unrequested dropdown
+      // over the fields below a moment after the page loads.
+      if (term.length < 2 || term === loadedName) {
         setSuggestions([]);
         return;
       }
@@ -141,14 +147,15 @@ export function ExpenseForm({ options, remaining, today, activeMonth, existing }
     return () => {
       if (searchTimer.current) clearTimeout(searchTimer.current);
     };
-  }, [values.name]);
+  }, [values.name, existing]);
 
   function pickSuggestion(row: { name: string; lineItemId: string | null; description: string }) {
     setValues((current) => ({
       ...current,
       name: row.name,
-      lineItemId: row.lineItemId ?? current.lineItemId,
-      description: row.description || current.description,
+      lineItemId: current.lineItemId || (row.lineItemId ?? ""),
+      // Never overwrite text the user has typed — the label says it prints on the cover sheet.
+      description: current.description || row.description,
     }));
     setSuggestions([]);
     setAutofilled(true);
@@ -165,10 +172,20 @@ export function ExpenseForm({ options, remaining, today, activeMonth, existing }
       if (item.supportingType) form.set("supportingType", item.supportingType);
       form.set("file", item.file);
 
-      const response = await fetch("/api/files/upload", { method: "POST", body: form });
-      const result = (await response.json()) as { ok: boolean; error?: string };
-      if (!result.ok) return `${item.file.name}: ${result.error ?? UI.uploadFailed}`;
+      try {
+        const response = await fetch("/api/files/upload", { method: "POST", body: form });
+        const result = (await response.json()) as { ok: boolean; error?: string };
+        if (!result.ok) {
+          // Keep the files that have not been tried yet, so nothing disappears silently.
+          setQueued(queued.slice(index));
+          return `${item.file.name}: ${result.error ?? UI.uploadFailed}`;
+        }
+      } catch {
+        setQueued(queued.slice(index));
+        return `${item.file.name}: ${UI.uploadFailed}`;
+      }
     }
+    setQueued([]);
     return null;
   }
 
@@ -183,7 +200,6 @@ export function ExpenseForm({ options, remaining, today, activeMonth, existing }
           return;
         }
         const uploadError = await uploadQueued(existing!.id);
-        setQueued([]);
         if (uploadError) {
           setStatus(null);
           setError(uploadError);
@@ -391,7 +407,13 @@ export function ExpenseForm({ options, remaining, today, activeMonth, existing }
             <input
               type="checkbox"
               checked={values.noReceipt}
-              onChange={(event) => set("noReceipt", event.target.checked)}
+              onChange={(event) => {
+                const checked = event.target.checked;
+                set("noReceipt", checked);
+                // R4.2: drop any queued receipt files too, or they would upload after the
+                // save and leave the expense both marked "no receipt" and holding one.
+                if (checked) setQueued((current) => current.filter((item) => item.scope !== "receipt"));
+              }}
               className="w-5 h-5 accent-accent"
             />
             <span>No receipt available</span>

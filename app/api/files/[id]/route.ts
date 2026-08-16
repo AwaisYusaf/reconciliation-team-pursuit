@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 
 import { db } from "@/src/db";
 import { expenseDocuments, monthDocuments } from "@/src/db/schema";
+import { isUuid } from "@/src/lib/ids";
 import { getSession } from "@/src/services/auth/session";
 import { storage } from "@/src/services/storage/driver";
 import { keyBelongsToOrg, thumbnailKey } from "@/src/services/storage/keys";
@@ -24,6 +25,9 @@ export async function GET(
   if (!session) return new NextResponse("Not signed in", { status: 401 });
 
   const { id } = await context.params;
+  // A malformed id would raise a Postgres 22P02 out of an unguarded handler; the intent
+  // here is an indistinguishable "not found".
+  if (!isUuid(id)) return new NextResponse("Not found", { status: 404 });
   const url = new URL(request.url);
   const wantsThumbnail = url.searchParams.get("thumb") === "1";
 
@@ -57,13 +61,10 @@ export async function GET(
   try {
     body = await store.get(key);
   } catch {
-    if (!wantsThumbnail) return new NextResponse("Not found", { status: 404 });
-    // PDFs have no thumbnail; fall back to the original so callers need no special case.
-    try {
-      body = await store.get(document.key);
-    } catch {
-      return new NextResponse("Not found", { status: 404 });
-    }
+    // PDFs have no thumbnail. Serving the original here would send megabytes of PDF
+    // labelled as a JPEG into an <img>, which can only ever render broken — so callers
+    // get an honest 404 and show a document glyph instead.
+    return new NextResponse("Not found", { status: 404 });
   }
 
   const contentType = wantsThumbnail ? "image/jpeg" : document.type;
@@ -76,6 +77,8 @@ export async function GET(
       "Content-Type": contentType,
       "Content-Disposition": disposition,
       "Content-Length": String(body.byteLength),
+      // Never let a browser sniff a different type out of a user-supplied file.
+      "X-Content-Type-Options": "nosniff",
       // Documents are private; never let a shared cache hold one.
       "Cache-Control": "private, max-age=300",
     },

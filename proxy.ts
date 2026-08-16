@@ -20,6 +20,8 @@ export function proxy(request: NextRequest) {
   const isAuthRoute =
     pathname === "/login" || pathname === "/signup" || pathname.startsWith("/onboarding");
 
+  // The absence of a cookie definitively means "not signed in", so this redirect is safe
+  // and saves a render.
   if (!hasSessionCookie && !isAuthRoute) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
@@ -27,12 +29,11 @@ export function proxy(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  if (hasSessionCookie && (pathname === "/login" || pathname === "/signup")) {
-    const url = request.nextUrl.clone();
-    url.pathname = "/";
-    url.search = "";
-    return NextResponse.redirect(url);
-  }
+  // The PRESENCE of a cookie proves nothing — it may be expired, revoked, or forged. This
+  // used to redirect cookie-holders away from /login, which produced an infinite loop for
+  // anyone whose session had ended: /login sent them to /, the layout found no valid
+  // session and sent them back to /login. Bouncing an already-signed-in user off the auth
+  // pages needs a real session check, so the pages do it themselves in `getSession()`.
 
   return NextResponse.next();
 }
