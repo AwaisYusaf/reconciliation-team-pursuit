@@ -37,7 +37,7 @@ Each `03-modules/m*.md` is one unit of work that flows through five gates:
 
 | Module | Spec | Prompt | Design | Page | Wired |
 |---|---|---|---|---|---|
-| m00 App shell & auth | ✅ | ✅ | ✅ | ☐ | ☐ |
+| m00 App shell & auth | ✅ | ✅ | ✅ | ✅ | ✅ |
 | m01 Dashboard | ✅ | ✅ | ✅ | ☐ | ☐ |
 | m02 Expense entry | ✅ | ✅ | ✅ | ☐ | ☐ |
 | m03 Expenses list | ✅ | ✅ | ✅ | ☐ | ☐ |
