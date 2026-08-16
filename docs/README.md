@@ -42,7 +42,7 @@ Each `03-modules/m*.md` is one unit of work that flows through five gates:
 | m02 Expense entry | ✅ | ✅ | ✅ | ✅ | ✅ |
 | m03 Expenses list | ✅ | ✅ | ✅ | ✅ | ✅ |
 | m04 Cover sheets | ✅ | ✅ | ✅ | ☐ | ☐ |
-| m05 Recurring items | ✅ | ✅ | ✅ | ☐ | ☐ |
+| m05 Recurring items | ✅ | ✅ | ✅ | ✅ | ✅ |
 | m06 Month-end packet | ✅ | ✅ | ✅ | ☐ | ☐ |
 | m07 Contract summary | ✅ | ✅ | ✅ | ☐ | ☐ |
 | m08 Line items | ✅ | ✅ | ✅ | ✅ | ✅ |
