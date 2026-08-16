@@ -1,0 +1,459 @@
+/**
+ * Drizzle schema — implements docs/01-domain/data-model.md.
+ *
+ * Conventions (see the doc for the authoritative description):
+ * - Money is always integer cents (`bigint`, JS number mode; safe to 2^53 cents ≈ $90T).
+ * - Months are `char(7)` `YYYY-MM` keys (R2.1).
+ * - Ids are uuid v7, generated in app code (Postgres 14 has no native `uuidv7()`).
+ * - Case-insensitive uniqueness uses `lower()` expression indexes rather than the
+ *   `citext` extension, so the database needs no extensions to be provisioned.
+ * - Every table except `organizations` carries `org_id`; every query path re-checks it.
+ */
+import { sql } from "drizzle-orm";
+import {
+  bigint,
+  boolean,
+  char,
+  check,
+  date,
+  index,
+  integer,
+  pgEnum,
+  pgTable,
+  primaryKey,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from "drizzle-orm/pg-core";
+import { v7 as uuidv7 } from "uuid";
+
+/** Shared column builders. */
+const id = () =>
+  uuid()
+    .primaryKey()
+    .$defaultFn(() => uuidv7());
+const cents = (name: string) => bigint(name, { mode: "number" }).notNull().default(0);
+const createdAt = () => timestamp({ withTimezone: true }).notNull().defaultNow();
+const updatedAt = () =>
+  timestamp({ withTimezone: true })
+    .notNull()
+    .defaultNow()
+    .$onUpdate(() => new Date());
+
+/* ------------------------------------------------------------------ enums */
+
+/** expense_documents.kind — proof of payment, receipt/justification, or extra evidence (R4, R11.1). */
+export const documentKind = pgEnum("document_kind", ["proof", "receipt", "supporting"]);
+
+/** Upload lifecycle — only `attached` satisfies the documentation gate (R4.6). */
+export const documentStatus = pgEnum("document_status", ["pending", "attached", "failed"]);
+
+/** Month-level document categories. Packet order authority: packet-pdf-spec §2 (R11.2). */
+export const monthDocumentCategory = pgEnum("month_document_category", [
+  "bank_statement",
+  "combined_hours",
+  "timesheet",
+  "fiduciary_invoice",
+  "other",
+]);
+
+/** Generated output types (R10.4). */
+export const artifactType = pgEnum("artifact_type", [
+  "packet_pdf",
+  "summary_xlsx",
+  "cover_docx",
+  "cover_pdf",
+]);
+
+/* ----------------------------------------------------------- organizations */
+
+export const organizations = pgTable("organizations", {
+  id: id(),
+  /** Legal/display name — "Team Pursuit Global". */
+  name: text().notNull(),
+  /** Name printed on documents — "Team Pursuit". Non-empty; defaults to `name`. */
+  docName: text("doc_name").notNull(),
+  /** Last selected month (per-org UI persistence, R2.3). */
+  activeMonth: char("active_month", { length: 7 }).notNull(),
+  /** Null → login redirects into onboarding (m00). */
+  onboardedAt: timestamp("onboarded_at", { withTimezone: true }),
+  /** First-run banner dismissal (m00). */
+  welcomeDismissedAt: timestamp("welcome_dismissed_at", { withTimezone: true }),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+});
+
+/* ------------------------------------------------------------------- users */
+
+export const users = pgTable(
+  "users",
+  {
+    id: id(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    email: text().notNull(),
+    /** argon2id; password minimum 12 chars (D-06/D-24). */
+    passwordHash: text("password_hash").notNull(),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    uniqueIndex("users_email_lower_uq").on(sql`lower(${t.email})`),
+    index("users_org_idx").on(t.orgId),
+  ],
+);
+
+/* ---------------------------------------------------------------- sessions */
+
+/**
+ * Custom session auth (D-06). `id` is the SHA-256 hex of the random cookie token —
+ * the raw token is never stored, so a database leak cannot forge cookies.
+ * Revocation is row deletion; password change deletes all of a user's other rows.
+ */
+export const sessions = pgTable(
+  "sessions",
+  {
+    id: text().primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    /** 30-day sliding expiry; renewed when under 15 days remain. */
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [index("sessions_user_idx").on(t.userId), index("sessions_expires_idx").on(t.expiresAt)],
+);
+
+/* ------------------------------------------------------- contract settings */
+
+export const contractSettings = pgTable("contract_settings", {
+  orgId: uuid("org_id")
+    .primaryKey()
+    .references(() => organizations.id, { onDelete: "cascade" }),
+  projectName: text("project_name").notNull().default(""),
+  contractNumber: text("contract_number").notNull().default(""),
+  basePoNumber: text("base_po_number").notNull().default(""),
+  performancePoNumber: text("performance_po_number").notNull().default(""),
+  /** 0 → derive from the sum of scheduled values (R7.3). */
+  contractValueCents: cents("contract_value_cents"),
+  contractStart: date("contract_start"),
+  contractEnd: date("contract_end"),
+  fiduciaryName: text("fiduciary_name").notNull().default(""),
+  perfGrantScheduledCents: cents("perf_grant_scheduled_cents"),
+  /** Maintained manually — performance billing happens outside this system (R7.2). */
+  perfGrantBilledCents: cents("perf_grant_billed_cents"),
+  advancesReceivedCents: cents("advances_received_cents"),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+});
+
+/* --------------------------------------------------- configurable label lists */
+
+/** Org-configurable payment sources (R5.1, D-19). Expenses store the label as a snapshot. */
+export const paymentSources = pgTable(
+  "payment_sources",
+  {
+    id: id(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    label: text().notNull(),
+    sortOrder: integer("sort_order").notNull().default(0),
+    /** Deactivated labels leave pickers; history keeps its snapshot. */
+    active: boolean().notNull().default(true),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [uniqueIndex("payment_sources_org_label_uq").on(t.orgId, sql`lower(${t.label})`)],
+);
+
+/** Org-configurable supporting document types (R11.1, D-19). */
+export const supportingDocTypes = pgTable(
+  "supporting_doc_types",
+  {
+    id: id(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    label: text().notNull(),
+    sortOrder: integer("sort_order").notNull().default(0),
+    active: boolean().notNull().default(true),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [uniqueIndex("supporting_doc_types_org_label_uq").on(t.orgId, sql`lower(${t.label})`)],
+);
+
+/* --------------------------------------------------------------- line items */
+
+export const lineItems = pgTable(
+  "line_items",
+  {
+    id: id(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    name: text().notNull(),
+    /** Budget / scheduled value. */
+    scheduledValueCents: cents("scheduled_value_cents"),
+    /** Opening previously-billed balance from setup (R3.1). */
+    openingBilledCents: cents("opening_billed_cents"),
+    /** Cover sheet / packet section / summary row order. */
+    sortOrder: integer("sort_order").notNull().default(0),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    uniqueIndex("line_items_org_name_uq").on(t.orgId, sql`lower(${t.name})`),
+    index("line_items_org_sort_idx").on(t.orgId, t.sortOrder),
+  ],
+);
+
+/* ----------------------------------------------------------------- expenses */
+
+export const expenses = pgTable(
+  "expenses",
+  {
+    /** Client-generated uuid v7 accepted at create, so draft uploads can be keyed before the row exists. */
+    id: uuid().primaryKey().$defaultFn(() => uuidv7()),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    /** Restricted: a line item with expenses cannot be deleted (R9.3). */
+    lineItemId: uuid("line_item_id")
+      .notNull()
+      .references(() => lineItems.id, { onDelete: "restrict" }),
+    /** Reporting month (R2.1); editable from the form (R2.2). */
+    month: char({ length: 7 }).notNull(),
+    /** Defaults to today in America/Detroit (R2.5); independent of `month`. */
+    date: date().notNull(),
+    /** Payee/label — vendor, person, or free text like "ATM Withdrawal". */
+    name: text().notNull(),
+    /** The cover-sheet "Role" column text (R6.2). */
+    description: text().notNull().default(""),
+    /** Label snapshot from payment_sources (R5.1). */
+    paymentSource: text("payment_source").notNull(),
+    subtotalCents: cents("subtotal_cents"),
+    taxCents: cents("tax_cents"),
+    feesCents: cents("fees_cents"),
+    /** Inline heading note; the tax note additionally auto-prints when tax > 0 (R6.5). */
+    note: text(),
+    /** Paragraph note printed under the heading (R6.6). */
+    narrative: text(),
+    noReceipt: boolean("no_receipt").notNull().default(false),
+    /** Required non-empty when noReceipt; prints on the cover sheet (R4.2, R6.7). */
+    noReceiptReason: text("no_receipt_reason"),
+    /** Per-month monotonic counter assigned at insert — orders the month list, cover sheet rows and Excel grouping. */
+    sortOrder: integer("sort_order").notNull().default(0),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    index("expenses_org_month_idx").on(t.orgId, t.month),
+    index("expenses_line_item_idx").on(t.lineItemId),
+    index("expenses_org_month_sort_idx").on(t.orgId, t.month, t.sortOrder),
+    check(
+      "expenses_no_receipt_reason_ck",
+      sql`not ${t.noReceipt} or (${t.noReceiptReason} is not null and btrim(${t.noReceiptReason}) <> '')`,
+    ),
+  ],
+);
+
+/* -------------------------------------------------------- expense documents */
+
+export const expenseDocuments = pgTable(
+  "expense_documents",
+  {
+    /** Server-generated at presign; the client only ever references this id (never a raw S3 key). */
+    id: id(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    expenseId: uuid("expense_id")
+      .notNull()
+      .references(() => expenses.id, { onDelete: "cascade" }),
+    kind: documentKind().notNull(),
+    /** Label snapshot from supporting_doc_types — required iff kind = 'supporting'. */
+    supportingType: text("supporting_type"),
+    status: documentStatus().notNull().default("pending"),
+    s3Key: text("s3_key").notNull(),
+    /** Original upload name — lives here, never in the S3 key (PII-free keys). */
+    filename: text().notNull(),
+    mimeType: text("mime_type").notNull(),
+    sizeBytes: bigint("size_bytes", { mode: "number" }).notNull().default(0),
+    /** Filled at process-and-attach; PDFs get their real page count, images 1. */
+    pageCount: integer("page_count"),
+    /** Filled at process-and-attach; drives cover-sheet and packet page estimates. */
+    widthPx: integer("width_px"),
+    heightPx: integer("height_px"),
+    sortOrder: integer("sort_order").notNull().default(0),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    index("expense_documents_expense_idx").on(t.expenseId, t.kind, t.sortOrder),
+    index("expense_documents_org_idx").on(t.orgId),
+    check(
+      "expense_documents_supporting_type_ck",
+      sql`(${t.kind} = 'supporting') = (${t.supportingType} is not null)`,
+    ),
+  ],
+);
+
+/* ---------------------------------------------------------- month documents */
+
+export const monthDocuments = pgTable(
+  "month_documents",
+  {
+    id: id(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    month: char({ length: 7 }).notNull(),
+    category: monthDocumentCategory().notNull(),
+    /** Optional label shown in the packet manager. */
+    title: text(),
+    status: documentStatus().notNull().default("pending"),
+    s3Key: text("s3_key").notNull(),
+    filename: text().notNull(),
+    mimeType: text("mime_type").notNull(),
+    sizeBytes: bigint("size_bytes", { mode: "number" }).notNull().default(0),
+    pageCount: integer("page_count"),
+    widthPx: integer("width_px"),
+    heightPx: integer("height_px"),
+    sortOrder: integer("sort_order").notNull().default(0),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [index("month_documents_org_month_idx").on(t.orgId, t.month, t.category, t.sortOrder)],
+);
+
+/* ----------------------------------------------------------- month statuses */
+
+/** Submission marker driving the R10.6 edit warning. */
+export const monthStatuses = pgTable(
+  "month_statuses",
+  {
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    month: char({ length: 7 }).notNull(),
+    submittedAt: timestamp("submitted_at", { withTimezone: true }),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [primaryKey({ columns: [t.orgId, t.month] })],
+);
+
+/* ---------------------------------------------------------- vendor defaults */
+
+/** Autofill library; learns automatically on every expense save (R8.1–R8.2). */
+export const vendorDefaults = pgTable(
+  "vendor_defaults",
+  {
+    id: id(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    name: text().notNull(),
+    /** Set null when the line item is deleted (R9.3). */
+    defaultLineItemId: uuid("default_line_item_id").references(() => lineItems.id, {
+      onDelete: "set null",
+    }),
+    defaultDescription: text("default_description").notNull().default(""),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [uniqueIndex("vendor_defaults_org_name_uq").on(t.orgId, sql`lower(${t.name})`)],
+);
+
+/* ---------------------------------------------------------- recurring items */
+
+/** Fixed monthly set — subscriptions and salaries (R8.3). */
+export const recurringItems = pgTable(
+  "recurring_items",
+  {
+    id: id(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    name: text().notNull(),
+    amountCents: cents("amount_cents"),
+    /** Cascade-deleted with the line item, after the confirm dialog listing them (R9.3). */
+    lineItemId: uuid("line_item_id")
+      .notNull()
+      .references(() => lineItems.id, { onDelete: "cascade" }),
+    defaultDescription: text("default_description"),
+    sortOrder: integer("sort_order").notNull().default(0),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [index("recurring_items_org_sort_idx").on(t.orgId, t.sortOrder)],
+);
+
+/* ------------------------------------------------------ generated artifacts */
+
+/**
+ * Output cache (R10.4) and permanent submission record (R10.6).
+ * A row with `downloaded_at` set is pinned: never replaced, never lifecycle-expired,
+ * so the org can always reproduce exactly what the City received.
+ */
+export const generatedArtifacts = pgTable(
+  "generated_artifacts",
+  {
+    id: id(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    month: char({ length: 7 }).notNull(),
+    type: artifactType().notNull(),
+    /** Set for cover sheets, null for packet/summary. */
+    lineItemId: uuid("line_item_id").references(() => lineItems.id, { onDelete: "cascade" }),
+    /** Canonical-JSON hash of the full month snapshot (rows, settings, doc keys + sizes). */
+    inputsHash: text("inputs_hash").notNull(),
+    /** Set on first successful download → pinned forever. */
+    downloadedAt: timestamp("downloaded_at", { withTimezone: true }),
+    s3Key: text("s3_key").notNull(),
+    sizeBytes: bigint("size_bytes", { mode: "number" }).notNull().default(0),
+    pageCount: integer("page_count"),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    index("generated_artifacts_lookup_idx").on(t.orgId, t.month, t.type, t.lineItemId),
+    // One live cache entry per output; pinned (downloaded) rows accumulate as history.
+    // line_item_id is coalesced because SQL NULLs are distinct in unique indexes.
+    uniqueIndex("generated_artifacts_live_uq")
+      .on(
+        t.orgId,
+        t.month,
+        t.type,
+        sql`coalesce(${t.lineItemId}, '00000000-0000-0000-0000-000000000000'::uuid)`,
+      )
+      .where(sql`${t.downloadedAt} is null`),
+  ],
+);
+
+/* -------------------------------------------------------------------- types */
+
+export type Organization = typeof organizations.$inferSelect;
+export type User = typeof users.$inferSelect;
+export type Session = typeof sessions.$inferSelect;
+export type ContractSettings = typeof contractSettings.$inferSelect;
+export type PaymentSource = typeof paymentSources.$inferSelect;
+export type SupportingDocType = typeof supportingDocTypes.$inferSelect;
+export type LineItem = typeof lineItems.$inferSelect;
+export type Expense = typeof expenses.$inferSelect;
+export type ExpenseDocument = typeof expenseDocuments.$inferSelect;
+export type MonthDocument = typeof monthDocuments.$inferSelect;
+export type MonthStatus = typeof monthStatuses.$inferSelect;
+export type VendorDefault = typeof vendorDefaults.$inferSelect;
+export type RecurringItem = typeof recurringItems.$inferSelect;
+export type GeneratedArtifact = typeof generatedArtifacts.$inferSelect;
+
+export type DocumentKind = (typeof documentKind.enumValues)[number];
+export type DocumentStatus = (typeof documentStatus.enumValues)[number];
+export type MonthDocumentCategory = (typeof monthDocumentCategory.enumValues)[number];
+export type ArtifactType = (typeof artifactType.enumValues)[number];

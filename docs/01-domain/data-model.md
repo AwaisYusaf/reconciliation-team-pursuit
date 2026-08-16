@@ -1,6 +1,8 @@
 # Data Model
 
-Postgres, single database, org-scoped rows (single-tenant-per-org from day one; every table except `organizations` carries `org_id`). Money = integer cents (`bigint`). Months = `char(7)` `YYYY-MM`. IDs = uuid v7. Timestamps `created_at`/`updated_at` on all tables (omitted below). (Revised per `04-engineering/review-2026-08-16.md`.)
+Postgres, single database, org-scoped rows (single-tenant-per-org from day one; every table except `organizations` carries `org_id`). Money = integer cents (`bigint`). Months = `char(7)` `YYYY-MM`. IDs = uuid v7, generated in app code (`uuid` package — Postgres 14 has no native `uuidv7()`). Timestamps `created_at`/`updated_at` on all tables (omitted below). Implemented in `src/db/schema.ts` (Drizzle). (Revised per `04-engineering/review-2026-08-16.md`.)
+
+**Case-insensitive text:** the tables below describe unique text as `citext`; the implementation uses plain `text` columns with `lower()` expression unique indexes instead, so the database needs no extension provisioned. Behaviour is identical, and it matches the Integrity-rules section's `lower()` phrasing.
 
 ## Entities
 
@@ -185,6 +187,7 @@ Deleting an expense/document deletes S3 objects inline best-effort; a nightly sw
 
 - `no_receipt = true ⇒ no_receipt_reason <> ''` (check constraint); service layer rejects `no_receipt = true` combined with attached receipt documents (R4.2).
 - `kind = 'supporting' ⇔ supporting_type not null` (check constraint).
-- Unique `(org_id, lower(name))` on line_items and vendor_defaults; unique `(org_id, lower(label))` on payment_sources and supporting_doc_types.
+- Unique `(org_id, lower(name))` on line_items and vendor_defaults; unique `(org_id, lower(label))` on payment_sources and supporting_doc_types; unique `lower(email)` on users.
+- `generated_artifacts` live-cache uniqueness coalesces the nullable `line_item_id` (SQL NULLs are distinct in unique indexes, which would otherwise allow duplicate packet/summary cache rows).
 - Indexes for hot paths (declared in the Drizzle schema): expenses `(org_id, month)`; expense_documents `(expense_id, kind, sort_order)`; month_documents `(org_id, month, category, sort_order)`; generated_artifacts `(org_id, month, type, line_item_id)`; sessions `(user_id)`, `(expires_at)`.
 - No denormalized totals — all figures derive at read time through the calculation service (R10.2).
