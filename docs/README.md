@@ -70,10 +70,10 @@ Working software so far, all verified against a running app with a real database
 | Domain | money · format · dates · strings · budget-math (R3) · gate (R4) · summary (R7) · line-item-rules (R9) · recurring-rules (R8) — all pure, all unit-tested |
 | Storage | Driver abstraction (S3 + local, D-29), key rules, upload inspection, server-proxied ingestion (D-30), download-by-id route |
 | Screens | m00 shell/auth · m01 dashboard · m02 expense entry · m03 expenses list · m05 recurring · m07 contract summary · m08 line items · m09 settings |
-| Generators | Month snapshot loader · summary workbook (xlsx) · cover sheet (docx, canonical) with LibreOffice conversion to PDF · rasterization (pdftoppm, 150 DPI, page-at-a-time) · artifact cache with inputs-hash and download pinning (R10.4, R10.6) · gated download routes |
+| Generators | All three outputs: summary workbook (xlsx) · cover sheet (docx canonical + PDF) · month-end packet (merged, ordered, footer-stamped, size ladder). Shared month snapshot, rasterization (pdftoppm 150 DPI, page-at-a-time), artifact cache with inputs-hash and download pinning (R10.4, R10.6), gated download routes |
 
-**Remaining:** packet pdf assembly · m04 cover sheets · m06 month-end packet ·
-hardening (Playwright, Docker, the February test).
+**Remaining:** m04 cover sheets · m06 month-end packet · hardening (Playwright,
+Docker, the February test).
 
 ### Running it locally
 
