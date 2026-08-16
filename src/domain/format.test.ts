@@ -68,3 +68,36 @@ describe("percentages (R1.5)", () => {
     }
   });
 });
+
+/**
+ * Exact half-way percentages are the case binary floating point gets wrong: 2300/4000 is
+ * mathematically 57.5%, but the double nearest 0.575 times 100 is 57.49999999999999, which
+ * rounds down. R1.5 requires 58, and Excel — which normalises to 15 significant digits
+ * before rounding — prints 58 in the same cell, so getting this wrong made the Contract
+ * Summary screen and the workbook disagree (R10.2).
+ */
+describe("percentages that land exactly on a half (R1.5)", () => {
+  const cases: Array<[numeratorCents: number, denominatorCents: number, expected: string]> = [
+    [230_000, 400_000, "58%"], // 57.5
+    [410_000, 400_000, "103%"], // 102.5
+    [145_000, 1_000_000, "15%"], // 14.5
+    [565_000, 1_000_000, "57%"], // 56.5 -> 57
+    [285_000, 1_000_000, "29%"], // 28.5
+    [5_000, 1_000_000, "1%"], // 0.5
+  ];
+
+  for (const [numerator, denominator, expected] of cases) {
+    it(`${numerator}/${denominator} renders ${expected}`, () => {
+      expect(formatPercent(ratio(numerator, denominator))).toBe(expected);
+    });
+  }
+
+  it("still rounds a genuine sub-half fraction down", () => {
+    // 57.4999% is really below the boundary and must not be nudged up.
+    expect(formatPercent(0.574999)).toBe("57%");
+  });
+
+  it("rounds negative halves away from zero too", () => {
+    expect(formatPercent(-0.575)).toBe("-58%");
+  });
+});

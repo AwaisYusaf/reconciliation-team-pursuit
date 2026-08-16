@@ -443,6 +443,16 @@ export const generatedArtifacts = pgTable(
         sql`coalesce(${t.lineItemId}, '00000000-0000-0000-0000-000000000000'::uuid)`,
       )
       .where(sql`${t.downloadedAt} is null`),
+    // One row per distinct set of bytes. Outputs are deterministic (R10.1), so two
+    // concurrent downloads of the same month build the same artifact; without this they
+    // would each insert a row and the permanent submission record would carry duplicates.
+    uniqueIndex("generated_artifacts_content_uq").on(
+      t.orgId,
+      t.month,
+      t.type,
+      sql`coalesce(${t.lineItemId}, '00000000-0000-0000-0000-000000000000'::uuid)`,
+      t.inputsHash,
+    ),
   ],
 );
 

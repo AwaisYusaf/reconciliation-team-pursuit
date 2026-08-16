@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "generated_artifacts_content_uq" ON "generated_artifacts" USING btree ("org_id","month","type",coalesce("line_item_id", '00000000-0000-0000-0000-000000000000'::uuid),"inputs_hash");

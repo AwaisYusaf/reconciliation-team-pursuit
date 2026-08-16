@@ -17,7 +17,9 @@ Docs-first, AI-native project. **These files are the source of truth.** Code ser
 | `03-modules/design-review.md` | Fetched-design analysis: dc format, per-screen verdicts, adopted patterns, refetch instructions |
 | `04-engineering/architecture.md` | Stack, layers, folder conventions, generation engine, ops, testing |
 | `04-engineering/decisions.md` | Decision log — settled and open |
-| `04-engineering/review-2026-08-16.md` | Adversarial review (4 auditors) — findings + dispositions, all applied |
+| `04-engineering/review-2026-08-16.md` | Adversarial review of the documentation (4 auditors) — findings + dispositions, all applied |
+| `04-engineering/review-2026-08-16-implementation.md` | Adversarial review of the first implementation phase |
+| `04-engineering/review-2026-08-16-generation.md` | Adversarial review of the generation layer (snapshot, workbook, artifact cache, download route) |
 
 Reference inputs (not authored by us) live in `../context/`:
 - `Reconciliation System MVP For Team Pursuit Global By Mantaq.pdf` — signed scope of work
@@ -44,7 +46,7 @@ Each `03-modules/m*.md` is one unit of work that flows through five gates:
 | m04 Cover sheets | ✅ | ✅ | ✅ | ☐ | ☐ |
 | m05 Recurring items | ✅ | ✅ | ✅ | ✅ | ✅ |
 | m06 Month-end packet | ✅ | ✅ | ✅ | ☐ | ☐ |
-| m07 Contract summary | ✅ | ✅ | ✅ | ☐ | ☐ |
+| m07 Contract summary | ✅ | ✅ | ✅ | ✅ | ✅ |
 | m08 Line items | ✅ | ✅ | ✅ | ✅ | ✅ |
 | m09 Settings | ✅ | ✅ | ✅ | ✅ | ✅ |
 
@@ -67,11 +69,11 @@ Working software so far, all verified against a running app with a real database
 | Foundation | Drizzle schema (14 tables) + migrations + seed + dev fixture; custom session auth; Tailwind design tokens and the shared component library; m00 auth/onboarding/app shell |
 | Domain | money · format · dates · strings · budget-math (R3) · gate (R4) · summary (R7) · line-item-rules (R9) · recurring-rules (R8) — all pure, all unit-tested |
 | Storage | Driver abstraction (S3 + local, D-29), key rules, upload inspection, server-proxied ingestion (D-30), download-by-id route |
-| Screens | m00 shell/auth · m01 dashboard · m02 expense entry · m03 expenses list · m05 recurring · m08 line items |
+| Screens | m00 shell/auth · m01 dashboard · m02 expense entry · m03 expenses list · m05 recurring · m07 contract summary · m08 line items · m09 settings |
+| Generators | Month snapshot loader · summary workbook (xlsx) · artifact cache with inputs-hash and download pinning (R10.4, R10.6) · gated download route |
 
-**Remaining:** m09 settings · m07 contract summary screen · the three generators
-(cover sheet docx+pdf, summary xlsx, packet pdf) · m04 cover sheets · m06 month-end
-packet · hardening (Playwright, Docker, the February test).
+**Remaining:** cover sheet generator (docx + pdf) · packet pdf assembly · m04 cover
+sheets · m06 month-end packet · hardening (Playwright, Docker, the February test).
 
 ### Running it locally
 
@@ -81,9 +83,12 @@ cp .env.example .env.local     # set DATABASE_URL to your local Postgres
 npm run db:migrate
 npm run db:seed                # creates the client org (no PII)
 npm run db:fixture             # optional: February expenses for development
+npm run db:fixture -- docs     # optional: attach proof+receipt to each, opening the gate
 npm run dev
 ```
 
-Sign in with the credentials `db:seed` prints. `npm test` runs unit and integration
-suites (integration skips cleanly without `DATABASE_URL`); note that the session-sweep
-test is a genuinely global sweep, so it signs out any active development session.
+Sign in with the credentials `db:seed` prints. Downloads stay blocked until every expense
+in the month carries its documents (R4.3), which is what `db:fixture -- docs` sets up.
+
+`npm test` runs unit and integration suites; integration skips cleanly without
+`DATABASE_URL`.

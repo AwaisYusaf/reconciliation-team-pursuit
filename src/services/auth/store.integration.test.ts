@@ -142,12 +142,23 @@ describe.skipIf(!hasDatabase)("session store (integration)", async () => {
     expect(rows).toHaveLength(0);
   });
 
-  it("sweeps expired rows", async () => {
-    const token = await createSession(userId);
-    const afterExpiry = new Date(Date.now() + SESSION_TTL_MS + DAY);
+  it("sweeps expired rows and leaves valid ones alone", async () => {
+    const stale = await createSession(userId);
+    const fresh = await createSession(userId);
 
-    expect(await deleteExpiredSessions(afterExpiry)).toBeGreaterThanOrEqual(1);
-    expect(await resolveSession(token)).toBeNull();
+    // Expire one row in place rather than sweeping with a future timestamp: a future
+    // sweep would delete every valid session in the database, including those belonging
+    // to other test files running in parallel.
+    await db
+      .update(sessions)
+      .set({ expiresAt: new Date(Date.now() - DAY) })
+      .where(eq(sessions.id, hashSessionToken(stale)));
+
+    expect(await deleteExpiredSessions()).toBeGreaterThanOrEqual(1);
+    expect(await resolveSession(stale)).toBeNull();
+    expect(await resolveSession(fresh)).not.toBeNull();
+
+    await deleteSession(fresh);
   });
 
   it("cascades session deletion when the user is removed", async () => {

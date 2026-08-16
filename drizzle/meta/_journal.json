@@ -15,6 +15,13 @@
       "when": 1786903449851,
       "tag": "0001_far_jean_grey",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1786906249278,
+      "tag": "0002_adorable_lizard",
+      "breakpoints": true
     }
   ]
 }

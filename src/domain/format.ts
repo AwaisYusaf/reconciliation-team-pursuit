@@ -34,7 +34,21 @@ export function formatPercent(ratio: number): string {
  */
 export function percentValue(ratio: number): number {
   if (!Number.isFinite(ratio)) return 0;
-  return roundHalfAwayFromZero(ratio * 100);
+  return roundHalfAwayFromZero(normalizeFloatError(ratio * 100));
+}
+
+/**
+ * Collapse binary representation error before rounding.
+ *
+ * A ratio of exactly 57.5% arrives here as 57.49999999999999289, because neither 0.575 nor
+ * the division that produced it is exact in binary. Rounding that directly gives 57 where
+ * R1.5 requires 58 — and Excel, which normalises to 15 significant digits before it rounds
+ * for display, would print 58 in the same cell. Matching Excel's normalisation keeps the
+ * screen and the workbook showing the same number (R10.2) and makes R1.5's half-away-from-
+ * zero rule apply to the value the user means rather than to its floating-point shadow.
+ */
+function normalizeFloatError(value: number): number {
+  return Number(value.toPrecision(15));
 }
 
 /**

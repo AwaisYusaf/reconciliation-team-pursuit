@@ -44,7 +44,14 @@ export const UI = {
   recurringMissingFields: "Enter a name, an amount, and a line item.",
   lineItemDuplicate: "A line item with that name already exists.",
   signupsClosed: "Sign-ups are closed.",
+  /** Contract Summary — nothing to summarise yet. */
+  summaryNoExpenses: "No expenses recorded for this month yet.",
 } as const;
+
+/** Inline explanation beside a disabled download button (m07, R4.3). */
+export function downloadBlockedReason(count: number): string {
+  return `Blocked — ${count} ${count === 1 ? "record is" : "records are"} missing documents. See Month-End Packet.`;
+}
 
 /** Refusal message when a line item still has expenses (R9.3). */
 export function lineItemDeleteBlocked(name: string): string {

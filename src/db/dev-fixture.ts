@@ -8,13 +8,19 @@
  * appear in the specification. No participant names, no real people.
  *
  *   npm run db:fixture          seed February expenses
+ *   npm run db:fixture -- docs  attach proof + receipt to each, opening the gate
  *   npm run db:fixture -- clear remove them again
+ *
+ * Runs under the `react-server` export condition (see package.json) so the `server-only`
+ * marker in the storage driver resolves to its no-op build instead of throwing.
  */
+import { randomUUID } from "node:crypto";
+
 import { config } from "dotenv";
 
 config({ path: ".env.local", quiet: true });
 
-import { and, eq } from "drizzle-orm";
+import { and, asc, eq, inArray } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
 
@@ -128,6 +134,125 @@ function assertTotals(): void {
   }
 }
 
+/**
+ * Attach a proof of payment and a receipt to every fixture expense, so the documentation
+ * gate opens and the generated outputs can be exercised end to end.
+ *
+ * The files are real — a genuine one-page PDF and a genuine JPEG — because the packet
+ * assembly measures and rasterises them. A placeholder byte string would pass the gate and
+ * then fail the thing the gate exists to protect.
+ */
+async function attachDocuments(
+  db: ReturnType<typeof drizzle<typeof schema>>,
+  orgId: string,
+): Promise<void> {
+  const { PDFDocument, StandardFonts } = await import("pdf-lib");
+  const sharp = (await import("sharp")).default;
+  const { storage } = await import("@/src/services/storage/driver");
+  const { expenseDocumentKey, thumbnailKey } = await import("@/src/services/storage/keys");
+
+  const store = storage();
+  const rows = await db
+    .select({ id: schema.expenses.id, name: schema.expenses.name, amount: schema.expenses.subtotalCents })
+    .from(schema.expenses)
+    .where(and(eq(schema.expenses.orgId, orgId), eq(schema.expenses.month, MONTH)));
+
+  if (rows.length === 0) {
+    console.log("No fixture expenses to document — run the fixture without `docs` first.");
+    return;
+  }
+
+  const values: (typeof schema.expenseDocuments.$inferInsert)[] = [];
+
+  for (const row of rows) {
+    const dollars = (row.amount / 100).toFixed(2);
+
+    const pdf = await PDFDocument.create();
+    const font = await pdf.embedFont(StandardFonts.Helvetica);
+    const page = pdf.addPage([612, 792]);
+    page.drawText("PROOF OF PAYMENT (development fixture)", { x: 56, y: 720, size: 14, font });
+    page.drawText(`Payee: ${row.name}`, { x: 56, y: 690, size: 11, font });
+    page.drawText(`Amount: $${dollars}`, { x: 56, y: 672, size: 11, font });
+    page.drawText(`Period: ${MONTH}`, { x: 56, y: 654, size: 11, font });
+    const proofBytes = Buffer.from(await pdf.save());
+
+    const receiptBytes = await sharp({
+      create: { width: 800, height: 1000, channels: 3, background: { r: 246, g: 244, b: 240 } },
+    })
+      .jpeg({ quality: 70 })
+      .toBuffer();
+    const thumbBytes = await sharp(receiptBytes).resize(320).jpeg({ quality: 60 }).toBuffer();
+
+    // Ids are generated here so the object key and the row agree, exactly as the upload
+    // route does when it mints an id before writing.
+    const proofId = randomUUID();
+    const receiptId = randomUUID();
+    const proofKey = expenseDocumentKey({
+      orgId,
+      month: MONTH,
+      expenseId: row.id,
+      scope: "proof",
+      docId: proofId,
+      mimeType: "application/pdf",
+    });
+    const receiptKey = expenseDocumentKey({
+      orgId,
+      month: MONTH,
+      expenseId: row.id,
+      scope: "receipt",
+      docId: receiptId,
+      mimeType: "image/jpeg",
+    });
+
+    await store.put({ key: proofKey, body: proofBytes, contentType: "application/pdf" });
+    await store.put({ key: receiptKey, body: receiptBytes, contentType: "image/jpeg" });
+    await store.put({ key: thumbnailKey(receiptKey), body: thumbBytes, contentType: "image/jpeg" });
+
+    values.push(
+      {
+        id: proofId,
+        orgId,
+        expenseId: row.id,
+        kind: "proof",
+        status: "attached",
+        s3Key: proofKey,
+        filename: `${row.name} proof.pdf`,
+        mimeType: "application/pdf",
+        sizeBytes: proofBytes.byteLength,
+        pageCount: 1,
+        sortOrder: 0,
+      },
+      {
+        id: receiptId,
+        orgId,
+        expenseId: row.id,
+        kind: "receipt",
+        status: "attached",
+        s3Key: receiptKey,
+        filename: `${row.name} receipt.jpg`,
+        mimeType: "image/jpeg",
+        sizeBytes: receiptBytes.byteLength,
+        pageCount: 1,
+        widthPx: 800,
+        heightPx: 1000,
+        sortOrder: 0,
+      },
+    );
+  }
+
+  // Scoped to the expenses this fixture is documenting, never to the organisation: an
+  // org-wide delete would remove real uploaded proofs and receipts (orphaning their stored
+  // objects) and slam the documentation gate shut on every month.
+  await db.delete(schema.expenseDocuments).where(
+    inArray(
+      schema.expenseDocuments.expenseId,
+      rows.map((row) => row.id),
+    ),
+  );
+  await db.insert(schema.expenseDocuments).values(values);
+  console.log(`Attached ${values.length} documents across ${rows.length} expenses.`);
+}
+
 async function main() {
   assertTotals();
 
@@ -137,17 +262,30 @@ async function main() {
   const pool = new Pool({ connectionString });
   const db = drizzle(pool, { schema });
   const clear = process.argv.includes("clear");
+  const docsOnly = process.argv.includes("docs");
 
   try {
-    const orgs = await db.select().from(schema.organizations).limit(1);
+    // Oldest organisation, not "whichever row Postgres returned first" — a fixture that
+    // picks a nondeterministic target is a fixture that eventually writes to the wrong one.
+    const orgs = await db
+      .select()
+      .from(schema.organizations)
+      .orderBy(asc(schema.organizations.createdAt), asc(schema.organizations.id))
+      .limit(1);
     const org = orgs[0];
     if (!org) throw new Error("No organisation found — run `npm run db:seed` first");
+    console.log(`Target organisation: ${org.name} (${org.id})`);
 
     const items = await db
       .select()
       .from(schema.lineItems)
       .where(eq(schema.lineItems.orgId, org.id));
     const byName = new Map(items.map((item) => [item.name, item.id]));
+
+    if (docsOnly) {
+      await attachDocuments(db, org.id);
+      return;
+    }
 
     if (clear) {
       const removed = await db

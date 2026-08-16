@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 
 import { db } from "@/src/db";
 import { expenseDocuments, monthDocuments } from "@/src/db/schema";
+import { attachmentHeader, INLINE_DISPOSITION } from "@/src/lib/http";
 import { isUuid } from "@/src/lib/ids";
 import { getSession } from "@/src/services/auth/session";
 import { storage } from "@/src/services/storage/driver";
@@ -68,9 +69,7 @@ export async function GET(
   }
 
   const contentType = wantsThumbnail ? "image/jpeg" : document.type;
-  const disposition = wantsThumbnail
-    ? "inline"
-    : `attachment; filename*=UTF-8''${encodeURIComponent(document.name)}`;
+  const disposition = wantsThumbnail ? INLINE_DISPOSITION : attachmentHeader(document.name);
 
   return new NextResponse(new Uint8Array(body), {
     headers: {
