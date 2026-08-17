@@ -88,3 +88,59 @@ describe("housekeeping", () => {
     expect(result.remaining).toBe(LIMITS.loginPerIp.limit - 1);
   });
 });
+
+/**
+ * The password-change budget exists because verifying the current password is an argon2
+ * oracle for anyone holding a stolen session cookie. It is keyed on the user, not an
+ * address — the attacker is already inside the session, so their network position says
+ * nothing about them.
+ */
+describe("password change budget", () => {
+  it("allows a realistic number of genuine attempts", () => {
+    const user = "user-a";
+    for (let attempt = 1; attempt <= 10; attempt += 1) {
+      expect(consume("passwordChange", user, 0).allowed).toBe(true);
+    }
+  });
+
+  it("stops the eleventh, and says how long to wait", () => {
+    const user = "user-b";
+    for (let attempt = 0; attempt < 10; attempt += 1) consume("passwordChange", user, 0);
+
+    const blocked = consume("passwordChange", user, 0);
+    expect(blocked.allowed).toBe(false);
+    expect(blocked.retryAfterSeconds).toBeGreaterThan(0);
+    expect(blocked.retryAfterSeconds).toBeLessThanOrEqual(60 * 60);
+  });
+
+  it("budgets each user separately, so one cannot lock out another", () => {
+    const noisy = "user-c";
+    for (let attempt = 0; attempt < 11; attempt += 1) consume("passwordChange", noisy, 0);
+
+    expect(consume("passwordChange", noisy, 0).allowed).toBe(false);
+    expect(consume("passwordChange", "user-d", 0).allowed).toBe(true);
+  });
+
+  /**
+   * The budget is returned when the password is proved correct, so somebody who mistyped
+   * twice before succeeding is not left throttled for the rest of the hour.
+   */
+  it("is returned on a successful change", () => {
+    const user = "user-e";
+    for (let attempt = 0; attempt < 9; attempt += 1) consume("passwordChange", user, 0);
+
+    reset("passwordChange", user);
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      expect(consume("passwordChange", user, 0).allowed).toBe(true);
+    }
+  });
+
+  it("recovers after the window passes", () => {
+    const user = "user-f";
+    for (let attempt = 0; attempt < 11; attempt += 1) consume("passwordChange", user, 0);
+    expect(consume("passwordChange", user, 0).allowed).toBe(false);
+
+    // One hour and a second later.
+    expect(consume("passwordChange", user, 60 * 60 * 1000 + 1000).allowed).toBe(true);
+  });
+});
