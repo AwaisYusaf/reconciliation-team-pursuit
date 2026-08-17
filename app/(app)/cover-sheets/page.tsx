@@ -2,7 +2,12 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { DownloadButton } from "@/src/components/ui/download-button";
-import { DangerPanel, EmptyState, PageTitle, Subtext } from "@/src/components/ui/surfaces";
+import {
+  DangerPanel,
+  EmptyState,
+  PageHeader,
+  SectionTitle,
+} from "@/src/components/ui/surfaces";
 import { loadLineItemBudgets } from "@/src/db/queries";
 import { coverSheetRows } from "@/src/domain/cover-sheet";
 import { monthLabel } from "@/src/domain/dates";
@@ -50,8 +55,7 @@ export default async function CoverSheetsPage({
   if (lineItems.length === 0) {
     return (
       <div>
-        <PageTitle className="mb-1.5">Cover Sheets</PageTitle>
-        <Subtext className="mb-[26px]">Breakdown documents for {label}.</Subtext>
+        <PageHeader title="Cover Sheets" subtext={`Breakdown documents for ${label}.`} />
         <EmptyState>
           No line items yet — set up your budget in{" "}
           <Link href="/line-items" className="text-accent underline">
@@ -68,11 +72,11 @@ export default async function CoverSheetsPage({
 
   return (
     <div>
-      <div className="flex flex-wrap items-end justify-between gap-5 mb-1.5">
-        <PageTitle>Cover Sheets</PageTitle>
-        <LineItemSelect lineItems={lineItems} selected={selected} />
-      </div>
-      <Subtext className="mb-[26px]">Breakdown documents for {label}.</Subtext>
+      <PageHeader
+        title="Cover Sheets"
+        subtext={`Breakdown documents for ${label}.`}
+        actions={<LineItemSelect lineItems={lineItems} selected={selected} />}
+      />
 
       <div className="flex flex-col gap-10">
         {shown.map((lineItem) => (
@@ -198,5 +202,5 @@ function CoverSheetSection({
 }
 
 function SectionHeading({ title }: { title: string }) {
-  return <h2 className="font-serif text-xl text-ink mb-3">{title}</h2>;
+  return <SectionTitle className="mb-3">{title}</SectionTitle>;
 }

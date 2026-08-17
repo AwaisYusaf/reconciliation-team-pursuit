@@ -162,10 +162,10 @@ export function ExpensesTable({
         </div>
       </div>
 
-      <TableCard minWidth={1180}>
+      <TableCard minWidth={1040}>
         <thead>
           <tr>
-            <Th>Date</Th>
+            <Th sticky>Date</Th>
             <Th>Name</Th>
             <Th>Line Item</Th>
             <Th>Payment Source</Th>
@@ -179,7 +179,7 @@ export function ExpensesTable({
         <tbody>
           {visible.map((row) => (
             <tr key={row.id}>
-              <Td numeric>{formatDateUS(row.date)}</Td>
+              <Td numeric sticky>{formatDateUS(row.date)}</Td>
               <Td>{row.name}</Td>
               <Td>{row.lineItemName}</Td>
               <Td className="text-[15px] text-sub leading-snug">{row.paymentSource}</Td>

@@ -48,10 +48,10 @@ export default async function DashboardPage() {
         </EmptyState>
       ) : (
         <>
-          <TableCard minWidth={860}>
+          <TableCard minWidth={760}>
             <thead>
               <tr>
-                <Th>Line Item</Th>
+                <Th sticky>Line Item</Th>
                 <Th align="right">Budget</Th>
                 <Th align="right">Spent This Month</Th>
                 <Th align="right">Total Spent</Th>
@@ -61,7 +61,7 @@ export default async function DashboardPage() {
             <tbody>
               {rows.map((row) => (
                 <tr key={row.lineItem.id}>
-                  <Td>{row.lineItem.name}</Td>
+                  <Td sticky>{row.lineItem.name}</Td>
                   <Td align="right" numeric>
                     {formatMoney(row.lineItem.scheduledValueCents)}
                   </Td>

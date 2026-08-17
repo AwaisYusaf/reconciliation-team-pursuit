@@ -6,6 +6,7 @@ import { getSession } from "@/src/services/auth/session";
 import { asc, eq } from "drizzle-orm";
 
 import { OnboardingLineItemsForm } from "./line-items-form";
+import { Eyebrow, PageTitle } from "@/src/components/ui/surfaces";
 
 export const metadata = { title: "Set up your budget — Grant Expense Reconciliation" };
 
@@ -37,11 +38,9 @@ export default async function OnboardingLineItemsPage() {
       : STARTER_NAMES.map((name) => ({ name, budget: "" }));
 
   return (
-    <div className="w-full max-w-[720px] bg-surface border border-line rounded-[4px] p-8">
-      <div className="text-[13px] uppercase tracking-[0.1em] text-sub font-bold">Step 1 of 2</div>
-      <h1 className="font-serif text-[28px] font-bold leading-tight mt-2.5 mb-2 text-ink">
-        Set up your budget line items
-      </h1>
+    <div className="w-full max-w-[720px] bg-surface border border-line rounded-[4px] p-5 sm:p-8">
+      <Eyebrow>Step 1 of 2</Eyebrow>
+      <PageTitle className="leading-tight mt-2.5 mb-2">Set up your budget line items</PageTitle>
       <p className="text-[15px] text-sub leading-relaxed m-0 mb-[26px] max-w-[60ch]">
         These are the categories your funder approved. You can change them later.
       </p>

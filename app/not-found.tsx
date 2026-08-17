@@ -1,11 +1,12 @@
 import Link from "next/link";
+import { PageTitle } from "@/src/components/ui/surfaces";
 
 /** Root 404, for paths outside the authenticated shell. */
 export default function NotFound() {
   return (
     <div className="min-h-screen bg-paper flex items-center justify-center px-6">
       <div className="max-w-[440px] text-center">
-        <h1 className="font-serif text-[28px] font-bold text-ink mb-3">Not found</h1>
+        <PageTitle className="mb-3">Not found</PageTitle>
         <p className="text-[15px] text-sub leading-relaxed mb-6">
           That page does not exist.
         </p>

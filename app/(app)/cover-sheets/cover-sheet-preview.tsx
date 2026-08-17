@@ -38,7 +38,14 @@ export function CoverSheetPreview({
   showMissingProofPlaceholders: boolean;
 }) {
   return (
-    <div className="bg-white border border-line rounded-lg p-10 max-w-[820px] text-black [font-family:Aptos,Calibri,Carlito,system-ui,sans-serif]">
+    <div className="bg-white border border-line rounded-lg max-w-[820px] overflow-x-auto">
+      {/*
+        The document scrolls at a readable minimum rather than compressing to fit. Squeezing
+        it into a phone's width put about eleven characters on a line of the Role column,
+        which defeats the point of a preview that is meant to show exactly what the City
+        receives. Padding steps down as well, since 40px each side was a quarter of the card.
+      */}
+      <div className="min-w-[560px] p-5 sm:p-8 lg:p-10 text-black [font-family:Aptos,Calibri,Carlito,system-ui,sans-serif]">
       <h2 className="text-center font-bold text-[15px] mb-6">{title}</h2>
 
       <table className="w-full border-collapse text-[13px]">
@@ -118,6 +125,7 @@ export function CoverSheetPreview({
           )}
         </section>
       ))}
+      </div>
     </div>
   );
 }

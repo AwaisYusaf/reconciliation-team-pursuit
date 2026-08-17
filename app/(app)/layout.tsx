@@ -37,21 +37,25 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   return (
     <div className="min-h-screen bg-paper">
       <header className="no-print">
-        <div className="bg-surface border-b border-line px-6 py-[18px] flex flex-wrap gap-4 items-start justify-between">
-          <div>
-            <div className="font-serif text-2xl font-bold leading-tight text-ink">
+        <div className="bg-surface border-b border-line px-4 sm:px-6 py-3 sm:py-[18px] flex gap-4 items-center justify-between">
+          <div className="min-w-0">
+            {/* Truncates rather than wrapping: a long organisation name would otherwise push
+                the log-out control onto its own row on a phone. */}
+            <div className="font-serif text-lg sm:text-xl lg:text-2xl font-bold leading-tight text-ink truncate">
               {session.orgName}
             </div>
-            <div className="text-[15px] text-sub mt-1">Grant Expense Reconciliation</div>
+            <div className="text-[13px] sm:text-[15px] text-sub mt-0.5 sm:mt-1 truncate">
+              Grant Expense Reconciliation
+            </div>
           </div>
-          <form action={signOutAction}>
-            <Button type="submit" variant="secondary" className="min-h-12 text-[15px]">
+          <form action={signOutAction} className="shrink-0">
+            <Button type="submit" variant="secondary" className="min-h-11 sm:min-h-12 text-[15px]">
               Log out
             </Button>
           </form>
         </div>
 
-        <div className="bg-surface border-b border-line px-6 pt-4">
+        <div className="bg-surface border-b border-line px-4 sm:px-6 pt-3 sm:pt-4">
           <div className="max-w-[1100px] mx-auto">
             <MonthSelector months={months} activeMonth={activeMonth} />
             <AppNav />
@@ -59,7 +63,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         </div>
       </header>
 
-      <main className="max-w-[1100px] mx-auto px-6 pt-8 pb-16">{children}</main>
+      <main className="max-w-[1100px] mx-auto px-4 sm:px-6 pt-6 sm:pt-8 pb-12 sm:pb-16">
+        {children}
+      </main>
       <AppToaster />
     </div>
   );

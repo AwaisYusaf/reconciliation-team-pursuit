@@ -8,6 +8,11 @@ import { cn } from "@/src/lib/cn";
 /**
  * The nine primary tabs, in the order the client approved.
  * Active tab: bold ink with a 3px accent underline; inactive: secondary text.
+ *
+ * On a phone the row scrolls sideways instead of wrapping. Wrapping put nine links on four
+ * ragged rows and made the header 545px tall — two thirds of a 812px screen before a single
+ * figure appeared. Scrolling keeps the header one row high at every width, and the active
+ * tab is scrolled into view on load so the user can see where they are.
  */
 export const NAV_ITEMS = [
   { label: "Dashboard", href: "/" },
@@ -20,6 +25,16 @@ export const NAV_ITEMS = [
   { label: "Line Items", href: "/line-items" },
   { label: "Settings", href: "/settings" },
 ] as const;
+
+/**
+ * Bring the active tab into view in the scrolled row.
+ *
+ * `nearest` rather than `center` so a tab already visible is left alone — otherwise every
+ * navigation would jerk the row sideways for no reason.
+ */
+function scrollActiveIntoView(node: HTMLAnchorElement | null): void {
+  node?.scrollIntoView({ block: "nearest", inline: "nearest" });
+}
 
 function matches(pathname: string, href: string): boolean {
   if (href === "/") return pathname === "/";
@@ -35,7 +50,12 @@ export function AppNav() {
   )[0]?.href;
 
   return (
-    <nav className="flex flex-wrap gap-6 mt-[18px]" aria-label="Primary">
+    <nav
+      // The negative margin lets the scrolled row bleed to the screen edges, so a partially
+      // visible tab reads as "there is more this way" rather than as a clipped mistake.
+      className="-mx-4 sm:mx-0 px-4 sm:px-0 flex gap-5 sm:gap-6 mt-4 sm:mt-[18px] overflow-x-auto lg:flex-wrap lg:overflow-visible [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+      aria-label="Primary"
+    >
       {NAV_ITEMS.map((item) => {
         const active = item.href === activeHref;
         return (
@@ -43,8 +63,9 @@ export function AppNav() {
             key={item.href}
             href={item.href}
             aria-current={active ? "page" : undefined}
+            ref={active ? scrollActiveIntoView : undefined}
             className={cn(
-              "pt-3 pb-[13px] text-base border-b-[3px] transition-colors",
+              "pt-2.5 pb-3 sm:pt-3 sm:pb-[13px] text-[15px] sm:text-base border-b-[3px] transition-colors whitespace-nowrap",
               active
                 ? "text-ink font-bold border-accent"
                 : "text-sub font-normal border-transparent hover:text-ink",

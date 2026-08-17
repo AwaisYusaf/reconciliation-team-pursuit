@@ -2,7 +2,14 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { DownloadButton } from "@/src/components/ui/download-button";
-import { Card, DangerPanel, EmptyState, PageTitle, Subtext } from "@/src/components/ui/surfaces";
+import {
+  Card,
+  CARD_PADDING,
+  DangerPanel,
+  EmptyState,
+  PageHeader,
+  SectionTitle,
+} from "@/src/components/ui/surfaces";
 import { TableCard, Td, Th } from "@/src/components/ui/table";
 import { formatDateUS, monthLabel, todayIso } from "@/src/domain/dates";
 import { formatMoney } from "@/src/domain/format";
@@ -35,18 +42,20 @@ export default async function PacketPage() {
 
   return (
     <div>
-      <div className="flex flex-wrap items-start justify-between gap-4 mb-1.5">
-        <PageTitle>Month-End Packet</PageTitle>
-        <SubmittedMarker
-          month={month}
-          // The organisation's calendar date, not UTC's: a packet submitted at 9 pm in
-          // Detroit would otherwise be stamped with tomorrow's date (R2.5, D-26).
-          submittedAt={
-            readiness.submittedAt ? formatDateUS(todayIso(readiness.submittedAt)) : null
-          }
-        />
-      </div>
-      <Subtext className="mb-[26px]">Everything the City receives for {label}.</Subtext>
+      <PageHeader
+        title="Month-End Packet"
+        subtext={`Everything the City receives for ${label}.`}
+        actions={
+          <SubmittedMarker
+            month={month}
+            // The organisation's calendar date, not UTC's: a packet submitted at 9 pm in
+            // Detroit would otherwise be stamped with tomorrow's date (R2.5, D-26).
+            submittedAt={
+              readiness.submittedAt ? formatDateUS(todayIso(readiness.submittedAt)) : null
+            }
+          />
+        }
+      />
 
       {blocked && (
         <DangerPanel title={UI.blockedTitle} className="mb-7 max-w-[820px]">
@@ -80,10 +89,10 @@ export default async function PacketPage() {
           .
         </EmptyState>
       ) : (
-        <TableCard minWidth={720}>
+        <TableCard minWidth={660}>
           <thead>
             <tr>
-              <Th>Line Item</Th>
+              <Th sticky>Line Item</Th>
               <Th align="right">Amount This Month</Th>
               <Th align="right">Records</Th>
               <Th align="right">Documentation Complete</Th>
@@ -92,7 +101,7 @@ export default async function PacketPage() {
           <tbody>
             {readiness.rows.map((row) => (
               <tr key={row.lineItemId}>
-                <Td>{row.name}</Td>
+                <Td sticky>{row.name}</Td>
                 <Td align="right" numeric>
                   {formatMoney(row.amountCents)}
                 </Td>
@@ -109,7 +118,7 @@ export default async function PacketPage() {
               </tr>
             ))}
             <tr>
-              <Td bold>Grand Total</Td>
+              <Td bold sticky>Grand Total</Td>
               <Td align="right" numeric bold>
                 {formatMoney(readiness.totalAmountCents)}
               </Td>
@@ -123,8 +132,8 @@ export default async function PacketPage() {
       )}
 
       <div className="mt-8 grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] items-start">
-        <Card>
-          <h2 className="font-serif text-xl text-ink mb-1">Packet contents</h2>
+        <Card className={CARD_PADDING}>
+          <SectionTitle className="mb-1">Packet contents</SectionTitle>
           <p className="text-sm text-muted mb-4">In the order the City will read them.</p>
 
           <ol className="flex flex-col divide-y divide-line border-t border-line">

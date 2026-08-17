@@ -103,10 +103,10 @@ export default async function ContractSummaryPage() {
         ))}
       </div>
 
-      <TableCard minWidth={980}>
+      <TableCard minWidth={900}>
         <thead>
           <tr>
-            <Th>Description of Work</Th>
+            <Th sticky>Description of Work</Th>
             <Th align="right">Scheduled Value</Th>
             <Th align="right">Previously Billed</Th>
             <Th align="right">This Period</Th>
@@ -129,7 +129,7 @@ export default async function ContractSummaryPage() {
         </tbody>
       </TableCard>
 
-      <Card className="max-w-[460px] mt-7 p-0">
+      <Card className="max-w-[460px] mt-7">
         <ReconciliationRow
           label="Total advances received"
           value={formatMoney(summary.reconciliation.advancesCents)}
@@ -165,7 +165,7 @@ export default async function ContractSummaryPage() {
 function SummaryTableRow({ row, bold = false }: { row: SummaryRow; bold?: boolean }) {
   return (
     <tr>
-      <Td bold={bold}>{row.name}</Td>
+      <Td bold={bold} sticky>{row.name}</Td>
       <Td align="right" numeric bold={bold}>
         {formatMoney(row.scheduledCents)}
       </Td>

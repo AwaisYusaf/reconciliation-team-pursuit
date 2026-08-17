@@ -5,7 +5,7 @@ import { useState, useTransition } from "react";
 
 import { Button } from "@/src/components/ui/button";
 import { Helper, Input, Label, MoneyInput, Select } from "@/src/components/ui/field";
-import { Card, DangerPanel, SectionTitle } from "@/src/components/ui/surfaces";
+import { Card, CARD_PADDING, DangerPanel, SectionTitle } from "@/src/components/ui/surfaces";
 import { TableCard, Td, Th } from "@/src/components/ui/table";
 import { reportResult } from "@/src/components/ui/toast";
 import type { ActionResult } from "@/src/lib/action-result";
@@ -63,9 +63,9 @@ export function SettingsSections({
   return (
     <div className="flex flex-col gap-6">
       {/* -------------------------------------------------------- organisation */}
-      <Card className="px-7 pt-[26px] pb-6">
+      <Card className={CARD_PADDING}>
         <SectionTitle className="mb-5">Organisation</SectionTitle>
-        <div className="grid gap-5 md:grid-cols-2">
+        <div className="grid gap-5 lg:grid-cols-2">
           <div>
             <Label htmlFor="orgName">Organisation name</Label>
             <Input
@@ -95,9 +95,9 @@ export function SettingsSections({
       </Card>
 
       {/* ------------------------------------------------------------ contract */}
-      <Card className="px-7 pt-[26px] pb-6">
+      <Card className={CARD_PADDING}>
         <SectionTitle className="mb-5">Contract</SectionTitle>
-        <div className="grid gap-5 md:grid-cols-2">
+        <div className="grid gap-5 lg:grid-cols-2">
           {[
             ["projectName", "Project name"],
             ["contractNumber", "Contract number"],
@@ -176,9 +176,9 @@ export function SettingsSections({
       </Card>
 
       {/* ------------------------------------------ performance grant & advances */}
-      <Card className="px-7 pt-[26px] pb-6">
+      <Card className={CARD_PADDING}>
         <SectionTitle className="mb-5">Performance grant &amp; advances</SectionTitle>
-        <div className="grid gap-5 md:grid-cols-3">
+        <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
           <div>
             <Label htmlFor="perfScheduled">Performance Grant 1 scheduled value</Label>
             <MoneyInput
@@ -235,7 +235,7 @@ export function SettingsSections({
       </Card>
 
       {/* --------------------------------------------------------------- lists */}
-      <Card className="px-7 pt-[26px] pb-6">
+      <Card className={CARD_PADDING}>
         <SectionTitle className="mb-5">Lists</SectionTitle>
         <div className="grid gap-8 lg:grid-cols-2">
           <LabelList
@@ -260,7 +260,7 @@ export function SettingsSections({
       </Card>
 
       {/* ------------------------------------------------------ vendor library */}
-      <Card className="px-7 pt-[26px] pb-6">
+      <Card className={CARD_PADDING}>
         <SectionTitle className="mb-5">Vendor library</SectionTitle>
         <VendorLibrary vendors={vendors} lineItems={lineItems} pending={pending} run={run} />
         <Helper className="mt-4">
@@ -269,7 +269,7 @@ export function SettingsSections({
       </Card>
 
       {/* -------------------------------------------------------------- account */}
-      <Card className="px-7 pt-[26px] pb-6">
+      <Card className={CARD_PADDING}>
         <SectionTitle className="mb-5">Account</SectionTitle>
         <AccountSection email={email} pending={pending} startTransition={startTransition} />
       </Card>
@@ -544,7 +544,7 @@ function AccountSection({
 
   return (
     <div>
-      <div className="grid gap-5 md:grid-cols-2">
+      <div className="grid gap-5 lg:grid-cols-2">
         <div>
           <Label htmlFor="email">Email</Label>
           <Input id="email" value={email} readOnly className="bg-section text-sub" />

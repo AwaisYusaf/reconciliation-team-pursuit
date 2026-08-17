@@ -4,6 +4,8 @@ import { redirect } from "next/navigation";
 import { signupEnabled } from "@/src/modules/auth/config";
 import { getSession } from "@/src/services/auth/session";
 
+import { PageTitle } from "@/src/components/ui/surfaces";
+
 import { LoginForm } from "./login-form";
 
 export const metadata = { title: "Sign in — Grant Expense Reconciliation" };
@@ -18,9 +20,7 @@ export default async function LoginPage() {
       <div className="font-serif text-[15px] text-sub tracking-[0.02em]">
         Grant Expense Reconciliation
       </div>
-      <h1 className="font-serif text-[28px] font-bold leading-tight mt-2.5 mb-[26px] text-ink">
-        Sign in to your organisation
-      </h1>
+      <PageTitle className="leading-tight mt-2.5 mb-6 sm:mb-[26px]">Sign in to your organisation</PageTitle>
 
       <LoginForm />
 

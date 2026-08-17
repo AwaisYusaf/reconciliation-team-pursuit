@@ -5,7 +5,7 @@ import { useRef, useState, useTransition } from "react";
 import toast from "react-hot-toast";
 
 import { Button } from "@/src/components/ui/button";
-import { Card } from "@/src/components/ui/surfaces";
+import { Card, CARD_PADDING, SectionTitle } from "@/src/components/ui/surfaces";
 import { reportResult } from "@/src/components/ui/toast";
 import { removeMonthDocumentAction } from "@/src/modules/packet/actions";
 import type { MonthDocumentRow } from "@/src/modules/packet/queries";
@@ -79,8 +79,8 @@ export function MonthDocuments({
   })).filter((group) => group.rows.length > 0);
 
   return (
-    <Card className="max-w-[720px]">
-      <h2 className="font-serif text-xl text-ink mb-1">Month documents</h2>
+    <Card className={`${CARD_PADDING} max-w-[720px]`}>
+      <SectionTitle className="mb-1">Month documents</SectionTitle>
       <p className="text-sm text-muted mb-4">
         Bank statements, timesheets and the fiduciary invoice for {monthLabel}. These are
         optional and never block a download.

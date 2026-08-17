@@ -28,31 +28,57 @@ export function TableCard({
 }
 
 const HEAD_BASE =
-  "text-[13px] uppercase tracking-[0.06em] text-sub font-bold px-4 py-3.5 border-b-2 border-ink";
+  "text-[13px] uppercase tracking-[0.06em] text-sub font-bold px-3 sm:px-4 py-3 sm:py-3.5 border-b-2 border-ink";
+
+/**
+ * Keep the identifying column visible while the rest of a wide table scrolls.
+ *
+ * The Expenses table is 1180px against a 325px phone viewport — scrolling sideways otherwise
+ * takes the row's name away with everything else, leaving a row of figures belonging to
+ * nothing. Released at `lg`, where the whole table fits and a sticky column would only cast
+ * a shadow for no reason.
+ */
+const STICKY_FIRST =
+  "sticky left-0 z-10 bg-surface lg:static lg:bg-transparent " +
+  "shadow-[1px_0_0_var(--color-line)] lg:shadow-none";
 
 export function Th({
   align = "left",
+  sticky = false,
   className,
   ...props
-}: ComponentProps<"th"> & { align?: "left" | "right" }) {
+}: ComponentProps<"th"> & { align?: "left" | "right"; sticky?: boolean }) {
   return (
     <th
       scope="col"
-      className={cn(HEAD_BASE, align === "right" ? "text-right" : "text-left", className)}
+      className={cn(
+        HEAD_BASE,
+        align === "right" ? "text-right" : "text-left",
+        sticky && STICKY_FIRST,
+        className,
+      )}
       {...props}
     />
   );
 }
 
-const CELL_BASE = "px-4 py-3.5 border-b border-line text-base text-ink";
+const CELL_BASE =
+  "px-3 sm:px-4 py-3 sm:py-3.5 border-b border-line text-[15px] sm:text-base text-ink";
 
 export function Td({
   align = "left",
   numeric = false,
   bold = false,
+  sticky = false,
   className,
   ...props
-}: ComponentProps<"td"> & { align?: "left" | "right"; numeric?: boolean; bold?: boolean }) {
+}: ComponentProps<"td"> & {
+  align?: "left" | "right";
+  numeric?: boolean;
+  bold?: boolean;
+  /** Pins this cell while the rest of a wide table scrolls. Use on the first column only. */
+  sticky?: boolean;
+}) {
   return (
     <td
       className={cn(
@@ -60,6 +86,7 @@ export function Td({
         align === "right" ? "text-right" : "text-left",
         numeric && "tabular-nums whitespace-nowrap",
         bold && "font-bold",
+        sticky && STICKY_FIRST,
         className,
       )}
       {...props}
