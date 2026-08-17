@@ -17,6 +17,7 @@ import {
 import { attachmentHeader } from "@/src/lib/http";
 import { isUuid } from "@/src/lib/ids";
 import { getSession } from "@/src/services/auth/session";
+import { consume } from "@/src/services/rate-limit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -36,9 +37,24 @@ export async function GET(request: Request) {
 
   // Generation writes storage and pins a permanent row, so it must not be reachable by a
   // cross-site navigation carrying the SameSite=Lax session cookie.
+  // Absent header falls through on purpose: every browser since Safari 16.4 sends it, and
+  // SameSite=Lax plus the same-origin policy already cover the realistic cases — so a
+  // missing header means an old client or a non-browser caller, not an attack to block.
   const site = request.headers.get("Sec-Fetch-Site");
   if (site && site !== "same-origin" && site !== "none") {
     return new NextResponse("Cross-site downloads are not allowed", { status: 403 });
+  }
+
+  // Declared in the architecture and never enforced until now. Generation rasterises
+  // hundreds of pages and can run for minutes, so one authenticated tab could otherwise
+  // queue unbounded work on the single container that also hosts Postgres.
+  const budget = consume("generate", session.orgId);
+  if (!budget.allowed) {
+    const seconds = budget.retryAfterSeconds;
+    return new NextResponse(
+      `Too many documents requested at once. Try again in ${seconds} second${seconds === 1 ? "" : "s"}.`,
+      { status: 429, headers: { "Content-Type": "text/plain; charset=utf-8", "Retry-After": String(seconds) } },
+    );
   }
 
   const params = new URL(request.url).searchParams;

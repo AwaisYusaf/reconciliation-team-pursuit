@@ -49,7 +49,7 @@ Principles:
 
 One module (`services/auth.ts`), no framework. Sized for a single credentials provider with hard revocation requirements:
 
-- **Passwords:** argon2id via `@node-rs/argon2`, minimum 12 characters (no other composition rules). Operator reset runbook per D-24 (script sets a new hash **and deletes all the user's sessions**).
+- **Passwords:** argon2id via `@node-rs/argon2`, minimum 12 characters (no other composition rules). Operator reset per D-24 is `npm run db:reset-password -- --email <address>` (`src/db/reset-password.ts`) — it sets a new hash **and deletes every session for that user**, which is the half that makes it a reset rather than a password change. Run only after confirming identity out of band.
 - **Sessions:** `sessions` table (see data-model). Login: generate a 32-byte random token (`crypto.getRandomValues`), set cookie `session` = base64url(token) with `HttpOnly; Secure; SameSite=Lax; Path=/`; store **only `SHA-256(token)`** as the row id (a DB leak cannot forge cookies). Sliding 30-day expiry: renew `expires_at` when under 15 days remain. Logout deletes the row. **Password change deletes all the user's other sessions.**
 - **Validation:** a single `getSession()` helper resolves cookie → hashed lookup → user + org; **every Server Action and route handler calls it directly** — middleware may redirect for UX but is never the security boundary. `requireOrg(rowOrgId)` asserts session org = target row org on every read/write (verified by the two-org IDOR suite).
 - **CSRF:** mutations live in Server Actions (Next verifies Origin); the binary route handlers (`api/files`, `api/generate`) verify `Origin`/`Sec-Fetch-Site` themselves; `SameSite=Lax` is the second layer.
@@ -83,6 +83,8 @@ One module (`services/auth.ts`), no framework. Sized for a single credentials pr
 ## Deployment & environment
 
 Docker on Mantaq infra: app container (Next standalone + libreoffice + poppler-utils + fonts-crosextra-carlito), Postgres container + volume, reverse proxy (Caddy or nginx) terminating TLS with Let's Encrypt + baseline headers (HSTS, `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`). Host disk encryption per D-07. `/api/healthz` wired to a free external uptime monitor.
+
+Startup (`instrumentation.ts`) refuses to boot production without `DATABASE_URL`, `AUTH_SECRET`, `S3_BUCKET` or a plausible `TRUSTED_PROXY_HOPS`, so a misconfigured deploy fails at start rather than at the first sign-in.
 
 Env: `DATABASE_URL`, `AUTH_SECRET`, `S3_BUCKET`, `S3_REGION`, `AWS_ACCESS_KEY_ID`/`SECRET` (or instance role), `APP_URL`, `TRUSTED_PROXY_HOPS` (**required in production** — login limits are keyed on the client address, and without it every visitor shares one bucket, so an attacker's wrong guesses lock out the real user; the app refuses to start without it, as it does without `S3_BUCKET`), `SIGNUP_ENABLED` (**default false** — Team Pursuit's org is created via signup before gating; flipping to true later requires email verification first, D-15).
 

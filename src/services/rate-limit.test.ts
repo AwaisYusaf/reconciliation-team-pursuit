@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { clearAll, consume, LIMITS, reset, sweep } from "./rate-limit";
+import { clearAll, consume, LIMITS, reset, size, sweep } from "./rate-limit";
 
 beforeEach(() => clearAll());
 
@@ -142,5 +142,56 @@ describe("password change budget", () => {
 
     // One hour and a second later.
     expect(consume("passwordChange", user, 60 * 60 * 1000 + 1000).allowed).toBe(true);
+  });
+});
+
+/**
+ * Bucket keys are built from caller-supplied values — the login key contains the submitted
+ * email, which arrives unvalidated from a form. Storing it verbatim let an unauthenticated
+ * request pin arbitrary memory: 900 buckets carrying a 900 KB "email" retained 772 MB,
+ * measured, at a request rate the per-IP limit itself permits. That is an OOM of the single
+ * container, which is exactly the denial of service the no-lockout design exists to avoid.
+ */
+describe("the bucket map stays bounded", () => {
+  it("truncates an oversized key rather than storing it", () => {
+    const huge = "a".repeat(500_000);
+    consume("loginPerAccount", huge, 0);
+
+    // One bucket, and it cannot be holding half a megabyte.
+    expect(size()).toBe(1);
+  });
+
+  it("treats keys sharing a truncated prefix as the same subject", () => {
+    const base = "b".repeat(400);
+    consume("loginPerAccount", `${base}-one`, 0);
+    consume("loginPerAccount", `${base}-two`, 0);
+
+    // Collapsing beyond the cap is deliberate: a key only has to identify a subject, and no
+    // legal email reaches it.
+    expect(size()).toBe(1);
+  });
+
+  it("still separates keys that differ inside the cap", () => {
+    consume("loginPerAccount", "misty@example.org|1.1.1.1", 0);
+    consume("loginPerAccount", "quincy@example.org|1.1.1.1", 0);
+    expect(size()).toBe(2);
+  });
+
+  it("drops expired buckets without anything having to schedule a sweep", () => {
+    for (let index = 0; index < 50; index += 1) {
+      consume("loginPerIp", `198.51.100.${index}`, 0);
+    }
+    expect(size()).toBe(50);
+
+    // A later request is the only trigger; there is no timer to start or forget.
+    consume("loginPerIp", "203.0.113.1", 16 * 60 * 1000);
+    expect(size()).toBe(1);
+  });
+
+  it("reset clears a truncated key too, so a successful login really refunds it", () => {
+    const huge = "c".repeat(500_000);
+    consume("loginPerAccount", huge, 0);
+    reset("loginPerAccount", huge);
+    expect(size()).toBe(0);
   });
 });

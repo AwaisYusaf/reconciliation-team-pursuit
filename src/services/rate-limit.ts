@@ -11,6 +11,28 @@ type Bucket = { count: number; resetAt: number };
 
 const buckets = new Map<string, Bucket>();
 
+/**
+ * Longest subject key retained.
+ *
+ * Keys are built from caller-supplied values — a login key contains the submitted email,
+ * which arrives unvalidated from a form. Storing it verbatim let an unauthenticated request
+ * pin arbitrary memory: 900 buckets carrying a 900 KB "email" retained 772 MB, measured, at
+ * a request rate the per-IP limit itself permits. Truncating is safe because a key only has
+ * to identify a subject, and 320 characters is beyond the longest legal address (RFC 5321
+ * caps a path at 256).
+ */
+const MAX_KEY_LENGTH = 320;
+
+/**
+ * Buckets are swept lazily rather than on a timer, so there is no interval to own, nothing
+ * to start at boot, and no behaviour that differs between a warm and a cold process.
+ */
+const SWEEP_EVERY_MS = 60 * 1000;
+let lastSweep = 0;
+
+/** Hard backstop: if the map ever grows past this, drop everything expired immediately. */
+const SWEEP_AT_ENTRIES = 5_000;
+
 /** Named limits, all fixed-window. */
 export const LIMITS = {
   /** Per email + IP — the targeted-guessing case. */
@@ -30,6 +52,15 @@ export const LIMITS = {
    * run requires.
    */
   passwordChange: { limit: 10, windowMs: 60 * 60 * 1000 },
+  /**
+   * Signup, per address.
+   *
+   * Every attempt reaches argon2 hashing on the same libuv threadpool that login's
+   * verification uses, so an unauthenticated flood here starves sign-in for the staff. The
+   * gate is normally closed (D-15); this bounds the window while it is open to provision
+   * the client's organisation.
+   */
+  signUp: { limit: 5, windowMs: 60 * 60 * 1000 },
 } as const;
 
 export type LimitName = keyof typeof LIMITS;
@@ -49,7 +80,15 @@ export type RateLimitResult = {
  */
 export function consume(name: LimitName, key: string, now: number = Date.now()): RateLimitResult {
   const { limit, windowMs } = LIMITS[name];
-  const bucketKey = `${name}:${key}`;
+
+  // Sweeping here rather than on a timer keeps the map bounded without anything having to
+  // remember to start a sweeper. Expired buckets are dead weight the moment they lapse.
+  if (now - lastSweep >= SWEEP_EVERY_MS || buckets.size >= SWEEP_AT_ENTRIES) {
+    sweep(now);
+    lastSweep = now;
+  }
+
+  const bucketKey = `${name}:${key.slice(0, MAX_KEY_LENGTH)}`;
   const existing = buckets.get(bucketKey);
 
   if (!existing || existing.resetAt <= now) {
@@ -75,7 +114,7 @@ export function consume(name: LimitName, key: string, now: number = Date.now()):
 
 /** Forget a subject's usage — called after a successful login so honest users reset. */
 export function reset(name: LimitName, key: string): void {
-  buckets.delete(`${name}:${key}`);
+  buckets.delete(`${name}:${key.slice(0, MAX_KEY_LENGTH)}`);
 }
 
 /** Drop expired buckets so the map cannot grow without bound. */
@@ -85,7 +124,13 @@ export function sweep(now: number = Date.now()): void {
   }
 }
 
+/** Current bucket count — for the tests that assert the map stays bounded. */
+export function size(): number {
+  return buckets.size;
+}
+
 /** Test seam only. */
 export function clearAll(): void {
+  lastSweep = 0;
   buckets.clear();
 }

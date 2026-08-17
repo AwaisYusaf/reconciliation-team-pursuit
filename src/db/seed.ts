@@ -23,7 +23,7 @@ import { currentMonthKey } from "../domain/dates";
 import * as schema from "./schema";
 
 const SEED_EMAIL = process.env.SEED_EMAIL ?? "team@teampursuitglobal.org";
-const SEED_PASSWORD = process.env.SEED_PASSWORD ?? "development-only-password";
+const SEED_PASSWORD = process.env.SEED_PASSWORD ?? defaultSeedPassword();
 
 const LINE_ITEMS = [
   { name: "Salary", scheduled: 45869246, opening: 35000000 },
@@ -49,6 +49,23 @@ const SUPPORTING_DOC_TYPES = [
   "Narrative",
   "Other",
 ];
+
+/**
+ * The development fallback.
+ *
+ * Refused in production: this string is in the repository and is printed to stdout, so
+ * seeding a production database without setting SEED_PASSWORD would give the single shared
+ * account a password anyone reading the source already knows.
+ */
+function defaultSeedPassword(): string {
+  if (process.env.NODE_ENV === "production") {
+    throw new Error(
+      "SEED_PASSWORD must be set when seeding in production — the development default is " +
+        "committed to this repository.",
+    );
+  }
+  return "development-only-password";
+}
 
 async function main() {
   const connectionString = process.env.DATABASE_URL;

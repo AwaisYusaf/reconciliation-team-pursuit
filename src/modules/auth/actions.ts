@@ -81,6 +81,20 @@ async function requireSessionOrExpired(): Promise<
  * nginx terminating TLS is 1). We count that many entries back from the right. With no
  * proxies configured the header is ignored altogether.
  */
+/** RFC 5321 caps a forward path at 256 characters; 320 leaves room and refuses the absurd. */
+const MAX_EMAIL_LENGTH = 320;
+
+/**
+ * Whether a proxy-supplied value is plausibly an address.
+ *
+ * Deliberately permissive about *which* address — the point is only that a caller cannot
+ * substitute unbounded arbitrary text for their identity, not to parse every IPv6 form.
+ */
+function isIpAddress(value: string): boolean {
+  if (value.length > 45) return false; // longest IPv6 with an embedded IPv4
+  return /^[0-9a-fA-F:.]+$/.test(value) && /[0-9a-fA-F]/.test(value);
+}
+
 async function clientIp(): Promise<string> {
   const store = await headers();
   const hops = Number(process.env.TRUSTED_PROXY_HOPS ?? "0");
@@ -90,10 +104,14 @@ async function clientIp(): Promise<string> {
     if (forwarded) {
       const entries = forwarded.split(",").map((entry) => entry.trim()).filter(Boolean);
       const candidate = entries[entries.length - hops];
-      if (candidate) return candidate;
+      if (candidate && isIpAddress(candidate)) return candidate;
     }
-    const real = store.get("x-real-ip");
-    if (real) return real.trim();
+    // Only accepted when it actually looks like an address. Unvalidated, this header let a
+    // caller send a fresh nonce per request, landing every attempt in a virgin bucket and
+    // making both login budgets unreachable — unbounded guessing against the one shared
+    // account, behind which there is deliberately no lockout.
+    const real = store.get("x-real-ip")?.trim();
+    if (real && isIpAddress(real)) return real;
   }
 
   // Without a proxy count the client cannot be identified, so every visitor shares one
@@ -120,6 +138,14 @@ export async function signInAction(
   const password = String(formData.get("password") ?? "");
 
   if (!email || !password) return fail(UI.signInMissingFields);
+
+  // Checked before the value reaches a rate-limit key. The key is derived from this string,
+  // and an unbounded one lets an unauthenticated caller pin arbitrary memory in the bucket
+  // map. RFC 5321 caps a forward path at 256 characters, so anything longer is not an
+  // address and is refused with the same wording as any other unknown one.
+  if (email.length > MAX_EMAIL_LENGTH || !email.includes("@")) {
+    return fail(UI.signInUnknownEmail);
+  }
 
   // Two budgets: one bounds targeted guessing, one bounds the argon2 CPU an attacker
   // can burn by rotating email addresses from a single source.
@@ -182,6 +208,20 @@ export async function signUpAction(
   formData: FormData,
 ): Promise<ActionResult> {
   if (!signupEnabled()) return fail(UI.signupsClosed);
+
+  // Someone already signed in has an organisation; letting them mint another silently swaps
+  // them onto an empty one and leaves the first orphaned.
+  try {
+    await requireSession();
+    return fail("You are already signed in. Log out first to create another organisation.");
+  } catch {
+    // Not signed in, which is the expected case here.
+  }
+
+  // Bounded before argon2 is reached: hashing runs on the same threadpool login's
+  // verification uses, so an unauthenticated flood here would starve sign-in.
+  const budget = consume("signUp", await clientIp());
+  if (!budget.allowed) return fail(tooManyAttempts(budget.retryAfterSeconds));
 
   const parsed = signUpSchema.safeParse({
     orgName: formData.get("orgName") ?? "",

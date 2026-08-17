@@ -13,6 +13,7 @@ import { db } from "@/src/db";
 import { organizations, sessions, users } from "@/src/db/schema";
 
 import {
+  exceedsMaxAge,
   generateSessionToken,
   hashSessionToken,
   isExpired,
@@ -64,6 +65,7 @@ export async function resolveSession(
   const rows = await db
     .select({
       expiresAt: sessions.expiresAt,
+      createdAt: sessions.createdAt,
       userId: users.id,
       email: users.email,
       orgId: organizations.id,
@@ -82,7 +84,9 @@ export async function resolveSession(
   const row = rows[0];
   if (!row) return null;
 
-  if (isExpired(row.expiresAt, now)) {
+  // The sliding window has no end of its own: a session touched once a month renews forever.
+  // The absolute cap is what eventually ends a cookie nobody knows was stolen.
+  if (isExpired(row.expiresAt, now) || exceedsMaxAge(row.createdAt, now)) {
     await db.delete(sessions).where(eq(sessions.id, tokenHash));
     return null;
   }
