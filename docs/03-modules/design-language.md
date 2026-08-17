@@ -20,9 +20,46 @@ Final prompt = `[PREAMBLE]` + blank line + `[module file → "Claude Design prom
 | doc-yellow | `#FFFF00` | ONLY inside document-preview tables (mimics the real submission docs) |
 | section-bg | `#F1ECE2` | Table section header rows |
 | autofill | `#F3E9DD` | Autofilled field flash |
-| Headings | Georgia serif | h1 28px, h2 20px, org name 24px |
+| Headings | Georgia serif | See the responsive scale below |
 | Body | Arial/Helvetica 15–16px | Tables 16px, column headers 13–14px uppercase letterspaced |
 | Controls | min-height 44px (buttons 48px), radius 3–4px | Primary: accent bg/white text; Secondary: white bg/accent border+text |
+
+## Responsive scale
+
+Breakpoints: **phone** below 640px, **tablet** 640–1023px, **desktop** 1024px and up — i.e.
+Tailwind's `sm:` and `lg:` mark the two boundaries, so components read as "phone value, then
+`sm:`, then `lg:`". Desktop values are the approved design; the smaller steps are additions.
+
+| Level | Phone | Tablet | Desktop | Primitive |
+|---|---|---|---|---|
+| Page title (h1) | 22px | 24px | 28px | `PageTitle` |
+| Section title (h2) | 18px | 20px | 20px | `SectionTitle` |
+| Subsection (h3) | 16px | 17px | 17px | `SubsectionTitle` |
+| Subtext | 15px | 16px | 16px | `Subtext` |
+| Table cell | 15px | 16px | 16px | `Td` |
+| Org name (chrome) | 18px | 20px | 24px | app shell |
+| Page gutter | 16px | 24px | 24px | app shell |
+| Card padding | 16px | 20px | 24px | `CARD_PADDING` |
+
+**Every heading comes from its primitive.** Sizes were literals at each call site once, and
+three screens quietly ended up with a non-bold h2 as a result. A page that writes its own
+`text-[28px]` is a bug, not a variation.
+
+`CARD_PADDING` is a string constant rather than a default inside `Card`, because `cn` joins
+classes without merging them — components compose fixed variants instead of overriding
+utilities (see `src/lib/cn.ts`), so a default would collide with callers that set their own.
+
+Layout rules that follow from the scale:
+
+- The primary nav is one horizontally-scrolling row below `lg`, never wrapped. Wrapping put
+  nine links on four rows and made the header two thirds of a phone screen.
+- A screen's title, subtext and controls go through `PageHeader`. Putting a control in a
+  `justify-between` row with the title makes the subtext wrap below it on a phone, orphaning
+  it from the heading it describes.
+- Wide tables scroll inside their card, never the page, and pin their first column below
+  `lg` (`<Th sticky>` / `<Td sticky>`) so a row stays identifiable while scrolling.
+- Multi-column form grids use `lg:`, not `md:` — at exactly 768px a portrait tablet was
+  getting three fields across at 207px each.
 
 ---
 

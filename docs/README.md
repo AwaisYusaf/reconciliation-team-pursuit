@@ -22,6 +22,7 @@ Docs-first, AI-native project. **These files are the source of truth.** Code ser
 | `04-engineering/review-2026-08-16-generation.md` | Adversarial review of the generation layer (snapshot, workbook, artifact cache, download route) |
 | `04-engineering/review-2026-08-17-outputs.md` | Adversarial review of the cover sheet and packet generators — two critical defects, fixes, and deferred scheduling work |
 | `04-engineering/review-2026-08-17-board.md` | Adversarial review of the screens, actions, auth and spec conformance |
+| `04-engineering/review-2026-08-17-responsive.md` | Mobile and tablet UI review — measurements, the shared scale, and results |
 | `04-engineering/scenarios.md` | The twelve end-to-end scenarios, written before being run, with results |
 
 Reference inputs (not authored by us) live in `../context/`:
