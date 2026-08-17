@@ -14,7 +14,7 @@ import { v7 as uuidv7 } from "uuid";
 
 import { db } from "@/src/db";
 import { isKnownSupportingDocType } from "@/src/modules/settings/labels";
-import { expenseDocuments, expenses, monthDocuments } from "@/src/db/schema";
+import { expenseDocuments, expenses, monthDocuments, organizations } from "@/src/db/schema";
 import type { MonthDocumentCategory } from "@/src/db/schema";
 
 import { storage } from "./driver";
@@ -36,6 +36,39 @@ export type IngestResult =
 export const MAX_DOCUMENTS_PER_EXPENSE = 20;
 /** Per-month cap on packet-level documents (R13.1). */
 export const MAX_MONTH_DOCUMENTS = 50;
+/** Total stored bytes per organisation (R13.1) — a soft cap that blocks new uploads. */
+export const MAX_ORG_BYTES = 500 * 1024 * 1024;
+
+/**
+ * Whether the organisation has room for another file (R13.1).
+ *
+ * Summed from the document rows rather than from the bucket: the rows are the record of
+ * what this organisation is actually responsible for, and a stray object left behind by a
+ * failed write should not count against them. Generated artifacts are excluded for the same
+ * reason — they are the system's own output and can be regenerated, so charging the
+ * organisation for them would make a month unmanageable as its packet grew.
+ */
+async function orgStorageError(orgId: string, incomingBytes: number): Promise<string | null> {
+  const [{ used }] = await db
+    .select({
+      used: sql<number>`
+        coalesce((select sum(size_bytes) from expense_documents where org_id = ${orgId}), 0)
+        + coalesce((select sum(size_bytes) from month_documents where org_id = ${orgId}), 0)
+      `,
+    })
+    .from(organizations)
+    .where(eq(organizations.id, orgId))
+    .limit(1);
+
+  if (Number(used) + incomingBytes <= MAX_ORG_BYTES) return null;
+
+  const usedMb = Math.round(Number(used) / (1024 * 1024));
+  const limitMb = Math.round(MAX_ORG_BYTES / (1024 * 1024));
+  return (
+    `This organisation is using ${usedMb} MB of its ${limitMb} MB of storage, and this file ` +
+    "would take it over. Remove some documents from an earlier month, or contact Mantaq."
+  );
+}
 
 function precheck(file: { size: number; type: string }): string | null {
   if (file.size > MAX_UPLOAD_BYTES) {
@@ -102,6 +135,9 @@ export async function ingestExpenseDocument(input: {
     return { ok: false, error: `An expense can hold at most ${MAX_DOCUMENTS_PER_EXPENSE} files.` };
   }
 
+  const quotaError = await orgStorageError(input.orgId, input.file.size);
+  if (quotaError) return { ok: false, error: quotaError };
+
   const inspection = await inspectUpload({
     body: Buffer.from(await input.file.arrayBuffer()),
     declaredMimeType: input.file.type,
@@ -167,6 +203,9 @@ export async function ingestMonthDocument(input: {
   if (total >= MAX_MONTH_DOCUMENTS) {
     return { ok: false, error: `A month can hold at most ${MAX_MONTH_DOCUMENTS} documents.` };
   }
+
+  const quotaError = await orgStorageError(input.orgId, input.file.size);
+  if (quotaError) return { ok: false, error: quotaError };
 
   const inspection = await inspectUpload({
     body: Buffer.from(await input.file.arrayBuffer()),

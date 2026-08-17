@@ -13,7 +13,13 @@ import "server-only";
 import { cookies } from "next/headers";
 import { cache } from "react";
 
-import { createSession, deleteOtherSessions, deleteSession, resolveSession } from "./store";
+import {
+  createSession,
+  deleteExpiredSessions,
+  deleteOtherSessions,
+  deleteSession,
+  resolveSession,
+} from "./store";
 import { SESSION_COOKIE, sessionCookieOptions } from "./tokens";
 
 export type { SessionContext } from "./store";
@@ -94,11 +100,25 @@ export function assertOrgAccess(
 /**
  * Start a session and set the cookie. Only callable from a Server Action or Route
  * Handler — Next.js forbids setting cookies while rendering.
+ *
+ * Any session the caller was already holding on this device is replaced rather than left
+ * behind. Signing in repeatedly otherwise accumulates live rows that nothing collects, and
+ * each one is an independent way back into the account — so a shared laptop signed in and
+ * "logged out" by closing the tab would leave a usable session for the next person.
  */
 export async function startSession(userId: string): Promise<void> {
-  const token = await createSession(userId);
   const store = await cookies();
+
+  const previous = store.get(SESSION_COOKIE)?.value;
+  if (previous) await deleteSession(previous);
+
+  const token = await createSession(userId);
   store.set(SESSION_COOKIE, token, sessionCookieOptions());
+
+  // Opportunistic housekeeping: expired rows are unusable but accumulate forever without a
+  // sweep, and login is the natural moment to pay for it. Best-effort — a failure here must
+  // never stop someone signing in.
+  void deleteExpiredSessions().catch(() => {});
 }
 
 /** End the current session: delete the row, clear the cookie. */

@@ -23,6 +23,7 @@ import { isValidIsoDate } from "@/src/domain/dates";
 import { parseMoneyToCents } from "@/src/domain/money";
 import { fail, ok, type ActionResult } from "@/src/lib/action-result";
 import { actionSession } from "@/src/lib/action-session";
+import { consume, reset as resetLimit } from "@/src/services/rate-limit";
 import { isUuid } from "@/src/lib/ids";
 import { hashPassword, validatePasswordPolicy, verifyPassword } from "@/src/services/auth/passwords";
 import { revokeOtherSessions } from "@/src/services/auth/session";
@@ -296,6 +297,15 @@ export async function changePasswordAction(input: {
   const current = await actionSession();
   if ("expired" in current) return current.expired;
 
+  // Verifying the current password is an argon2 oracle for anyone holding a stolen cookie,
+  // so it is bounded. Keyed on the user rather than an address: the attacker here is already
+  // inside the session, so their network position tells us nothing.
+  const budget = consume("passwordChange", current.userId);
+  if (!budget.allowed) {
+    const minutes = Math.ceil(budget.retryAfterSeconds / 60);
+    return fail(`Too many password attempts. Try again in ${minutes} minute${minutes === 1 ? "" : "s"}.`);
+  }
+
   const [user] = await db
     .select({ id: users.id, passwordHash: users.passwordHash })
     .from(users)
@@ -320,6 +330,9 @@ export async function changePasswordAction(input: {
     .where(eq(users.id, current.userId));
 
   await revokeOtherSessions(current.userId);
+  // The password is now known-good, so the budget spent proving it is returned — an honest
+  // user who mistyped twice before succeeding is not left throttled.
+  resetLimit("passwordChange", current.userId);
 
   return ok();
 }

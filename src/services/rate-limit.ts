@@ -21,6 +21,15 @@ export const LIMITS = {
   presign: { limit: 60, windowMs: 60 * 1000 },
   /** Document generation, per organisation. */
   generate: { limit: 6, windowMs: 60 * 1000 },
+  /**
+   * Password change, per user.
+   *
+   * The current password is verified before the new one is accepted, so without a bound
+   * anyone holding a stolen session cookie has an unlimited argon2 oracle against it. Ten
+   * genuine attempts in an hour is far more than a person needs and far less than a guessing
+   * run requires.
+   */
+  passwordChange: { limit: 10, windowMs: 60 * 60 * 1000 },
 } as const;
 
 export type LimitName = keyof typeof LIMITS;
