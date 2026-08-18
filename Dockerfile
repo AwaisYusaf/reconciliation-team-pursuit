@@ -21,6 +21,16 @@ WORKDIR /app
 
 # Dependencies first, so a code change does not reinstall them.
 COPY package.json package-lock.json ./
+
+# Match the npm that wrote package-lock.json. The version is read out of package.json's
+# `packageManager` field rather than hardcoded, so the two can never drift apart.
+#
+# This is not housekeeping: npm 10 (which node:22 bundles) and npm 11 resolve transitive
+# optional dependencies differently, so a lockfile written by 11 makes `npm ci` under 10 fail
+# with "Missing: @emnapi/core@... from lock file" — packages that are present, at a version
+# and position the older resolver does not agree with.
+RUN npm i -g "npm@$(node -p "require('./package.json').packageManager.split('@')[1]")"
+
 # `npm ci` includes devDependencies deliberately: drizzle-kit runs the migrations and tsx
 # runs the operator password reset, and both are needed in the running container.
 RUN npm ci
