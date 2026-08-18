@@ -15,7 +15,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /** Bump when the workbook's layout changes, so cached artifacts rebuild (R10.4). */
-const GENERATOR_VERSION = "summary-1";
+const GENERATOR_VERSION = "summary-2";
 
 /**
  * Download the contract summary workbook for a month.

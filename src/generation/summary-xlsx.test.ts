@@ -104,7 +104,9 @@ describe("Contract Summary sheet", () => {
     expect(salary.getCell(4).value).toBe(45641.12);
     expect(salary.getCell(5).value).toBe(395641.12);
     expect(salary.getCell(7).value).toBe(63051.34);
-    expect(salary.getCell(2).numFmt).toBe('"$"#,##0.00');
+    // Locale-pinned on purpose: a bare `"$"` is localised by Numbers and LibreOffice, which
+    // rendered this workbook with Hong Kong dollars on a reader in another region.
+    expect(salary.getCell(2).numFmt).toBe("[$$-409]#,##0.00");
   });
 
   it("writes percentages already rounded, so Excel cannot round them differently", async () => {

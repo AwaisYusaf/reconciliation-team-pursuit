@@ -2,9 +2,9 @@
  * Contract summary workbook — implements docs/02-outputs/summary-excel-spec.md.
  *
  * Pure: takes a month snapshot, returns bytes. Money is written as numeric dollar values
- * with a `$#,##0.00` format and percentages as fractions with `0%`, never as preformatted
- * strings, so the workbook the City receives stays computable. User-entered text is always
- * written as an explicit string cell, so a leading `=` can never become a formula.
+ * with a US-pinned currency format and percentages as fractions with `0%`, never as
+ * preformatted strings, so the workbook the City receives stays computable. User-entered text
+ * is always written as an explicit string cell, so a leading `=` can never become a formula.
  */
 import ExcelJS from "exceljs";
 
@@ -18,7 +18,15 @@ import type { MonthSnapshot } from "./month-snapshot";
 
 const YELLOW = "FFFFFF00";
 const SECTION = "FFF1ECE2";
-const MONEY_FORMAT = '"$"#,##0.00';
+/**
+ * US dollars, pinned to locale 409 (en-US) rather than written as a bare `"$"`.
+ *
+ * A quoted `"$"` is treated by Numbers and LibreOffice as "the system currency symbol", so
+ * the same file rendered as `HK$523,162.97` on a reader whose region was set to Hong Kong.
+ * The stored numbers were always correct — only the symbol was localised — but this workbook
+ * is submitted to the City, and the machine it is opened on is not ours to configure.
+ */
+const MONEY_FORMAT = "[$$-409]#,##0.00";
 const PERCENT_FORMAT = "0%";
 
 const THIN_BORDER: Partial<ExcelJS.Borders> = {

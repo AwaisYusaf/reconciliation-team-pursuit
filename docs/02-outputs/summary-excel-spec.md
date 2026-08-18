@@ -1,6 +1,6 @@
 # Output Spec — Contract Summary Excel
 
-One workbook per month: `{DocName}_{Month}_{YYYY}_Summary.xlsx` (e.g. `Team_Pursuit_February_2026_Summary.xlsx`). Library: **exceljs** (SheetJS community edition cannot write cell styles — prototype used it, we don't). All money cells number format `$#,##0.00`, all percent cells `0%`, values written as numbers (dollars, not cents) / fractions (0.66), never preformatted strings.
+One workbook per month: `{DocName}_{Month}_{YYYY}_Summary.xlsx` (e.g. `Team_Pursuit_February_2026_Summary.xlsx`). Library: **exceljs** (SheetJS community edition cannot write cell styles — prototype used it, we don't). All money cells number format `[$$-409]#,##0.00`, all percent cells `0%`, values written as numbers (dollars, not cents) / fractions (0.66), never preformatted strings. The currency symbol is pinned to en-US rather than written as a bare `"$"`: Numbers and LibreOffice treat a bare `$` as the system currency, which rendered a delivered workbook in Hong Kong dollars.
 
 ## Sheet 1 — `Contract Summary`
 
@@ -16,7 +16,7 @@ Column widths (chars): 34, 16, 16, 14, 18, 12, 16.
 | n+3 | `Performance Grant 1` row per R7.2 (scheduled = settings, prev = perf_grant_billed, this period 0) |
 | n+4 | `Totals` — entire row bold (base + performance) |
 | n+5 | blank |
-| n+6 | `Total advances received` (col A) · amount (col B, `$#,##0.00`) — R7.4 |
+| n+6 | `Total advances received` (col A) · amount (col B, `[$$-409]#,##0.00`) — R7.4 |
 | n+7 | `Total reconciled to date` (A) · amount (B) |
 | n+8 | `Balance remaining to reconcile` (A) · amount (B) |
 | n+9 | `Percentage of advance payments reconciled` (A) · percent (B, `0%`) |
@@ -34,7 +34,7 @@ Every expense of the month, insertion order grouped by line item (line item sort
 | C | Line Item | 24 | |
 | D | Description | 55 | |
 | E | Payment Source | 30 | R5.1 label *(addition vs prototype — decided)* |
-| F | Subtotal | 12 | `$#,##0.00` |
+| F | Subtotal | 12 | `[$$-409]#,##0.00` |
 | G | Tax | 10 | |
 | H | Fees | 10 | |
 | I | Reimbursable Amount | 18 | subtotal + fees |
