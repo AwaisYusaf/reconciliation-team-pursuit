@@ -6,6 +6,9 @@ and 443 and issues its own Let's Encrypt certificates.
 
 Everything below is shaped by one constraint: **that service must not be disturbed.**
 
+This file explains the shape and covers day-to-day operations. For the first deployment, follow
+[`ec2-first-deploy.md`](ec2-first-deploy.md) — the numbered commands, in order, with checkpoints.
+
 ## Why this shape
 
 | Decision | Reason |
