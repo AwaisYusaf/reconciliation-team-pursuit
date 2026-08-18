@@ -41,8 +41,12 @@ echo "instance: $(curl -s -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.1
 echo "role:     $(curl -s -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/iam/security-credentials/)"
 ```
 
-Write down all three. If `role:` prints nothing, the instance has no role attached — stop and
-attach one, because S3 uploads depend on it.
+Write down all three.
+
+**If `role:` returns a 404 page** (or nothing), the instance has **no IAM role attached**. That
+is what happened on this instance: the-pride-api authenticates to S3 with static access keys in
+its container environment, so nothing ever required an instance role. Phase 0.4 creates and
+attaches one — it is written to cover both cases.
 
 ### 0.2 DNS — do this first, it is the slowest step
 
@@ -107,11 +111,52 @@ aws s3api get-public-access-block --bucket "$BUCKET" --query 'PublicAccessBlockC
 ```
 All four values `true`.
 
-### 0.4 Grant the instance role access to that bucket only
+### 0.4 Create the instance role and grant it access to that bucket only
 
-⚠️ **Touches shared configuration.** The instance role is the same one the-pride-api uses. You
-are *adding* a separate inline policy, not editing its existing ones — the policy below names
-only the new bucket, so it cannot widen or narrow the-pride-api's access.
+⚠️ **Touches the shared instance.** Check first how the-pride-api reaches S3, so you know
+whether attaching a role can affect it. On the **server** — this prints variable *names* only,
+never their values:
+
+```bash
+docker exec the-pride-api-app-1 env | grep -io '^AWS_[A-Z_]*' || echo "no AWS_ env vars"
+```
+
+If that lists `AWS_ACCESS_KEY_ID`, the other service uses static keys and **attaching an
+instance role cannot disturb it**: the AWS SDK credential chain reads environment variables
+before instance metadata, so it keeps using its keys and never reaches the role.
+
+Confirm whether a role already exists, and see the current metadata settings while you are
+there:
+
+```bash
+aws ec2 describe-instances --instance-ids "$INSTANCE_ID" \
+  --query 'Reservations[].Instances[].{Profile:IamInstanceProfile,Metadata:MetadataOptions}'
+```
+
+**If `Profile` is `null`**, create the role and an instance profile for it:
+
+```bash
+export ROLE=teampursuit-ec2
+
+cat > ec2-trust.json <<'JSON'
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    { "Effect": "Allow", "Principal": { "Service": "ec2.amazonaws.com" }, "Action": "sts:AssumeRole" }
+  ]
+}
+JSON
+
+aws iam create-role --role-name "$ROLE" \
+  --assume-role-policy-document file://ec2-trust.json \
+  --description "Instance role for the box running the-pride-api and the reconciliation app"
+```
+
+**If a profile already exists**, skip the two commands above and use its role name as `$ROLE` —
+you are only *adding* an inline policy below, which cannot widen or narrow what the other
+service already has.
+
+Either way, the policy names only the new bucket:
 
 Note the heredoc marker is unquoted, so `$BUCKET` is substituted:
 
@@ -143,8 +188,20 @@ aws iam put-role-policy --role-name "$ROLE" \
   --policy-document file://reconciliation-s3.json
 ```
 
+If you created the role in this step, it also needs an instance profile, attached to the running
+instance. Neither restarts anything:
+
+```bash
+aws iam create-instance-profile --instance-profile-name "$ROLE"
+aws iam add-role-to-instance-profile --instance-profile-name "$ROLE" --role-name "$ROLE"
+aws ec2 associate-iam-instance-profile --instance-id "$INSTANCE_ID" --iam-instance-profile Name="$ROLE"
+```
+
+> Instance profiles take a few seconds to propagate. If the `associate` call fails with
+> `Invalid IAM Instance Profile name`, wait ~15 seconds and run it again.
+
 ✅ **Checkpoint:** `aws iam list-role-policies --role-name "$ROLE"` lists `reconciliation-s3`
-alongside whatever the-pride-api already had. Nothing existing disappeared.
+alongside anything that was already there. Nothing existing disappeared.
 
 ### 0.5 Raise the IMDS hop limit to 2
 
@@ -176,6 +233,24 @@ The change is immediate, needs no reboot, and does not restart any container.
 
 ✅ **Checkpoint:** re-run the `describe-instances` query — `HttpPutResponseHopLimit` is `2` and
 every other field is unchanged from what you just read.
+
+Then prove the whole chain from the **server**. The role can take up to a minute to appear:
+
+```bash
+TOKEN=$(curl -sX PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 300")
+curl -s -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/iam/security-credentials/; echo
+```
+
+That prints the role name. Now the check that actually matters — run **from inside a
+container**, so it exercises the role and the two-hop limit together, exactly as the app will:
+
+```bash
+docker run --rm amazon/aws-cli s3 ls s3://teampursuit-reconciliation && echo "S3 ACCESS OK"
+```
+
+✅ **Checkpoint:** empty output followed by `S3 ACCESS OK` — the bucket exists and is reachable
+from a container. A credentials error means the hop limit has not taken effect; `AccessDenied`
+means the policy names a different bucket than the one in `.env`.
 
 ### 0.6 Create a GitHub deploy key
 
