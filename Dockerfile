@@ -31,9 +31,12 @@ COPY package.json package-lock.json ./
 # and position the older resolver does not agree with.
 RUN npm i -g "npm@$(node -p "require('./package.json').packageManager.split('@')[1]")"
 
-# `npm ci` includes devDependencies deliberately: drizzle-kit runs the migrations and tsx
-# runs the operator password reset, and both are needed in the running container.
-RUN npm ci
+# --include=dev is load-bearing, not belt-and-braces: NODE_ENV=production is set above, and
+# npm reads it and omits devDependencies. Without the flag this installs 189 packages instead
+# of 568 — dropping @tailwindcss/postcss, so `next build` cannot compile globals.css, and
+# dropping drizzle-kit and tsx, so `db:migrate` and `db:reset-password` would fail in the
+# running container. All three are devDependencies this image genuinely needs.
+RUN npm ci --include=dev
 
 COPY . .
 
