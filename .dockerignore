@@ -1,0 +1,12 @@
+# Never ship these into the image.
+node_modules
+.next
+.git
+.storage
+context
+*.log
+
+# Secrets live in the deployment's own .env, mounted at run time.
+.env
+.env.local
+.env.*.local
