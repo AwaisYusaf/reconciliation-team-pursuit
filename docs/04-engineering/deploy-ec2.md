@@ -29,14 +29,39 @@ Everything below is shaped by one constraint: **that service must not be disturb
    instance role — S3 uploads would fail with a credentials error that looks like a bucket
    policy problem. It must be 2.
 
+## Redeploying
+
+After first-time setup, every subsequent release is one command on the box:
+
+```
+cd ~/ngo-expenses && ./deploy.sh
+```
+
+It pulls, builds, migrates, restarts and then **verifies** — it does not report success until
+the container actually serves `/login`. A started container is not a working one:
+`instrumentation.ts` refuses to boot on a missing `AUTH_SECRET` or `S3_BUCKET`, and
+`docker compose ps` still shows that container as up. The script prints the commit it moved
+from and the exact command to roll back to it.
+
+Two variants: `--env-only` recreates the app after an `.env` edit without rebuilding (the
+file is injected at container start, so `restart` would *not* pick up the change, whereas
+`--force-recreate` does), and `--no-pull` releases what is already checked out.
+
+Migrations run as a one-off `migrate` service before the new app starts, so a failed
+migration aborts the deploy with the previous version still serving, rather than putting new
+code on a half-migrated schema. It is behind a compose profile, so `up` never starts it, and
+it carries no `container_name`, so a one-off run cannot collide with a long-lived container.
+
+The script never touches the-pride-api: not its Caddyfile, not its containers, and not the
+shared network, which stays `external`.
+
 ## Operational notes
 
 - **Backups.** `reconciliation-pg-data` (database) and `reconciliation-data` (only used if
   the local storage driver is ever enabled) are Docker named volumes on this instance's EBS
   volume. The nightly `pg_dump` in the architecture document is not yet wired; until it is,
   the database is protected only by EBS snapshots.
-- **Rebuilding** is `docker compose -f docker-compose.prod.yml up -d --build`. It touches
-  only this stack.
+- **Rebuilding** is `./deploy.sh` (see above). It touches only this stack.
 - **The Caddyfile is shared.** It lives in `~/the-pride-api/Caddyfile` and is bind-mounted
   into that project's Caddy container. Editing it is the one action in this runbook that
   touches the other service's files, so: back it up, validate before applying, and reload

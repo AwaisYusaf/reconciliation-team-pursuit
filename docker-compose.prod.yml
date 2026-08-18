@@ -6,8 +6,9 @@
 # Caddy's network, and one site block is added to its Caddyfile — so deploying, restarting
 # or rebuilding this stack never touches the other service.
 #
-#   app      - the Next.js server, reached by Caddy at reconciliation:3000
+#   app      - the Next.js server, reached by Caddy at reconciliation-app:3000
 #   postgres - this app's own database, internal to this stack only
+#   migrate  - one-off schema migration, run by ./deploy.sh; never started by `up`
 
 services:
   app:
@@ -30,6 +31,25 @@ services:
     networks:
       - internal
       - proxy
+
+  # Migrations run here rather than inside the app's start command: two app containers
+  # starting at once would race the migrator, and a failed migration must stop the deploy
+  # rather than leave a half-migrated schema already serving traffic.
+  #
+  # `profiles` keeps it out of `up -d` — it only ever runs when deploy.sh names it. It has
+  # no `container_name` on purpose, so a one-off `compose run` can never collide with a
+  # long-lived container's fixed name. It has no `build:` either: it reuses the tag `app`
+  # builds, which is what makes the migration provably the same code as the release.
+  migrate:
+    image: reconciliation:latest
+    env_file: .env
+    profiles: ['tools']
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: ['npm', 'run', 'db:migrate']
+    networks:
+      - internal
 
   postgres:
     image: postgres:16-alpine
