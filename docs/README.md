@@ -85,8 +85,9 @@ dashboard, the contract summary screen, the packet, the cover sheet and the work
 (R10.2). The production build compiles.
 
 **Remaining:** the generation scheduling work deferred in
-`review-2026-08-17-outputs.md` (single-flight lock, rate limit, wall-clock bound, packet
-memory) · phase-4 hardening (Playwright, Docker, the February test).
+`review-2026-08-17-outputs.md` (single-flight lock, wall-clock bound, packet memory) ·
+phase-4 hardening (Playwright, the February test) · the client figures behind D-13.
+Deployment and the nightly backup regime have landed.
 
 ### Running it locally
 

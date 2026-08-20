@@ -60,10 +60,9 @@ shared network, which stays `external`.
 
 ## Operational notes
 
-- **Backups.** `reconciliation-pg-data` (database) and `reconciliation-data` (only used if
-  the local storage driver is ever enabled) are Docker named volumes on this instance's EBS
-  volume. The nightly `pg_dump` in the architecture document is not yet wired; until it is,
-  the database is protected only by EBS snapshots.
+- **Backups.** See the dedicated section below. The database and upload volumes are Docker
+  named volumes on this instance's EBS volume, so EBS snapshots remain a second line of
+  defence, but the nightly dump to S3 is the primary one.
 - **Rebuilding** is `./deploy.sh` (see above). It touches only this stack.
 - **The Caddyfile is shared.** It lives in `~/the-pride-api/Caddyfile` and is bind-mounted
   into that project's Caddy container. Editing it is the one action in this runbook that
@@ -75,6 +74,117 @@ shared network, which stays `external`.
   It sets a new hash and revokes every session for that user.
 - **Rotating `AUTH_SECRET`** invalidates every session at once. That is the intended response
   to a suspected cookie compromise.
+
+## Backups (D-07)
+
+`pg_dump` runs inside the postgres container, so its version always matches the server it is
+dumping — a mismatch is the usual reason a backup script stops working after an upgrade. The
+dump is piped straight into the app container, which uploads it with the S3 credentials it
+already has. Nothing is written to the host disk, so a backup can never fill the volume the
+database itself is running on.
+
+### Enable it
+
+```bash
+crontab -e
+```
+
+Add, adjusting the path if the clone lives elsewhere:
+
+```
+15 3 * * * /home/ec2-user/ngo-expenses/backup.sh >> /home/ec2-user/backup.log 2>&1
+```
+
+Run it once by hand first, and read the output rather than assuming:
+
+```bash
+cd ~/ngo-expenses && ./backup.sh
+```
+
+✅ **Checkpoint:** `Uploaded and verified backups/daily/<date>.dump`. The uploader reads the
+object back and compares its length, so that line means the bytes are in S3 and readable —
+not merely that a request succeeded.
+
+### Retention
+
+Retention belongs to the bucket, not to the script: a backup job that can delete is a backup
+job that can delete the wrong thing, unattended, at 3am. The script only ever writes. Apply
+the lifecycle rules once, from a shell with admin credentials:
+
+```bash
+cat > backup-lifecycle.json <<'JSON'
+{
+  "Rules": [
+    {
+      "ID": "daily-backups-30-days",
+      "Filter": { "Prefix": "backups/daily/" },
+      "Status": "Enabled",
+      "Expiration": { "Days": 30 },
+      "NoncurrentVersionExpiration": { "NoncurrentDays": 7 }
+    },
+    {
+      "ID": "monthly-backups-13-months",
+      "Filter": { "Prefix": "backups/monthly/" },
+      "Status": "Enabled",
+      "Expiration": { "Days": 400 },
+      "NoncurrentVersionExpiration": { "NoncurrentDays": 30 }
+    }
+  ]
+}
+JSON
+
+aws s3api put-bucket-lifecycle-configuration   --bucket teampursuit-reconciliation   --lifecycle-configuration file://backup-lifecycle.json
+```
+
+That gives 30 daily and 13 months of monthlies (400 days, so twelve are always complete). The
+noncurrent-version rules matter because the bucket has versioning on: without them every
+overwritten object would be kept forever.
+
+A dump taken on the 1st is written twice, to `backups/daily/` and `backups/monthly/`, because
+the two prefixes expire on different schedules and one object cannot be on two of them.
+
+### Restore
+
+The mirror of the backup, and it needs no tooling on the host either. Pick a key — the S3
+console lists them under `backups/` — and pipe it back:
+
+```bash
+cd ~/ngo-expenses
+docker compose -f docker-compose.prod.yml exec -T app \
+  npm run --silent db:backup-fetch -- backups/daily/2026-08-20.dump \
+  | docker compose -f docker-compose.prod.yml exec -T postgres \
+      pg_restore --no-owner --no-privileges -U reconciliation -d reconciliation --clean --if-exists
+```
+
+⚠️ `--clean --if-exists` **drops and recreates every object it restores**, so it replaces the
+current contents of the live database. Restore into a scratch database first if the goal is to
+inspect a backup rather than to roll the system back.
+
+### The drill
+
+D-07 requires a restore actually executed before go-live, not just documented. Run it against
+a scratch database so nothing live is touched:
+
+```bash
+cd ~/ngo-expenses
+docker compose -f docker-compose.prod.yml exec -T postgres createdb -U reconciliation drill
+docker compose -f docker-compose.prod.yml exec -T app \
+  npm run --silent db:backup-fetch -- backups/daily/<date>.dump \
+  | docker compose -f docker-compose.prod.yml exec -T postgres \
+      pg_restore --no-owner --no-privileges -U reconciliation -d drill
+
+# Compare against the live database — counts must match exactly.
+for t in organizations users line_items expenses expense_documents vendor_defaults; do
+  echo "$t live=$(docker compose -f docker-compose.prod.yml exec -T postgres psql -U reconciliation -d reconciliation -tAc "select count(*) from $t")" \
+       "restored=$(docker compose -f docker-compose.prod.yml exec -T postgres psql -U reconciliation -d drill -tAc "select count(*) from $t")"
+done
+
+docker compose -f docker-compose.prod.yml exec -T postgres dropdb -U reconciliation drill
+```
+
+This procedure has been executed against a real dump on a development database: `pg_restore`
+returned 0 and all ten tables, the summed money column and a three-way join matched the
+original exactly. Running it once on the instance is what closes D-07.
 
 ## Rollback
 

@@ -187,7 +187,8 @@ Open `https://reconciliation.teampursuit.org` and sign in.
   `docker compose -f docker-compose.prod.yml exec app npm run db:reset-password -- --email team@teampursuitglobal.org`
 - **Logs:** `docker compose -f docker-compose.prod.yml logs --tail=50 app`
 - **Roll back:** `git reset --hard <sha> && ./deploy.sh --no-pull` — `deploy.sh` prints the sha
-- **Backups:** the nightly `pg_dump` is not wired yet; until it is, take EBS snapshots
+- **Backups:** enable the nightly dump and apply the S3 lifecycle rules — see the Backups
+  section of [`deploy-ec2.md`](deploy-ec2.md). Run the restore drill once before go-live (D-07)
 
 If the app will not start, `instrumentation.ts` refuses to boot on a missing `DATABASE_URL`,
 `AUTH_SECRET`, `S3_BUCKET` or `TRUSTED_PROXY_HOPS`, and the log names which one.

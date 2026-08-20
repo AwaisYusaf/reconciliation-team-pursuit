@@ -16,7 +16,9 @@
     "db:studio": "drizzle-kit studio",
     "db:seed": "tsx src/db/seed.ts",
     "db:fixture": "tsx --conditions=react-server src/db/dev-fixture.ts",
-    "db:reset-password": "tsx --conditions=react-server src/db/reset-password.ts"
+    "db:reset-password": "tsx --conditions=react-server src/db/reset-password.ts",
+    "db:backup-upload": "tsx --conditions=react-server src/db/backup-upload.ts",
+    "db:backup-fetch": "tsx --conditions=react-server src/db/backup-fetch.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1111.0",
