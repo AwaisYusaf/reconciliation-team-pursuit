@@ -72,6 +72,16 @@ async function documentXml(images: CoverImage[][] = IMAGES): Promise<string> {
 }
 
 describe("cover sheet document", () => {
+  it("sets body text at 10 pt and the title at 12 pt, matching the approved sheets", async () => {
+    // Golden-reference conformance (review-2026-08-20-february, D-58). The client's approved
+    // documents declare 11 pt in docDefaults and then override every run to 10 pt, so the
+    // spec's original "11 pt, the theme default" took a value their text never uses.
+    // Half-points: 20 = 10 pt, 24 = 12 pt.
+    const xml = await documentXml();
+    const sizes = [...new Set(xml.match(/<w:sz w:val="(\d+)"\/>/g) ?? [])].sort();
+    expect(sizes).toEqual(['<w:sz w:val="20"/>', '<w:sz w:val="24"/>']);
+  });
+
   it("states lineRule explicitly, so an inline image is not clipped to one line", async () => {
     // Regression: the default paragraph spacing emitted `w:line="240"` with no `w:lineRule`.
     // OOXML reads that omission as "auto" (single spacing), but LibreOffice 7.4 — the build

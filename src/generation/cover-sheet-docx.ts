@@ -44,7 +44,9 @@ const YELLOW = "FFFF00";
 /** Word border widths are in eighths of a point; the spec asks for 0.5 pt. */
 const BORDER_SIZE = 4;
 /** 11 pt and 12 pt, in half-points. */
-const BODY_SIZE = 22;
+// 10 pt, in half-points. Matches the body text of the client's approved sheets, which
+// override their own 11 pt docDefaults on every run — see review-2026-08-20-february (D-58).
+const BODY_SIZE = 20;
 const TITLE_SIZE = 24;
 /** 6 pt and 12 pt, in twips. */
 const PARAGRAPH_AFTER = 120;

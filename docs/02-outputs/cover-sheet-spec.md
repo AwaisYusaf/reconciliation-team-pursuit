@@ -7,7 +7,7 @@ One per line item per month, generated as **.docx** (canonical) and **.pdf** (co
 | Property | Value |
 |---|---|
 | Page | US Letter portrait, 1" margins |
-| Base font | **Aptos 11 pt** (the golden docs' theme default), black. Font fallback chain for environments without Aptos (Linux/LibreOffice container): **Aptos → Calibri → Carlito** (Carlito is metric-compatible with Calibri). The docx references the theme font; the conversion container must have Carlito installed |
+| Base font | **Aptos 10 pt** (what the golden docs' text actually uses — their `docDefaults` say 11 pt, but every run overrides to 10 pt; see `04-engineering/review-2026-08-20-february.md`), black. Font fallback chain for environments without Aptos (Linux/LibreOffice container): **Aptos → Calibri → Carlito** (Carlito is metric-compatible with Calibri). The docx references the theme font; the conversion container must have Carlito installed |
 | Title | Bold, centered, 12 pt: `{docName} {Month YYYY} {Line Item} Breakdown` (e.g. `Team Pursuit February 2026 Analytical Support Breakdown`) |
 | Spacing | Single line spacing; 6 pt after paragraphs; one empty line between title and table |
 

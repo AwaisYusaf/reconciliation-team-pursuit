@@ -23,7 +23,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /** Bump when the sheet's layout changes, so cached artifacts rebuild (R10.4). */
-const GENERATOR_VERSION = "cover-2";
+const GENERATOR_VERSION = "cover-3";
 
 /**
  * Download one line item's cover sheet, as .docx or .pdf.

@@ -27,17 +27,17 @@ development fixture, since the client's real February figures are not entered (D
 
 ## Differences
 
-### 1. Body text is 11 pt where the approved document is 10 pt — needs a decision
+### 1. Body text was 11 pt where the approved document is 10 pt — fixed
 
-The spec says **"Base font: Aptos 11 pt (the golden docs' theme default)"**, and the generator
-implements exactly that (`BODY_SIZE = 22` half-points).
+The spec said **"Base font: Aptos 11 pt (the golden docs' theme default)"**, and the generator
+implemented exactly that (`BODY_SIZE = 22` half-points).
 
 The parenthetical is accurate and misleading at the same time. The golden document's
 `docDefaults` really does say `<w:sz w:val="22"/>` — 11 pt. But no text in it inherits that
 value: **every run overrides to `w:sz="20"`, 10 pt**, with 24 (12 pt) for the title. The 11 pt
 default is a value the document never uses.
 
-So the spec took the document's default rather than its text, and our sheets render one point
+So the spec took the document's default rather than its text, and our sheets rendered one point
 larger than the document the City approved. It is visible, it makes the table taller, and it
 can move where a sheet breaks across pages.
 
@@ -45,8 +45,16 @@ Nothing in the spec's list of deliberate standardizations covers typography — 
 money format (R1.2), canonical wordings, no filler rows, and complete proof blocks. The
 instruction otherwise is "we match their look". On that reading 10 pt should win.
 
-**Not changed, because it alters a client-facing document's appearance and the spec states 11 pt
-explicitly.** Recommendation: change `BODY_SIZE` to 20 and correct the spec's justification.
+**Fixed (D-58).** `BODY_SIZE` is now 20 half-points and the spec's justification is corrected.
+The generated document emits `w:sz="20"` for body and `w:sz="24"` for the title, which is
+exactly what the approved sheets carry, and a test asserts it so the pair cannot drift apart
+again.
+
+Three things had to move together. `page-estimate.ts` had 11 pt baked into its line height and
+its characters-per-line figures; leaving those would have made the estimate drift from the
+renderer, which is the one thing that module exists not to do. All six calibration cases still
+agree with a real LibreOffice render inside ±2 pages. The cover sheet and packet generator
+versions are bumped, because the artifact cache would otherwise keep serving 11 pt sheets.
 
 ### 2. Table width — the standardization, working as intended
 
@@ -87,5 +95,6 @@ The numeric and visual half of this test cannot run yet.
   our tooling.
 
 What this test did establish is that the container of the numbers is right: page, margins,
-table, colours and alignment all match, with the two differences understood and one of them
-recorded above for a decision.
+table, colours, alignment and now type size all match the approved document, with the two
+remaining differences understood — one a deliberate standardization, the other just fixture
+data standing in for figures nobody has entered yet.

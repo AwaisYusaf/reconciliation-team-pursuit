@@ -13,8 +13,8 @@ import { COVER_IMAGE_BOX, COVER_TEXT_HEIGHT_IN, inchesToDocxPixels, fitWithin } 
 /** Usable height of one cover sheet page, in the same 96-DPI pixels images are measured in. */
 const PAGE_HEIGHT_PX = inchesToDocxPixels(COVER_TEXT_HEIGHT_IN);
 
-/** 11 pt line plus 6 pt of paragraph spacing, converted to 96-DPI pixels. */
-const LINE_PX = Math.round(((11 + 6) * 96) / 72);
+/** 10 pt line plus 6 pt of paragraph spacing, converted to 96-DPI pixels. */
+const LINE_PX = Math.round(((10 + 6) * 96) / 72);
 const TITLE_PX = Math.round(((12 + 6) * 96) / 72) + 16;
 const TABLE_HEADER_PX = 34;
 const TABLE_ROW_PX = 30;
@@ -22,14 +22,17 @@ const IMAGE_GAP_PX = 8;
 const HEADING_BEFORE_PX = 16;
 
 /**
- * Characters that fit on one line of the Role column at 11 pt.
+ * Characters that fit on one line of the Role column at 10 pt.
  *
  * The column is 61% of a 6.5" text width; Aptos averages a little over half the point size
- * per character. Approximate on purpose — a row being one line taller than guessed costs a
- * few pixels, well inside the ±2 page tolerance.
+ * per character, so a point smaller fits roughly a tenth more. Approximate on purpose — a row
+ * being one line taller than guessed costs a few pixels, well inside the ±2 page tolerance.
+ *
+ * These move with `BODY_SIZE`: leaving them at the 11 pt values would make the estimate drift
+ * from the renderer, which is the one thing this module exists not to do.
  */
-const ROLE_CHARS_PER_LINE = 52;
-const NARRATIVE_CHARS_PER_LINE = 95;
+const ROLE_CHARS_PER_LINE = 57;
+const NARRATIVE_CHARS_PER_LINE = 104;
 
 export type EstimateRow = {
   role: string;
