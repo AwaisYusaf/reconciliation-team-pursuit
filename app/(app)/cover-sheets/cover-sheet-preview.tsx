@@ -1,10 +1,13 @@
 import { formatMoney } from "@/src/domain/format";
+
+import { CoverSheetProofs } from "./cover-sheet-proofs";
 import { SEE_BELOW } from "@/src/domain/strings";
 import type { CoverSheetRow } from "@/src/domain/cover-sheet";
 
 export type PreviewProof = {
   id: string;
   filename: string;
+  mimeType: string;
   /** Only images have a thumbnail; a PDF proof shows a labelled placeholder instead. */
   isImage: boolean;
 };
@@ -99,24 +102,7 @@ export function CoverSheetPreview({
 
           {row.narrative && <p className="text-[13px] mt-1.5">{row.narrative}</p>}
 
-          {row.proofs.map((proof) =>
-            proof.isImage ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                key={proof.id}
-                src={`/api/files/${proof.id}?thumb=1`}
-                alt={proof.filename}
-                className="block w-full h-auto mt-2 border border-line"
-              />
-            ) : (
-              <div
-                key={proof.id}
-                className="mt-2 border border-line bg-surface-2 px-3 py-4 text-[11px] text-muted"
-              >
-                {proof.filename} — every page appears in the downloaded document
-              </div>
-            ),
-          )}
+          <CoverSheetProofs proofs={row.proofs} />
 
           {showMissingProofPlaceholders && row.proofs.length === 0 && (
             <div className="mt-2 border border-dashed border-danger text-danger px-3 py-5 text-[11px] text-center">

@@ -143,6 +143,7 @@ function CoverSheetSection({
         .map((document) => ({
           id: document.id,
           filename: document.filename,
+          mimeType: document.mimeType,
           // Only images have a stored thumbnail; a PDF proof is labelled instead of broken.
           isImage: document.mimeType.startsWith("image/"),
         })),
