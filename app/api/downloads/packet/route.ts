@@ -19,7 +19,7 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 600;
 
 /** Bump when the packet's layout or ordering changes, so cached artifacts rebuild (R10.4). */
-const GENERATOR_VERSION = "packet-1";
+const GENERATOR_VERSION = "packet-2";
 
 /**
  * Download the month-end packet.

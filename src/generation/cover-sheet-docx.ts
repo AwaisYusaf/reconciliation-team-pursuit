@@ -14,6 +14,7 @@ import {
   Document,
   HeadingLevel,
   ImageRun,
+  LineRuleType,
   Packer,
   Paragraph,
   ShadingType,
@@ -242,7 +243,18 @@ export async function buildCoverSheetDocx(input: CoverSheetInput): Promise<Buffe
       default: {
         document: {
           run: { font: FONT, size: BODY_SIZE, color: "000000" },
-          paragraph: { spacing: { line: 240, after: PARAGRAPH_AFTER } },
+          // `lineRule` is stated explicitly, not left to the default.
+          //
+          // OOXML says a `w:line` with no `w:lineRule` means "auto" — single spacing — but
+          // LibreOffice 7.4 reads the omission as an exact 240-twip line and clips anything
+          // taller to it. Inline images are anything taller: every proof on the cover sheet
+          // collapsed to a 12pt (0.167in) horizontal band, so a page of evidence rendered as
+          // a smear. It reproduces only against the LibreOffice the container ships; the
+          // newer build on a developer's machine renders the same file correctly, which is
+          // why this survived local testing (D-52).
+          paragraph: {
+            spacing: { line: 240, lineRule: LineRuleType.AUTO, after: PARAGRAPH_AFTER },
+          },
         },
       },
     },

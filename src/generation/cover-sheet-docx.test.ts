@@ -72,6 +72,33 @@ async function documentXml(images: CoverImage[][] = IMAGES): Promise<string> {
 }
 
 describe("cover sheet document", () => {
+  it("states lineRule explicitly, so an inline image is not clipped to one line", async () => {
+    // Regression: the default paragraph spacing emitted `w:line="240"` with no `w:lineRule`.
+    // OOXML reads that omission as "auto" (single spacing), but LibreOffice 7.4 — the build
+    // the deployment container ships — reads it as an exact 240-twip line and clips anything
+    // taller. Every proof image on the cover sheet collapsed into a 12pt band, turning pages
+    // of evidence into smears, and the whole sheet converted to a single page.
+    //
+    // It reproduces only against that LibreOffice: a newer one on a developer's machine
+    // renders the same bytes correctly, so nothing but the emitted XML can catch it here.
+    const composed = coverSheetRows(EXPENSES);
+    const buffer = await buildCoverSheetDocx({
+      title: TITLE,
+      rows: composed.rows,
+      totalCents: composed.totalCents,
+      images: IMAGES,
+    });
+    const zip = await JSZip.loadAsync(buffer);
+    const styles = await zip.file("word/styles.xml")!.async("string");
+
+    const spacings = styles.match(/<w:spacing[^/]*\/>/g) ?? [];
+    expect(spacings.length).toBeGreaterThan(0);
+    for (const spacing of spacings) {
+      // Every declaration carrying a line height must say how to interpret it.
+      if (spacing.includes("w:line=")) expect(spacing).toContain('w:lineRule="auto"');
+    }
+  });
+
   it("is a valid Office Open XML package", async () => {
     const composed = coverSheetRows(EXPENSES);
     const buffer = await buildCoverSheetDocx({
