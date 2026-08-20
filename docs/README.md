@@ -26,6 +26,7 @@ Docs-first, AI-native project. **These files are the source of truth.** Code ser
 | `04-engineering/review-2026-08-17-auth.md` | Authentication hardening review — memory-exhaustion DoS, phantom AUTH_SECRET, and the rest |
 | `04-engineering/deploy-ec2.md` | EC2 deployment — why this shape, operations, redeploys, rollback |
 | `04-engineering/ec2-first-deploy.md` | First deployment, step by step: DNS, S3, IAM, swap, clone, Caddy, reboot test |
+| `04-engineering/review-2026-08-20-february.md` | The February test — cover sheet conformance against the client's approved document |
 | `04-engineering/scenarios.md` | The twelve end-to-end scenarios, written before being run, with results |
 
 Reference inputs (not authored by us) live in `../context/`:
