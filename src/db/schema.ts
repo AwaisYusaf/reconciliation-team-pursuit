@@ -34,6 +34,13 @@ const id = () =>
     .primaryKey()
     .$defaultFn(() => uuidv7());
 const cents = (name: string) => bigint(name, { mode: "number" }).notNull().default(0);
+/**
+ * Money that may legitimately be absent, as opposed to zero.
+ *
+ * Same storage as `cents`, without the not-null default: a remembered amount has to be able
+ * to say "never learned", which is a different fact from an amount that really is zero.
+ */
+const nullableCents = (name: string) => bigint(name, { mode: "number" });
 // Column names are given explicitly: without them Drizzle uses the TypeScript property
 // name, which would put camelCase "createdAt" beside snake_case "org_id" and force every
 // hand-written query to quote it.
@@ -373,6 +380,16 @@ export const vendorDefaults = pgTable(
       onDelete: "set null",
     }),
     defaultDescription: text("default_description").notNull().default(""),
+    /**
+     * What this payee last cost, offered as a starting point on the next expense (R8.1).
+     *
+     * Nullable, and deliberately not defaulted to zero: null means "never learned", which is
+     * a different fact from a vendor whose tax really is zero — and most are. Conflating them
+     * would prefill every new expense with a confident $0.00 it never actually learned.
+     */
+    defaultSubtotalCents: nullableCents("default_subtotal_cents"),
+    defaultTaxCents: nullableCents("default_tax_cents"),
+    defaultFeesCents: nullableCents("default_fees_cents"),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },

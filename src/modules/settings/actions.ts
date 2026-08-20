@@ -230,6 +230,10 @@ export async function saveVendorAction(input: {
   name: string;
   defaultLineItemId: string | null;
   defaultDescription: string;
+  /** Blank clears the remembered amount back to "nothing learned" rather than to zero. */
+  defaultSubtotal: string;
+  defaultTax: string;
+  defaultFees: string;
 }): Promise<ActionResult> {
   const current = await actionSession();
   if ("expired" in current) return current.expired;
@@ -256,6 +260,9 @@ export async function saveVendorAction(input: {
       name,
       defaultLineItemId: input.defaultLineItemId,
       defaultDescription: input.defaultDescription.trim(),
+      defaultSubtotalCents: parseMoneyToCents(input.defaultSubtotal),
+      defaultTaxCents: parseMoneyToCents(input.defaultTax),
+      defaultFeesCents: parseMoneyToCents(input.defaultFees),
     })
     .where(and(eq(vendorDefaults.id, input.id), eq(vendorDefaults.orgId, current.orgId)))
     .returning({ id: vendorDefaults.id });

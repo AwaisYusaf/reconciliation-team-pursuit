@@ -15,6 +15,8 @@ import { formatMoney } from "@/src/domain/format";
 import { parseMoneyToCentsOrZero } from "@/src/domain/money";
 import { TAX_NOTE, UI } from "@/src/domain/strings";
 import { SESSION_EXPIRED } from "@/src/lib/action-result";
+
+import { fillFromClick, fillFromTypedName, type VendorFill } from "./vendor-fill";
 import {
   createExpenseAction,
   deleteExpenseAction,
@@ -79,9 +81,7 @@ export function ExpenseForm({ options, remaining, today, activeMonth, existing }
   );
   const [error, setError] = useState<string | null>(null);
   const [autofilled, setAutofilled] = useState(false);
-  const [suggestions, setSuggestions] = useState<
-    Array<{ name: string; lineItemId: string | null; description: string }>
-  >([]);
+  const [suggestions, setSuggestions] = useState<VendorFill[]>([]);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   // The active labels, plus whatever this expense was actually saved with. A retired label
@@ -149,11 +149,10 @@ export function ExpenseForm({ options, remaining, today, activeMonth, existing }
       }
       const exact = result.data.find((row) => row.name.toLowerCase() === term.toLowerCase());
       if (exact && exact.lineItemId) {
-        setValues((current) =>
-          current.lineItemId || current.description
-            ? current
-            : { ...current, lineItemId: exact.lineItemId!, description: exact.description },
-        );
+        // Typing a name is not the same as choosing a vendor: this fires on its own, from
+        // characters the user was typing anyway, so it may only fill blanks. Clicking a
+        // suggestion is deliberate and does overwrite — see `pickSuggestion`.
+        setValues((current) => fillFromTypedName(current, exact));
         setAutofilled(true);
         setTimeout(() => setAutofilled(false), 1400);
         setSuggestions([]);
@@ -166,14 +165,19 @@ export function ExpenseForm({ options, remaining, today, activeMonth, existing }
     };
   }, [values.name, existing]);
 
-  function pickSuggestion(row: { name: string; lineItemId: string | null; description: string }) {
-    setValues((current) => ({
-      ...current,
-      name: row.name,
-      lineItemId: current.lineItemId || (row.lineItemId ?? ""),
-      // Never overwrite text the user has typed — the label says it prints on the cover sheet.
-      description: current.description || row.description,
-    }));
+  /**
+   * Apply a vendor the user actually clicked.
+   *
+   * Clicking is an explicit choice, so it replaces what is already in the fields rather than
+   * quietly declining to — the previous behaviour filled blanks only, which meant picking a
+   * line item first and then choosing a vendor appeared to do nothing at all.
+   *
+   * The subtotal is the exception: it is offered as a starting point, and the amount is the
+   * one field that is genuinely new each time, so a figure already typed is never replaced
+   * by a remembered one.
+   */
+  function pickSuggestion(row: VendorFill) {
+    setValues((current) => fillFromClick(current, row));
     setSuggestions([]);
     setAutofilled(true);
     setTimeout(() => setAutofilled(false), 1400);
@@ -294,16 +298,30 @@ export function ExpenseForm({ options, remaining, today, activeMonth, existing }
           />
           {suggestions.length > 0 && (
             <div className="absolute left-0 right-0 top-full mt-1 bg-surface border border-line rounded-[3px] z-10 max-h-[220px] overflow-y-auto">
-              {suggestions.map((row) => (
-                <button
-                  key={row.name}
-                  type="button"
-                  onClick={() => pickSuggestion(row)}
-                  className="block w-full text-left px-3.5 py-3 text-base border-b border-line last:border-b-0 hover:bg-section min-h-11"
-                >
-                  {row.name}
-                </button>
-              ))}
+              {suggestions.map((row) => {
+                // What clicking will actually put in the form. Shown because the name alone
+                // does not say whether picking this vendor is what you want.
+                const vendorLineItem = options.lineItems.find((item) => item.id === row.lineItemId)?.name;
+                const detail = [vendorLineItem, row.description].filter(Boolean).join(" · ");
+                return (
+                  <button
+                    key={row.name}
+                    type="button"
+                    onClick={() => pickSuggestion(row)}
+                    className="block w-full text-left px-3.5 py-2.5 border-b border-line last:border-b-0 hover:bg-section min-h-11"
+                  >
+                    <span className="flex items-baseline gap-2">
+                      <span className="text-base flex-1 min-w-0 truncate">{row.name}</span>
+                      {row.subtotalCents !== null && (
+                        <span className="text-sm text-sub tabular-nums flex-none">
+                          last {formatMoney(row.subtotalCents)}
+                        </span>
+                      )}
+                    </span>
+                    {detail && <span className="block text-sm text-sub truncate">{detail}</span>}
+                  </button>
+                );
+              })}
             </div>
           )}
         </div>

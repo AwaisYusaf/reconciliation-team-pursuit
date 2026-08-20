@@ -64,8 +64,10 @@ Let `opening` = line item's opening previously-billed balance (setup figure), `e
 
 ## 8. Vendor library & recurring
 
-- **R8.1** Library entries: name → default line item + default description. Add-expense autofill: exact case-insensitive match fills line item + description (visible highlight, still editable); otherwise substring suggestions (max 6).
-- **R8.2** **Auto-learn:** saving an expense upserts its name into the library with the line item + description used (latest write wins). Entries are editable/deletable in Settings.
+- **R8.1** Library entries: name → default line item + default description + the amounts last paid (subtotal, tax, fees). Amounts are nullable: `null` means nothing has been learned, which is **not** the same as a vendor whose tax really is zero. Add-expense autofill has two modes, deliberately different:
+  - **Typed** — an exact case-insensitive match fills line item, description and any blank amount boxes (visible highlight, still editable). It fires from ordinary typing, so it only ever fills blanks and never replaces a choice already made.
+  - **Clicked** — substring suggestions (max 6), each showing the line item, description and last amount it would apply. Clicking is deliberate, so it **overwrites** line item, description, tax and fees. The subtotal is the exception: a figure already typed is never replaced, because the amount is the field that is genuinely new each time.
+- **R8.2** **Auto-learn:** saving an expense upserts its name into the library with the line item, description and amounts used (latest write wins). There is no manual "add vendor" — the library only ever reflects what was actually spent. Entries are editable/deletable in Settings, including their remembered amounts; clearing an amount there restores `null` rather than storing zero.
 - **R8.3** Recurring items: name, fixed amount, line item, optional default description. Salaries are the canonical use (one person = one recurring item at monthly pay). "Add to {month}" creates a normal expense (R4.5); the row shows added-state when an expense with the same name (case-insensitive) + line item exists in the month. **Remove** targets the newest matching expense and requires a confirm dialog whenever that expense has ≥ 1 document. Nothing is ever added automatically.
 
 ## 9. Line item lifecycle

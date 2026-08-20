@@ -129,6 +129,9 @@ Same processing/status fields as expense_documents, plus:
 | name | citext | unique per org |
 | default_line_item_id | uuid FK null | set null on line-item delete |
 | default_description | text | |
+| default_subtotal_cents | bigint null | last amount paid, offered as a starting point |
+| default_tax_cents | bigint null | null = never learned, which is not the same as 0 |
+| default_fees_cents | bigint null | null = never learned, which is not the same as 0 |
 
 ### recurring_items (R8.3)
 | Field | Type | Notes |

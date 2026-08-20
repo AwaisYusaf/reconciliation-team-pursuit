@@ -65,8 +65,12 @@ function toRow(input: ExpenseInput) {
 }
 
 /**
- * The library learns from every save (R8.2): next time this payee is typed, its line item
- * and description are offered automatically.
+ * The library learns from every save (R8.2): next time this payee is typed, its line item,
+ * description and last amounts are offered automatically.
+ *
+ * Amounts are stored as they were saved, including zero — a vendor that genuinely charges no
+ * tax is a fact worth remembering, and is distinct from the null that means nothing has been
+ * learned yet.
  */
 async function learnVendor(orgId: string, row: ReturnType<typeof toRow>): Promise<void> {
   // Uniqueness is a lower(name) expression index, which Drizzle's typed onConflict cannot
@@ -89,6 +93,9 @@ async function learnVendor(orgId: string, row: ReturnType<typeof toRow>): Promis
         name: row.name,
         defaultLineItemId: row.lineItemId,
         defaultDescription: row.description,
+        defaultSubtotalCents: row.subtotalCents,
+        defaultTaxCents: row.taxCents,
+        defaultFeesCents: row.feesCents,
       })
       .where(eq(vendorDefaults.id, existing[0].id));
     return;
@@ -101,6 +108,9 @@ async function learnVendor(orgId: string, row: ReturnType<typeof toRow>): Promis
       name: row.name,
       defaultLineItemId: row.lineItemId,
       defaultDescription: row.description,
+      defaultSubtotalCents: row.subtotalCents,
+      defaultTaxCents: row.taxCents,
+      defaultFeesCents: row.feesCents,
     })
     .onConflictDoNothing();
 }
@@ -274,10 +284,21 @@ export async function removeExpenseDocumentAction(documentId: string): Promise<A
   return ok();
 }
 
+/** One remembered payee, as much of it as the expense form can offer to fill in (R8.1). */
+export type VendorSuggestion = {
+  name: string;
+  lineItemId: string | null;
+  description: string;
+  /** Null means nothing has been learned yet, which is not the same as zero. */
+  subtotalCents: number | null;
+  taxCents: number | null;
+  feesCents: number | null;
+};
+
 /** Vendor autofill lookup (R8.1): exact match fills the form, partials are suggestions. */
 export async function searchVendorsAction(
   query: string,
-): Promise<ActionResult<Array<{ name: string; lineItemId: string | null; description: string }>>> {
+): Promise<ActionResult<VendorSuggestion[]>> {
   const current = await actionSession();
   if ("expired" in current) return current.expired;
 
@@ -289,6 +310,9 @@ export async function searchVendorsAction(
       name: vendorDefaults.name,
       lineItemId: vendorDefaults.defaultLineItemId,
       description: vendorDefaults.defaultDescription,
+      subtotalCents: vendorDefaults.defaultSubtotalCents,
+      taxCents: vendorDefaults.defaultTaxCents,
+      feesCents: vendorDefaults.defaultFeesCents,
     })
     .from(vendorDefaults)
     .where(
