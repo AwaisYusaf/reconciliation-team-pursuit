@@ -8,6 +8,7 @@ import { isUuid } from "@/src/lib/ids";
 import { getSession } from "@/src/services/auth/session";
 import { storage } from "@/src/services/storage/driver";
 import { keyBelongsToOrg, thumbnailKey } from "@/src/services/storage/keys";
+import { canPreviewInline } from "@/src/services/storage/preview";
 
 export const runtime = "nodejs";
 
@@ -16,7 +17,8 @@ export const runtime = "nodejs";
  *
  * The client never sees or sends object keys — it references documents by id, and the key
  * is looked up under the session's organisation. `?thumb=1` returns the preview instead of
- * the original. Originals download as attachments; previews render inline.
+ * the original. Originals download as attachments unless `?inline=1` asks for one of the
+ * renderable types, which the viewer overlay uses to show a receipt without downloading it.
  */
 export async function GET(
   request: Request,
@@ -31,6 +33,9 @@ export async function GET(
   if (!isUuid(id)) return new NextResponse("Not found", { status: 404 });
   const url = new URL(request.url);
   const wantsThumbnail = url.searchParams.get("thumb") === "1";
+  // Rendered in the viewer overlay instead of downloaded. Honoured only for the types the
+  // allowlist in `preview.ts` calls safe; anything else still downloads.
+  const wantsInline = url.searchParams.get("inline") === "1";
 
   const [expenseDoc] = await db
     .select({ key: expenseDocuments.s3Key, name: expenseDocuments.filename, type: expenseDocuments.mimeType })
@@ -69,7 +74,11 @@ export async function GET(
   }
 
   const contentType = wantsThumbnail ? "image/jpeg" : document.type;
-  const disposition = wantsThumbnail ? INLINE_DISPOSITION : attachmentHeader(document.name);
+  const disposition = wantsThumbnail
+    ? INLINE_DISPOSITION
+    : wantsInline && canPreviewInline(document.type)
+      ? INLINE_DISPOSITION
+      : attachmentHeader(document.name);
 
   return new NextResponse(new Uint8Array(body), {
     headers: {

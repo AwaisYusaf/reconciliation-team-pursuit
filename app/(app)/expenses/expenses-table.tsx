@@ -2,9 +2,16 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo, useState, useTransition } from "react";
+import { useCallback, useMemo, useState, useTransition } from "react";
 
 import { Button } from "@/src/components/ui/button";
+import {
+  DocumentThumbnail,
+  inlineSrc,
+  isPdf,
+  thumbnailSrc,
+  useDocumentViewer,
+} from "@/src/components/ui/document-viewer";
 import { Label, Select } from "@/src/components/ui/field";
 import { Card, DangerPanel, EmptyState } from "@/src/components/ui/surfaces";
 import { TableCard, Td, Th } from "@/src/components/ui/table";
@@ -13,6 +20,13 @@ import { formatDateUS } from "@/src/domain/dates";
 import { formatMoney } from "@/src/domain/format";
 import { deleteExpenseAction } from "@/src/modules/expenses/actions";
 
+/** One attached document, as much of it as a row needs to preview it. */
+export type RowDocument = {
+  id: string;
+  filename: string;
+  mimeType: string;
+};
+
 export type ExpenseRow = {
   id: string;
   date: string;
@@ -20,11 +34,9 @@ export type ExpenseRow = {
   lineItemName: string;
   paymentSource: string;
   reimbursableCents: number;
-  proofCount: number;
-  receiptCount: number;
-  supportingCount: number;
-  firstProofId: string | null;
-  firstReceiptId: string | null;
+  proofs: RowDocument[];
+  receipts: RowDocument[];
+  supporting: RowDocument[];
   noReceipt: boolean;
   noReceiptReason: string | null;
   complete: boolean;
@@ -50,6 +62,21 @@ export function ExpensesTable({
   const [sourceFilter, setSourceFilter] = useState(ALL_SOURCES);
   const [confirming, setConfirming] = useState<ExpenseRow | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const { open, viewer } = useDocumentViewer();
+
+  const openDocuments = useCallback(
+    (documents: RowDocument[], index: number) => {
+      open(
+        documents.map((document) => ({
+          src: inlineSrc(document.id),
+          filename: document.filename,
+          mimeType: document.mimeType,
+        })),
+        index,
+      );
+    },
+    [open],
+  );
 
   const visible = useMemo(
     () =>
@@ -187,7 +214,7 @@ export function ExpensesTable({
                 {formatMoney(row.reimbursableCents)}
               </Td>
               <Td>
-                <DocumentCell count={row.proofCount} thumbId={row.firstProofId} />
+                <DocumentCell documents={row.proofs} onOpen={openDocuments} />
               </Td>
               <Td>
                 {row.noReceipt ? (
@@ -195,11 +222,21 @@ export function ExpensesTable({
                     No receipt{row.noReceiptReason ? ` (${row.noReceiptReason})` : ""}
                   </span>
                 ) : (
-                  <DocumentCell count={row.receiptCount} thumbId={row.firstReceiptId} />
+                  <DocumentCell documents={row.receipts} onOpen={openDocuments} />
                 )}
               </Td>
               <Td className="text-sub">
-                {row.supportingCount > 0 ? `${row.supportingCount} attached` : "—"}
+                {row.supporting.length > 0 ? (
+                  <button
+                    type="button"
+                    onClick={() => openDocuments(row.supporting, 0)}
+                    className="text-base underline decoration-line underline-offset-2 hover:opacity-80 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent rounded-[2px]"
+                  >
+                    {row.supporting.length} attached
+                  </button>
+                ) : (
+                  "—"
+                )}
               </Td>
               <Td align="right" className="whitespace-nowrap">
                 <div className="flex gap-4 justify-end">
@@ -224,26 +261,46 @@ export function ExpensesTable({
           No expenses match these filters.
         </div>
       )}
+
+      {viewer}
     </div>
   );
 }
 
-/** Attached count with a preview, or the red MISSING the gate depends on (R4.4). */
-function DocumentCell({ count, thumbId }: { count: number; thumbId: string | null }) {
-  if (count === 0) {
+/**
+ * Attached count with a preview, or the red MISSING the gate depends on (R4.4).
+ *
+ * The whole cell opens the viewer, so the receipt can be checked from the list without
+ * opening the expense for editing.
+ */
+function DocumentCell({
+  documents,
+  onOpen,
+}: {
+  documents: RowDocument[];
+  onOpen: (documents: RowDocument[], index: number) => void;
+}) {
+  if (documents.length === 0) {
     return <span className="text-base font-bold text-danger">MISSING</span>;
   }
+
+  const [first] = documents;
+
   return (
-    <div className="flex items-center gap-2 whitespace-nowrap">
-      {thumbId && (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={`/api/files/${thumbId}?thumb=1`}
-          alt=""
-          className="w-7 h-7 flex-none object-cover border border-line rounded-[2px] bg-section"
-        />
-      )}
-      <span className="text-base">{count} attached</span>
-    </div>
+    <button
+      type="button"
+      onClick={() => onOpen(documents, 0)}
+      title={`Preview ${first.filename}`}
+      className="flex items-center gap-2 whitespace-nowrap text-left rounded-[2px] hover:opacity-80 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
+    >
+      <DocumentThumbnail
+        src={thumbnailSrc(first.id, first.mimeType)}
+        pdf={isPdf(first.mimeType)}
+        size="sm"
+      />
+      <span className="text-base underline decoration-line underline-offset-2">
+        {documents.length} attached
+      </span>
+    </button>
   );
 }

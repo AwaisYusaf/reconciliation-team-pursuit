@@ -10,7 +10,17 @@ import { reimbursableCents } from "@/src/domain/money";
 import { loadMonthExpenses } from "@/src/modules/expenses/queries";
 import { getSession } from "@/src/services/auth/session";
 
-import { ExpensesTable, type ExpenseRow } from "./expenses-table";
+import { ExpensesTable, type ExpenseRow, type RowDocument } from "./expenses-table";
+
+/** The attached documents of one kind, in the shape the row's viewer needs. */
+function viewable(
+  documents: { id: string; kind: string; status: string; filename: string; mimeType: string }[],
+  kind: string,
+): RowDocument[] {
+  return documents
+    .filter((document) => document.kind === kind && document.status === "attached")
+    .map(({ id, filename, mimeType }) => ({ id, filename, mimeType }));
+}
 
 export const metadata = { title: "Expenses — Grant Expense Reconciliation" };
 
@@ -45,11 +55,13 @@ export default async function ExpensesPage() {
       lineItemName: expense.lineItemName,
       paymentSource: expense.paymentSource,
       reimbursableCents: reimbursableCents(expense),
-      proofCount: expense.documents.filter((d) => d.kind === "proof" && d.status === "attached").length,
-      receiptCount: expense.documents.filter((d) => d.kind === "receipt" && d.status === "attached").length,
-      supportingCount: expense.documents.filter((d) => d.kind === "supporting" && d.status === "attached").length,
-      firstProofId: expense.documents.find((d) => d.kind === "proof")?.id ?? null,
-      firstReceiptId: expense.documents.find((d) => d.kind === "receipt")?.id ?? null,
+      // The whole attached set per kind, not a count and a first id: the row opens a viewer
+      // that pages through them, and an expense with three receipts could otherwise only ever
+      // show the first. Only `attached` documents are included — a pending or failed upload
+      // has no bytes to show, which is also what the counts have always meant.
+      proofs: viewable(expense.documents, "proof"),
+      receipts: viewable(expense.documents, "receipt"),
+      supporting: viewable(expense.documents, "supporting"),
       noReceipt: expense.noReceipt,
       noReceiptReason: expense.noReceiptReason,
       complete: status.complete,
