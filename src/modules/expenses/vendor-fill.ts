@@ -24,6 +24,7 @@ export type VendorFill = {
   name: string;
   lineItemId: string | null;
   description: string;
+  paymentSource: string | null;
   subtotalCents: number | null;
   taxCents: number | null;
   feesCents: number | null;
@@ -39,8 +40,27 @@ export function moneyField(cents: number | null): string {
   return cents === null ? "" : centsToDollars(cents).toFixed(2);
 }
 
+/**
+ * A remembered payment source, but only while the label is still in use.
+ *
+ * Labels can be retired. A retired one stays readable on the expenses that already carry it
+ * (R5.2), but must never be put on a new one — so a vendor last paid through a source that
+ * has since been retired simply contributes nothing here.
+ */
+function usablePaymentSource(
+  vendor: VendorFill,
+  activeSources: readonly string[],
+): string | null {
+  if (vendor.paymentSource === null) return null;
+  return activeSources.includes(vendor.paymentSource) ? vendor.paymentSource : null;
+}
+
 /** Applied when the typed name matches a vendor exactly — blanks only. */
-export function fillFromTypedName(current: ExpenseInput, vendor: VendorFill): ExpenseInput {
+export function fillFromTypedName(
+  current: ExpenseInput,
+  vendor: VendorFill,
+  activeSources: readonly string[] = [],
+): ExpenseInput {
   // Something already chosen means the user is past this field; leave the whole form alone.
   if (current.lineItemId || current.description) return current;
 
@@ -48,6 +68,7 @@ export function fillFromTypedName(current: ExpenseInput, vendor: VendorFill): Ex
     ...current,
     lineItemId: vendor.lineItemId ?? current.lineItemId,
     description: vendor.description,
+    paymentSource: current.paymentSource || (usablePaymentSource(vendor, activeSources) ?? ""),
     subtotal: current.subtotal || moneyField(vendor.subtotalCents),
     tax: current.tax || moneyField(vendor.taxCents),
     fees: current.fees || moneyField(vendor.feesCents),
@@ -55,13 +76,18 @@ export function fillFromTypedName(current: ExpenseInput, vendor: VendorFill): Ex
 }
 
 /** Applied when a suggestion is clicked — overwrites, except a subtotal already typed. */
-export function fillFromClick(current: ExpenseInput, vendor: VendorFill): ExpenseInput {
+export function fillFromClick(
+  current: ExpenseInput,
+  vendor: VendorFill,
+  activeSources: readonly string[] = [],
+): ExpenseInput {
   return {
     ...current,
     name: vendor.name,
     // A vendor with no remembered line item must not blank out one already chosen.
     lineItemId: vendor.lineItemId ?? current.lineItemId,
     description: vendor.description || current.description,
+    paymentSource: usablePaymentSource(vendor, activeSources) ?? current.paymentSource,
     subtotal: current.subtotal || moneyField(vendor.subtotalCents),
     tax: moneyField(vendor.taxCents) || current.tax,
     fees: moneyField(vendor.feesCents) || current.fees,

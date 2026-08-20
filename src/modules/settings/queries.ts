@@ -39,6 +39,7 @@ export async function loadSettings(orgId: string) {
         name: vendorDefaults.name,
         defaultLineItemId: vendorDefaults.defaultLineItemId,
         defaultDescription: vendorDefaults.defaultDescription,
+        defaultPaymentSource: vendorDefaults.defaultPaymentSource,
         defaultSubtotalCents: vendorDefaults.defaultSubtotalCents,
         defaultTaxCents: vendorDefaults.defaultTaxCents,
         defaultFeesCents: vendorDefaults.defaultFeesCents,

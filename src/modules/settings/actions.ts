@@ -230,6 +230,7 @@ export async function saveVendorAction(input: {
   name: string;
   defaultLineItemId: string | null;
   defaultDescription: string;
+  defaultPaymentSource: string | null;
   /** Blank clears the remembered amount back to "nothing learned" rather than to zero. */
   defaultSubtotal: string;
   defaultTax: string;
@@ -260,6 +261,7 @@ export async function saveVendorAction(input: {
       name,
       defaultLineItemId: input.defaultLineItemId,
       defaultDescription: input.defaultDescription.trim(),
+      defaultPaymentSource: input.defaultPaymentSource,
       defaultSubtotalCents: parseMoneyToCents(input.defaultSubtotal),
       defaultTaxCents: parseMoneyToCents(input.defaultTax),
       defaultFeesCents: parseMoneyToCents(input.defaultFees),

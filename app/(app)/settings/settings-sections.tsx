@@ -27,6 +27,7 @@ type Vendor = {
   name: string;
   defaultLineItemId: string | null;
   defaultDescription: string;
+  defaultPaymentSource: string | null;
   /** Null means nothing learned yet, which the table shows as "—" rather than as $0.00. */
   defaultSubtotalCents: number | null;
   defaultTaxCents: number | null;
@@ -302,7 +303,13 @@ export function SettingsSections({
       {/* ------------------------------------------------------ vendor library */}
       <Card className={CARD_PADDING}>
         <SectionTitle className="mb-5">Vendor library</SectionTitle>
-        <VendorLibrary vendors={vendors} lineItems={lineItems} pending={pending} run={run} />
+        <VendorLibrary
+          vendors={vendors}
+          lineItems={lineItems}
+          paymentSources={paymentSources}
+          pending={pending}
+          run={run}
+        />
         <Helper className="mt-4">
           The library learns automatically every time you save an expense.
         </Helper>
@@ -432,11 +439,13 @@ function LabelList({
 function VendorLibrary({
   vendors,
   lineItems,
+  paymentSources,
   pending,
   run,
 }: {
   vendors: Vendor[];
   lineItems: Array<{ id: string; name: string }>;
+  paymentSources: LabelRow[];
   pending: boolean;
   run: (work: () => Promise<ActionResult<unknown>>, successMessage: string) => void;
 }) {
@@ -461,11 +470,12 @@ function VendorLibrary({
       {vendors.length === 0 ? (
         <Helper>No vendors learned yet — they appear as you save expenses.</Helper>
       ) : (
-        <TableCard minWidth={1040}>
+        <TableCard minWidth={1220}>
           <thead>
             <tr>
               <Th>Name</Th>
               <Th>Default line item</Th>
+              <Th>Default payment source</Th>
               <Th>Default description</Th>
               <Th align="right">Last amounts</Th>
               <Th align="right" className="w-[170px]" />
@@ -505,6 +515,36 @@ function VendorLibrary({
                       </Select>
                     ) : (
                       lineItems.find((item) => item.id === vendor.defaultLineItemId)?.name ?? "—"
+                    )}
+                  </Td>
+                  <Td className="text-[15px] text-sub leading-snug">
+                    {isEditing ? (
+                      <Select
+                        value={editing.defaultPaymentSource ?? ""}
+                        aria-label="Default payment source"
+                        onChange={(event) =>
+                          setEditing({ ...editing, defaultPaymentSource: event.target.value || null })
+                        }
+                      >
+                        <option value="">None</option>
+                        {/* Retired labels are not offered: R5.2 keeps them readable on the
+                            records that carry them, never newly chosen. The one this vendor
+                            already holds is listed so editing something else cannot silently
+                            discard it. */}
+                        {paymentSources
+                          .filter(
+                            (source) =>
+                              source.active || source.label === editing.defaultPaymentSource,
+                          )
+                          .map((source) => (
+                            <option key={source.id} value={source.label}>
+                              {source.label}
+                              {source.active ? "" : " (retired)"}
+                            </option>
+                          ))}
+                      </Select>
+                    ) : (
+                      vendor.defaultPaymentSource || "—"
                     )}
                   </Td>
                   <Td className="text-[15px] text-sub leading-snug">
@@ -554,6 +594,7 @@ function VendorLibrary({
                                     name: editing.name,
                                     defaultLineItemId: editing.defaultLineItemId,
                                     defaultDescription: editing.defaultDescription,
+                                    defaultPaymentSource: editing.defaultPaymentSource,
                                     defaultSubtotal: editing.subtotal,
                                     defaultTax: editing.tax,
                                     defaultFees: editing.fees,

@@ -387,6 +387,14 @@ export const vendorDefaults = pgTable(
      * a different fact from a vendor whose tax really is zero — and most are. Conflating them
      * would prefill every new expense with a confident $0.00 it never actually learned.
      */
+    /**
+     * The label this payee was last paid through. Null means never learned.
+     *
+     * Stored as the label rather than a foreign key, matching `expenses.payment_source` — the
+     * list is user-editable and a retired label has to stay readable on old records (R5.2).
+     * A remembered label that has since been retired is not offered on a new expense.
+     */
+    defaultPaymentSource: text("default_payment_source"),
     defaultSubtotalCents: nullableCents("default_subtotal_cents"),
     defaultTaxCents: nullableCents("default_tax_cents"),
     defaultFeesCents: nullableCents("default_fees_cents"),

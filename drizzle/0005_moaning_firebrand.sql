@@ -1,0 +1,1 @@
+ALTER TABLE "vendor_defaults" ADD COLUMN "default_payment_source" text;

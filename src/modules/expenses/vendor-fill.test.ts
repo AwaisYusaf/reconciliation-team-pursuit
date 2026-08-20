@@ -19,10 +19,13 @@ const BLANK: ExpenseInput = {
   noReceiptReason: "",
 };
 
+const ACTIVE_SOURCES = ["Paid by us, reimbursement requested", "Paid directly by fiduciary"];
+
 const CANVA: VendorFill = {
   name: "Canva",
   lineItemId: "line-promo",
   description: "Design tool for canvassing materials",
+  paymentSource: "Paid by us, reimbursement requested",
   subtotalCents: 4500,
   taxCents: 250,
   feesCents: 125,
@@ -67,6 +70,52 @@ describe("fillFromTypedName", () => {
   it("does not invent a line item for a vendor that has none", () => {
     const orphaned: VendorFill = { ...CANVA, lineItemId: null };
     expect(fillFromTypedName(BLANK, orphaned).lineItemId).toBe("");
+  });
+});
+
+describe("payment source", () => {
+  it("is filled when the remembered label is still active", () => {
+    expect(fillFromClick(BLANK, CANVA, ACTIVE_SOURCES).paymentSource).toBe(
+      "Paid by us, reimbursement requested",
+    );
+    expect(fillFromTypedName(BLANK, CANVA, ACTIVE_SOURCES).paymentSource).toBe(
+      "Paid by us, reimbursement requested",
+    );
+  });
+
+  it("is withheld once the label has been retired (R5.2)", () => {
+    // A retired label stays readable on records that already carry it, but must never be
+    // put on a new expense — so the vendor contributes nothing here.
+    const retired = ["Paid directly by fiduciary"];
+    expect(fillFromClick(BLANK, CANVA, retired).paymentSource).toBe("");
+    expect(fillFromTypedName(BLANK, CANVA, retired).paymentSource).toBe("");
+  });
+
+  it("does not clear a chosen source when the remembered one is unusable", () => {
+    const chosen = { ...BLANK, paymentSource: "Paid directly by fiduciary" };
+    expect(fillFromClick(chosen, CANVA, ["Paid directly by fiduciary"]).paymentSource).toBe(
+      "Paid directly by fiduciary",
+    );
+  });
+
+  it("overwrites a chosen source on click when the remembered one is active", () => {
+    const chosen = { ...BLANK, paymentSource: "Paid directly by fiduciary" };
+    expect(fillFromClick(chosen, CANVA, ACTIVE_SOURCES).paymentSource).toBe(
+      "Paid by us, reimbursement requested",
+    );
+  });
+
+  it("fills nothing when no active list is supplied, rather than guessing", () => {
+    // Fails safe: a caller that forgets to pass the list cannot resurrect a retired label.
+    expect(fillFromClick(BLANK, CANVA).paymentSource).toBe("");
+  });
+
+  it("is left alone for a vendor that never learned one", () => {
+    const unlearned: VendorFill = { ...CANVA, paymentSource: null };
+    const chosen = { ...BLANK, paymentSource: "Paid directly by fiduciary" };
+    expect(fillFromClick(chosen, unlearned, ACTIVE_SOURCES).paymentSource).toBe(
+      "Paid directly by fiduciary",
+    );
   });
 });
 

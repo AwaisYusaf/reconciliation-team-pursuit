@@ -93,6 +93,7 @@ async function learnVendor(orgId: string, row: ReturnType<typeof toRow>): Promis
         name: row.name,
         defaultLineItemId: row.lineItemId,
         defaultDescription: row.description,
+        defaultPaymentSource: row.paymentSource,
         defaultSubtotalCents: row.subtotalCents,
         defaultTaxCents: row.taxCents,
         defaultFeesCents: row.feesCents,
@@ -108,6 +109,7 @@ async function learnVendor(orgId: string, row: ReturnType<typeof toRow>): Promis
       name: row.name,
       defaultLineItemId: row.lineItemId,
       defaultDescription: row.description,
+      defaultPaymentSource: row.paymentSource,
       defaultSubtotalCents: row.subtotalCents,
       defaultTaxCents: row.taxCents,
       defaultFeesCents: row.feesCents,
@@ -289,6 +291,8 @@ export type VendorSuggestion = {
   name: string;
   lineItemId: string | null;
   description: string;
+  /** Null means never learned. Not offered if the label has since been retired (R5.2). */
+  paymentSource: string | null;
   /** Null means nothing has been learned yet, which is not the same as zero. */
   subtotalCents: number | null;
   taxCents: number | null;
@@ -310,6 +314,7 @@ export async function searchVendorsAction(
       name: vendorDefaults.name,
       lineItemId: vendorDefaults.defaultLineItemId,
       description: vendorDefaults.defaultDescription,
+      paymentSource: vendorDefaults.defaultPaymentSource,
       subtotalCents: vendorDefaults.defaultSubtotalCents,
       taxCents: vendorDefaults.defaultTaxCents,
       feesCents: vendorDefaults.defaultFeesCents,
