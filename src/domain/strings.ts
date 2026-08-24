@@ -30,8 +30,10 @@ export const UI = {
   /** Line that introduces the blocking list (R4.4). */
   blockedIntro:
     "The following records are missing a receipt/justification or proof of payment:",
-  /** Login page — there is no self-serve reset (D-24). */
-  forgotPassword: "Forgot your password? Contact Mantaq.",
+  /** Login page — there is no self-serve reset (D-24); email is the escalation path. */
+  forgotPassword: "Forgot your password? Email",
+  /** The mailbox the login page's "forgot password" link points to (D-24). */
+  supportEmail: "tech@teampursuit.org",
   uploadFailed: "Upload failed — try again.",
   noReceiptReasonRequired: "Enter the reason no receipt is available.",
   duplicateEmail: "An organisation with that email already exists — sign in instead.",
@@ -46,6 +48,12 @@ export const UI = {
   signupsClosed: "Sign-ups are closed.",
   /** m02 — saved, but the documentation gate will still hold this record. */
   savedMissingProof: "Saved — still missing proof of payment.",
+  /** Add Expense caution (non-blocking) — tax excluded from reimbursable (R1.3), so a large
+   *  tax relative to the subtotal isn't a domain-rule violation, just worth a second look. */
+  taxExceedsSubtotalWarning: "Tax is more than the subtotal — double-check this entry.",
+  /** Add Expense caution (non-blocking) — a $0.00 subtotal is allowed, but unusual enough to
+   *  flag rather than save silently. */
+  subtotalIsZeroWarning: "Subtotal is $0.00 — double-check this entry.",
 } as const;
 
 /** Inline explanation beside a disabled download button (m07, R4.3). */

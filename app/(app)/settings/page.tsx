@@ -50,6 +50,7 @@ export default async function SettingsPage() {
           active: row.active,
         }))}
         vendors={data.vendors}
+        vendorCount={data.vendorCount}
         lineItems={data.lineItems}
       />
     </div>

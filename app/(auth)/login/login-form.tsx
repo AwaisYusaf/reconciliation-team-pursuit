@@ -50,7 +50,15 @@ export function LoginForm() {
         {pending ? "Signing in…" : "Sign in"}
       </Button>
 
-      <div className="text-center text-[15px] text-sub mt-5">{UI.forgotPassword}</div>
+      <div className="text-center text-[15px] text-sub mt-5">
+        {UI.forgotPassword}{" "}
+        <a
+          href={`mailto:${UI.supportEmail}`}
+          className="text-accent underline hover:text-accent-dark"
+        >
+          {UI.supportEmail}
+        </a>
+      </div>
     </form>
   );
 }
