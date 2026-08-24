@@ -44,11 +44,12 @@ export function MonthSelector({
 
   return (
     <div className="flex flex-col gap-1.5">
-      <label htmlFor="month-selector" className="block text-[15px] font-semibold text-ink">
+      <label id="month-selector-label" htmlFor="month-selector" className="block text-[15px] font-semibold text-ink">
         Month
       </label>
       <Select
         id="month-selector"
+        aria-labelledby="month-selector-label"
         value={activeMonth}
         disabled={pending}
         onValueChange={(value) => {

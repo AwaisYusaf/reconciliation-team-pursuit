@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 
 import { Button } from "@/src/components/ui/button";
+import { Dialog } from "@/src/components/ui/dialog";
 import { Input, Label, MoneyInput } from "@/src/components/ui/field";
 import { Card, DangerPanel } from "@/src/components/ui/surfaces";
 import { TableCard, Td, Th } from "@/src/components/ui/table";
@@ -96,29 +97,31 @@ export function LineItemsManager({ rows }: { rows: LineItemRow[] }) {
         </DangerPanel>
       )}
 
-      {confirmDelete && (
-        <DangerPanel title="Delete this line item?" className="mb-4">
-          <p className="mb-3">{cascadeConfirmation(confirmDelete.recurring)}</p>
-          <div className="flex gap-3">
-            <Button
-              variant="secondary"
-              disabled={pending}
-              onClick={() =>
-                run(
-                  () => deleteLineItemAction(confirmDelete.id, true),
-                  () => setConfirmDelete(null),
-                  "Line item deleted",
-                )
-              }
-            >
-              Delete anyway
-            </Button>
-            <Button variant="quiet" onClick={() => setConfirmDelete(null)}>
-              Cancel
-            </Button>
-          </div>
-        </DangerPanel>
-      )}
+      <Dialog
+        open={confirmDelete !== null}
+        title="Delete this line item?"
+        dismissLabel="Cancel"
+        onDismiss={() => setConfirmDelete(null)}
+        confirm={{
+          label: "Delete anyway",
+          disabled: pending,
+          onConfirm: () => {
+            const id = confirmDelete!.id;
+            startTransition(async () => {
+              setError(null);
+              const result = await deleteLineItemAction(id, true);
+              // Stays open (Delete disabled via `pending`) until the outcome is known, so the
+              // dialog doesn't vanish out from under a failure the general error banner is
+              // about to show — the dialog would otherwise hide that banner behind its overlay.
+              setConfirmDelete(null);
+              if (reportResult(result, "Line item deleted")) router.refresh();
+              else setError(result.error ?? "Something went wrong.");
+            });
+          },
+        }}
+      >
+        {confirmDelete && cascadeConfirmation(confirmDelete.recurring)}
+      </Dialog>
 
       <TableCard minWidth={900}>
         <thead>

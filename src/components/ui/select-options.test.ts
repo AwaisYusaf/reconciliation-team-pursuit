@@ -83,6 +83,42 @@ describe("Select form submission", () => {
     expect(html).not.toContain('type="hidden"');
   });
 
+  it("submits the first option when uncontrolled with no defaultValue, matching native <select>", () => {
+    const html = renderToStaticMarkup(createElement(Select, { name: "category" }, categories));
+    expect(html).toContain('value="bank_statement"');
+    // The trigger's displayed label must agree with what's actually submitted.
+    expect(html).toContain("Bank statement");
+  });
+
+  it("required: submits through a real (non-hidden) input, since type=hidden is barred from constraint validation", () => {
+    const html = renderToStaticMarkup(
+      createElement(Select, { name: "category", value: "timesheet", required: true }, categories),
+    );
+    expect(html).not.toContain('type="hidden"');
+    expect(html).toContain('type="text"');
+    expect(html).toContain("required");
+    expect(html).toContain('name="category"');
+    expect(html).toContain('value="timesheet"');
+  });
+
+  it("not required: still submits through the plain hidden input", () => {
+    const html = renderToStaticMarkup(
+      createElement(Select, { name: "category", value: "timesheet" }, categories),
+    );
+    expect(html).toContain('type="hidden"');
+  });
+
+  it("wires aria-labelledby onto the trigger, since a plain <label for> is not guaranteed to name a role=combobox element", () => {
+    const html = renderToStaticMarkup(
+      createElement(
+        Select,
+        { name: "category", value: "timesheet", "aria-labelledby": "category-label" },
+        categories,
+      ),
+    );
+    expect(html).toContain('aria-labelledby="category-label"');
+  });
+
   it("renders the trigger as type=button so it cannot submit its enclosing form", () => {
     const html = renderToStaticMarkup(
       createElement(Select, { name: "category", value: "timesheet" }, categories),

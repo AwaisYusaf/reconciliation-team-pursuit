@@ -143,11 +143,12 @@ export function MonthDocuments({
         <input type="hidden" name="month" value={month} />
 
         <div className="flex flex-col gap-1.5">
-          <label htmlFor="month-doc-category" className="text-[13px] font-medium text-muted">
+          <label id="month-doc-category-label" htmlFor="month-doc-category" className="text-[13px] font-medium text-muted">
             Category
           </label>
           <Select
             id="month-doc-category"
+            aria-labelledby="month-doc-category-label"
             name="category"
             required
             value={category}

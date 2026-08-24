@@ -26,11 +26,12 @@ export function LineItemSelect({
 
   return (
     <div className="flex flex-col gap-1.5">
-      <label htmlFor="line-item-select" className="text-[13px] font-medium text-muted">
+      <label id="line-item-select-label" htmlFor="line-item-select" className="text-[13px] font-medium text-muted">
         Line item
       </label>
       <Select
         id="line-item-select"
+        aria-labelledby="line-item-select-label"
         value={selected}
         disabled={pending}
         onValueChange={(value) => {

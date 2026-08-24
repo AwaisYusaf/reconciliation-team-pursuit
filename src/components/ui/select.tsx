@@ -1,7 +1,7 @@
 "use client";
 
 import type { KeyboardEvent, ReactNode } from "react";
-import { Children, isValidElement, useEffect, useId, useMemo, useRef, useState } from "react";
+import { Children, isValidElement, useEffect, useId, useRef, useState } from "react";
 
 import { CONTROL } from "@/src/components/ui/field";
 import { cn } from "@/src/lib/cn";
@@ -41,6 +41,7 @@ type SelectProps = {
   required?: boolean;
   className?: string;
   "aria-label"?: string;
+  "aria-labelledby"?: string;
   "aria-describedby"?: string;
 };
 
@@ -59,10 +60,13 @@ export function Select({
   required,
   className,
   "aria-label": ariaLabel,
+  "aria-labelledby": ariaLabelledBy,
   "aria-describedby": ariaDescribedBy,
 }: SelectProps) {
-  const options = useMemo(() => optionsFromChildren(children), [children]);
-  const [internalValue, setInternalValue] = useState(defaultValue ?? "");
+  const options = optionsFromChildren(children);
+  // Matches native <select>: with no explicit value/defaultValue, the first option is what's
+  // actually selected (and submitted), not just what happens to be displayed.
+  const [internalValue, setInternalValue] = useState(defaultValue ?? options[0]?.value ?? "");
   const currentValue = value !== undefined ? value : internalValue;
 
   const [open, setOpen] = useState(false);
@@ -208,6 +212,7 @@ export function Select({
         aria-activedescendant={activeId}
         aria-required={required}
         aria-label={ariaLabel}
+        aria-labelledby={ariaLabelledBy}
         aria-describedby={ariaDescribedBy}
         onClick={() => (open ? closePanel() : openPanel())}
         onKeyDown={onKeyDown}
@@ -229,9 +234,27 @@ export function Select({
         </svg>
       </button>
 
-      {/* Hidden input keeps `formData.get(name)` working — a hidden input is barred from
-          constraint validation, so `required` lives on the trigger as `aria-required`. */}
-      {name && <input type="hidden" name={name} value={currentValue} />}
+      {/* Keeps `formData.get(name)` working. A `type="hidden"` input is barred from constraint
+          validation entirely, which would make `required` silently do nothing, so a required
+          Select instead submits through a visually-hidden (not `hidden`-type) text input —
+          `sr-only` rather than `readonly`, since `readonly` is *also* barred from constraint
+          validation. `tabIndex={-1}` and the lack of any visible affordance keep it out of the
+          tab order and unreachable by mouse; the trigger button owns all real interaction. */}
+      {name &&
+        (required ? (
+          <input
+            type="text"
+            name={name}
+            value={currentValue}
+            required
+            aria-hidden="true"
+            tabIndex={-1}
+            className="sr-only"
+            onChange={() => {}}
+          />
+        ) : (
+          <input type="hidden" name={name} value={currentValue} />
+        ))}
 
       {open && (
         <div
