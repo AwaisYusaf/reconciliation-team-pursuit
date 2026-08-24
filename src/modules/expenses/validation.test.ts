@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { validate } from "./actions";
 import type { ExpenseInput } from "./actions";
+import { validate } from "./validation";
 
 /**
  * `validate` is the rule shared by create and update — a pure function, so these exercise it
