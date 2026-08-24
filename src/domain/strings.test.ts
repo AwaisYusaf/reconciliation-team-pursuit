@@ -46,7 +46,12 @@ describe("UI copy (R12)", () => {
     expect(UI.blockedIntro).toBe(
       "The following records are missing a receipt/justification or proof of payment:",
     );
-    expect(UI.forgotPassword).toBe("Forgot your password? Contact Mantaq.");
+    expect(UI.forgotPassword).toBe("Forgot your password? Email");
+    expect(UI.supportEmail).toBe("tech@teampursuit.org");
+    expect(UI.taxExceedsSubtotalWarning).toBe(
+      "Tax is more than the subtotal — double-check this entry.",
+    );
+    expect(UI.subtotalIsZeroWarning).toBe("Subtotal is $0.00 — double-check this entry.");
   });
 
   it("quotes the line item name in the delete refusal", () => {

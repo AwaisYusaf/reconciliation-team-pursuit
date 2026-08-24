@@ -14,7 +14,7 @@ import { reportResult } from "@/src/components/ui/toast";
 import { projectedRemainingCents } from "@/src/domain/budget-math";
 import { monthLabel } from "@/src/domain/dates";
 import { formatMoney } from "@/src/domain/format";
-import { parseMoneyToCentsOrZero } from "@/src/domain/money";
+import { parseMoneyToCents, parseMoneyToCentsOrZero } from "@/src/domain/money";
 import { TAX_NOTE, UI } from "@/src/domain/strings";
 import { SESSION_EXPIRED } from "@/src/lib/action-result";
 
@@ -114,6 +114,13 @@ export function ExpenseForm({ options, remaining, today, activeMonth, existing }
   // A heads-up, not a block — tax on a return or adjustment can genuinely exceed the subtotal
   // it's attached to, so this is worth a second look rather than a hard rejection (C-05).
   const taxExceedsSubtotal = taxCents > 0 && taxCents > subtotalCents;
+  // Also a heads-up, not a block (C-07) — a $0.00 expense is unusual but not against any
+  // domain rule, and it can be legitimate (a placeholder row filled in later). Checked with
+  // the strict parser, not the OrZero fallback used above: OrZero can't tell "typed 0" apart
+  // from "typed garbage", and garbage is a different, more actionable problem than a genuine
+  // zero — the server's own validation catches garbage on submit, so this message would be
+  // actively misleading if it fired for that case too.
+  const subtotalIsZero = parseMoneyToCents(values.subtotal) === 0;
 
   const projection = useMemo(() => {
     if (!values.lineItemId) return null;
@@ -441,10 +448,12 @@ export function ExpenseForm({ options, remaining, today, activeMonth, existing }
           ))}
         </div>
 
+        {subtotalIsZero && (
+          <div className="text-[15px] text-caution">{UI.subtotalIsZeroWarning}</div>
+        )}
+
         {taxExceedsSubtotal && (
-          <div className="text-[15px] text-danger">
-            Tax is more than the subtotal — double-check this entry.
-          </div>
+          <div className="text-[15px] text-caution">{UI.taxExceedsSubtotalWarning}</div>
         )}
 
         <div className="border-2 border-ink rounded-[3px] bg-surface px-[22px] py-5">

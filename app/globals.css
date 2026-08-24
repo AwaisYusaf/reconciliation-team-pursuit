@@ -15,6 +15,8 @@
   --color-accent-dark: #3e2719;
   --color-danger: #8a2a22;
   --color-danger-bg: #f6e7e4;
+  /* A heads-up, not a block — distinct from danger so a caution doesn't read as a hard error. */
+  --color-caution: #8a5a12;
   --color-success: #2f4f3e;
   --color-success-bg: #eaf3ec;
   --color-section: #f1ece2;

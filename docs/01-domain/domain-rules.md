@@ -107,7 +107,9 @@ Let `opening` = line item's opening previously-billed balance (setup figure), `e
 | duplicate-email (UI) | `An organisation with that email already exists — sign in instead.` |
 | no-receipt-reason-required (UI) | `Enter the reason no receipt is available.` |
 | upload-failed (UI) | `Upload failed — try again.` |
-| forgot-password (UI) | `Forgot your password? Contact Mantaq.` |
+| forgot-password (UI) | `Forgot your password? Email` + a mailto link to `tech@teampursuit.org` |
+| tax-exceeds-subtotal-warning (UI) | `Tax is more than the subtotal — double-check this entry.` |
+| subtotal-is-zero-warning (UI) | `Subtotal is $0.00 — double-check this entry.` |
 
 ## 13. Limits (enforced at presign/save; friendly errors)
 
