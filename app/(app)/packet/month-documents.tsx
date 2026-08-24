@@ -5,6 +5,7 @@ import { useRef, useState, useTransition } from "react";
 import toast from "react-hot-toast";
 
 import { Button } from "@/src/components/ui/button";
+import { Select } from "@/src/components/ui/select";
 import { Card, CARD_PADDING, SectionTitle } from "@/src/components/ui/surfaces";
 import { reportResult } from "@/src/components/ui/toast";
 import { removeMonthDocumentAction } from "@/src/modules/packet/actions";
@@ -20,6 +21,8 @@ const CATEGORIES = [
 ] as const;
 
 const LABELS = new Map(CATEGORIES.map((category) => [category.value, category.label]));
+
+const DEFAULT_CATEGORY = "bank_statement";
 
 /**
  * Month-level uploads: the bank statement, timesheets and the fiduciary invoice that belong
@@ -42,6 +45,7 @@ export function MonthDocuments({
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [uploading, setUploading] = useState(false);
+  const [category, setCategory] = useState<string>(DEFAULT_CATEGORY);
   const formRef = useRef<HTMLFormElement>(null);
 
   async function upload(form: FormData) {
@@ -55,7 +59,9 @@ export function MonthDocuments({
         return;
       }
       toast.success("Document added.");
+      // `reset()` only clears the DOM-owned fields; the category lives in React state.
       formRef.current?.reset();
+      setCategory(DEFAULT_CATEGORY);
       router.refresh();
     } catch {
       toast.error("Upload failed — check your connection and try again.");
@@ -136,21 +142,25 @@ export function MonthDocuments({
         <input type="hidden" name="target" value="month" />
         <input type="hidden" name="month" value={month} />
 
-        <label className="flex flex-col gap-1.5">
-          <span className="text-[13px] font-medium text-muted">Category</span>
-          <select
+        <div className="flex flex-col gap-1.5">
+          <label htmlFor="month-doc-category" className="text-[13px] font-medium text-muted">
+            Category
+          </label>
+          <Select
+            id="month-doc-category"
             name="category"
             required
-            defaultValue="bank_statement"
-            className="border border-line rounded-md px-3 py-2 text-[15px] bg-white"
+            value={category}
+            onValueChange={setCategory}
+            className="min-w-[200px]"
           >
-            {CATEGORIES.map((category) => (
-              <option key={category.value} value={category.value}>
-                {category.label}
+            {CATEGORIES.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
               </option>
             ))}
-          </select>
-        </label>
+          </Select>
+        </div>
 
         <label className="flex flex-col gap-1.5">
           <span className="text-[13px] font-medium text-muted">Title (optional)</span>

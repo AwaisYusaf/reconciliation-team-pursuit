@@ -3,6 +3,8 @@
 import { useRouter } from "next/navigation";
 import { useTransition } from "react";
 
+import { Select } from "@/src/components/ui/select";
+
 import { ALL_LINE_ITEMS } from "./constants";
 
 /**
@@ -23,18 +25,20 @@ export function LineItemSelect({
   const [pending, startTransition] = useTransition();
 
   return (
-    <label className="flex flex-col gap-1.5">
-      <span className="text-[13px] font-medium text-muted">Line item</span>
-      <select
+    <div className="flex flex-col gap-1.5">
+      <label htmlFor="line-item-select" className="text-[13px] font-medium text-muted">
+        Line item
+      </label>
+      <Select
+        id="line-item-select"
         value={selected}
         disabled={pending}
-        onChange={(event) => {
-          const value = event.target.value;
+        onValueChange={(value) => {
           startTransition(() => {
             router.push(`/cover-sheets?lineItem=${encodeURIComponent(value)}`);
           });
         }}
-        className="border border-line rounded-md px-3 py-2 text-[15px] bg-white min-w-[220px] disabled:opacity-60"
+        className="min-w-[220px]"
       >
         <option value={ALL_LINE_ITEMS}>All Line Items</option>
         {lineItems.map((item) => (
@@ -42,7 +46,7 @@ export function LineItemSelect({
             {item.name}
           </option>
         ))}
-      </select>
-    </label>
+      </Select>
+    </div>
   );
 }

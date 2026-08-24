@@ -12,7 +12,8 @@ import {
   thumbnailSrc,
   useDocumentViewer,
 } from "@/src/components/ui/document-viewer";
-import { Label, Select } from "@/src/components/ui/field";
+import { Label } from "@/src/components/ui/field";
+import { Select } from "@/src/components/ui/select";
 import { Card, DangerPanel, EmptyState } from "@/src/components/ui/surfaces";
 import { TableCard, Td, Th } from "@/src/components/ui/table";
 import { reportResult } from "@/src/components/ui/toast";
@@ -166,7 +167,7 @@ export function ExpensesTable({
           <Select
             id="lineFilter"
             value={lineFilter}
-            onChange={(event) => setLineFilter(event.target.value)}
+            onValueChange={setLineFilter}
           >
             <option>{ALL_LINE_ITEMS}</option>
             {lineItemNames.map((name) => (
@@ -179,7 +180,7 @@ export function ExpensesTable({
           <Select
             id="sourceFilter"
             value={sourceFilter}
-            onChange={(event) => setSourceFilter(event.target.value)}
+            onValueChange={setSourceFilter}
           >
             <option>{ALL_SOURCES}</option>
             {paymentSourceLabels.map((label) => (

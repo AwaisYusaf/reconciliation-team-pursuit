@@ -4,7 +4,8 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 
 import { Button } from "@/src/components/ui/button";
-import { Helper, Input, Label, MoneyInput, Select, Textarea } from "@/src/components/ui/field";
+import { Helper, Input, Label, MoneyInput, Textarea } from "@/src/components/ui/field";
+import { Select } from "@/src/components/ui/select";
 import { Card, DangerPanel } from "@/src/components/ui/surfaces";
 import toast from "react-hot-toast";
 
@@ -342,7 +343,7 @@ export function ExpenseForm({ options, remaining, today, activeMonth, existing }
             id="lineItem"
             value={values.lineItemId}
             className={highlight}
-            onChange={(event) => set("lineItemId", event.target.value)}
+            onValueChange={(value) => set("lineItemId", value)}
           >
             <option value="">Choose a line item</option>
             {options.lineItems.map((item) => (
@@ -358,7 +359,7 @@ export function ExpenseForm({ options, remaining, today, activeMonth, existing }
           <Select
             id="paymentSource"
             value={values.paymentSource}
-            onChange={(event) => set("paymentSource", event.target.value)}
+            onValueChange={(value) => set("paymentSource", value)}
           >
             <option value="">Choose a payment source</option>
             {/*
@@ -379,7 +380,7 @@ export function ExpenseForm({ options, remaining, today, activeMonth, existing }
         <div className="flex flex-wrap gap-[18px]">
           <div className="flex-1 min-w-[220px]">
             <Label htmlFor="month">Month</Label>
-            <Select id="month" value={values.month} onChange={(event) => set("month", event.target.value)}>
+            <Select id="month" value={values.month} onValueChange={(value) => set("month", value)}>
               {options.months.map((month) => (
                 <option key={month} value={month}>
                   {monthLabel(month)}

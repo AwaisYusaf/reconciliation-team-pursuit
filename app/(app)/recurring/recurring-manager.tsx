@@ -4,7 +4,8 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 
 import { Button } from "@/src/components/ui/button";
-import { Helper, Input, Label, MoneyInput, Select } from "@/src/components/ui/field";
+import { Helper, Input, Label, MoneyInput } from "@/src/components/ui/field";
+import { Select } from "@/src/components/ui/select";
 import { Card, DangerPanel, EmptyState } from "@/src/components/ui/surfaces";
 import { TableCard, Td, Th } from "@/src/components/ui/table";
 import { reportResult } from "@/src/components/ui/toast";
@@ -247,7 +248,7 @@ export function RecurringManager({
               <Select
                 id="rec-line"
                 value={draft.lineItemId}
-                onChange={(event) => setDraft({ ...draft, lineItemId: event.target.value })}
+                onValueChange={(value) => setDraft({ ...draft, lineItemId: value })}
               >
                 <option value="">Choose a line item</option>
                 {lineItems.map((item) => (

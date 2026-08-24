@@ -3,7 +3,8 @@ import { useId } from "react";
 
 import { cn } from "@/src/lib/cn";
 
-const CONTROL =
+/** Shared control chrome. Exported so the custom `Select` trigger matches Input/Textarea. */
+export const CONTROL =
   "w-full min-h-11 px-3.5 py-3 text-base font-sans text-ink bg-surface " +
   "border border-line rounded-[3px] box-border";
 
@@ -35,10 +36,6 @@ export function Textarea({ className, ...props }: ComponentProps<"textarea">) {
   return (
     <textarea className={cn(CONTROL, "leading-relaxed resize-y", className)} {...props} />
   );
-}
-
-export function Select({ className, ...props }: ComponentProps<"select">) {
-  return <select className={cn(CONTROL, "px-3 py-[11px]", className)} {...props} />;
 }
 
 /**
