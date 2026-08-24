@@ -46,7 +46,9 @@ export function MonthDocuments({
   const [pending, startTransition] = useTransition();
   const [uploading, setUploading] = useState(false);
   const [category, setCategory] = useState<string>(DEFAULT_CATEGORY);
+  const [fileName, setFileName] = useState<string | null>(null);
   const formRef = useRef<HTMLFormElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   async function upload(form: FormData) {
     setUploading(true);
@@ -59,9 +61,11 @@ export function MonthDocuments({
         return;
       }
       toast.success("Document added.");
-      // `reset()` only clears the DOM-owned fields; the category lives in React state.
+      // `reset()` only clears the DOM-owned fields; the category and displayed filename live
+      // in React state.
       formRef.current?.reset();
       setCategory(DEFAULT_CATEGORY);
+      setFileName(null);
       router.refresh();
     } catch {
       toast.error("Upload failed — check your connection and try again.");
@@ -174,16 +178,36 @@ export function MonthDocuments({
           />
         </label>
 
-        <label className="flex flex-col gap-1.5">
-          <span className="text-[13px] font-medium text-muted">File</span>
+        <div className="flex flex-col gap-1.5">
+          <label htmlFor="month-doc-file" className="text-[13px] font-medium text-muted">
+            File
+          </label>
+          {/* Not wrapped in the label above: the label's implicit click-to-activate would
+              double-fire the picker alongside the button's own onClick. */}
           <input
+            ref={fileInputRef}
+            id="month-doc-file"
             name="file"
             type="file"
             required
             accept="image/jpeg,image/png,image/webp,image/heic,application/pdf"
-            className="text-[15px]"
+            className="sr-only"
+            onChange={(event) => setFileName(event.target.files?.[0]?.name ?? null)}
           />
-        </label>
+          <div className="flex items-center gap-3">
+            <Button
+              type="button"
+              variant="quiet"
+              className="min-h-11"
+              onClick={() => fileInputRef.current?.click()}
+            >
+              Choose file
+            </Button>
+            <span className="text-[15px] text-muted truncate max-w-[220px]">
+              {fileName ?? "No file chosen"}
+            </span>
+          </div>
+        </div>
 
         <Button type="submit" variant="secondary" disabled={uploading}>
           {uploading ? "Uploading…" : "Add document"}
