@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState } from "react";
+import { useState, useTransition, type FormEvent } from "react";
 
 import { Button } from "@/src/components/ui/button";
 import { Input, Label, MoneyInput } from "@/src/components/ui/field";
@@ -10,11 +10,27 @@ import { IDLE } from "@/src/lib/action-result";
 import { completeOnboardingAction } from "@/src/modules/auth/actions";
 
 export function OnboardingContractForm() {
-  const [state, formAction, pending] = useActionState(completeOnboardingAction, IDLE);
+  const [state, setState] = useState(IDLE);
+  const [pending, startTransition] = useTransition();
   const error = state.ok ? null : state.error;
 
+  // A plain onSubmit (rather than a `<form action>`) so a rejected submission never triggers
+  // React's automatic form reset — that reset fires whenever the action resolves, including
+  // on a validation failure, and was wiping every typed field over one bad entry. The
+  // triggering button's name/value (finish vs. skip) isn't picked up by `new FormData(form)`
+  // alone, so it's read from the submit event and appended explicitly.
+  function onSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const formData = new FormData(event.currentTarget);
+    const submitter = (event.nativeEvent as SubmitEvent).submitter as HTMLButtonElement | null;
+    if (submitter?.name) formData.set(submitter.name, submitter.value);
+    startTransition(async () => {
+      setState(await completeOnboardingAction(state, formData));
+    });
+  }
+
   return (
-    <form action={formAction}>
+    <form onSubmit={onSubmit}>
       {error && <DangerPanel className="mb-5">{error}</DangerPanel>}
 
       <div className="mb-5">
