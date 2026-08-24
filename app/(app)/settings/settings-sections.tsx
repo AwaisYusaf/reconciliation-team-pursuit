@@ -4,7 +4,8 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 
 import { Button } from "@/src/components/ui/button";
-import { Helper, Input, Label, MoneyInput, Select } from "@/src/components/ui/field";
+import { Helper, Input, Label, MoneyInput } from "@/src/components/ui/field";
+import { Select } from "@/src/components/ui/select";
 import { Card, CARD_PADDING, DangerPanel, SectionTitle } from "@/src/components/ui/surfaces";
 import { formatMoney } from "@/src/domain/format";
 import { TableCard, Td, Th } from "@/src/components/ui/table";
@@ -502,8 +503,8 @@ function VendorLibrary({
                       <Select
                         value={editing.defaultLineItemId ?? ""}
                         aria-label="Default line item"
-                        onChange={(event) =>
-                          setEditing({ ...editing, defaultLineItemId: event.target.value || null })
+                        onValueChange={(value) =>
+                          setEditing({ ...editing, defaultLineItemId: value || null })
                         }
                       >
                         <option value="">None</option>
@@ -522,8 +523,8 @@ function VendorLibrary({
                       <Select
                         value={editing.defaultPaymentSource ?? ""}
                         aria-label="Default payment source"
-                        onChange={(event) =>
-                          setEditing({ ...editing, defaultPaymentSource: event.target.value || null })
+                        onValueChange={(value) =>
+                          setEditing({ ...editing, defaultPaymentSource: value || null })
                         }
                       >
                         <option value="">None</option>

@@ -4,7 +4,9 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 
 import { Button } from "@/src/components/ui/button";
-import { Helper, Input, Label, MoneyInput, Select, Textarea } from "@/src/components/ui/field";
+import { Dialog } from "@/src/components/ui/dialog";
+import { Helper, Input, Label, MoneyInput, Textarea } from "@/src/components/ui/field";
+import { Select } from "@/src/components/ui/select";
 import { Card, DangerPanel } from "@/src/components/ui/surfaces";
 import toast from "react-hot-toast";
 
@@ -101,12 +103,17 @@ export function ExpenseForm({ options, remaining, today, activeMonth, existing }
     [],
   );
 
+  const subtotalCents = parseMoneyToCentsOrZero(values.subtotal);
+
   const reimbursableCents = useMemo(
-    () => parseMoneyToCentsOrZero(values.subtotal) + parseMoneyToCentsOrZero(values.fees),
-    [values.subtotal, values.fees],
+    () => subtotalCents + parseMoneyToCentsOrZero(values.fees),
+    [subtotalCents, values.fees],
   );
 
   const taxCents = parseMoneyToCentsOrZero(values.tax);
+  // A heads-up, not a block — tax on a return or adjustment can genuinely exceed the subtotal
+  // it's attached to, so this is worth a second look rather than a hard rejection (C-05).
+  const taxExceedsSubtotal = taxCents > 0 && taxCents > subtotalCents;
 
   const projection = useMemo(() => {
     if (!values.lineItemId) return null;
@@ -337,12 +344,13 @@ export function ExpenseForm({ options, remaining, today, activeMonth, existing }
         </div>
 
         <div>
-          <Label htmlFor="lineItem">Budget line item</Label>
+          <Label id="lineItem-label" htmlFor="lineItem">Budget line item</Label>
           <Select
             id="lineItem"
+            aria-labelledby="lineItem-label"
             value={values.lineItemId}
             className={highlight}
-            onChange={(event) => set("lineItemId", event.target.value)}
+            onValueChange={(value) => set("lineItemId", value)}
           >
             <option value="">Choose a line item</option>
             {options.lineItems.map((item) => (
@@ -354,11 +362,12 @@ export function ExpenseForm({ options, remaining, today, activeMonth, existing }
         </div>
 
         <div>
-          <Label htmlFor="paymentSource">Payment source</Label>
+          <Label id="paymentSource-label" htmlFor="paymentSource">Payment source</Label>
           <Select
             id="paymentSource"
+            aria-labelledby="paymentSource-label"
             value={values.paymentSource}
-            onChange={(event) => set("paymentSource", event.target.value)}
+            onValueChange={(value) => set("paymentSource", value)}
           >
             <option value="">Choose a payment source</option>
             {/*
@@ -378,8 +387,13 @@ export function ExpenseForm({ options, remaining, today, activeMonth, existing }
 
         <div className="flex flex-wrap gap-[18px]">
           <div className="flex-1 min-w-[220px]">
-            <Label htmlFor="month">Month</Label>
-            <Select id="month" value={values.month} onChange={(event) => set("month", event.target.value)}>
+            <Label id="month-label" htmlFor="month">Month</Label>
+            <Select
+              id="month"
+              aria-labelledby="month-label"
+              value={values.month}
+              onValueChange={(value) => set("month", value)}
+            >
               {options.months.map((month) => (
                 <option key={month} value={month}>
                   {monthLabel(month)}
@@ -426,6 +440,12 @@ export function ExpenseForm({ options, remaining, today, activeMonth, existing }
             </div>
           ))}
         </div>
+
+        {taxExceedsSubtotal && (
+          <div className="text-[15px] text-danger">
+            Tax is more than the subtotal — double-check this entry.
+          </div>
+        )}
 
         <div className="border-2 border-ink rounded-[3px] bg-surface px-[22px] py-5">
           <div className="text-2xl font-bold tabular-nums">
@@ -570,43 +590,44 @@ export function ExpenseForm({ options, remaining, today, activeMonth, existing }
           <Button variant="quiet" onClick={() => router.push("/expenses")} disabled={pending}>
             Cancel
           </Button>
-          {editing && !confirmingDelete && (
+          {editing && (
             <Button variant="quiet" onClick={() => setConfirmingDelete(true)} disabled={pending}>
               Delete
             </Button>
           )}
         </div>
 
-        {editing && confirmingDelete && (
-          <DangerPanel title="Delete this expense?">
-            <p className="mb-3">
-              Its {existing!.documents.length} attached file
-              {existing!.documents.length === 1 ? "" : "s"} will be removed too. This cannot be
-              undone.
-            </p>
-            <div className="flex gap-3">
-              <Button
-                variant="secondary"
-                disabled={pending}
-                onClick={() =>
-                  startTransition(async () => {
-                    const result = await deleteExpenseAction(existing!.id);
-                    if (!result.ok) {
-                      setError(result.error);
-                      return;
-                    }
-                    router.push("/expenses");
-                    router.refresh();
-                  })
-                }
-              >
-                Delete expense
-              </Button>
-              <Button variant="quiet" onClick={() => setConfirmingDelete(false)}>
-                Keep it
-              </Button>
-            </div>
-          </DangerPanel>
+        {editing && (
+          <Dialog
+            open={confirmingDelete}
+            title="Delete this expense?"
+            dismissLabel="Keep it"
+            onDismiss={() => setConfirmingDelete(false)}
+            confirm={{
+              label: "Delete expense",
+              disabled: pending,
+              onConfirm: () => {
+                startTransition(async () => {
+                  const result = await deleteExpenseAction(existing!.id);
+                  // Stays open (Delete disabled via `pending`) until the outcome is known, so
+                  // the dialog doesn't vanish out from under a failure the general error banner
+                  // is about to show — the dialog would otherwise hide that banner behind its
+                  // overlay.
+                  setConfirmingDelete(false);
+                  if (!result.ok) {
+                    setError(result.error);
+                    return;
+                  }
+                  router.push("/expenses");
+                  router.refresh();
+                });
+              },
+            }}
+          >
+            Its {existing!.documents.length} attached file
+            {existing!.documents.length === 1 ? "" : "s"} will be removed too. This cannot be
+            undone.
+          </Dialog>
         )}
       </Card>
       </form>

@@ -13,7 +13,7 @@ import {
   useDocumentViewer,
   type ViewerDocument,
 } from "@/src/components/ui/document-viewer";
-import { Select } from "@/src/components/ui/field";
+import { Select } from "@/src/components/ui/select";
 import {
   isAllowedMimeType,
   MAX_UPLOAD_BYTES,
@@ -138,7 +138,7 @@ export function UploadField({
         <Select
           aria-label="Supporting document type"
           value={supportingType}
-          onChange={(event) => setSupportingType(event.target.value)}
+          onValueChange={setSupportingType}
           className="mb-3 max-w-[260px]"
         >
           {supportingTypes.map((type) => (

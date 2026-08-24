@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useState, useTransition, type FormEvent } from "react";
 
 import { Button } from "@/src/components/ui/button";
 import { Input, MoneyInput } from "@/src/components/ui/field";
@@ -14,7 +14,8 @@ import { saveOnboardingLineItemsAction } from "@/src/modules/auth/actions";
 type Row = { name: string; budget: string };
 
 export function OnboardingLineItemsForm({ initialRows }: { initialRows: Row[] }) {
-  const [state, formAction, pending] = useActionState(saveOnboardingLineItemsAction, IDLE);
+  const [state, setState] = useState(IDLE);
+  const [pending, startTransition] = useTransition();
   const [rows, setRows] = useState<Row[]>(initialRows);
 
   const error = state.ok ? null : state.error;
@@ -28,8 +29,19 @@ export function OnboardingLineItemsForm({ initialRows }: { initialRows: Row[] })
     setRows((current) => current.map((row, i) => (i === index ? { ...row, ...patch } : row)));
   }
 
+  // A plain onSubmit (rather than a `<form action>`) so a rejected submission never triggers
+  // React's automatic form reset — that reset fires whenever the action resolves, including
+  // on a validation failure, and was wiping every typed row over one bad entry.
+  function onSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const formData = new FormData(event.currentTarget);
+    startTransition(async () => {
+      setState(await saveOnboardingLineItemsAction(state, formData));
+    });
+  }
+
   return (
-    <form action={formAction}>
+    <form onSubmit={onSubmit}>
       {error && <DangerPanel className="mb-5">{error}</DangerPanel>}
 
       <div className="border border-line rounded-[3px] overflow-x-auto">

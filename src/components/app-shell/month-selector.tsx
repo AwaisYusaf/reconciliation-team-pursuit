@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 
 import { monthLabel } from "@/src/domain/dates";
+import { Select } from "@/src/components/ui/select";
 import { reportResult } from "@/src/components/ui/toast";
 import { setActiveMonthAction } from "@/src/modules/auth/actions";
 
@@ -43,22 +44,22 @@ export function MonthSelector({
 
   return (
     <div className="flex flex-col gap-1.5">
-      <label htmlFor="month-selector" className="block text-[15px] font-semibold text-ink">
+      <label id="month-selector-label" htmlFor="month-selector" className="block text-[15px] font-semibold text-ink">
         Month
       </label>
-      <select
+      <Select
         id="month-selector"
+        aria-labelledby="month-selector-label"
         value={activeMonth}
         disabled={pending}
-        onChange={(event) => {
-          const value = event.target.value;
+        onValueChange={(value) => {
           if (value === EARLIER) {
             setShowPicker(true);
             return;
           }
           apply(value);
         }}
-        className="w-[200px] min-h-11 px-3 py-[11px] text-base font-sans text-ink bg-surface border border-line rounded-[3px] disabled:opacity-60"
+        className="w-[200px]"
       >
         {months.map((month) => (
           <option key={month} value={month}>
@@ -66,7 +67,7 @@ export function MonthSelector({
           </option>
         ))}
         <option value={EARLIER}>Earlier month…</option>
-      </select>
+      </Select>
 
       {showPicker && (
         <div className="flex items-center gap-2">

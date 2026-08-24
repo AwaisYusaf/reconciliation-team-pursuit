@@ -1,15 +1,16 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useState, useTransition, type FormEvent } from "react";
 
 import { Button } from "@/src/components/ui/button";
-import { FieldError, Input, Label } from "@/src/components/ui/field";
+import { FieldError, Helper, Input, Label } from "@/src/components/ui/field";
 import { DangerPanel } from "@/src/components/ui/surfaces";
 import { IDLE } from "@/src/lib/action-result";
 import { signUpAction } from "@/src/modules/auth/actions";
 
 export function SignupForm() {
-  const [state, formAction, pending] = useActionState(signUpAction, IDLE);
+  const [state, setState] = useState(IDLE);
+  const [pending, startTransition] = useTransition();
   const [showPassword, setShowPassword] = useState(false);
 
   const fieldErrors = state.ok ? {} : (state.fieldErrors ?? {});
@@ -17,8 +18,19 @@ export function SignupForm() {
   const panelError = state.ok || Object.keys(fieldErrors).length > 0 ? null : state.error;
   const passwordType = showPassword ? "text" : "password";
 
+  // A plain onSubmit (rather than a `<form action>`) so a failed submission never triggers
+  // React's automatic form reset — that reset fires whenever the action resolves, including
+  // on a validation failure, and was wiping every field over one bad entry.
+  function onSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const formData = new FormData(event.currentTarget);
+    startTransition(async () => {
+      setState(await signUpAction(state, formData));
+    });
+  }
+
   return (
-    <form action={formAction} noValidate>
+    <form onSubmit={onSubmit} noValidate>
       {panelError && <DangerPanel className="mb-[22px]">{panelError}</DangerPanel>}
 
       <div className="mb-[18px]">
@@ -48,7 +60,6 @@ export function SignupForm() {
             name="password"
             type={passwordType}
             autoComplete="new-password"
-            placeholder="At least 12 characters"
             required
           />
           <button
@@ -59,7 +70,11 @@ export function SignupForm() {
             {showPassword ? "Hide" : "Show"}
           </button>
         </div>
-        {fieldErrors.password && <FieldError>{fieldErrors.password}</FieldError>}
+        {fieldErrors.password ? (
+          <FieldError>{fieldErrors.password}</FieldError>
+        ) : (
+          <Helper>At least 12 characters.</Helper>
+        )}
       </div>
 
       <div className="mb-6">

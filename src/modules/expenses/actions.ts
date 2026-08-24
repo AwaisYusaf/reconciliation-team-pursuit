@@ -8,15 +8,14 @@ import { revalidatePath } from "next/cache";
 
 import { db } from "@/src/db";
 import { expenseDocuments, expenses, lineItems, vendorDefaults } from "@/src/db/schema";
-import { isValidIsoDate, isValidMonthKey } from "@/src/domain/dates";
 import { parseMoneyToCentsOrZero } from "@/src/domain/money";
-import { UI } from "@/src/domain/strings";
 import { fail, ok, type ActionResult } from "@/src/lib/action-result";
 import { actionSession } from "@/src/lib/action-session";
 import { deleteExpenseDocument as removeStoredDocument } from "@/src/services/storage/documents";
 import { isUuid } from "@/src/lib/ids";
 import { isKnownPaymentSource } from "@/src/modules/settings/labels";
 
+import { validate } from "./validation";
 
 export type ExpenseInput = {
   id?: string;
@@ -34,17 +33,6 @@ export type ExpenseInput = {
   noReceipt: boolean;
   noReceiptReason: string;
 };
-
-/** Validation shared by create and update, so both paths enforce the same rules. */
-function validate(input: ExpenseInput): string | null {
-  if (!input.name.trim() || !input.lineItemId || !input.paymentSource) {
-    return UI.expenseMissingFields;
-  }
-  if (!isValidMonthKey(input.month)) return "Choose a month.";
-  if (!isValidIsoDate(input.date)) return "Enter a valid date.";
-  if (input.noReceipt && !input.noReceiptReason.trim()) return UI.noReceiptReasonRequired;
-  return null;
-}
 
 function toRow(input: ExpenseInput) {
   return {

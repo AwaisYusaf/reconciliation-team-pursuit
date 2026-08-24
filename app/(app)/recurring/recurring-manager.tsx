@@ -4,7 +4,9 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 
 import { Button } from "@/src/components/ui/button";
-import { Helper, Input, Label, MoneyInput, Select } from "@/src/components/ui/field";
+import { Dialog } from "@/src/components/ui/dialog";
+import { Helper, Input, Label, MoneyInput } from "@/src/components/ui/field";
+import { Select } from "@/src/components/ui/select";
 import { Card, DangerPanel, EmptyState } from "@/src/components/ui/surfaces";
 import { TableCard, Td, Th } from "@/src/components/ui/table";
 import { reportResult } from "@/src/components/ui/toast";
@@ -118,29 +120,31 @@ export function RecurringManager({
         </DangerPanel>
       )}
 
-      {confirmRemove && (
-        <DangerPanel title="Remove from this month?" className="mb-4">
-          <p className="mb-3">{confirmRemove.message}</p>
-          <div className="flex gap-3">
-            <Button
-              variant="secondary"
-              disabled={pending}
-              onClick={() =>
-                run(
-                  () => removeRecurringFromMonthAction(confirmRemove.row.id, month, true),
-                  () => setConfirmRemove(null),
-                  "Removed from this month",
-                )
-              }
-            >
-              Remove anyway
-            </Button>
-            <Button variant="quiet" onClick={() => setConfirmRemove(null)}>
-              Keep it
-            </Button>
-          </div>
-        </DangerPanel>
-      )}
+      <Dialog
+        open={confirmRemove !== null}
+        title="Remove from this month?"
+        dismissLabel="Keep it"
+        onDismiss={() => setConfirmRemove(null)}
+        confirm={{
+          label: "Remove anyway",
+          disabled: pending,
+          onConfirm: () => {
+            const row = confirmRemove!.row;
+            startTransition(async () => {
+              setError(null);
+              const result = await removeRecurringFromMonthAction(row.id, month, true);
+              // Stays open (Remove disabled via `pending`) until the outcome is known, so the
+              // dialog doesn't vanish out from under a failure the general error banner is
+              // about to show — the dialog would otherwise hide that banner behind its overlay.
+              setConfirmRemove(null);
+              if (reportResult(result, "Removed from this month")) router.refresh();
+              else setError(result.error ?? "Something went wrong.");
+            });
+          },
+        }}
+      >
+        {confirmRemove?.message}
+      </Dialog>
 
       {rows.length === 0 ? (
         <EmptyState>
@@ -243,11 +247,12 @@ export function RecurringManager({
               />
             </div>
             <div className="flex-[2] min-w-[220px]">
-              <Label htmlFor="rec-line">Line item</Label>
+              <Label id="rec-line-label" htmlFor="rec-line">Line item</Label>
               <Select
                 id="rec-line"
+                aria-labelledby="rec-line-label"
                 value={draft.lineItemId}
-                onChange={(event) => setDraft({ ...draft, lineItemId: event.target.value })}
+                onValueChange={(value) => setDraft({ ...draft, lineItemId: value })}
               >
                 <option value="">Choose a line item</option>
                 {lineItems.map((item) => (

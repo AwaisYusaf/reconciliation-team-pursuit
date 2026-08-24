@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useMemo, useState, useTransition } from "react";
 
 import { Button } from "@/src/components/ui/button";
+import { Dialog } from "@/src/components/ui/dialog";
 import {
   DocumentThumbnail,
   inlineSrc,
@@ -12,7 +13,8 @@ import {
   thumbnailSrc,
   useDocumentViewer,
 } from "@/src/components/ui/document-viewer";
-import { Label, Select } from "@/src/components/ui/field";
+import { Label } from "@/src/components/ui/field";
+import { Select } from "@/src/components/ui/select";
 import { Card, DangerPanel, EmptyState } from "@/src/components/ui/surfaces";
 import { TableCard, Td, Th } from "@/src/components/ui/table";
 import { reportResult } from "@/src/components/ui/toast";
@@ -132,41 +134,41 @@ export function ExpensesTable({
         </DangerPanel>
       )}
 
-      {confirming && (
-        <DangerPanel title="Delete this expense?" className="mb-4">
-          <p className="mb-3">
-            {confirming.name} — {formatMoney(confirming.reimbursableCents)}. Its attached files
-            are removed too. This cannot be undone.
-          </p>
-          <div className="flex gap-3">
-            <Button
-              variant="secondary"
-              disabled={pending}
-              onClick={() =>
-                startTransition(async () => {
-                  const result = await deleteExpenseAction(confirming.id);
-                  setConfirming(null);
-                  if (reportResult(result, `${confirming.name} deleted`)) router.refresh();
-                  else setError(result.error);
-                })
-              }
-            >
-              Delete expense
-            </Button>
-            <Button variant="quiet" onClick={() => setConfirming(null)}>
-              Keep it
-            </Button>
-          </div>
-        </DangerPanel>
-      )}
+      <Dialog
+        open={confirming !== null}
+        title="Delete this expense?"
+        dismissLabel="Keep it"
+        onDismiss={() => setConfirming(null)}
+        confirm={{
+          label: "Delete expense",
+          disabled: pending,
+          onConfirm: () => {
+            const row = confirming!;
+            startTransition(async () => {
+              setError(null);
+              const result = await deleteExpenseAction(row.id);
+              // Stays open (Delete disabled via `pending`) until the outcome is known, so a
+              // failure is visible in place instead of the dialog vanishing before the user
+              // can tell what happened.
+              setConfirming(null);
+              if (reportResult(result, `${row.name} deleted`)) router.refresh();
+              else setError(result.error);
+            });
+          },
+        }}
+      >
+        {confirming &&
+          `${confirming.name} — ${formatMoney(confirming.reimbursableCents)}. Its attached files are removed too. This cannot be undone.`}
+      </Dialog>
 
       <div className="flex flex-wrap gap-[18px] mb-5">
         <div className="flex-1 min-w-[240px] max-w-[340px]">
-          <Label htmlFor="lineFilter">Filter by line item</Label>
+          <Label id="lineFilter-label" htmlFor="lineFilter">Filter by line item</Label>
           <Select
             id="lineFilter"
+            aria-labelledby="lineFilter-label"
             value={lineFilter}
-            onChange={(event) => setLineFilter(event.target.value)}
+            onValueChange={setLineFilter}
           >
             <option>{ALL_LINE_ITEMS}</option>
             {lineItemNames.map((name) => (
@@ -175,11 +177,12 @@ export function ExpensesTable({
           </Select>
         </div>
         <div className="flex-1 min-w-[240px] max-w-[340px]">
-          <Label htmlFor="sourceFilter">Filter by payment source</Label>
+          <Label id="sourceFilter-label" htmlFor="sourceFilter">Filter by payment source</Label>
           <Select
             id="sourceFilter"
+            aria-labelledby="sourceFilter-label"
             value={sourceFilter}
-            onChange={(event) => setSourceFilter(event.target.value)}
+            onValueChange={setSourceFilter}
           >
             <option>{ALL_SOURCES}</option>
             {paymentSourceLabels.map((label) => (
