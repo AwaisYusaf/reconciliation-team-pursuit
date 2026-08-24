@@ -9,7 +9,7 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/src/db";
 import { expenseDocuments, expenses, lineItems, vendorDefaults } from "@/src/db/schema";
 import { isValidIsoDate, isValidMonthKey } from "@/src/domain/dates";
-import { parseMoneyToCentsOrZero } from "@/src/domain/money";
+import { parseMoneyToCents, parseMoneyToCentsOrZero } from "@/src/domain/money";
 import { UI } from "@/src/domain/strings";
 import { fail, ok, type ActionResult } from "@/src/lib/action-result";
 import { actionSession } from "@/src/lib/action-session";
@@ -35,13 +35,27 @@ export type ExpenseInput = {
   noReceiptReason: string;
 };
 
+/**
+ * A money field left blank means zero (a vendor that charges no tax, an expense with no fees)
+ * and is not an error. A money field with something in it that isn't a number — stray text, a
+ * stray character, more than one decimal point — must not be silently swallowed into that same
+ * zero: `parseMoneyToCentsOrZero` can't tell "nothing typed" from "garbage typed" apart, so the
+ * distinction is made here, before either reaches it.
+ */
+function invalidMoneyField(raw: string): boolean {
+  return raw.trim() !== "" && parseMoneyToCents(raw) === null;
+}
+
 /** Validation shared by create and update, so both paths enforce the same rules. */
-function validate(input: ExpenseInput): string | null {
+export function validate(input: ExpenseInput): string | null {
   if (!input.name.trim() || !input.lineItemId || !input.paymentSource) {
     return UI.expenseMissingFields;
   }
   if (!isValidMonthKey(input.month)) return "Choose a month.";
   if (!isValidIsoDate(input.date)) return "Enter a valid date.";
+  if (invalidMoneyField(input.subtotal)) return "Enter a valid subtotal, like 1234.56.";
+  if (invalidMoneyField(input.tax)) return "Enter a valid tax amount, like 12.34.";
+  if (invalidMoneyField(input.fees)) return "Enter a valid fees amount, like 12.34.";
   if (input.noReceipt && !input.noReceiptReason.trim()) return UI.noReceiptReasonRequired;
   return null;
 }

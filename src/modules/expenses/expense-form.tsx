@@ -103,12 +103,17 @@ export function ExpenseForm({ options, remaining, today, activeMonth, existing }
     [],
   );
 
+  const subtotalCents = parseMoneyToCentsOrZero(values.subtotal);
+
   const reimbursableCents = useMemo(
-    () => parseMoneyToCentsOrZero(values.subtotal) + parseMoneyToCentsOrZero(values.fees),
-    [values.subtotal, values.fees],
+    () => subtotalCents + parseMoneyToCentsOrZero(values.fees),
+    [subtotalCents, values.fees],
   );
 
   const taxCents = parseMoneyToCentsOrZero(values.tax);
+  // A heads-up, not a block — tax on a return or adjustment can genuinely exceed the subtotal
+  // it's attached to, so this is worth a second look rather than a hard rejection (C-05).
+  const taxExceedsSubtotal = taxCents > 0 && taxCents > subtotalCents;
 
   const projection = useMemo(() => {
     if (!values.lineItemId) return null;
@@ -435,6 +440,12 @@ export function ExpenseForm({ options, remaining, today, activeMonth, existing }
             </div>
           ))}
         </div>
+
+        {taxExceedsSubtotal && (
+          <div className="text-[15px] text-danger">
+            Tax is more than the subtotal — double-check this entry.
+          </div>
+        )}
 
         <div className="border-2 border-ink rounded-[3px] bg-surface px-[22px] py-5">
           <div className="text-2xl font-bold tabular-nums">
