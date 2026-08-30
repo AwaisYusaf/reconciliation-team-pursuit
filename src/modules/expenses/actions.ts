@@ -52,6 +52,44 @@ function toRow(input: ExpenseInput) {
   };
 }
 
+/** The next free reference number in a month. Starts at 1 — there is no expense zero. */
+async function nextReferenceSeq(orgId: string, month: string): Promise<number> {
+  const [{ next }] = await db
+    .select({ next: sql<number>`coalesce(max(${expenses.referenceSeq}), 0) + 1` })
+    .from(expenses)
+    .where(and(eq(expenses.orgId, orgId), eq(expenses.month, month)));
+  return Number(next);
+}
+
+/** Postgres unique violation on the reference index, as opposed to any other write failure. */
+function isReferenceCollision(error: unknown): boolean {
+  const code = (error as { code?: string } | null)?.code;
+  const constraint = (error as { constraint?: string } | null)?.constraint;
+  return code === "23505" && constraint === "expenses_org_month_reference_uq";
+}
+
+/**
+ * Run a write that needs a reference number, retrying if another save took it first.
+ *
+ * `max + 1` is read outside the write, so two saves in the same month can compute the same
+ * number. The unique index is what actually decides, and this is the losing side backing off
+ * and asking again rather than surfacing a constraint error to someone who did nothing wrong.
+ */
+async function withReferenceSeq<T>(
+  orgId: string,
+  month: string,
+  write: (referenceSeq: number) => Promise<T>,
+): Promise<T> {
+  const attempts = 5;
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await write(await nextReferenceSeq(orgId, month));
+    } catch (error) {
+      if (attempt >= attempts || !isReferenceCollision(error)) throw error;
+    }
+  }
+}
+
 /**
  * The library learns from every save (R8.2): next time this payee is typed, its line item,
  * description and last amounts are offered automatically.
@@ -136,10 +174,12 @@ export async function createExpenseAction(
     .from(expenses)
     .where(and(eq(expenses.orgId, current.orgId), eq(expenses.month, row.month)));
 
-  const [created] = await db
-    .insert(expenses)
-    .values({ orgId: current.orgId, ...row, sortOrder: Number(next) })
-    .returning({ id: expenses.id });
+  const [created] = await withReferenceSeq(current.orgId, row.month, (referenceSeq) =>
+    db
+      .insert(expenses)
+      .values({ orgId: current.orgId, ...row, sortOrder: Number(next), referenceSeq })
+      .returning({ id: expenses.id }),
+  );
 
   await learnVendor(current.orgId, row);
   revalidatePath("/", "layout");
@@ -174,6 +214,7 @@ export async function updateExpenseAction(input: ExpenseInput): Promise<ActionRe
     .select({
       month: expenses.month,
       sortOrder: expenses.sortOrder,
+      referenceSeq: expenses.referenceSeq,
       paymentSource: expenses.paymentSource,
     })
     .from(expenses)
@@ -203,11 +244,25 @@ export async function updateExpenseAction(input: ExpenseInput): Promise<ActionRe
     sortOrder = Number(next);
   }
 
-  const updated = await db
-    .update(expenses)
-    .set({ ...row, sortOrder })
-    .where(and(eq(expenses.id, input.id), eq(expenses.orgId, current.orgId)))
-    .returning({ id: expenses.id });
+  // The reference names the packet the expense appears in, so a move to another month earns
+  // that month's next number. Staying put keeps the number it was given — a reference that
+  // changed under an already-printed packet would be worse than one that never moves.
+  const movedMonth = existing.month !== row.month;
+  // Captured so the narrowing from the guard above survives into the retry callback.
+  const expenseId = input.id;
+  const updated = movedMonth
+    ? await withReferenceSeq(current.orgId, row.month, (referenceSeq) =>
+        db
+          .update(expenses)
+          .set({ ...row, sortOrder, referenceSeq })
+          .where(and(eq(expenses.id, expenseId), eq(expenses.orgId, current.orgId)))
+          .returning({ id: expenses.id }),
+      )
+    : await db
+        .update(expenses)
+        .set({ ...row, sortOrder })
+        .where(and(eq(expenses.id, expenseId), eq(expenses.orgId, current.orgId)))
+        .returning({ id: expenses.id });
   if (updated.length === 0) return fail("That expense no longer exists.");
 
   // "No receipt available" and attached receipts are mutually exclusive (R4.2): saving

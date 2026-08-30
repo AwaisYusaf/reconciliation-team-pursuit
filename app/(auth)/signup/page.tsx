@@ -9,7 +9,7 @@ import { PageTitle } from "@/src/components/ui/surfaces";
 
 import { SignupForm } from "./signup-form";
 
-export const metadata = { title: "Create your organisation — Grant Expense Reconciliation" };
+export const metadata = { title: "Create your organization — Grant Expense Reconciliation" };
 
 export default async function SignupPage() {
   const session = await getSession();
@@ -20,7 +20,7 @@ export default async function SignupPage() {
       <div className="w-full max-w-[440px] bg-surface border border-line rounded-[4px] px-8 pt-9 pb-8 text-center">
         <PageTitle className="mb-4">{UI.signupsClosed}</PageTitle>
         <p className="text-[15px] text-sub leading-relaxed mb-6">
-          This system is set up for a single organisation. Contact Mantaq if you need access.
+          This system is set up for a single organization. Contact Mantaq if you need access.
         </p>
         <Link href="/login" className="text-accent underline hover:text-accent-dark text-[15px]">
           Back to sign in
@@ -34,7 +34,7 @@ export default async function SignupPage() {
       <div className="font-serif text-[15px] text-sub tracking-[0.02em]">
         Grant Expense Reconciliation
       </div>
-      <PageTitle className="leading-tight mt-2.5 mb-6 sm:mb-[26px]">Create your organisation</PageTitle>
+      <PageTitle className="leading-tight mt-2.5 mb-6 sm:mb-[26px]">Create your organization</PageTitle>
 
       <SignupForm />
 

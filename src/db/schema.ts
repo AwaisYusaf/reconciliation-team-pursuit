@@ -258,6 +258,19 @@ export const expenses = pgTable(
     /** Per-month monotonic counter assigned at insert — orders the month list, cover sheet rows and Excel grouping. */
     sortOrder: integer("sort_order").notNull().default(0),
     /**
+     * The number behind this expense's reference, unique within its month (R2.6).
+     *
+     * Deliberately not `sort_order`, which looks like it would do: that value races on
+     * assignment and is reused after a delete, so two expenses in a month can share one. A
+     * reference that is printed, quoted and used to find a document has to be unique, which
+     * is what the index on (org, month, reference_seq) enforces.
+     *
+     * Reassigned if the expense is moved to another month, because the reference names the
+     * packet it appears in — a 2026-02 reference sitting in the March packet would be worse
+     * than a renumbered one.
+     */
+    referenceSeq: integer("reference_seq").notNull().default(0),
+    /**
      * Set when the expense was created by one-click "Add to month" (R8.3).
      * Remove targets this link rather than matching on name, so undoing an add can never
      * delete a manually entered expense that happens to share a payee and line item.
@@ -271,6 +284,9 @@ export const expenses = pgTable(
     index("expenses_org_month_idx").on(t.orgId, t.month),
     index("expenses_line_item_idx").on(t.lineItemId),
     index("expenses_org_month_sort_idx").on(t.orgId, t.month, t.sortOrder),
+    // What makes a reference trustworthy. Assignment reads max+1 and can race, so the
+    // database is the arbiter and the caller retries rather than hoping.
+    uniqueIndex("expenses_org_month_reference_uq").on(t.orgId, t.month, t.referenceSeq),
     check(
       "expenses_no_receipt_reason_ck",
       sql`not ${t.noReceipt} or (${t.noReceiptReason} is not null and btrim(${t.noReceiptReason}) <> '')`,

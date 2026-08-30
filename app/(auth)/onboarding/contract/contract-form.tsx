@@ -62,7 +62,7 @@ export function OnboardingContractForm() {
 
       <div className="mb-7">
         <Label htmlFor="fiduciaryName">
-          Fiduciary or reviewing organisation name{" "}
+          Fiduciary or reviewing organization name{" "}
           <span className="font-normal text-sub">(optional)</span>
         </Label>
         <Input

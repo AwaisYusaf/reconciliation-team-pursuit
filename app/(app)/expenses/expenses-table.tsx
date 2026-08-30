@@ -13,7 +13,7 @@ import {
   thumbnailSrc,
   useDocumentViewer,
 } from "@/src/components/ui/document-viewer";
-import { Label } from "@/src/components/ui/field";
+import { Input, Label } from "@/src/components/ui/field";
 import { Select } from "@/src/components/ui/select";
 import { Card, DangerPanel, EmptyState } from "@/src/components/ui/surfaces";
 import { TableCard, Td, Th } from "@/src/components/ui/table";
@@ -29,8 +29,28 @@ export type RowDocument = {
   mimeType: string;
 };
 
+/** How the list is ordered. Sorting is client-side: the month's rows are all loaded already. */
+const SORTS = {
+  "date-desc": { label: "Date — newest first", compare: (a: ExpenseRow, b: ExpenseRow) => b.date.localeCompare(a.date) },
+  "date-asc": { label: "Date — oldest first", compare: (a: ExpenseRow, b: ExpenseRow) => a.date.localeCompare(b.date) },
+  reference: { label: "Reference", compare: (a: ExpenseRow, b: ExpenseRow) => a.reference.localeCompare(b.reference) },
+  "name-asc": { label: "Name — A to Z", compare: (a: ExpenseRow, b: ExpenseRow) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }) },
+  "name-desc": { label: "Name — Z to A", compare: (a: ExpenseRow, b: ExpenseRow) => b.name.localeCompare(a.name, undefined, { sensitivity: "base" }) },
+  "amount-desc": { label: "Amount — highest first", compare: (a: ExpenseRow, b: ExpenseRow) => b.reimbursableCents - a.reimbursableCents },
+  "amount-asc": { label: "Amount — lowest first", compare: (a: ExpenseRow, b: ExpenseRow) => a.reimbursableCents - b.reimbursableCents },
+} as const;
+
+type SortKey = keyof typeof SORTS;
+
+/** Entry order, which is what the packet and cover sheets use. */
+const DEFAULT_SORT: SortKey = "reference";
+
 export type ExpenseRow = {
   id: string;
+  /** `2026-02-014` — unique within the month, printed in the packet index (R2.6). */
+  reference: string;
+  /** Searchable, though it is the cover sheet rather than this table that prints it. */
+  description: string;
   date: string;
   name: string;
   lineItemName: string;
@@ -39,6 +59,8 @@ export type ExpenseRow = {
   proofs: RowDocument[];
   receipts: RowDocument[];
   supporting: RowDocument[];
+  /** Proof, receipt and supporting together — what the reference opens. */
+  allDocuments: RowDocument[];
   noReceipt: boolean;
   noReceiptReason: string | null;
   complete: boolean;
@@ -62,6 +84,8 @@ export function ExpensesTable({
   const [pending, startTransition] = useTransition();
   const [lineFilter, setLineFilter] = useState(ALL_LINE_ITEMS);
   const [sourceFilter, setSourceFilter] = useState(ALL_SOURCES);
+  const [query, setQuery] = useState("");
+  const [sort, setSort] = useState<SortKey>(DEFAULT_SORT);
   const [confirming, setConfirming] = useState<ExpenseRow | null>(null);
   const [error, setError] = useState<string | null>(null);
   const { open, viewer } = useDocumentViewer();
@@ -80,15 +104,22 @@ export function ExpensesTable({
     [open],
   );
 
-  const visible = useMemo(
-    () =>
-      rows.filter(
-        (row) =>
-          (lineFilter === ALL_LINE_ITEMS || row.lineItemName === lineFilter) &&
-          (sourceFilter === ALL_SOURCES || row.paymentSource === sourceFilter),
-      ),
-    [rows, lineFilter, sourceFilter],
-  );
+  const visible = useMemo(() => {
+    const term = query.trim().toLowerCase();
+    const matched = rows.filter(
+      (row) =>
+        (lineFilter === ALL_LINE_ITEMS || row.lineItemName === lineFilter) &&
+        (sourceFilter === ALL_SOURCES || row.paymentSource === sourceFilter) &&
+        // Reference, name and description: the three things someone actually knows when
+        // they are looking for one expense among a month of them.
+        (term === "" ||
+          row.reference.toLowerCase().includes(term) ||
+          row.name.toLowerCase().includes(term) ||
+          row.description.toLowerCase().includes(term)),
+    );
+    // Sorted on a copy — `rows` is a prop, and sorting in place would mutate it.
+    return [...matched].sort(SORTS[sort].compare);
+  }, [rows, lineFilter, sourceFilter, query, sort]);
 
   // Cards always total the whole month, never the filtered subset (R5.2).
   const totals = useMemo(() => {
@@ -163,6 +194,32 @@ export function ExpensesTable({
 
       <div className="flex flex-wrap gap-[18px] mb-5">
         <div className="flex-1 min-w-[240px] max-w-[340px]">
+          <Label id="expenseSearch-label" htmlFor="expenseSearch">Search</Label>
+          <Input
+            id="expenseSearch"
+            type="search"
+            aria-labelledby="expenseSearch-label"
+            placeholder="Reference, name or description"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+          />
+        </div>
+        <div className="flex-1 min-w-[240px] max-w-[340px]">
+          <Label id="expenseSort-label" htmlFor="expenseSort">Sort by</Label>
+          <Select
+            id="expenseSort"
+            aria-labelledby="expenseSort-label"
+            value={sort}
+            onValueChange={(value) => setSort(value as SortKey)}
+          >
+            {Object.entries(SORTS).map(([key, { label }]) => (
+              <option key={key} value={key}>
+                {label}
+              </option>
+            ))}
+          </Select>
+        </div>
+        <div className="flex-1 min-w-[240px] max-w-[340px]">
           <Label id="lineFilter-label" htmlFor="lineFilter">Filter by line item</Label>
           <Select
             id="lineFilter"
@@ -192,10 +249,11 @@ export function ExpensesTable({
         </div>
       </div>
 
-      <TableCard minWidth={1040}>
+      <TableCard minWidth={1180}>
         <thead>
           <tr>
-            <Th sticky>Date</Th>
+            <Th sticky>Ref</Th>
+            <Th>Date</Th>
             <Th>Name</Th>
             <Th>Line Item</Th>
             <Th>Payment Source</Th>
@@ -203,13 +261,29 @@ export function ExpensesTable({
             <Th>Proof</Th>
             <Th>Receipt</Th>
             <Th>Supporting</Th>
-            <Th align="right" />
+            <Th align="right" stickyEnd />
           </tr>
         </thead>
         <tbody>
           {visible.map((row) => (
             <tr key={row.id}>
-              <Td numeric sticky>{formatDateUS(row.date)}</Td>
+              <Td sticky className="whitespace-nowrap">
+                {row.allDocuments.length > 0 ? (
+                  <button
+                    type="button"
+                    onClick={() => openDocuments(row.allDocuments, 0)}
+                    title={`Open the ${row.allDocuments.length} document(s) filed under ${row.reference}`}
+                    className="tabular-nums text-[15px] underline decoration-line underline-offset-2 hover:opacity-80 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent rounded-[2px]"
+                  >
+                    {row.reference}
+                  </button>
+                ) : (
+                  // Nothing attached yet, so there is nothing for a click to open. Shown
+                  // plainly rather than as a control that does nothing.
+                  <span className="tabular-nums text-[15px] text-sub">{row.reference}</span>
+                )}
+              </Td>
+              <Td numeric>{formatDateUS(row.date)}</Td>
               <Td>{row.name}</Td>
               <Td>{row.lineItemName}</Td>
               <Td className="text-[15px] text-sub leading-snug">{row.paymentSource}</Td>
@@ -241,7 +315,7 @@ export function ExpensesTable({
                   "—"
                 )}
               </Td>
-              <Td align="right" className="whitespace-nowrap">
+              <Td align="right" stickyEnd className="whitespace-nowrap">
                 <div className="flex gap-4 justify-end">
                   <Link
                     href={`/expenses/${row.id}/edit`}

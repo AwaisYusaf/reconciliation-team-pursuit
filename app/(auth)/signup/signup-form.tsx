@@ -34,7 +34,7 @@ export function SignupForm() {
       {panelError && <DangerPanel className="mb-[22px]">{panelError}</DangerPanel>}
 
       <div className="mb-[18px]">
-        <Label htmlFor="orgName">Organisation name</Label>
+        <Label htmlFor="orgName">Organization name</Label>
         <Input id="orgName" name="orgName" required />
         {fieldErrors.orgName && <FieldError>{fieldErrors.orgName}</FieldError>}
       </div>
@@ -46,7 +46,7 @@ export function SignupForm() {
           name="email"
           type="email"
           autoComplete="username"
-          placeholder="you@yourorganisation.org"
+          placeholder="you@yourorganization.org"
           required
         />
         {fieldErrors.email && <FieldError>{fieldErrors.email}</FieldError>}

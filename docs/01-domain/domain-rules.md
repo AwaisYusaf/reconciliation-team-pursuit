@@ -6,7 +6,7 @@ Binding rules for all screens and generators. Module specs and code reference th
 
 - **R1.1** All amounts are **integer cents** in code and DB. Convert only at render/parse edges.
 - **R1.2** Display format everywhere (UI and documents): `$#,##0.00` → `$3,916.70`, `$19,890.83`. Negative: `-$145.00`. No bare numbers, no dropped cents (fixes manual inconsistencies like `$1404`, `1015.99`, `$3.916.70`).
-- **R1.3** **Reimbursable amount = subtotal + fees.** Tax is captured but excluded — the City does not reimburse sales tax. All "amount", "spent", "billed" figures in the system mean reimbursable unless explicitly labeled.
+- **R1.3** **Reimbursable amount = subtotal + fees.** Tax is captured but excluded — the funder does not reimburse sales tax. All "amount", "spent", "billed" figures in the system mean reimbursable unless explicitly labeled.
 - **R1.4** Negative amounts are allowed (refunds — e.g., ClickUp −$145) and net into every total.
 - **R1.5** Percentages on documents and screens: whole numbers (`66%`), **rounded half away from zero** (84.92→85, 103.16→103), implemented once in `format.ts`. Division by zero → `0%`.
 
@@ -16,6 +16,7 @@ Binding rules for all screens and generators. Module specs and code reference th
 - **R2.2** Every expense belongs to exactly one month (defaults to the active month at creation; **editable from the expense form**). **Expense date is independent of month** — a February expense may be paid 03/09 (real case). Date defaults to today, is not constrained to the month, and prints nowhere on cover sheets (it appears in the Excel detail sheet).
 - **R2.3** The active month is app-wide UI state, persisted per organisation (`organizations.active_month`): dashboard, lists, cover sheets, packet, and summary all reflect it.
 - **R2.4** Invoice period string for documents: `M/1/YYYY to M/<lastday>/YYYY`.
+- **R2.6** **Expense reference:** every expense carries a number unique within its month, printed as `{month}-{seq}` (e.g. `2026-02-014`, three digits, growing past that rather than truncating). Assigned at insert from `max + 1` and arbitrated by a unique index on (org, month, reference_seq) — deliberately **not** `sort_order`, which races on assignment and is reused after a delete. Reassigned when an expense is moved to another month, because the reference names the packet it appears in. It is printed in the packet's expense index (packet-pdf-spec §1b) and nowhere else in the packet: the cover sheet's three-column table is the approved layout and neither gains a column nor has its text edited.
 - **R2.5** **Timezone:** all date-only values, "today", "current month", and period boundaries are computed in the fixed organisation timezone **America/Detroit** — never via UTC conversion. (A UTC server must not flip Detroit's date after ~8 pm.)
 
 ## 3. Budget math (per line item, per month)
@@ -99,7 +100,7 @@ Let `opening` = line item's opening previously-billed balance (setup figure), `e
 | tax-note | `(Note: Statement includes tax which was excluded from reimbursement amount)` |
 | see-below | `Please see below for additional information for some of the above items.` |
 | no-receipt-note | `(Note: No receipt available — {reason})` |
-| reimburse-hint (UI) | `Sales tax is excluded. The city does not reimburse it.` |
+| reimburse-hint (UI) | `Sales tax is excluded. The funder does not reimburse it.` |
 | blocked-title (UI) | `This packet cannot be downloaded yet.` |
 | blocked-title-line-item (UI) | `Downloads unavailable for this line item.` |
 | blocked-intro (UI) | `The following records are missing a receipt/justification or proof of payment:` |

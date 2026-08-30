@@ -19,7 +19,7 @@ Writes `expenses`, `expense_documents`, upserts `vendor_defaults` (R8.2). Reads 
 | Date | Date input, defaults today in America/Detroit (R2.5), any date allowed. |
 | Description / role | Textarea, label: `Description / role — this exact text will print on the cover sheet`. |
 | Subtotal / Tax / Fees | Money inputs; negatives allowed (refunds). |
-| Reimbursable box | Live `subtotal + fees` + hint `Sales tax is excluded. The city does not reimburse it.` |
+| Reimbursable box | Live `subtotal + fees` + hint `Sales tax is excluded. The funder does not reimburse it.` |
 | Projection line | `Remaining on {line item} after this expense: {amount}` — red/bold when negative (R3.7). |
 | Proof of payment | Multi-file upload (images/PDF), 1–n, thumbnails, remove; required to be documentation-complete. Files count only after server-side process & attach succeeds (R4.6) — failed files show the R12 `upload-failed` chip. |
 | Receipt / justification | Multi-file upload (receipt, invoice, or timesheet) — OR checkbox `No receipt available` revealing a required reason textarea (empty → R12 `no-receipt-reason-required`; prints per R6.7). Checking it hides the upload; already-attached receipt files are kept until save, then deleted (confirmation inline) — service rejects the combined state (R4.2). |
@@ -66,7 +66,7 @@ Fields in order:
    "Director".
 6. Row of three money inputs: Subtotal $9,211.50 · Tax $0.00 · Fees $0.00.
 7. A bordered emphasis box (2px #211B16 border, white): "Reimbursable amount: $9,211.50" in
-   24px bold, under it 15px #5B5147 "Sales tax is excluded. The city does not reimburse it."
+   24px bold, under it 15px #5B5147 "Sales tax is excluded. The funder does not reimburse it."
 8. One line below: "Remaining on Salary after this expense: $53,839.84" in #5B5147.
 9. "Proof of payment" — multi-file upload area (dashed border, "Add files" affordance) with
    two attached file chips shown, each with a small thumbnail, filename

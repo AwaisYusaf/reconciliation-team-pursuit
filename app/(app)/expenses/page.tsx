@@ -5,6 +5,7 @@ import { PageTitle, Subtext } from "@/src/components/ui/surfaces";
 import { db } from "@/src/db";
 import { paymentSources } from "@/src/db/schema";
 import { monthLabel } from "@/src/domain/dates";
+import { expenseReference } from "@/src/domain/strings";
 import { documentationStatus, type GateExpense } from "@/src/domain/gate";
 import { reimbursableCents } from "@/src/domain/money";
 import { loadMonthExpenses } from "@/src/modules/expenses/queries";
@@ -50,8 +51,10 @@ export default async function ExpensesPage() {
 
     return {
       id: expense.id,
+      reference: expenseReference(expense.month, expense.referenceSeq),
       date: expense.date,
       name: expense.name,
+      description: expense.description,
       lineItemName: expense.lineItemName,
       paymentSource: expense.paymentSource,
       reimbursableCents: reimbursableCents(expense),
@@ -62,6 +65,14 @@ export default async function ExpensesPage() {
       proofs: viewable(expense.documents, "proof"),
       receipts: viewable(expense.documents, "receipt"),
       supporting: viewable(expense.documents, "supporting"),
+      // Every attached document, in the order the packet shows them. The reference is the
+      // handle SQA asked for: one click on it opens the whole evidence set for the expense,
+      // rather than making someone open proof, receipt and supporting separately.
+      allDocuments: [
+        ...viewable(expense.documents, "proof"),
+        ...viewable(expense.documents, "receipt"),
+        ...viewable(expense.documents, "supporting"),
+      ],
       noReceipt: expense.noReceipt,
       noReceiptReason: expense.noReceiptReason,
       complete: status.complete,

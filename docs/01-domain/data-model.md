@@ -88,6 +88,7 @@ Same shape as payment_sources; seeded with the six defaults.
 | no_receipt | boolean | default false |
 | no_receipt_reason | text null | Required non-empty when no_receipt (R4.2, R6.7) |
 | sort_order | int | **Per-month monotonic counter** assigned at insert — orders m03's flat list, cover-sheet rows (within line item), and Excel grouping consistently |
+| reference_seq | int | **Per-month, unique** with (org_id, month) — the number behind the printed reference `{month}-{seq}` (R2.6). Distinct from `sort_order`, which races and is reused after a delete |
 | recurring_item_id | uuid null | Set when the row was created by a recurring item's one-click add (R8.3). Deliberately **not** a foreign key: the link records provenance, and deleting the recurring item must not alter an expense that is already part of a submitted month. Indexed. |
 
 Derived (never stored): `reimbursable = subtotal + fees`; documentation status from documents (R4).

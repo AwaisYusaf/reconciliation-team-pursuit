@@ -26,6 +26,7 @@ import { convertDocxToPdf } from "./docx-to-pdf";
 import { PACKET_MARGIN_IN, inchesToPoints } from "./layout-constants";
 import { expensesForLineItem, type MonthSnapshot } from "./month-snapshot";
 import { orderedMonthDocuments, packetDocumentsFor } from "./packet-order";
+import { buildIndexSectionPdf } from "./packet-index-pdf";
 import { buildSummarySectionPdf } from "./packet-summary-pdf";
 import { DEFAULT_QUALITY, normalizeImage, rasterizePdf, type RasterQuality } from "./raster";
 
@@ -148,6 +149,15 @@ export async function buildPacketPdf(
     await appendGenerated(pdf, await buildSummarySectionPdf(snapshot));
   } catch (error) {
     throw new PacketError("the contract summary section", error);
+  }
+
+  /* -------------------------------------------------- 1b. expense index */
+  // Directly after the summary, where a contents page belongs: a reviewer meets the totals,
+  // then the list of what makes them up, then the evidence.
+  try {
+    await appendGenerated(pdf, await buildIndexSectionPdf(snapshot));
+  } catch (error) {
+    throw new PacketError("the expense index section", error);
   }
 
   /* -------------------------------------------------- 2. month documents */

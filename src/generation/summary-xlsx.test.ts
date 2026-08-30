@@ -37,6 +37,7 @@ const EXPENSES: SnapshotExpense[] = FEB_EXPENSES.map((amount, index) => {
     noReceipt: false,
     noReceiptReason: null,
     sortOrder: index,
+    referenceSeq: index + 1,
     documents: [],
   };
 });

@@ -43,6 +43,8 @@ export type ExpenseDetail = {
   noReceipt: boolean;
   noReceiptReason: string | null;
   sortOrder: number;
+  /** Numbered within its month; rendered through `expenseReference` (R2.6). */
+  referenceSeq: number;
   documents: AttachedDocument[];
 };
 
@@ -128,6 +130,7 @@ export async function loadExpense(orgId: string, id: string): Promise<ExpenseDet
       noReceipt: expenses.noReceipt,
       noReceiptReason: expenses.noReceiptReason,
       sortOrder: expenses.sortOrder,
+      referenceSeq: expenses.referenceSeq,
     })
     .from(expenses)
     .innerJoin(lineItems, eq(lineItems.id, expenses.lineItemId))
@@ -161,6 +164,7 @@ export async function loadMonthExpenses(orgId: string, month: string): Promise<E
       noReceipt: expenses.noReceipt,
       noReceiptReason: expenses.noReceiptReason,
       sortOrder: expenses.sortOrder,
+      referenceSeq: expenses.referenceSeq,
     })
     .from(expenses)
     .innerJoin(lineItems, eq(lineItems.id, expenses.lineItemId))

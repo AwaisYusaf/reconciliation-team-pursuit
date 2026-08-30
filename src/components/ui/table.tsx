@@ -42,12 +42,29 @@ const STICKY_FIRST =
   "sticky left-0 z-10 bg-surface lg:static lg:bg-transparent " +
   "shadow-[1px_0_0_var(--color-line)] lg:shadow-none";
 
+/**
+ * The mirror image, for the actions column.
+ *
+ * Row actions live in the last column, so on anything narrower than the table they were only
+ * reachable by scrolling to the far right — Edit and Delete were effectively hidden on a
+ * phone or a laptop. Pinning them keeps the row's identity on one edge and what you can do
+ * to it on the other. Released at `lg` with the first column, where nothing scrolls anyway.
+ */
+const STICKY_LAST =
+  "sticky right-0 z-10 bg-surface lg:static lg:bg-transparent " +
+  "shadow-[-1px_0_0_var(--color-line)] lg:shadow-none";
+
 export function Th({
   align = "left",
   sticky = false,
+  stickyEnd = false,
   className,
   ...props
-}: ComponentProps<"th"> & { align?: "left" | "right"; sticky?: boolean }) {
+}: ComponentProps<"th"> & {
+  align?: "left" | "right";
+  sticky?: boolean;
+  stickyEnd?: boolean;
+}) {
   return (
     <th
       scope="col"
@@ -55,6 +72,7 @@ export function Th({
         HEAD_BASE,
         align === "right" ? "text-right" : "text-left",
         sticky && STICKY_FIRST,
+        stickyEnd && STICKY_LAST,
         className,
       )}
       {...props}
@@ -70,6 +88,7 @@ export function Td({
   numeric = false,
   bold = false,
   sticky = false,
+  stickyEnd = false,
   className,
   ...props
 }: ComponentProps<"td"> & {
@@ -78,6 +97,8 @@ export function Td({
   bold?: boolean;
   /** Pins this cell while the rest of a wide table scrolls. Use on the first column only. */
   sticky?: boolean;
+  /** Pins this cell to the right edge. Use on the last column only. */
+  stickyEnd?: boolean;
 }) {
   return (
     <td
@@ -87,6 +108,7 @@ export function Td({
         numeric && "tabular-nums whitespace-nowrap",
         bold && "font-bold",
         sticky && STICKY_FIRST,
+        stickyEnd && STICKY_LAST,
         className,
       )}
       {...props}

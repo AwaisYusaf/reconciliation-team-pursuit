@@ -47,6 +47,8 @@ export type PacketReadiness = {
   documents: MonthDocumentRow[];
   /** Section 1 is one page unless the line item roster overflows. */
   summaryPages: number;
+  /** The expense index that follows the summary (R2.6). */
+  indexPages: number;
   monthDocumentPages: number;
   totalPages: number;
   submittedAt: Date | null;
@@ -206,6 +208,11 @@ export async function loadPacketReadiness(
   const monthDocumentPages = estimateUploadPages(attachedDocs);
   // One page unless the roster overflows, which is what the assembler does too.
   const summaryPages = items.length > 22 ? Math.ceil(items.length / 22) : 1;
+  // The index lists one row per expense. 33 rows clear the title block on the first page and
+  // ~38 fit on a continuation, so the first page is the binding one — and it is never zero,
+  // because the section prints "This month has no expenses." rather than being skipped.
+  const INDEX_ROWS_PER_PAGE = 33;
+  const indexPages = Math.max(1, Math.ceil(rows.length / INDEX_ROWS_PER_PAGE));
 
   return {
     rows: readiness,
@@ -220,9 +227,13 @@ export async function loadPacketReadiness(
       pageCount: row.pageCount,
     })),
     summaryPages,
+    indexPages,
     monthDocumentPages,
     totalPages:
-      summaryPages + monthDocumentPages + readiness.reduce((sum, row) => sum + row.estimatedPages, 0),
+      summaryPages +
+      indexPages +
+      monthDocumentPages +
+      readiness.reduce((sum, row) => sum + row.estimatedPages, 0),
     submittedAt: status[0]?.submittedAt ?? null,
     hasBankStatement: attachedDocs.some((row) => row.category === "bank_statement"),
   };

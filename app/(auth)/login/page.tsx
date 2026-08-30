@@ -20,7 +20,7 @@ export default async function LoginPage() {
       <div className="font-serif text-[15px] text-sub tracking-[0.02em]">
         Grant Expense Reconciliation
       </div>
-      <PageTitle className="leading-tight mt-2.5 mb-6 sm:mb-[26px]">Sign in to your organisation</PageTitle>
+      <PageTitle className="leading-tight mt-2.5 mb-6 sm:mb-[26px]">Sign in to your organization</PageTitle>
 
       <LoginForm />
 

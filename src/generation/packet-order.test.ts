@@ -60,6 +60,7 @@ function expense(documents: SnapshotDocument[]): SnapshotExpense {
     noReceipt: false,
     noReceiptReason: null,
     sortOrder: 0,
+    referenceSeq: 1,
     documents,
   };
 }

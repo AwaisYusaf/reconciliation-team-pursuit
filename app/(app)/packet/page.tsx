@@ -44,7 +44,7 @@ export default async function PacketPage() {
     <div>
       <PageHeader
         title="Month-End Packet"
-        subtext={`Everything the City receives for ${label}.`}
+        subtext={`Everything the funder receives for ${label}.`}
         actions={
           <SubmittedMarker
             month={month}
@@ -134,7 +134,7 @@ export default async function PacketPage() {
       <div className="mt-8 grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] items-start">
         <Card className={CARD_PADDING}>
           <SectionTitle className="mb-1">Packet contents</SectionTitle>
-          <p className="text-sm text-muted mb-4">In the order the City will read them.</p>
+          <p className="text-sm text-muted mb-4">In the order the funder will read them.</p>
 
           <ol className="flex flex-col divide-y divide-line border-t border-line">
             <ContentsRow
@@ -144,13 +144,18 @@ export default async function PacketPage() {
             />
             <ContentsRow
               index={2}
+              label="Expense index"
+              pages={readiness.indexPages}
+            />
+            <ContentsRow
+              index={3}
               label="Month documents"
               pages={readiness.monthDocumentPages}
             />
             {nonEmpty.map((row, index) => (
               <ContentsRow
                 key={row.lineItemId}
-                index={index + 3}
+                index={index + 4}
                 label={`${row.name} — cover sheet + documents`}
                 pages={row.estimatedPages}
               />

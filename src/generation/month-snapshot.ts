@@ -55,6 +55,8 @@ export type SnapshotExpense = {
   noReceipt: boolean;
   noReceiptReason: string | null;
   sortOrder: number;
+  /** Numbered within the month; printed in the packet's expense index (R2.6). */
+  referenceSeq: number;
   documents: SnapshotDocument[];
 };
 
@@ -158,6 +160,7 @@ export async function loadMonthSnapshot(
           noReceipt: expenses.noReceipt,
           noReceiptReason: expenses.noReceiptReason,
           sortOrder: expenses.sortOrder,
+      referenceSeq: expenses.referenceSeq,
         })
         .from(expenses)
         .innerJoin(

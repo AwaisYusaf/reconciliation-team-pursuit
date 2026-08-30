@@ -58,10 +58,10 @@ export function SettingsSections({
     <div className="flex flex-col gap-6">
       {/* -------------------------------------------------------- organisation */}
       <Card className={CARD_PADDING}>
-        <SectionTitle className="mb-5">Organisation</SectionTitle>
+        <SectionTitle className="mb-5">Organization</SectionTitle>
         <div className="grid gap-5 lg:grid-cols-2">
           <div>
-            <Label htmlFor="orgName">Organisation name</Label>
+            <Label htmlFor="orgName">Organization name</Label>
             <Input
               id="orgName"
               value={org.name}
@@ -81,7 +81,7 @@ export function SettingsSections({
         <div className="flex justify-end mt-6">
           <Button
             disabled={pending}
-            onClick={() => run(() => updateOrganisationAction(org), "Organisation saved")}
+            onClick={() => run(() => updateOrganisationAction(org), "Organization saved")}
           >
             Save
           </Button>

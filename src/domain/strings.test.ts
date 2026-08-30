@@ -40,7 +40,7 @@ describe("canonical document strings (R12)", () => {
 
 describe("UI copy (R12)", () => {
   it("pins the strings the rules fix", () => {
-    expect(UI.reimburseHint).toBe("Sales tax is excluded. The city does not reimburse it.");
+    expect(UI.reimburseHint).toBe("Sales tax is excluded. The funder does not reimburse it.");
     expect(UI.blockedTitle).toBe("This packet cannot be downloaded yet.");
     expect(UI.blockedTitleLineItem).toBe("Downloads unavailable for this line item.");
     expect(UI.blockedIntro).toBe(

@@ -13,6 +13,20 @@ export const TAX_NOTE = "(Note: Statement includes tax which was excluded from r
 /** The one sentence that follows every cover sheet table (R6.3). */
 export const SEE_BELOW = "Please see below for additional information for some of the above items.";
 
+/**
+ * An expense's reference, as it is printed and quoted (R2.6).
+ *
+ * `{month}-{seq}`, e.g. `2026-02-001`. The month is part of the reference because a packet is
+ * assembled and submitted one month at a time, so a reference is unambiguous inside the
+ * document a reviewer is holding, and sorts into entry order on its own.
+ *
+ * Three digits covers 999 expenses in a month and simply grows past that rather than
+ * truncating — a wrong reference is worse than a wide one.
+ */
+export function expenseReference(month: string, seq: number): string {
+  return `${month}-${String(seq).padStart(3, "0")}`;
+}
+
 /** Disclosure appended to a heading when the expense has no receipt (R6.7). */
 export function noReceiptNote(reason: string): string {
   return `(Note: No receipt available — ${reason.trim()})`;
@@ -22,7 +36,7 @@ export function noReceiptNote(reason: string): string {
 
 export const UI = {
   /** Add Expense reimbursable box (R1.3). */
-  reimburseHint: "Sales tax is excluded. The city does not reimburse it.",
+  reimburseHint: "Sales tax is excluded. The funder does not reimburse it.",
   /** Month-End Packet blocking panel title (R4.3). */
   blockedTitle: "This packet cannot be downloaded yet.",
   /** Cover Sheets blocking panel title (R4.3). */
@@ -36,11 +50,11 @@ export const UI = {
   supportEmail: "tech@teampursuit.org",
   uploadFailed: "Upload failed — try again.",
   noReceiptReasonRequired: "Enter the reason no receipt is available.",
-  duplicateEmail: "An organisation with that email already exists — sign in instead.",
-  signInMissingFields: "Enter your organisation email and password.",
+  duplicateEmail: "An organization with that email already exists — sign in instead.",
+  signInMissingFields: "Enter your organization email and password.",
   signInUnknownEmail:
-    "We couldn't find an organisation with that email. Create an account to get started.",
-  signInWrongPassword: "That password doesn't match this organisation email.",
+    "We couldn't find an organization with that email. Create an account to get started.",
+  signInWrongPassword: "That password doesn't match this organization email.",
   expenseMissingFields:
     "Please enter a name, choose a line item, and choose a payment source.",
   recurringMissingFields: "Enter a name, an amount, and a line item.",
