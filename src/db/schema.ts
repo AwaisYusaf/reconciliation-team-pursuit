@@ -263,7 +263,8 @@ export const expenses = pgTable(
      * Deliberately not `sort_order`, which looks like it would do: that value races on
      * assignment and is reused after a delete, so two expenses in a month can share one. A
      * reference that is printed, quoted and used to find a document has to be unique, which
-     * is what the index on (org, month, reference_seq) enforces.
+     * is what the index on (org, month, reference_seq) enforces — and the counter it is
+     * drawn from lives on `month_statuses`, so a deleted expense's number is never reissued.
      *
      * Reassigned if the expense is moved to another month, because the reference names the
      * packet it appears in — a 2026-02 reference sitting in the March packet would be worse
@@ -374,6 +375,17 @@ export const monthStatuses = pgTable(
       .references(() => organizations.id, { onDelete: "cascade" }),
     month: char({ length: 7 }).notNull(),
     submittedAt: timestamp("submitted_at", { withTimezone: true }),
+    /**
+     * The next expense reference to hand out in this month (R2.6).
+     *
+     * A counter rather than `max(reference_seq) + 1` over the live rows, because that reuses
+     * the number of a deleted expense — the very flaw that rules `sort_order` out. Deleting
+     * an expense leaves a gap here and never gives its reference to something else.
+     *
+     * Incremented by the insert itself, under the row lock the upsert takes, so two saves in
+     * the same month cannot be handed the same number and nothing has to retry.
+     */
+    nextReferenceSeq: integer("next_reference_seq").notNull().default(1),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },

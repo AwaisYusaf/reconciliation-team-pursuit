@@ -7,7 +7,7 @@ import { and, eq, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
 import { db } from "@/src/db";
-import { expenseDocuments, expenses, lineItems, vendorDefaults } from "@/src/db/schema";
+import { expenseDocuments, expenses, lineItems, monthStatuses, vendorDefaults } from "@/src/db/schema";
 import { parseMoneyToCentsOrZero } from "@/src/domain/money";
 import { fail, ok, type ActionResult } from "@/src/lib/action-result";
 import { actionSession } from "@/src/lib/action-session";
@@ -52,42 +52,29 @@ function toRow(input: ExpenseInput) {
   };
 }
 
-/** The next free reference number in a month. Starts at 1 — there is no expense zero. */
-async function nextReferenceSeq(orgId: string, month: string): Promise<number> {
-  const [{ next }] = await db
-    .select({ next: sql<number>`coalesce(max(${expenses.referenceSeq}), 0) + 1` })
-    .from(expenses)
-    .where(and(eq(expenses.orgId, orgId), eq(expenses.month, month)));
-  return Number(next);
-}
-
-/** Postgres unique violation on the reference index, as opposed to any other write failure. */
-function isReferenceCollision(error: unknown): boolean {
-  const code = (error as { code?: string } | null)?.code;
-  const constraint = (error as { constraint?: string } | null)?.constraint;
-  return code === "23505" && constraint === "expenses_org_month_reference_uq";
-}
-
 /**
- * Run a write that needs a reference number, retrying if another save took it first.
+ * Claim the next reference number for a month (R2.6).
  *
- * `max + 1` is read outside the write, so two saves in the same month can compute the same
- * number. The unique index is what actually decides, and this is the losing side backing off
- * and asking again rather than surfacing a constraint error to someone who did nothing wrong.
+ * One statement, so the counter is read and advanced under the same row lock: two saves in
+ * the same month cannot be handed the same number, and nothing has to detect a collision and
+ * retry. Deleting an expense leaves its number spent — a reference that has been printed is
+ * never handed to something else.
+ *
+ * `month_statuses` gains a row here if the month has none. That is harmless: the only other
+ * column is `submitted_at`, and a row with it null already means exactly what no row means.
  */
-async function withReferenceSeq<T>(
-  orgId: string,
-  month: string,
-  write: (referenceSeq: number) => Promise<T>,
-): Promise<T> {
-  const attempts = 5;
-  for (let attempt = 1; ; attempt++) {
-    try {
-      return await write(await nextReferenceSeq(orgId, month));
-    } catch (error) {
-      if (attempt >= attempts || !isReferenceCollision(error)) throw error;
-    }
-  }
+async function claimReferenceSeq(orgId: string, month: string): Promise<number> {
+  const [claimed] = await db
+    .insert(monthStatuses)
+    .values({ orgId, month, nextReferenceSeq: 2 })
+    .onConflictDoUpdate({
+      target: [monthStatuses.orgId, monthStatuses.month],
+      set: { nextReferenceSeq: sql`${monthStatuses.nextReferenceSeq} + 1` },
+    })
+    .returning({ next: monthStatuses.nextReferenceSeq });
+
+  // The row now holds the *next* number, so the one just claimed is one below it.
+  return Number(claimed.next) - 1;
 }
 
 /**
@@ -174,12 +161,15 @@ export async function createExpenseAction(
     .from(expenses)
     .where(and(eq(expenses.orgId, current.orgId), eq(expenses.month, row.month)));
 
-  const [created] = await withReferenceSeq(current.orgId, row.month, (referenceSeq) =>
-    db
-      .insert(expenses)
-      .values({ orgId: current.orgId, ...row, sortOrder: Number(next), referenceSeq })
-      .returning({ id: expenses.id }),
-  );
+  const [created] = await db
+    .insert(expenses)
+    .values({
+      orgId: current.orgId,
+      ...row,
+      sortOrder: Number(next),
+      referenceSeq: await claimReferenceSeq(current.orgId, row.month),
+    })
+    .returning({ id: expenses.id });
 
   await learnVendor(current.orgId, row);
   revalidatePath("/", "layout");
@@ -250,19 +240,15 @@ export async function updateExpenseAction(input: ExpenseInput): Promise<ActionRe
   const movedMonth = existing.month !== row.month;
   // Captured so the narrowing from the guard above survives into the retry callback.
   const expenseId = input.id;
-  const updated = movedMonth
-    ? await withReferenceSeq(current.orgId, row.month, (referenceSeq) =>
-        db
-          .update(expenses)
-          .set({ ...row, sortOrder, referenceSeq })
-          .where(and(eq(expenses.id, expenseId), eq(expenses.orgId, current.orgId)))
-          .returning({ id: expenses.id }),
-      )
-    : await db
-        .update(expenses)
-        .set({ ...row, sortOrder })
-        .where(and(eq(expenses.id, expenseId), eq(expenses.orgId, current.orgId)))
-        .returning({ id: expenses.id });
+  const updated = await db
+    .update(expenses)
+    .set({
+      ...row,
+      sortOrder,
+      ...(movedMonth ? { referenceSeq: await claimReferenceSeq(current.orgId, row.month) } : {}),
+    })
+    .where(and(eq(expenses.id, expenseId), eq(expenses.orgId, current.orgId)))
+    .returning({ id: expenses.id });
   if (updated.length === 0) return fail("That expense no longer exists.");
 
   // "No receipt available" and attached receipts are mutually exclusive (R4.2): saving
