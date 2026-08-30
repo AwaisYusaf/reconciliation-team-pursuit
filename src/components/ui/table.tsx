@@ -33,14 +33,17 @@ const HEAD_BASE =
 /**
  * Keep the identifying column visible while the rest of a wide table scrolls.
  *
- * The Expenses table is 1180px against a 325px phone viewport — scrolling sideways otherwise
- * takes the row's name away with everything else, leaving a row of figures belonging to
- * nothing. Released at `lg`, where the whole table fits and a sticky column would only cast
- * a shadow for no reason.
+ * Scrolling sideways otherwise takes the row's identity away with everything else, leaving a
+ * row of figures belonging to nothing.
+ *
+ * Released at `xl`, not `lg`. The design language caps content at 1100px, so the widest table
+ * needs about 1050 and only genuinely fits from 1280 up; releasing at 1024 dropped the pin at
+ * exactly the width where the table still overflowed by ~66px, which is the width a laptop
+ * actually is.
  */
 const STICKY_FIRST =
-  "sticky left-0 z-10 bg-surface lg:static lg:bg-transparent " +
-  "shadow-[1px_0_0_var(--color-line)] lg:shadow-none";
+  "sticky left-0 z-10 bg-surface xl:static xl:bg-transparent " +
+  "shadow-[1px_0_0_var(--color-line)] xl:shadow-none";
 
 /**
  * The mirror image, for the actions column.
@@ -51,8 +54,8 @@ const STICKY_FIRST =
  * to it on the other. Released at `lg` with the first column, where nothing scrolls anyway.
  */
 const STICKY_LAST =
-  "sticky right-0 z-10 bg-surface lg:static lg:bg-transparent " +
-  "shadow-[-1px_0_0_var(--color-line)] lg:shadow-none";
+  "sticky right-0 z-10 bg-surface xl:static xl:bg-transparent " +
+  "shadow-[-1px_0_0_var(--color-line)] xl:shadow-none";
 
 export function Th({
   align = "left",

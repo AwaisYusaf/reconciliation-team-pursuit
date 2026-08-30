@@ -12,7 +12,11 @@ Reads `expenses` + `expense_documents` (status), calculation service for card to
 ## Behavior
 - One summary card per active payment source (R5.2), label = the org's source label, value = Σ reimbursable for the month (retired labels present in the month get their own card).
 - Filters: line item (All + each) and payment source (All + each); combinable.
-- Table: `Date | Name | Line Item | Payment Source | Reimbursable Amount | Proof | Receipt | Supporting | (actions)`.
+- Table: `Ref / Date | Name | Line Item | Source | Amount | Proof | Receipt | Support | (actions)`.
+  Headers are kept short and the reference shares its column with the date so the whole table fits
+  the 1100px content width without scrolling sideways — a table that scrolls hides its own row
+  actions. "Amount" is unqualified on purpose: R1.3 defines that as the reimbursable one.
+  The reference is the click target for every document filed under the expense (R2.6).
   - Proof column: `{n} attached` with first-file thumbnail, or bold red `Missing` (R4.1).
   - Receipt column: `{n} attached`, or `No receipt (reason)` in secondary text when flagged (R4.2), or bold red `Missing`.
   - Supporting: count.

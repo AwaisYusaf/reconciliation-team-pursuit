@@ -249,18 +249,17 @@ export function ExpensesTable({
         </div>
       </div>
 
-      <TableCard minWidth={1180}>
+      <TableCard minWidth={1040}>
         <thead>
           <tr>
-            <Th sticky>Ref</Th>
-            <Th>Date</Th>
+            <Th sticky>Ref / Date</Th>
             <Th>Name</Th>
             <Th>Line Item</Th>
-            <Th>Payment Source</Th>
-            <Th align="right">Reimbursable Amount</Th>
+            <Th>Source</Th>
+            <Th align="right">Amount</Th>
             <Th>Proof</Th>
             <Th>Receipt</Th>
-            <Th>Supporting</Th>
+            <Th>Support</Th>
             <Th align="right" stickyEnd />
           </tr>
         </thead>
@@ -282,8 +281,12 @@ export function ExpensesTable({
                   // plainly rather than as a control that does nothing.
                   <span className="tabular-nums text-[15px] text-sub">{row.reference}</span>
                 )}
+                {/* Reference and date are both the row's identity, so they share the sticky
+                    column rather than paying a second column's padding for one short value. */}
+                <span className="block text-sm text-sub tabular-nums">
+                  {formatDateUS(row.date)}
+                </span>
               </Td>
-              <Td numeric>{formatDateUS(row.date)}</Td>
               <Td>{row.name}</Td>
               <Td>{row.lineItemName}</Td>
               <Td className="text-[15px] text-sub leading-snug">{row.paymentSource}</Td>
@@ -309,7 +312,7 @@ export function ExpensesTable({
                     onClick={() => openDocuments(row.supporting, 0)}
                     className="text-base underline decoration-line underline-offset-2 hover:opacity-80 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent rounded-[2px]"
                   >
-                    {row.supporting.length} attached
+                    {row.supporting.length}
                   </button>
                 ) : (
                   "—"
@@ -376,7 +379,7 @@ function DocumentCell({
         size="sm"
       />
       <span className="text-base underline decoration-line underline-offset-2">
-        {documents.length} attached
+        {documents.length}
       </span>
     </button>
   );
