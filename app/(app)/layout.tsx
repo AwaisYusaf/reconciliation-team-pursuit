@@ -5,8 +5,8 @@ import { MonthSelector } from "@/src/components/app-shell/month-selector";
 import { Button } from "@/src/components/ui/button";
 import { AppToaster } from "@/src/components/ui/toast";
 import { db } from "@/src/db";
-import { expenses } from "@/src/db/schema";
-import { monthWindow } from "@/src/domain/dates";
+import { contractSettings, expenses } from "@/src/db/schema";
+import { contractMonths, monthWindow } from "@/src/domain/dates";
 import { signOutAction } from "@/src/modules/auth/actions";
 import { getSession } from "@/src/services/auth/session";
 import { eq } from "drizzle-orm";
@@ -23,15 +23,30 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   if (!session.onboarded) redirect("/onboarding/line-items");
 
   // Months holding data stay selectable even when they fall outside the rolling window.
-  const monthRows = await db
-    .selectDistinct({ month: expenses.month })
-    .from(expenses)
-    .where(eq(expenses.orgId, session.orgId));
+  const [monthRows, contractRows] = await Promise.all([
+    db
+      .selectDistinct({ month: expenses.month })
+      .from(expenses)
+      .where(eq(expenses.orgId, session.orgId)),
+    db
+      .select({ start: contractSettings.contractStart, end: contractSettings.contractEnd })
+      .from(contractSettings)
+      .where(eq(contractSettings.orgId, session.orgId))
+      .limit(1),
+  ]);
 
-  // The persisted active month is always selectable, even when it sits outside the rolling
-  // window (any month reached through "Earlier month…" that holds no data). Without it the
-  // header would show one month while every page below rendered another.
-  const months = monthWindow([...monthRows.map((row) => row.month), session.activeMonth]);
+  // The contract's own months are always selectable, so a multi-year contract reaches its
+  // end without anyone adding months by hand — and extends itself the moment the end date
+  // is edited on renewal (D-30).
+  //
+  // The persisted active month is included too, even when it sits outside everything else
+  // (any month reached through "Other month…" that holds no data). Without it the header
+  // would show one month while every page below rendered another.
+  const months = monthWindow([
+    ...contractMonths(contractRows[0]?.start, contractRows[0]?.end),
+    ...monthRows.map((row) => row.month),
+    session.activeMonth,
+  ]);
   const activeMonth = session.activeMonth;
 
   return (

@@ -139,19 +139,68 @@ export function monthBounds(key: MonthKey): { start: IsoDate; end: IsoDate } {
 }
 
 /**
- * The month selector's rolling window (m00): 12 months back through 3 months ahead of
- * the current month, unioned with every month that already holds data, newest first.
- * Months older than the window stay reachable through the "Earlier month…" picker.
+ * A contract's reporting months, inclusive of both ends: `2025-07-01`–`2027-06-30` gives
+ * `2025-07` … `2027-06`.
+ *
+ * This is what lets the month selector reach the end of the contract without anyone adding
+ * months by hand, and extend itself when the contract is renewed (D-30). Both dates are
+ * required — a contract with only one end known has no defined span — and the result is
+ * capped, so a mistyped year yields a long list rather than a hundred thousand options.
+ */
+export const MAX_CONTRACT_MONTHS = 120;
+
+export function contractMonths(
+  start: IsoDate | null | undefined,
+  end: IsoDate | null | undefined,
+): MonthKey[] {
+  if (!start || !end) return [];
+  if (!isValidIsoDate(start) || !isValidIsoDate(end)) return [];
+
+  const first = monthKeyOfDate(start);
+  const last = monthKeyOfDate(end);
+  if (compareMonthKeys(first, last) > 0) return [];
+
+  const months: MonthKey[] = [];
+  for (
+    let key = first;
+    compareMonthKeys(key, last) <= 0 && months.length < MAX_CONTRACT_MONTHS;
+    key = shiftMonth(key, 1)
+  ) {
+    months.push(key);
+  }
+  return months;
+}
+
+/**
+ * The month selector's list (m00): 12 months back through 3 months ahead of the current
+ * month, unioned with every month passed in — the contract's own months, months already
+ * holding data, and the persisted active month — newest first.
+ *
+ * The rolling window is the floor rather than the definition, because the contract dates
+ * are optional: an organisation that never entered them still gets a usable selector.
+ * Anything outside the union stays reachable through the "Other month…" picker.
  */
 export function monthWindow(
-  monthsWithData: readonly MonthKey[] = [],
+  alwaysInclude: readonly MonthKey[] = [],
   now: Date = new Date(),
 ): MonthKey[] {
   const current = currentMonthKey(now);
   const keys = new Set<MonthKey>();
   for (let delta = -12; delta <= 3; delta += 1) keys.add(shiftMonth(current, delta));
-  for (const key of monthsWithData) if (isValidMonthKey(key)) keys.add(key);
+  for (const key of alwaysInclude) if (isValidMonthKey(key)) keys.add(key);
   return [...keys].sort((a, b) => compareMonthKeys(b, a));
+}
+
+/** Group months (newest first) into year buckets for the selector's `<optgroup>`s. */
+export function monthsByYear(months: readonly MonthKey[]): { year: string; months: MonthKey[] }[] {
+  const groups: { year: string; months: MonthKey[] }[] = [];
+  for (const month of months) {
+    const year = month.slice(0, 4);
+    const last = groups.at(-1);
+    if (last?.year === year) last.months.push(month);
+    else groups.push({ year, months: [month] });
+  }
+  return groups;
 }
 
 function splitMonthKey(key: MonthKey): { year: number; month: number } {

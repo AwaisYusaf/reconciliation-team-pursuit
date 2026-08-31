@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 
-import { monthLabel } from "@/src/domain/dates";
+import { monthLabel, monthsByYear } from "@/src/domain/dates";
 import { Select } from "@/src/components/ui/select";
 import { reportResult } from "@/src/components/ui/toast";
 import { setActiveMonthAction } from "@/src/modules/auth/actions";
@@ -12,10 +12,11 @@ import { setActiveMonthAction } from "@/src/modules/auth/actions";
  * The app-wide month selector (R2.3). Changing it persists the choice on the
  * organisation and re-renders every screen through the router.
  *
- * "Earlier month…" opens a free month picker so months older than the rolling window
- * stay reachable for back-entry (D-14/D-27).
+ * The list covers the contract's own months plus a rolling window, grouped by year so a
+ * multi-year contract stays scannable. "Other month…" opens a free month picker for
+ * anything outside it — back-entry before the contract, or past its end (D-14/D-30).
  */
-const EARLIER = "__earlier__";
+const OTHER = "__other__";
 
 export function MonthSelector({
   months,
@@ -53,7 +54,7 @@ export function MonthSelector({
         value={activeMonth}
         disabled={pending}
         onValueChange={(value) => {
-          if (value === EARLIER) {
+          if (value === OTHER) {
             setShowPicker(true);
             return;
           }
@@ -61,19 +62,23 @@ export function MonthSelector({
         }}
         className="w-[200px]"
       >
-        {months.map((month) => (
-          <option key={month} value={month}>
-            {monthLabel(month)}
-          </option>
+        {monthsByYear(months).map((group) => (
+          <optgroup key={group.year} label={group.year}>
+            {group.months.map((month) => (
+              <option key={month} value={month}>
+                {monthLabel(month)}
+              </option>
+            ))}
+          </optgroup>
         ))}
-        <option value={EARLIER}>Earlier month…</option>
+        <option value={OTHER}>Other month…</option>
       </Select>
 
       {showPicker && (
         <div className="flex items-center gap-2">
           <input
             type="month"
-            aria-label="Choose an earlier month"
+            aria-label="Choose any other month"
             defaultValue={activeMonth}
             onChange={(event) => {
               if (event.target.value) apply(event.target.value);

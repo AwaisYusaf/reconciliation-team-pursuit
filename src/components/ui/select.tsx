@@ -1,12 +1,12 @@
 "use client";
 
 import type { KeyboardEvent, ReactNode } from "react";
-import { Children, isValidElement, useEffect, useId, useRef, useState } from "react";
+import { Children, Fragment, isValidElement, useEffect, useId, useRef, useState } from "react";
 
 import { CONTROL } from "@/src/components/ui/field";
 import { cn } from "@/src/lib/cn";
 
-type Option = { value: string; label: string; disabled?: boolean };
+type Option = { value: string; label: string; disabled?: boolean; group?: string };
 
 function textOf(node: ReactNode): string {
   if (node === null || node === undefined || typeof node === "boolean") return "";
@@ -20,13 +20,32 @@ function textOf(node: ReactNode): string {
  * Flatten `<option>` children — including ones produced by `.map()` or wrapped in
  * fragments — into plain option data. An option with no `value` attribute falls back to
  * its text (e.g. `<option>{ALL_LINE_ITEMS}</option>`), matching native `<select>` behaviour.
+ *
+ * `<optgroup>` children are flattened too, each option carrying its group's label. The list
+ * stays flat deliberately: every index-based concern below — the active descendant, the
+ * arrow-key walk, Home/End — keeps working untouched, and grouping becomes purely a matter
+ * of where headings get drawn.
  */
-export function optionsFromChildren(children: ReactNode): Option[] {
+export function optionsFromChildren(children: ReactNode, group?: string): Option[] {
   return Children.toArray(children).flatMap((child): Option[] => {
-    if (!isValidElement(child) || child.type !== "option") return [];
+    if (!isValidElement(child)) return [];
+
+    // `Children.toArray` flattens nested arrays but leaves a fragment as one opaque child,
+    // so options wrapped in `<>…</>` would otherwise vanish from the list without error.
+    if (child.type === Fragment) {
+      const props = child.props as { children?: ReactNode };
+      return optionsFromChildren(props.children, group);
+    }
+
+    if (child.type === "optgroup") {
+      const props = child.props as { label?: string; children?: ReactNode };
+      return optionsFromChildren(props.children, props.label);
+    }
+
+    if (child.type !== "option") return [];
     const props = child.props as { value?: string; disabled?: boolean; children?: ReactNode };
     const label = textOf(props.children);
-    return [{ value: props.value ?? label, label, disabled: props.disabled }];
+    return [{ value: props.value ?? label, label, disabled: props.disabled, group }];
   });
 }
 
@@ -78,6 +97,11 @@ export function Select({
   const triggerRef = useRef<HTMLButtonElement>(null);
   const optionRefs = useRef<Array<HTMLDivElement | null>>([]);
 
+  // Group headings are sticky, so keyboard-scrolled options need a scroll margin at least
+  // as tall as one, or `block: "nearest"` parks the first option of a group underneath its
+  // own heading. `scroll-mt-11` (44px) covers the heading's 41px: py-1.5 + text-lg's 28px
+  // line box + the 1px rule. Retune it if the heading's type or padding changes.
+  const hasGroups = options.some((option) => option.group);
   const selectedIndex = options.findIndex((option) => option.value === currentValue);
   const displayOption = selectedIndex >= 0 ? options[selectedIndex] : options[0];
 
@@ -270,7 +294,23 @@ export function Select({
           {options.map((option, index) => {
             const isSelected = option.value === currentValue;
             const isActive = index === activeIndex;
-            return (
+            // A heading whenever the group changes. `presentation` keeps it out of the
+            // accessibility tree, which is correct rather than lazy: a listbox may only
+            // contain options, and every option's own label already carries its group
+            // (an option under "2026" reads "February 2026"), so announcing the heading
+            // would only repeat what the option is about to say.
+            const heading =
+              option.group && option.group !== options[index - 1]?.group ? (
+                <div
+                  key={`group-${option.group}-${index}`}
+                  role="presentation"
+                  className="sticky top-0 z-10 bg-section px-3.5 py-1.5 text-center font-serif text-lg font-bold text-accent border-b border-line"
+                >
+                  {option.group}
+                </div>
+              ) : null;
+
+            const row = (
               <div
                 key={option.value + "-" + index}
                 ref={(node) => {
@@ -284,6 +324,7 @@ export function Select({
                 onPointerEnter={() => !option.disabled && setActiveIndex(index)}
                 className={cn(
                   "min-h-11 flex items-center px-3.5 text-base text-ink",
+                  hasGroups && "scroll-mt-11",
                   option.disabled ? "opacity-50 cursor-not-allowed" : "cursor-pointer",
                   isActive && !option.disabled && "bg-section",
                   isSelected && "text-accent font-semibold",
@@ -292,6 +333,8 @@ export function Select({
                 {option.label}
               </div>
             );
+
+            return heading ? [heading, row] : row;
           })}
         </div>
       )}

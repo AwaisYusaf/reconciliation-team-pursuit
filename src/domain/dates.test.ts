@@ -13,7 +13,10 @@ import {
   monthKeyOfDate,
   monthLabel,
   monthShortLabel,
+  MAX_CONTRACT_MONTHS,
+  contractMonths,
   monthWindow,
+  monthsByYear,
   shiftMonth,
   todayIso,
 } from "./dates";
@@ -125,6 +128,61 @@ describe("date-only formatting", () => {
   });
 });
 
+describe("contractMonths", () => {
+  it("spans both ends inclusively", () => {
+    const months = contractMonths("2025-07-01", "2026-06-30");
+    expect(months).toHaveLength(12);
+    expect(months[0]).toBe("2025-07");
+    expect(months.at(-1)).toBe("2026-06");
+  });
+
+  it("crosses new years, so a multi-year contract reaches its end", () => {
+    const months = contractMonths("2025-07-01", "2027-06-30");
+    expect(months).toHaveLength(24);
+    expect(months).toContain("2026-12");
+    expect(months.at(-1)).toBe("2027-06");
+  });
+
+  it("uses the month a date falls in, not whole months only", () => {
+    // A contract starting mid-month still has that month as a reporting month.
+    expect(contractMonths("2025-07-18", "2025-09-04")).toEqual(["2025-07", "2025-08", "2025-09"]);
+  });
+
+  it("is a single month when both dates share one", () => {
+    expect(contractMonths("2026-02-01", "2026-02-28")).toEqual(["2026-02"]);
+  });
+
+  it("yields nothing without both dates, so the rolling window still applies", () => {
+    expect(contractMonths(null, "2027-06-30")).toEqual([]);
+    expect(contractMonths("2025-07-01", null)).toEqual([]);
+    expect(contractMonths(undefined, undefined)).toEqual([]);
+  });
+
+  it("yields nothing for junk or a backwards span", () => {
+    expect(contractMonths("not-a-date", "2027-06-30")).toEqual([]);
+    expect(contractMonths("2027-06-30", "2025-07-01")).toEqual([]);
+  });
+
+  it("caps a mistyped year rather than generating a decade of options", () => {
+    // A fat-fingered "2299" must not hand the selector 3,000 entries.
+    const months = contractMonths("2025-07-01", "2299-06-30");
+    expect(months).toHaveLength(MAX_CONTRACT_MONTHS);
+    expect(months[0]).toBe("2025-07");
+  });
+});
+
+describe("monthsByYear", () => {
+  it("buckets consecutive months under their year, order preserved", () => {
+    const groups = monthsByYear(["2027-01", "2026-12", "2026-11", "2025-03"]);
+    expect(groups.map((group) => group.year)).toEqual(["2027", "2026", "2025"]);
+    expect(groups[1].months).toEqual(["2026-12", "2026-11"]);
+  });
+
+  it("is empty for no months", () => {
+    expect(monthsByYear([])).toEqual([]);
+  });
+});
+
 describe("monthWindow (m00 selector)", () => {
   const now = new Date("2026-08-16T12:00:00Z");
 
@@ -134,6 +192,20 @@ describe("monthWindow (m00 selector)", () => {
     expect(window.at(-1)).toBe("2025-08");
     expect(window).toHaveLength(16);
     expect(window).toContain("2026-08");
+  });
+
+  it("includes contract months beyond the window's three-month lookahead", () => {
+    // The whole point: a contract running to mid-2027 is selectable in August 2026,
+    // where the rolling window alone stops at November.
+    const window = monthWindow(contractMonths("2025-07-01", "2027-06-30"), now);
+    expect(window[0]).toBe("2027-06");
+    expect(window).toContain("2026-12");
+    expect(window.at(-1)).toBe("2025-07");
+  });
+
+  it("does not duplicate a contract month that also holds data", () => {
+    const window = monthWindow([...contractMonths("2026-01-01", "2026-03-31"), "2026-02"], now);
+    expect(window.filter((month) => month === "2026-02")).toHaveLength(1);
   });
 
   it("includes months that hold data even outside the window", () => {
