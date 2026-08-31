@@ -1,12 +1,13 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNotNull } from "drizzle-orm";
 import { notFound, redirect } from "next/navigation";
 
 import { PageTitle, Subtext } from "@/src/components/ui/surfaces";
 import { db } from "@/src/db";
+import { loadSelectableMonths } from "@/src/db/months";
 import { loadExpenseAmounts, loadLineItemBudgets } from "@/src/db/queries";
 import { monthStatuses } from "@/src/db/schema";
 import { allLineItemStats } from "@/src/domain/budget-math";
-import { formatDateUS, monthWindow, todayIso } from "@/src/domain/dates";
+import { formatDateUS, todayIso } from "@/src/domain/dates";
 import { reimbursableCents } from "@/src/domain/money";
 import { ExpenseForm } from "@/src/modules/expenses/expense-form";
 import { loadExpense, loadExpenseFormOptions } from "@/src/modules/expenses/queries";
@@ -27,24 +28,40 @@ export default async function EditExpensePage({
   // Org-scoped lookup: another organisation's id is simply not found.
   if (!expense) notFound();
 
-  const [options, lineItems, amounts, submitted] = await Promise.all([
+  const [options, lineItems, months, submittedRows] = await Promise.all([
     loadExpenseFormOptions(session.orgId),
     loadLineItemBudgets(session.orgId),
-    loadExpenseAmounts(session.orgId, expense.month),
+    // The same list the header offers: a month you can view must be one you can move into.
+    loadSelectableMonths(session.orgId, [expense.month, session.activeMonth]),
     db
-      .select({ submittedAt: monthStatuses.submittedAt })
+      .select({ month: monthStatuses.month, submittedAt: monthStatuses.submittedAt })
       .from(monthStatuses)
-      .where(
-        and(eq(monthStatuses.orgId, session.orgId), eq(monthStatuses.month, expense.month)),
-      )
-      .limit(1),
+      .where(and(eq(monthStatuses.orgId, session.orgId), isNotNull(monthStatuses.submittedAt))),
   ]);
 
-  const remaining = Object.fromEntries(
-    allLineItemStats(lineItems, amounts, expense.month).map((row) => [
-      row.lineItem.id,
-      row.remainingCents,
+  // The Month dropdown moves the expense (R2.2), so both the budget projection and the
+  // submitted-month warning have to describe the month currently *selected* — not the one
+  // the expense happens to sit in now. Both were resolved for the source month alone, which
+  // meant moving into a submitted month warned about nothing and the R3.7 projection quietly
+  // described the wrong month's budget.
+  const amounts = await loadExpenseAmounts(session.orgId, months[0] ?? expense.month);
+  const remainingByMonth = Object.fromEntries(
+    months.map((month) => [
+      month,
+      Object.fromEntries(
+        allLineItemStats(lineItems, amounts, month).map((row) => [
+          row.lineItem.id,
+          row.remainingCents,
+        ]),
+      ),
     ]),
+  );
+  const remaining = remainingByMonth[expense.month] ?? {};
+
+  const submittedOn = Object.fromEntries(
+    submittedRows
+      .filter((row) => row.submittedAt)
+      .map((row) => [row.month, formatDateUS(todayIso(row.submittedAt!))]),
   );
 
   const toMoney = (cents: number) => (cents / 100).toFixed(2);
@@ -55,15 +72,17 @@ export default async function EditExpensePage({
       <Subtext className="mb-[30px] max-w-[60ch]">{expense.name}</Subtext>
 
       <ExpenseForm
-        options={{ ...options, months: monthWindow([expense.month, session.activeMonth]) }}
+        options={{ ...options, months }}
         remaining={remaining}
+        remainingByMonth={remainingByMonth}
+        submittedOn={submittedOn}
         today={todayIso()}
         activeMonth={expense.month}
         existing={{
           id: expense.id,
           documents: expense.documents,
           savedReimbursableCents: reimbursableCents(expense),
-          monthSubmittedOn: submitted[0]?.submittedAt ? formatDateUS(todayIso(submitted[0].submittedAt)) : null,
+          monthSubmittedOn: submittedOn[expense.month] ?? null,
           values: {
             id: expense.id,
             name: expense.name,

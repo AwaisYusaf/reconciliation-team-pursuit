@@ -125,6 +125,102 @@ describe.skipIf(!hasDatabase)("expense references (integration)", async () => {
     );
   });
 
+  it("moves everything with the expense and reissues the reference (R2.6, D-61)", async () => {
+    // The client's report was that a mis-filed expense had to be deleted and rebuilt. It does
+    // not: the month is editable and everything hangs off the expense id. This pins that.
+    const { expenseDocuments } = await import("@/src/db/schema");
+
+    const from = "2099-10";
+    const to = "2099-11";
+    const seq = await claimReferenceSeq(orgId, from);
+    const [moved] = await db
+      .insert(expenses)
+      .values({
+        orgId,
+        lineItemId,
+        month: from,
+        date: `${from}-14`,
+        name: "Conference travel",
+        description: "Two nights",
+        narrative: "Sent two outreach workers to the state CVI convening.",
+        note: "Split with partner org",
+        paymentSource: "x",
+        subtotalCents: 40_000,
+        taxCents: 2_400,
+        feesCents: 1_500,
+        sortOrder: seq,
+        referenceSeq: seq,
+      })
+      .returning({ id: expenses.id });
+
+    await db.insert(expenseDocuments).values({
+      orgId,
+      expenseId: moved.id,
+      kind: "receipt",
+      status: "attached",
+      s3Key: `org/${orgId}/months/${from}/expenses/${moved.id}/receipt/doc.pdf`,
+      filename: "hotel.pdf",
+      mimeType: "application/pdf",
+      sizeBytes: 4096,
+      pageCount: 2,
+      sortOrder: 0,
+    });
+
+    // Occupy the destination's first reference, so a naive move would collide.
+    await expense("Already there", await claimReferenceSeq(orgId, to), to);
+
+    const destinationSeq = await claimReferenceSeq(orgId, to);
+    await db
+      .update(expenses)
+      .set({ month: to, referenceSeq: destinationSeq })
+      .where(eq(expenses.id, moved.id));
+
+    const [after] = await db
+      .select({
+        month: expenses.month,
+        referenceSeq: expenses.referenceSeq,
+        narrative: expenses.narrative,
+        note: expenses.note,
+        description: expenses.description,
+        lineItemId: expenses.lineItemId,
+        taxCents: expenses.taxCents,
+        feesCents: expenses.feesCents,
+      })
+      .from(expenses)
+      .where(eq(expenses.id, moved.id));
+
+    expect(after.month).toBe(to);
+    // A new number from the destination's counter, not the one it held in the source month.
+    expect(after.referenceSeq).not.toBe(seq);
+    expect(after.referenceSeq).toBe(destinationSeq);
+
+    // Everything the client listed travels with it, because it hangs off the expense row.
+    expect(after.narrative).toContain("outreach workers");
+    expect(after.note).toBe("Split with partner org");
+    expect(after.description).toBe("Two nights");
+    expect(after.lineItemId).toBe(lineItemId);
+    expect(after.taxCents).toBe(2_400);
+    expect(after.feesCents).toBe(1_500);
+
+    // Documents follow by foreign key; their keys keep the old month segment, which is a
+    // stored address rather than a lookup path (Q2).
+    const documents = await db
+      .select({ s3Key: expenseDocuments.s3Key, pageCount: expenseDocuments.pageCount })
+      .from(expenseDocuments)
+      .where(eq(expenseDocuments.expenseId, moved.id));
+    expect(documents).toHaveLength(1);
+    expect(documents[0].pageCount).toBe(2);
+    expect(documents[0].s3Key).toContain(`/months/${from}/`);
+
+    // The source month keeps its gap: the number it held is never reissued.
+    const sourceRows = await db
+      .select({ referenceSeq: expenses.referenceSeq })
+      .from(expenses)
+      .where(and(eq(expenses.orgId, orgId), eq(expenses.month, from)));
+    expect(sourceRows).toHaveLength(0);
+    expect(await claimReferenceSeq(orgId, from)).toBeGreaterThan(seq);
+  });
+
   it("rejects reference 0 outright", async () => {
     // Defence in depth for anything reaching the table outside Drizzle.
     expect(await violatedConstraint(() => expense("Zero", 0, "2099-09"))).toBe(

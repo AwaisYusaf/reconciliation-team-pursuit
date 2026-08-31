@@ -43,6 +43,14 @@ export type ExpenseFormProps = {
   options: FormOptions;
   /** Remaining budget per line item for the active month, for the live projection (R3.7). */
   remaining: RemainingByLineItem;
+  /**
+   * The same figures for every selectable month, so the projection follows the Month
+   * dropdown. Present in edit mode, where changing the month moves the expense (R2.2);
+   * absent on the add form, where the month is simply the one being created into.
+   */
+  remainingByMonth?: Record<string, RemainingByLineItem>;
+  /** Submission dates by month, already formatted — for the R10.6 warning on the month picked. */
+  submittedOn?: Record<string, string>;
   today: string;
   activeMonth: string;
   /** Present in edit mode. */
@@ -73,7 +81,15 @@ const EMPTY: ExpenseInput = {
   noReceiptReason: "",
 };
 
-export function ExpenseForm({ options, remaining, today, activeMonth, existing }: ExpenseFormProps) {
+export function ExpenseForm({
+  options,
+  remaining,
+  remainingByMonth,
+  submittedOn,
+  today,
+  activeMonth,
+  existing,
+}: ExpenseFormProps) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const editing = Boolean(existing);
@@ -122,9 +138,13 @@ export function ExpenseForm({ options, remaining, today, activeMonth, existing }
   // actively misleading if it fired for that case too.
   const subtotalIsZero = parseMoneyToCents(values.subtotal) === 0;
 
+  // Budget figures for the month currently selected, which is not necessarily the one the
+  // expense is saved in — the Month dropdown moves it (R2.2).
+  const remainingForMonth = remainingByMonth?.[values.month] ?? remaining;
+
   const projection = useMemo(() => {
     if (!values.lineItemId) return null;
-    const base = remaining[values.lineItemId];
+    const base = remainingForMonth[values.lineItemId];
     if (base === undefined) return null;
     // The saved amount is only inside this line item's remaining figure when the expense
     // has not been moved to a different line item.
@@ -132,11 +152,22 @@ export function ExpenseForm({ options, remaining, today, activeMonth, existing }
     return projectedRemainingCents({
       remainingCents: base,
       formReimbursableCents: reimbursableCents,
-      editingExistingCents: sameLineItem ? existing?.savedReimbursableCents : 0,
+      // The saved amount only sits inside this figure while the expense stays in its own
+      // month; once it is moved, the destination's remaining never included it.
+      editingExistingCents:
+        sameLineItem && values.month === existing?.values.month
+          ? existing?.savedReimbursableCents
+          : 0,
     });
-  }, [values.lineItemId, remaining, reimbursableCents, existing]);
+  }, [values.lineItemId, values.month, remainingForMonth, reimbursableCents, existing]);
 
   const lineItemName = options.lineItems.find((item) => item.id === values.lineItemId)?.name ?? "";
+
+  // Warn about the month the expense is heading for, not the one it came from: moving into a
+  // submitted month is the case that actually changes a packet someone already received.
+  const selectedMonthSubmittedOn =
+    submittedOn?.[values.month] ??
+    (values.month === existing?.values.month ? existing?.monthSubmittedOn : null);
 
   // Vendor autofill (R8.1): an exact match fills line item and description; partials list.
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -290,10 +321,10 @@ export function ExpenseForm({ options, remaining, today, activeMonth, existing }
 
   return (
     <div className="max-w-[560px]">
-      {existing?.monthSubmittedOn && (
+      {selectedMonthSubmittedOn && (
         <DangerPanel tone="notice" className="mb-5">
-          This month was submitted on {existing.monthSubmittedOn} — changes will not alter
-          the packet that was downloaded, but regenerated documents will differ.
+          {monthLabel(values.month)} was submitted on {selectedMonthSubmittedOn} — changes will
+          not alter the packet that was downloaded, but regenerated documents will differ.
         </DangerPanel>
       )}
 

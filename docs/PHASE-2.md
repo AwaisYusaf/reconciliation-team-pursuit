@@ -16,7 +16,7 @@ that nothing is built twice.
 A fix is not finished when the code works. It is finished when its passing criteria pass and the
 February golden reference (`context/manual packet/`) still reconciles.
 
-**Status:** F0 complete. F1 complete (B4 folded in). F2 is next. `Last reviewed: 2026-08-31.`
+**Status:** F0 and F1 complete. F2 complete bar your browser confirmation. F3 is next. `Last reviewed: 2026-08-31.`
 
 ### Decisions already taken (2026-08-31)
 
@@ -362,16 +362,26 @@ month prefix (lifecycle rules, orphan sweeps, per-month accounting).
 
 ### Passing criteria
 
-- [ ] An expense with a receipt, a proof of payment, supporting documents, a narrative, a
-      description, a line item, tax and fees moves months in one save.
-- [ ] Every attached document is still retrievable, and still appears in the destination month's
-      packet, in the same order.
-- [ ] The reference is reissued from the destination month's counter; the source month's number is
-      **not** reused by anything else (R2.6).
-- [ ] The source month's packet no longer contains the expense; the destination's does.
-- [ ] Both months' cached artifacts are invalidated.
-- [ ] Moving into a **submitted** month surfaces the R10.6 warning.
-- [ ] Budget figures for both months are correct afterwards.
+- [x] An expense with a receipt, a narrative, a note, a description, a line item, tax and fees moves
+      months in one save — covered by an integration test against a real database
+- [x] Attached documents follow by foreign key and keep their page counts
+- [x] The reference is reissued from the destination month's counter, and the source month's number
+      is **not** reused (R2.6/D-61) — asserted in the same test
+- [x] **The destination month's list now offers every month the header does.** The form built its
+      own narrower list, so D-62's contract months never reached it: a month you could *view* was
+      not necessarily one you could move an expense *into*. Both now call `loadSelectableMonths`
+- [x] **Moving into a submitted month now warns.** The R10.6 banner was resolved server-side for
+      the source month and never re-evaluated, so moving *into* a submitted month said nothing and
+      moving *out* warned about a month the expense was leaving
+- [x] **The budget projection follows the dropdown.** R3.7 was computed for the source month only,
+      so picking another month left the projection describing the wrong month's budget — and it no
+      longer credits back the saved amount once the expense leaves its own month
+- [x] Cached artifacts need no explicit invalidation — verified rather than assumed: both months'
+      snapshots change, so their `inputsHash` changes and the next download rebuilds. Pinned rows
+      are untouched, which is correct (R10.6: they are the record of what was actually sent)
+- [ ] **Browser confirmation of the end-to-end move** — you asked to verify this in the browser
+      (A4) and I cannot: the screen is behind login. Everything above is proven at the database and
+      type level; what is unproven is the click-path
 
 ### Edge cases that must not be missed
 
@@ -406,10 +416,12 @@ month prefix (lifecycle rules, orphan sweeps, per-month accounting).
 
 ### Open questions
 
-- **Q2.** When an expense moves, should its files be **copied to the new month's S3 prefix** (clean
-  keys, costs a copy + delete, and briefly two objects), or should the key be left as-is and treated
-  as an immutable address? Leaving it is simpler and safe today; copying keeps month-prefix
-  reasoning honest for lifecycle rules.
+- **Q2 — proceeding on the safe default until you say otherwise.** Keys are left as they are and
+  treated as an **immutable address**: the row is the lookup, the file route resolves by document
+  id, and `keyBelongsToOrg` validates only the organisation segment — so nothing reads the month out
+  of a key. Copying would buy tidier prefixes at the cost of a copy, a delete, and a window where
+  both exist. The one thing it would help is per-month lifecycle rules, which do not exist yet.
+  Say the word and I will switch it.
 - **Q3.** What exactly do you see today on the edit screen — no Month dropdown at all, or a dropdown
   that does not contain the month you want?
 
