@@ -60,11 +60,12 @@ export function fillFromTypedName(
   current: ExpenseInput,
   vendor: VendorFill,
   activeSources: readonly string[] = [],
+  rules?: ReimbursementRuleMap,
 ): ExpenseInput {
   // Something already chosen means the user is past this field; leave the whole form alone.
   if (current.lineItemId || current.description) return current;
 
-  return {
+  return withFunderRules({
     ...current,
     lineItemId: vendor.lineItemId ?? current.lineItemId,
     description: vendor.description,
@@ -72,16 +73,43 @@ export function fillFromTypedName(
     subtotal: current.subtotal || moneyField(vendor.subtotalCents),
     tax: current.tax || moneyField(vendor.taxCents),
     fees: current.fees || moneyField(vendor.feesCents),
-  };
+  }, rules);
 }
 
 /** Applied when a suggestion is clicked — overwrites, except a subtotal already typed. */
+/** What each funder reimburses, keyed by payment source label (R1.3, D-67). */
+export type ReimbursementRuleMap = Record<
+  string,
+  { taxReimbursable: boolean; feesReimbursable: boolean }
+>;
+
+/**
+ * Keep the reimbursement flags with whatever payment source the form now holds (D-71).
+ *
+ * Setting the source without them is how the same expense came to claim two different
+ * amounts depending on how it was entered. Autofill sets the source *programmatically*, so
+ * the Select's own change handler never runs — which is why this has to live here rather
+ * than only on the control.
+ *
+ * An unknown source leaves the flags untouched: it is either a retired label already on the
+ * record, whose saved rules must stand, or one the org does not offer, where guessing would
+ * be worse than keeping what the user last saw.
+ */
+function withFunderRules(
+  values: ExpenseInput,
+  rules: ReimbursementRuleMap | undefined,
+): ExpenseInput {
+  const funder = rules?.[values.paymentSource];
+  return funder ? { ...values, ...funder } : values;
+}
+
 export function fillFromClick(
   current: ExpenseInput,
   vendor: VendorFill,
   activeSources: readonly string[] = [],
+  rules?: ReimbursementRuleMap,
 ): ExpenseInput {
-  return {
+  return withFunderRules({
     ...current,
     name: vendor.name,
     // A vendor with no remembered line item must not blank out one already chosen.
@@ -91,5 +119,5 @@ export function fillFromClick(
     subtotal: current.subtotal || moneyField(vendor.subtotalCents),
     tax: moneyField(vendor.taxCents) || current.tax,
     fees: moneyField(vendor.feesCents) || current.fees,
-  };
+  }, rules);
 }

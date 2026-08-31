@@ -234,7 +234,7 @@ export function ExpenseForm({
         // Typing a name is not the same as choosing a vendor: this fires on its own, from
         // characters the user was typing anyway, so it may only fill blanks. Clicking a
         // suggestion is deliberate and does overwrite — see `pickSuggestion`.
-        setValues((current) => fillFromTypedName(current, exact, options.paymentSources));
+        setValues((current) => fillFromTypedName(current, exact, options.paymentSources, options.reimbursementRules));
         setAutofilled(true);
         setTimeout(() => setAutofilled(false), 1400);
         setSuggestions([]);
@@ -245,10 +245,10 @@ export function ExpenseForm({
     return () => {
       if (searchTimer.current) clearTimeout(searchTimer.current);
     };
-    // `options.paymentSources` is read when an exact match autofills, so it belongs here.
-    // Re-running on a new array identity costs nothing: the work is debounced, and the
-    // effect only starts a timer.
-  }, [values.name, existing, options.paymentSources]);
+    // `options.paymentSources` and the funder rules are both read when an exact match
+    // autofills, so both belong here. Re-running on a new identity costs nothing: the work is
+    // debounced, and the effect only starts a timer.
+  }, [values.name, existing, options.paymentSources, options.reimbursementRules]);
 
   /**
    * Apply a vendor the user actually clicked.
@@ -262,7 +262,7 @@ export function ExpenseForm({
    * by a remembered one.
    */
   function pickSuggestion(row: VendorFill) {
-    setValues((current) => fillFromClick(current, row, options.paymentSources));
+    setValues((current) => fillFromClick(current, row, options.paymentSources, options.reimbursementRules));
     setSuggestions([]);
     setAutofilled(true);
     setTimeout(() => setAutofilled(false), 1400);

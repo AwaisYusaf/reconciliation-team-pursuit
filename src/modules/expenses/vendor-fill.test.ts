@@ -186,3 +186,56 @@ describe("fillFromClick", () => {
     expect(result.date).toBe("2026-02-14");
   });
 });
+
+describe("funder rules follow the payment source (D-71)", () => {
+  const RULES = {
+    "Paid by us, reimbursement requested": { taxReimbursable: false, feesReimbursable: true },
+    "Paid directly by fiduciary": { taxReimbursable: true, feesReimbursable: true },
+  };
+
+  it("applies the funder's rules when a click sets the payment source", () => {
+    // Autofill sets the source programmatically, so the Select's own change handler never
+    // runs — the exact gap that let one expense claim a different amount from an identical
+    // one entered by hand.
+    const filled = fillFromClick(
+      { ...BLANK, taxReimbursable: false, feesReimbursable: true },
+      { ...CANVA, paymentSource: "Paid directly by fiduciary" },
+      ["Paid directly by fiduciary"],
+      RULES,
+    );
+    expect(filled.paymentSource).toBe("Paid directly by fiduciary");
+    expect(filled.taxReimbursable).toBe(true);
+  });
+
+  it("applies them on a typed-name fill too", () => {
+    const filled = fillFromTypedName(
+      { ...BLANK, taxReimbursable: false, feesReimbursable: true },
+      { ...CANVA, paymentSource: "Paid directly by fiduciary" },
+      ["Paid directly by fiduciary"],
+      RULES,
+    );
+    expect(filled.taxReimbursable).toBe(true);
+  });
+
+  it("leaves the flags alone for a source it has no rules for", () => {
+    // A retired label already on the record keeps the rules it was claimed under; guessing
+    // would silently restate the claim.
+    const filled = fillFromClick(
+      { ...BLANK, taxReimbursable: true, feesReimbursable: false },
+      { ...CANVA, paymentSource: "Retired source" },
+      ["Retired source"],
+      RULES,
+    );
+    expect(filled.taxReimbursable).toBe(true);
+    expect(filled.feesReimbursable).toBe(false);
+  });
+
+  it("changes nothing when no rules are supplied at all", () => {
+    const filled = fillFromClick(
+      { ...BLANK, taxReimbursable: true, feesReimbursable: true },
+      CANVA,
+      [],
+    );
+    expect(filled.taxReimbursable).toBe(true);
+  });
+});
