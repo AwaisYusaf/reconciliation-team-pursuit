@@ -379,9 +379,13 @@ month prefix (lifecycle rules, orphan sweeps, per-month accounting).
 - [x] Cached artifacts need no explicit invalidation — verified rather than assumed: both months'
       snapshots change, so their `inputsHash` changes and the next download rebuilds. Pinned rows
       are untouched, which is correct (R10.6: they are the record of what was actually sent)
-- [ ] **Browser confirmation of the end-to-end move** — you asked to verify this in the browser
-      (A4) and I cannot: the screen is behind login. Everything above is proven at the database and
-      type level; what is unproven is the click-path
+- [x] **Browser confirmed** (Chrome, logged-in session, 2026-08-31). Created an expense in August
+      2026 with a description, narrative, tax and fees; changed Month to December 2026; saved. It
+      left August (list empty), arrived in December, and its reference was reissued **2026-08-002 →
+      2026-12-001**. Narrative, description, line item, payment source, tax and fees all survived,
+      and August's counter stayed at 3 — the number it held was not reissued (R2.6)
+- [x] The header's month dropdown reaches **June 2027** and groups by year, confirming D-62 in the
+      running app rather than only at the data level
 
 ### Edge cases that must not be missed
 
@@ -413,6 +417,21 @@ month prefix (lifecycle rules, orphan sweeps, per-month accounting).
 - `validate` only checks `isValidMonthKey`, so a crafted request reaches any month 1900–2999. The
   dropdown is a convenience, not an enforcement boundary.
 - `month_documents` (bank statements) belong to the month, not the expense, and must **not** move.
+
+### Found during the browser test
+
+- **A defect I introduced, caught by running it.** Making the projection follow the Month dropdown,
+  I credited the saved amount back only when the month was *unchanged*. But `remaining(M)` counts
+  every month up to and including M, so an expense saved in an **earlier** month is already inside
+  the destination's figure — moving August → December counted it twice and showed **$19,743.00**
+  where $19,871.50 was right. The condition is now "source month ≤ target month", which also keeps
+  a backward move from inventing budget that does not exist. Only a real move surfaced this: every
+  test passed, and both numbers looked plausible.
+- **Q25.** After a move, the app returns to the **source** month's list, where the expense has just
+  vanished. It reads like a deletion. Should it follow the expense to the destination month, or say
+  where it went?
+- **Q26.** The header's month dropdown is grouped by year; the expense form's is a flat list. Same
+  data, two renderings. Worth unifying when the list gets long.
 
 ### Open questions
 

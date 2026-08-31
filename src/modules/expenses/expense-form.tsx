@@ -12,7 +12,7 @@ import toast from "react-hot-toast";
 
 import { reportResult } from "@/src/components/ui/toast";
 import { projectedRemainingCents } from "@/src/domain/budget-math";
-import { monthLabel } from "@/src/domain/dates";
+import { compareMonthKeys, monthLabel } from "@/src/domain/dates";
 import { formatMoney } from "@/src/domain/format";
 import { parseMoneyToCents, parseMoneyToCentsOrZero } from "@/src/domain/money";
 import { TAX_NOTE, UI } from "@/src/domain/strings";
@@ -152,11 +152,15 @@ export function ExpenseForm({
     return projectedRemainingCents({
       remainingCents: base,
       formReimbursableCents: reimbursableCents,
-      // The saved amount only sits inside this figure while the expense stays in its own
-      // month; once it is moved, the destination's remaining never included it.
+      // Credit the saved amount back only when it is actually inside this month's figure.
+      // `remaining(M)` counts every month up to and including M, so an expense saved in an
+      // earlier month is in there and would be double-counted; one saved in a LATER month is
+      // not, and crediting it back would invent budget that does not exist.
       editingExistingCents:
-        sameLineItem && values.month === existing?.values.month
-          ? existing?.savedReimbursableCents
+        sameLineItem &&
+        existing &&
+        compareMonthKeys(existing.values.month, values.month) <= 0
+          ? existing.savedReimbursableCents
           : 0,
     });
   }, [values.lineItemId, values.month, remainingForMonth, reimbursableCents, existing]);
