@@ -341,6 +341,8 @@ async function main() {
           // R2.6. The month is empty (checked above), so the fixture owns this block of the
           // sequence; `month_statuses` is advanced past it after the insert.
           referenceSeq: firstReference + values.length,
+        taxReimbursable: false,
+        feesReimbursable: true,
         });
         day = (day % 27) + 1;
       }

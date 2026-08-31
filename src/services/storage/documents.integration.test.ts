@@ -56,6 +56,8 @@ describe.skipIf(!hasDatabase)("upload caps under concurrency (integration)", asy
         subtotalCents: 1000,
         sortOrder: 0,
         referenceSeq: 1,
+        taxReimbursable: false,
+        feesReimbursable: true,
       })
       .returning({ id: expenses.id });
     expenseId = expense.id;
@@ -73,6 +75,8 @@ describe.skipIf(!hasDatabase)("upload caps under concurrency (integration)", asy
         subtotalCents: 1000,
         sortOrder: 1,
         referenceSeq: 2,
+        taxReimbursable: false,
+        feesReimbursable: true,
       })
       .returning({ id: expenses.id });
     sizingExpenseId = sizing.id;
@@ -89,6 +93,8 @@ describe.skipIf(!hasDatabase)("upload caps under concurrency (integration)", asy
         subtotalCents: 1000,
         sortOrder: 2,
         referenceSeq: 3,
+        taxReimbursable: false,
+        feesReimbursable: true,
       })
       .returning({ id: expenses.id });
     ballastExpenseId = ballast.id;

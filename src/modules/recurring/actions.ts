@@ -22,6 +22,7 @@ import { fail, ok, type ActionResult } from "@/src/lib/action-result";
 import { actionSession } from "@/src/lib/action-session";
 import { deleteExpenseDocument } from "@/src/services/storage/documents";
 import { isUuid } from "@/src/lib/ids";
+import { reimbursementRulesFor } from "@/src/modules/expenses/reimbursement";
 import { claimReferenceSeq } from "@/src/modules/expenses/references";
 
 
@@ -161,10 +162,23 @@ export async function addRecurringToMonthAction(
   const activeSources = sources.map((row) => row.label);
   const [defaultSource] = sources;
 
+  // A remembered source is only used while it is still one the organisation offers (R5.2).
+  const paymentSource =
+    (item.defaultPaymentSource && activeSources.includes(item.defaultPaymentSource)
+      ? item.defaultPaymentSource
+      : null) ??
+    defaultSource?.label ??
+    "Paid by us, reimbursement requested";
+
   const [{ next }] = await db
     .select({ next: sql<number>`coalesce(max(${expenses.sortOrder}), -1) + 1` })
     .from(expenses)
     .where(and(eq(expenses.orgId, current.orgId), eq(expenses.month, month)));
+
+  // The funder decides what it reimburses, so a one-click add must resolve the same rules the
+  // expense form does (D-67). Falling through to the column defaults meant the identical
+  // expense claimed a different amount depending on how it was entered.
+  const rules = await reimbursementRulesFor(current.orgId, paymentSource);
 
   await db.insert(expenses).values({
     orgId: current.orgId,
@@ -177,15 +191,12 @@ export async function addRecurringToMonthAction(
     // and editable, so nobody reopens last month to copy and paste it (R8.3).
     narrative: item.defaultNarrative,
     // A remembered source is only offered while it is still one the organisation uses (R5.2).
-    paymentSource:
-      (item.defaultPaymentSource && activeSources.includes(item.defaultPaymentSource)
-        ? item.defaultPaymentSource
-        : null) ??
-      defaultSource?.label ??
-      "Paid by us, reimbursement requested",
+    paymentSource,
     subtotalCents: item.amountCents,
     taxCents: item.defaultTaxCents ?? 0,
     feesCents: item.defaultFeesCents ?? 0,
+    taxReimbursable: rules.taxReimbursable,
+    feesReimbursable: rules.feesReimbursable,
     sortOrder: Number(next),
     // R2.6: a one-click add is an expense like any other and needs the month's next
     // reference. Omitting this left every added row at the column default, so the second

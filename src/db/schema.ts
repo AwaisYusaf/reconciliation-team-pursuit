@@ -261,11 +261,16 @@ export const expenses = pgTable(
      *
      * Recorded on the expense rather than derived from the payment source at read time: the
      * source is a snapshot on the row and its rules can change, but what was *claimed* must
-     * stay what it was on the day it was submitted. Defaults reproduce the original rule
-     * exactly — tax excluded, fees included — so the migration moves no historical figure.
+     * stay what it was on the day it was submitted.
+     *
+     * **No column default**, for the same reason `reference_seq` has none. Migration 0011
+     * backfilled every existing row to the original rule and then the defaults were dropped
+     * (0013): while they existed, an insert could omit them and silently claim a different
+     * amount from an identical expense entered another way — which is exactly what the
+     * recurring one-click add did. `reimbursementRulesFor` is the only supplier.
      */
-    taxReimbursable: boolean("tax_reimbursable").notNull().default(false),
-    feesReimbursable: boolean("fees_reimbursable").notNull().default(true),
+    taxReimbursable: boolean("tax_reimbursable").notNull(),
+    feesReimbursable: boolean("fees_reimbursable").notNull(),
     /** Inline heading note; a note naming what was excluded auto-prints when so (R6.5). */
     note: text(),
     /** Paragraph note printed under the heading (R6.6). */

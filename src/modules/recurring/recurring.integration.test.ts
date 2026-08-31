@@ -24,6 +24,7 @@ describe.skipIf(!hasDatabase)("recurring narratives (integration)", async () => 
   );
   const { claimReferenceSeq } = await import("@/src/modules/expenses/references");
   const { carryNarrativeToTemplate } = await import("./narrative");
+  const { reimbursementRulesFor } = await import("@/src/modules/expenses/reimbursement");
 
   let orgId: string;
   let lineItemId: string;
@@ -91,7 +92,9 @@ describe.skipIf(!hasDatabase)("recurring narratives (integration)", async () => 
         paymentSource: item.defaultPaymentSource ?? "Paid by us, reimbursement requested",
         subtotalCents: item.amountCents,
         taxCents: item.defaultTaxCents ?? 0,
-        feesCents: item.defaultFeesCents ?? 0, taxReimbursable: false, feesReimbursable: true,
+        feesCents: item.defaultFeesCents ?? 0,
+        // Resolved from the payment source, exactly as addRecurringToMonthAction does (D-67).
+        ...(await reimbursementRulesFor(orgId, item.defaultPaymentSource)),
         sortOrder: 0,
         referenceSeq: await claimReferenceSeq(orgId, month),
         recurringItemId: itemId,
@@ -124,6 +127,52 @@ describe.skipIf(!hasDatabase)("recurring narratives (integration)", async () => 
 
     expect([first, second]).toHaveLength(2);
     expect(rows.map((row) => row.referenceSeq).sort()).toEqual([1, 2]);
+  });
+
+  it("claims the same amount however the expense was entered (D-71)", async () => {
+    // The defect this test exists for: the form inherited the funder's rules while the
+    // one-click add fell through to the column defaults, so the identical expense under the
+    // identical funder claimed a different amount depending on how it was created — the
+    // organisation quietly under-claiming on every recurring line.
+    const { reimbursementRulesFor } = await import("@/src/modules/expenses/reimbursement");
+    const { reimbursableCents } = await import("@/src/domain/money");
+
+    await db
+      .insert(paymentSources)
+      .values({ orgId, label: "Whole receipt funder", sortOrder: 1, taxReimbursable: true, feesReimbursable: true });
+    await db
+      .update(recurringItems)
+      .set({ defaultPaymentSource: "Whole receipt funder" })
+      .where(eq(recurringItems.id, itemId));
+
+    const id = await addToMonth("2099-07");
+    const [generated] = await db.select().from(expenses).where(eq(expenses.id, id));
+
+    const rules = await reimbursementRulesFor(orgId, "Whole receipt funder");
+    expect(generated.taxReimbursable).toBe(rules.taxReimbursable);
+    expect(generated.feesReimbursable).toBe(rules.feesReimbursable);
+
+    // And the money that follows from it: this funder pays the whole receipt.
+    expect(reimbursableCents(generated)).toBe(
+      generated.subtotalCents + generated.taxCents + generated.feesCents,
+    );
+
+    // Restore, so the later tests see the template they expect.
+    await db
+      .update(recurringItems)
+      .set({ defaultPaymentSource: "Paid by us, reimbursement requested" })
+      .where(eq(recurringItems.id, itemId));
+  });
+
+  it("falls back to the original rule for an unknown source, never over-claiming", async () => {
+    const { reimbursementRulesFor, ORIGINAL_RULES } = await import(
+      "@/src/modules/expenses/reimbursement"
+    );
+    // An unresolvable source can only under-claim — over-claiming is what costs the
+    // organisation credibility with the funder.
+    expect(await reimbursementRulesFor(orgId, "No such source")).toEqual(ORIGINAL_RULES);
+    expect(await reimbursementRulesFor(orgId, null)).toEqual(ORIGINAL_RULES);
+    expect(ORIGINAL_RULES.taxReimbursable).toBe(false);
   });
 
   it("carries a corrected narrative back to the template", async () => {

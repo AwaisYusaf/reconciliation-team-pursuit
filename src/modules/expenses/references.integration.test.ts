@@ -75,6 +75,10 @@ describe.skipIf(!hasDatabase)("expense references (integration)", async () => {
       subtotalCents: 1000,
       sortOrder: referenceSeq,
       referenceSeq,
+      // Explicit since the columns lost their defaults (D-71): an insert that omits them no
+      // longer compiles, which is the point.
+      taxReimbursable: false,
+      feesReimbursable: true,
     });
   }
 
@@ -138,6 +142,8 @@ describe.skipIf(!hasDatabase)("expense references (integration)", async () => {
       .values({
         orgId,
         lineItemId,
+        taxReimbursable: false,
+        feesReimbursable: true,
         month: from,
         date: `${from}-14`,
         name: "Conference travel",
@@ -147,7 +153,7 @@ describe.skipIf(!hasDatabase)("expense references (integration)", async () => {
         paymentSource: "x",
         subtotalCents: 40_000,
         taxCents: 2_400,
-        feesCents: 1_500, taxReimbursable: false, feesReimbursable: true,
+        feesCents: 1_500,
         sortOrder: seq,
         referenceSeq: seq,
       })

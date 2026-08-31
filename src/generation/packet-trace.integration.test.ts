@@ -83,6 +83,8 @@ describe.skipIf(!canRun)("packet traceability (integration)", async () => {
           subtotalCents: 2_000 * seq,
           sortOrder: seq,
           referenceSeq: seq,
+        taxReimbursable: false,
+        feesReimbursable: true,
         })
         .returning({ id: expenses.id });
 
