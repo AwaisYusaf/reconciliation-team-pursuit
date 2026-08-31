@@ -12,6 +12,7 @@ import { isValidMonthKey } from "@/src/domain/dates";
 import { isUuid } from "@/src/lib/ids";
 import { fail, ok, type ActionResult } from "@/src/lib/action-result";
 import { actionSession } from "@/src/lib/action-session";
+import { captureMonthSnapshot, discardMonthSnapshot } from "./snapshot";
 import { deleteMonthDocument } from "@/src/services/storage/documents";
 
 /** Remove one month document (immediate; the row's Remove button warns first). */
@@ -49,6 +50,11 @@ export async function markMonthSubmittedAction(month: string): Promise<ActionRes
       set: { submittedAt: now },
     });
 
+  // Submission is what makes a month's figures official, so it is where they are recorded
+  // (D-68). Everything else in the app recomputes from live rows, which means a later
+  // correction would otherwise rewrite what this month is said to have closed at.
+  await captureMonthSnapshot(current.orgId, month);
+
   revalidatePath("/", "layout");
   return ok();
 }
@@ -63,6 +69,10 @@ export async function clearMonthSubmittedAction(month: string): Promise<ActionRe
     .update(monthStatuses)
     .set({ submittedAt: null })
     .where(and(eq(monthStatuses.orgId, current.orgId), eq(monthStatuses.month, month)));
+
+  // No longer claimed as sent, so figures labelled "as submitted" would assert something
+  // untrue. The pinned artifact keeps the bytes that were actually delivered (R10.6).
+  await discardMonthSnapshot(current.orgId, month);
 
   revalidatePath("/", "layout");
   return ok();

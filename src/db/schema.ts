@@ -432,6 +432,80 @@ export const monthStatuses = pgTable(
   (t) => [primaryKey({ columns: [t.orgId, t.month] })],
 );
 
+/* --------------------------------------------------------- month snapshots */
+
+/**
+ * What each line item's budget looked like when a month was submitted (R3.8, D-68).
+ *
+ * Everything here is otherwise recomputed from live expense rows, which means a correction
+ * to an old month silently restates its "closing balance" — so the month-end figure is not a
+ * record of where things stood at month end, it is where they stand now. This table is that
+ * record.
+ *
+ * A record, not a lock: corrections still flow through to the live figures exactly as before.
+ * When the two differ the screen shows both, because both are true — one is what was sent,
+ * the other is what is now known.
+ *
+ * Cents, never rounded percentages: a stored percentage and a recomputed one disagree at the
+ * rounding boundary (R1.5), and this table exists to be compared against live figures.
+ */
+export const monthSnapshots = pgTable(
+  "month_snapshots",
+  {
+    id: id(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    month: char({ length: 7 }).notNull(),
+    /**
+     * Nulled rather than cascaded when a line item is deleted, matching generated artifacts:
+     * a submitted month's figures are evidence of what was claimed, and deleting a line item
+     * years later must not erase it (D-21).
+     */
+    lineItemId: uuid("line_item_id").references(() => lineItems.id, { onDelete: "set null" }),
+    /** The name at submission, so a later rename cannot rewrite history. */
+    lineItemName: text("line_item_name").notNull(),
+    scheduledValueCents: cents("scheduled_value_cents"),
+    /** R3.1 — opening balance: everything billed before this month. */
+    previouslyBilledCents: cents("previously_billed_cents"),
+    /** R3.2 — this month's own activity, the figure the client wants kept separate. */
+    spentThisMonthCents: cents("spent_this_month_cents"),
+    /** R3.3 and R3.4, stored rather than re-derived so a comparison cannot drift. */
+    totalBilledCents: cents("total_billed_cents"),
+    remainingCents: cents("remaining_cents"),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    uniqueIndex("month_snapshots_line_item_uq").on(t.orgId, t.month, t.lineItemName),
+    index("month_snapshots_lookup_idx").on(t.orgId, t.month),
+  ],
+);
+
+/**
+ * The month-level figures that have no month dimension of their own (R7.2, R7.4).
+ *
+ * The performance grant and advances received are hand-maintained running totals — there is
+ * no history to reconstruct and asking for one would mean asking the client for numbers they
+ * have never kept. What *is* knowable is the value each held when the packet was built, which
+ * is exactly what that packet was produced from. Captured, not invented.
+ */
+export const monthSnapshotTotals = pgTable(
+  "month_snapshot_totals",
+  {
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    month: char({ length: 7 }).notNull(),
+    contractValueCents: cents("contract_value_cents"),
+    perfGrantScheduledCents: cents("perf_grant_scheduled_cents"),
+    perfGrantBilledCents: cents("perf_grant_billed_cents"),
+    advancesReceivedCents: cents("advances_received_cents"),
+    /** When these were captured — the submission that produced them. */
+    capturedAt: timestamp("captured_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.orgId, t.month] })],
+);
+
 /* ---------------------------------------------------------- vendor defaults */
 
 /** Autofill library; learns automatically on every expense save (R8.1–R8.2). */
@@ -585,6 +659,8 @@ export type MonthStatus = typeof monthStatuses.$inferSelect;
 export type VendorDefault = typeof vendorDefaults.$inferSelect;
 export type RecurringItem = typeof recurringItems.$inferSelect;
 export type GeneratedArtifact = typeof generatedArtifacts.$inferSelect;
+export type MonthSnapshotRow = typeof monthSnapshots.$inferSelect;
+export type MonthSnapshotTotals = typeof monthSnapshotTotals.$inferSelect;
 
 export type DocumentKind = (typeof documentKind.enumValues)[number];
 export type DocumentStatus = (typeof documentStatus.enumValues)[number];

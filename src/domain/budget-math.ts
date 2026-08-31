@@ -126,3 +126,123 @@ export function projectedRemainingCents(options: {
   const restored = options.remainingCents + (options.editingExistingCents ?? 0);
   return restored - options.formReimbursableCents;
 }
+
+/* ------------------------------------------------------------ month vs grant */
+
+/**
+ * One line item's month, as bookkeeping reads it (R3.8).
+ *
+ * The client's complaint was that monthly activity and the running grant total were mixed:
+ * "when we move into June, June's activity should begin as its own reporting period instead
+ * of making May's monthly numbers appear to roll directly into June." These three figures are
+ * the month on its own.
+ */
+export type MonthPosition = {
+  lineItemId: string;
+  name: string;
+  /**
+   * Budget still available when the month opened: scheduled minus everything billed before
+   * it (R3.1). Expressed as budget *remaining* rather than billed-to-date, because that is
+   * what "opening budget balance" means to the people reading it — and it makes the row
+   * reconcile by subtraction: opening − this month = closing.
+   */
+  openingCents: number;
+  /** What was spent in the month itself, and nothing else (R3.2). */
+  thisMonthCents: number;
+  /** What is left at the end of it (R3.4). */
+  closingCents: number;
+  scheduledCents: number;
+};
+
+/** The month view: opening, this month, closing — per category. */
+export function monthPositions(stats: readonly LineItemStats[]): MonthPosition[] {
+  return stats.map((stat) => ({
+    lineItemId: stat.lineItem.id,
+    name: stat.lineItem.name,
+    openingCents: stat.lineItem.scheduledValueCents - stat.previouslyBilledCents,
+    thisMonthCents: stat.spentThisMonthCents,
+    closingCents: stat.remainingCents,
+    scheduledCents: stat.lineItem.scheduledValueCents,
+  }));
+}
+
+/**
+ * The grant view: the whole contract to date, deliberately with no month in it (R3.8).
+ *
+ * Kept separate from `MonthPosition` rather than derived beside it, because mixing the two is
+ * precisely the confusion this exists to remove.
+ */
+export type GrantPosition = {
+  approvedCents: number;
+  spentToDateCents: number;
+  remainingCents: number;
+  percentComplete: number;
+};
+
+export function grantPosition(stats: readonly LineItemStats[]): GrantPosition {
+  let approvedCents = 0;
+  let spentToDateCents = 0;
+  for (const stat of stats) {
+    approvedCents += stat.lineItem.scheduledValueCents;
+    spentToDateCents += stat.totalBilledCents;
+  }
+  return {
+    approvedCents,
+    spentToDateCents,
+    remainingCents: approvedCents - spentToDateCents,
+    percentComplete: approvedCents === 0 ? 0 : spentToDateCents / approvedCents,
+  };
+}
+
+/**
+ * A category whose submitted figures no longer match what the data now says (R3.8, D-68).
+ *
+ * Both are true: one is what was sent, the other what is now known. Surfacing the difference
+ * is the point — a silent divergence between a submitted packet and the current screen is
+ * exactly what the client could not see before.
+ */
+export type SnapshotDrift = {
+  name: string;
+  submittedThisMonthCents: number;
+  currentThisMonthCents: number;
+  differenceCents: number;
+};
+
+export function snapshotDrift(
+  submitted: ReadonlyArray<{ lineItemName: string; spentThisMonthCents: number }>,
+  current: readonly MonthPosition[],
+): SnapshotDrift[] {
+  const byName = new Map(current.map((position) => [position.name, position]));
+  const drift: SnapshotDrift[] = [];
+
+  for (const row of submitted) {
+    // Matched on the name captured at submission, so a later rename does not read as a
+    // change in the money — and a line item deleted since still reports its own figure.
+    const now = byName.get(row.lineItemName);
+    const currentCents = now?.thisMonthCents ?? 0;
+    if (currentCents !== row.spentThisMonthCents) {
+      drift.push({
+        name: row.lineItemName,
+        submittedThisMonthCents: row.spentThisMonthCents,
+        currentThisMonthCents: currentCents,
+        differenceCents: currentCents - row.spentThisMonthCents,
+      });
+    }
+  }
+
+  // A category that gained its first expense after submission has no submitted row at all,
+  // and is just as much a divergence as one whose figure changed.
+  const submittedNames = new Set(submitted.map((row) => row.lineItemName));
+  for (const position of current) {
+    if (!submittedNames.has(position.name) && position.thisMonthCents !== 0) {
+      drift.push({
+        name: position.name,
+        submittedThisMonthCents: 0,
+        currentThisMonthCents: position.thisMonthCents,
+        differenceCents: position.thisMonthCents,
+      });
+    }
+  }
+
+  return drift;
+}

@@ -85,6 +85,13 @@
       "when": 1788172977918,
       "tag": "0011_reimbursement_flags",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1788179450052,
+      "tag": "0012_month_snapshots",
+      "breakpoints": true
     }
   ]
 }

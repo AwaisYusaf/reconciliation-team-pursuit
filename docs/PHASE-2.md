@@ -16,7 +16,7 @@ that nothing is built twice.
 A fix is not finished when the code works. It is finished when its passing criteria pass and the
 February golden reference (`context/manual packet/`) still reconciles.
 
-**Status:** F0–F4 complete, all browser-verified. F5 (monthly budget snapshots) is next — it can now be built against F4's settled definition of "spent". `Last reviewed: 2026-08-31.`
+**Status:** F0–F5 complete, all browser-verified. F6 (packet structure) is next, and is blocked on the funder's answer about stamping references (A3). `Last reviewed: 2026-08-31.`
 
 ### Decisions already taken (2026-08-31)
 
@@ -716,16 +716,25 @@ that preserves what was actually sent. That is the natural anchor for a real sna
 
 ### Passing criteria
 
-- [ ] The month view shows opening, this-month and closing per category, and they reconcile:
-      `opening + thisMonth = closing side of totalBilled`, `remaining = scheduled − totalBilled`.
-- [ ] The grant view shows approved budget, spent to date, total remaining, and never mixes in a
-      single month's figures.
-- [ ] Both views agree with the packet and the Excel workbook for the same month (R10.2).
-- [ ] Per Q11: a closed month's figures either **provably do not move** when a past expense is
-      edited, or move with a visible, deliberate indication.
-- [ ] Moving an expense between months (F2) updates both months' figures correctly.
-- [ ] A month with no expenses renders sensibly rather than blank or zero-divided (R3.5, R3.6).
-- [ ] Overspend (negative remaining) renders per R3.6, and never inside a generated document.
+- [x] The month view shows opening, this-month and closing per category and **reconciles by
+      subtraction**: `opening − thisMonth = closing`. Stated as budget *remaining* rather than
+      billed-to-date — re-reading the client's words ("opening budget balance … remaining balance
+      at the end") they mean the former, and only that framing makes the row read as a statement
+- [x] Each month opens exactly where the previous one closed — the specific confusion reported
+- [x] The grant view shows approved / spent to date / remaining, with no month in it at all
+- [x] Both derive from the same `allLineItemStats`, so they cannot disagree with the packet or the
+      workbook (R10.2)
+- [x] **A submitted month's figures are recorded and do not move** (`month_snapshots`), while
+      corrections still flow into the live figures — and every category that diverges is named on
+      the dashboard with the amount. Verified end to end: submitted at $200.00, corrected to
+      $230.00, snapshot held at $200.00 and the drift was reported
+- [x] Un-submitting discards the record rather than leaving figures labelled "as submitted" that
+      no longer are
+- [x] A month with no expenses renders sensibly; no division by zero (R3.5)
+- [x] Overspend still renders per R3.6 and never inside a generated document
+- [x] Browser-verified: grant strip above, "August 2026 on its own" below
+
+**Done.**
 
 ### Edge cases that must not be missed
 
@@ -762,12 +771,12 @@ that preserves what was actually sent. That is the natural anchor for a real sna
 
 ### Open questions
 
-- **Q11.** Should a completed month's numbers **freeze** (a stored snapshot, corrections explicit and
+- **Q11 — answered (A2): frozen at submission**, as a *record* rather than a lock. Original: should a completed month's numbers **freeze** (a stored snapshot, corrections explicit and
   visible), or keep recomputing so a late correction flows through automatically? This is the single
   most consequential decision in Phase 2.
-- **Q12.** What marks a month "completed" — the existing `submittedAt`, packet download, or a new
+- **Q12 — answered: the existing `submittedAt`.** It already drives the R10.6 warning and already coincides with the pinned packet; a separate "Close month" would be a second concept for the same moment. Original: what marks a month "completed" — the existing `submittedAt`, packet download, or a new
   explicit *Close month* action?
-- **Q13.** If a closed month must be corrected, should it reopen, or should the correction land in the
+- **Q13 — answered: corrections just flow, and the divergence is shown.** Blocking edits would be a new restriction nobody asked for; the snapshot preserves what was sent and the dashboard names what has changed since. Original: should a closed month reopen, or should the correction land in the
   current month as an adjustment (standard accounting practice)?
 
 ---

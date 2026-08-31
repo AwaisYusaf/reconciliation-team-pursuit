@@ -32,6 +32,10 @@ Let `opening` = line item's opening previously-billed balance (setup figure), `e
 - **R3.5** `%complete(M) = totalBilled / scheduledValue` (R1.5 rendering)
 - **R3.6** **Low-budget warning** (app screens only — never inside generated documents): `remaining / scheduledValue < 0.10` → red emphasis on Remaining. When `scheduledValue ≤ 0`, warn only if `remaining < 0`.
 - **R3.7** Add-expense projection: `remaining − currentFormReimbursable`, styled as warning when < 0. **Edit mode:** compute `remaining` excluding the expense being edited, then subtract the live form value (no double-count).
+- **R3.8** **Monthly activity and the cumulative grant are two views, never one table.**
+  - *Month view*, per line item: `opening = scheduledValue − previouslyBilled(M)`, `thisMonth = spentThisMonth(M)`, `closing = remaining(M)`. Stated as budget **remaining** rather than billed-to-date, so the row reads as a statement — `opening − thisMonth = closing` — and each month opens exactly where the last closed.
+  - *Grant view*: `approved = Σ scheduledValue`, `spentToDate = Σ totalBilled`, `remaining = approved − spentToDate`. No month appears in it.
+- **R3.9** **A month's figures are recorded when it is submitted** (`month_snapshots`, D-68). A record, not a lock: corrections still flow into the live figures exactly as before, and when the two differ the screen names every category that moved and by how much. Un-submitting discards the record, because figures labelled "as submitted" would otherwise assert something untrue; the pinned artifact still holds the bytes actually delivered (R10.6). The performance grant and advances-received have no month dimension of their own (R7.2, R7.4) — what is captured is their value **at submission**, which is what that packet was built from.
 
 ## 4. Documentation gate
 
