@@ -71,6 +71,13 @@
       "when": 1788170436803,
       "tag": "0009_thumbnail_bytes",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1788172069099,
+      "tag": "0010_recurring_narrative",
+      "breakpoints": true
     }
   ]
 }

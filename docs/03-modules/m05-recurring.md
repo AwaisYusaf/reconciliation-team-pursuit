@@ -10,7 +10,7 @@ Route `/recurring`. Managed list (CRUD) + per-row "Add to {month}" with added-st
 Reads/writes `recurring_items`; creates `expenses` (no documents — R4.5). Added detection: an expense exists in the active month with the same name (case-insensitive) + line item.
 
 ## Behavior
-- Table: `Name | Amount | Line Item | (action)`. Action: secondary `Add to {Mon}` → creates expense (month = active month, date = today per R2.5, payment source default = the org's first active source, description = default description or vendor-library default), row flashes green and becomes `Added to {Month}` + quiet `Remove`.
+- Table: `Name | Amount | Line Item | (action)`. Action: secondary `Add to {Mon}` → creates an expense (month = active month, date = today per R2.5, payment source = the template's own source when it is still active, else the org's first active one, description = the template's or the vendor-library default, **narrative / tax / fees = the template's**). The row flashes green and becomes `Added to {Month}` + quiet `Remove`. The flash waits for the add to succeed — it used to fire first, so a failed add still went green, which is how a live insert failure stayed invisible on this screen.
 - **Remove** deletes the newest matching expense; if that expense has ≥ 1 document attached, a confirm dialog is required first (R8.3).
 - Subtext: `Vendors and salaries billed every month. Nothing is added automatically — confirm each one you want to add to {Month YYYY}.`
 - `+ Add recurring item` inline form: name, amount, line item, optional description. Edit/delete per row (delete = list only, never touches expenses). Recurring items are cascade-deleted with their line item after the R9.3 confirm.
@@ -53,7 +53,7 @@ just-added state (he was added seconds ago and has no documents yet). Each row a
 quiet "Edit" link before the action.
 
 Below the table: secondary button "+ Add recurring item", and ALSO show the open inline form
-variant (bordered white card): three fields side by side — Name, Amount, Line item select —
+variant (bordered white card): three fields side by side — Name, Amount, Line item select — then Default description, Default narrative (textarea), and a row of Payment source / Tax / Fees. Everything but the first three is optional; narrative is the field that stops last month being reopened to copy text (R8.3, D-66) —
 plus optional "Default description" input underneath, buttons primary "Add recurring item" +
 secondary "Cancel", and an example error in red: "Enter a name, an amount, and a line item."
 ```

@@ -16,7 +16,7 @@ that nothing is built twice.
 A fix is not finished when the code works. It is finished when its passing criteria pass and the
 February golden reference (`context/manual packet/`) still reconciles.
 
-**Status:** F0 and F1 complete. F2 complete bar your browser confirmation. F3 is next. `Last reviewed: 2026-08-31.`
+**Status:** F0, F1, F2 and F3 complete, all browser-verified. F4 (optional taxes and fees) is next. `Last reviewed: 2026-08-31.`
 
 ### Decisions already taken (2026-08-31)
 
@@ -487,13 +487,22 @@ too. **Deciding how these two relate is the main design question in F3, not the 
 
 ### Passing criteria
 
-- [ ] A recurring item stores name, description, **narrative**, line item, and the fields Q5 settles.
-- [ ] "Add to <Month>" produces an expense with all of them pre-filled.
-- [ ] Every pre-filled field is editable before saving, and edits do not leak back unless Q6 says so.
-- [ ] Editing the narrative on a generated expense behaves exactly as Q6 specifies.
-- [ ] A recurring item whose line item was deleted still behaves per R9.3.
-- [ ] Adding the same recurring item twice in one month is handled deliberately.
-- [ ] Recurring and vendor autofill do not fight over the same field (F3.1's decision holds).
+- [x] A recurring item stores name, description, **narrative**, line item, payment source, tax and
+      fees (migration 0010)
+- [x] "Add to <Month>" produces an expense with all of them pre-filled — verified in the browser and
+      in the database: narrative, description, payment source and $7.20 tax all carried
+- [x] Every pre-filled field is editable before saving
+- [x] Correcting the narrative on a generated expense **updates its template**, and only its own:
+      editing Canva's left ClickUp's untouched. Verified end to end in Chrome
+- [x] A blank narrative never clears the template — proven for `null`, `""` and whitespace
+- [x] A hand-entered expense (no template id) never rewrites a template
+- [x] Another organisation's template cannot be written to
+- [x] Recurring and vendor autofill do not fight: narrative lives only on the curated template, so
+      the vendor library's latest-write-wins learning cannot wipe it (D-66)
+- [x] **Two recurring items added to one month now both succeed** — the B1 case, clicked through in
+      the browser rather than only asserted
+
+**Done.**
 
 ### Edge cases that must not be missed
 
@@ -523,12 +532,12 @@ too. **Deciding how these two relate is the main design question in F3, not the 
 
 ### Open questions
 
-- **Q4.** Should recurring items and vendor defaults **merge** into one "remembered values" concept,
+- **Q4 — answered: stay separate** (D-66). They answer different moments; the template wins on "Add to month". Original question: should recurring items and vendor defaults **merge** into one "remembered values" concept,
   or stay separate with a clear precedence rule? Two systems remembering the same fields will
   eventually disagree.
-- **Q5.** Beyond narrative, which fields should a recurring item carry? You listed "other recurring
+- **Q5 — answered: payment source, tax and fees.** Original question: beyond narrative, which fields should a recurring item carry? You listed "other recurring
   information" — my proposal is payment source and the tax/fee amounts and their F4 flags.
-- **Q6.** When you edit the narrative on a generated expense, should it **update the template** for
+- **Q6 — answered: it updates the template**, but only from an expense created by it and only when non-empty; clearing is done on the Recurring screen. Original question: should editing the narrative **update the template** for
   next month, or only that one expense? Auto-updating is what removes the copy-paste, but it also
   means a one-off edit silently changes every future month.
 

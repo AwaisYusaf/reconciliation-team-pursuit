@@ -31,6 +31,10 @@ export async function saveRecurringItemAction(input: {
   amount: string;
   lineItemId: string;
   defaultDescription: string;
+  defaultNarrative: string;
+  defaultPaymentSource: string;
+  defaultTax: string;
+  defaultFees: string;
 }): Promise<ActionResult> {
   const current = await actionSession();
   if ("expired" in current) return current.expired;
@@ -55,6 +59,13 @@ export async function saveRecurringItemAction(input: {
     amountCents: amountCents as number,
     lineItemId: input.lineItemId,
     defaultDescription: input.defaultDescription.trim() || null,
+    // Everything the client listed as "other recurring information" (R8.3). Blank clears the
+    // stored value: on this screen the field IS the template, so emptying it is deliberate —
+    // unlike the write-back from an expense, which never clears.
+    defaultNarrative: input.defaultNarrative.trim() || null,
+    defaultPaymentSource: input.defaultPaymentSource.trim() || null,
+    defaultTaxCents: parseMoneyToCents(input.defaultTax),
+    defaultFeesCents: parseMoneyToCents(input.defaultFees),
   };
 
   if (input.id) {
@@ -119,6 +130,10 @@ export async function addRecurringToMonthAction(
       amountCents: recurringItems.amountCents,
       lineItemId: recurringItems.lineItemId,
       defaultDescription: recurringItems.defaultDescription,
+      defaultNarrative: recurringItems.defaultNarrative,
+      defaultPaymentSource: recurringItems.defaultPaymentSource,
+      defaultTaxCents: recurringItems.defaultTaxCents,
+      defaultFeesCents: recurringItems.defaultFeesCents,
     })
     .from(recurringItems)
     .where(and(eq(recurringItems.id, id), eq(recurringItems.orgId, current.orgId)))
@@ -138,12 +153,13 @@ export async function addRecurringToMonthAction(
     )
     .limit(1);
 
-  const [defaultSource] = await db
+  const sources = await db
     .select({ label: paymentSources.label })
     .from(paymentSources)
     .where(and(eq(paymentSources.orgId, current.orgId), eq(paymentSources.active, true)))
-    .orderBy(asc(paymentSources.sortOrder))
-    .limit(1);
+    .orderBy(asc(paymentSources.sortOrder));
+  const activeSources = sources.map((row) => row.label);
+  const [defaultSource] = sources;
 
   const [{ next }] = await db
     .select({ next: sql<number>`coalesce(max(${expenses.sortOrder}), -1) + 1` })
@@ -157,8 +173,19 @@ export async function addRecurringToMonthAction(
     date: todayIso(),
     name: item.name,
     description: item.defaultDescription ?? vendor?.description ?? "",
-    paymentSource: defaultSource?.label ?? "Paid by us, reimbursement requested",
+    // The narrative is the whole point of carrying a template forward: it arrives filled in
+    // and editable, so nobody reopens last month to copy and paste it (R8.3).
+    narrative: item.defaultNarrative,
+    // A remembered source is only offered while it is still one the organisation uses (R5.2).
+    paymentSource:
+      (item.defaultPaymentSource && activeSources.includes(item.defaultPaymentSource)
+        ? item.defaultPaymentSource
+        : null) ??
+      defaultSource?.label ??
+      "Paid by us, reimbursement requested",
     subtotalCents: item.amountCents,
+    taxCents: item.defaultTaxCents ?? 0,
+    feesCents: item.defaultFeesCents ?? 0,
     sortOrder: Number(next),
     // R2.6: a one-click add is an expense like any other and needs the month's next
     // reference. Omitting this left every added row at the column default, so the second

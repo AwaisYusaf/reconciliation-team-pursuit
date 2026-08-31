@@ -11,6 +11,7 @@ import { expenseDocuments, expenses, lineItems, vendorDefaults } from "@/src/db/
 import { parseMoneyToCentsOrZero } from "@/src/domain/money";
 import { fail, ok, type ActionResult } from "@/src/lib/action-result";
 import { actionSession } from "@/src/lib/action-session";
+import { carryNarrativeToTemplate } from "@/src/modules/recurring/narrative";
 import { claimReferenceSeq } from "./references";
 import { deleteExpenseDocument as removeStoredDocument } from "@/src/services/storage/documents";
 import { isUuid } from "@/src/lib/ids";
@@ -179,6 +180,7 @@ export async function updateExpenseAction(input: ExpenseInput): Promise<ActionRe
   const [existing] = await db
     .select({
       month: expenses.month,
+      recurringItemId: expenses.recurringItemId,
       sortOrder: expenses.sortOrder,
       referenceSeq: expenses.referenceSeq,
       paymentSource: expenses.paymentSource,
@@ -226,6 +228,18 @@ export async function updateExpenseAction(input: ExpenseInput): Promise<ActionRe
     .where(and(eq(expenses.id, expenseId), eq(expenses.orgId, current.orgId)))
     .returning({ id: expenses.id });
   if (updated.length === 0) return fail("That expense no longer exists.");
+
+  // Carry a corrected narrative back to the template it came from, so next month's one-click
+  // add arrives with the current text and nobody reopens an old month to copy it (R8.3, D-66).
+  //
+  // Only from an expense that came from the template, and only when there is something to
+  // carry: a blank narrative here means "not written yet", not "delete the paragraph". The
+  // template's own field on the Recurring screen is where clearing is done, deliberately.
+  await carryNarrativeToTemplate({
+    orgId: current.orgId,
+    recurringItemId: existing.recurringItemId,
+    narrative: row.narrative,
+  });
 
   // "No receipt available" and attached receipts are mutually exclusive (R4.2): saving
   // with the box ticked removes the receipt files the user confirmed away. This runs only

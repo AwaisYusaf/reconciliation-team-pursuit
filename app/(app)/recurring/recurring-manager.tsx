@@ -5,7 +5,7 @@ import { useState, useTransition } from "react";
 
 import { Button } from "@/src/components/ui/button";
 import { Dialog } from "@/src/components/ui/dialog";
-import { Helper, Input, Label, MoneyInput } from "@/src/components/ui/field";
+import { Helper, Input, Label, MoneyInput, Textarea } from "@/src/components/ui/field";
 import { Select } from "@/src/components/ui/select";
 import { Card, DangerPanel, EmptyState } from "@/src/components/ui/surfaces";
 import { TableCard, Td, Th } from "@/src/components/ui/table";
@@ -27,22 +27,47 @@ export type RecurringRow = {
   lineItemId: string;
   lineItemName: string;
   defaultDescription: string;
+  defaultNarrative: string;
+  defaultPaymentSource: string;
+  defaultTax: string;
+  defaultFees: string;
   added: boolean;
 };
 
-type Draft = { id?: string; name: string; amount: string; lineItemId: string; defaultDescription: string };
+type Draft = {
+  id?: string;
+  name: string;
+  amount: string;
+  lineItemId: string;
+  defaultDescription: string;
+  defaultNarrative: string;
+  defaultPaymentSource: string;
+  defaultTax: string;
+  defaultFees: string;
+};
 
-const EMPTY_DRAFT: Draft = { name: "", amount: "", lineItemId: "", defaultDescription: "" };
+const EMPTY_DRAFT: Draft = {
+  name: "",
+  amount: "",
+  lineItemId: "",
+  defaultDescription: "",
+  defaultNarrative: "",
+  defaultPaymentSource: "",
+  defaultTax: "",
+  defaultFees: "",
+};
 
 export function RecurringManager({
   rows,
   lineItems,
+  paymentSources,
   month,
   monthLabel,
   monthShort,
 }: {
   rows: RecurringRow[];
   lineItems: Array<{ id: string; name: string }>;
+  paymentSources: string[];
   month: string;
   monthLabel: string;
   monthShort: string;
@@ -80,8 +105,14 @@ export function RecurringManager({
   }
 
   function add(row: RecurringRow) {
-    flash(row.id);
-    run(() => addRecurringToMonthAction(row.id, month), undefined, `${row.name} added to ${monthLabel}`);
+    // The flash confirms the add, so it must wait for the add to succeed. It used to fire
+    // first, which meant a failed add still went green — exactly how a live insert failure
+    // stayed invisible on this screen (TASKS.md U2).
+    run(
+      () => addRecurringToMonthAction(row.id, month),
+      () => flash(row.id),
+      `${row.name} added to ${monthLabel}`,
+    );
   }
 
   function remove(row: RecurringRow) {
@@ -177,6 +208,10 @@ export function RecurringManager({
                       disabled={pending}
                       onClick={() =>
                         setDraft({
+                          defaultNarrative: row.defaultNarrative,
+                          defaultPaymentSource: row.defaultPaymentSource,
+                          defaultTax: row.defaultTax,
+                          defaultFees: row.defaultFees,
                           id: row.id,
                           name: row.name,
                           amount: (row.amountCents / 100).toFixed(2),
@@ -274,6 +309,65 @@ export function RecurringManager({
               onChange={(event) => setDraft({ ...draft, defaultDescription: event.target.value })}
             />
             <Helper>Used as the cover-sheet role when this item is added to a month.</Helper>
+          </div>
+
+          <div className="mt-[18px]">
+            <Label htmlFor="rec-narrative">
+              Default narrative <span className="font-normal text-sub">(optional)</span>
+            </Label>
+            <Textarea
+              id="rec-narrative"
+              rows={3}
+              value={draft.defaultNarrative}
+              onChange={(event) => setDraft({ ...draft, defaultNarrative: event.target.value })}
+            />
+            <Helper>
+              Fills in automatically each month and stays editable. Correcting it on the expense
+              updates this, so next month starts from the current wording.
+            </Helper>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-[18px]">
+            <div>
+              <Label id="rec-source-label" htmlFor="rec-source">
+                Payment source <span className="font-normal text-sub">(optional)</span>
+              </Label>
+              <Select
+                id="rec-source"
+                aria-labelledby="rec-source-label"
+                value={draft.defaultPaymentSource}
+                onValueChange={(value) => setDraft({ ...draft, defaultPaymentSource: value })}
+              >
+                <option value="">Use the default</option>
+                {paymentSources.map((label) => (
+                  <option key={label} value={label}>
+                    {label}
+                  </option>
+                ))}
+              </Select>
+            </div>
+            <div>
+              <Label htmlFor="rec-tax">
+                Tax <span className="font-normal text-sub">(optional)</span>
+              </Label>
+              <MoneyInput
+                id="rec-tax"
+                placeholder="0.00"
+                value={draft.defaultTax}
+                onChange={(event) => setDraft({ ...draft, defaultTax: event.target.value })}
+              />
+            </div>
+            <div>
+              <Label htmlFor="rec-fees">
+                Fees <span className="font-normal text-sub">(optional)</span>
+              </Label>
+              <MoneyInput
+                id="rec-fees"
+                placeholder="0.00"
+                value={draft.defaultFees}
+                onChange={(event) => setDraft({ ...draft, defaultFees: event.target.value })}
+              />
+            </div>
           </div>
 
           <div className="flex flex-wrap gap-3 mt-5">

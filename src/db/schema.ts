@@ -471,6 +471,20 @@ export const recurringItems = pgTable(
       .notNull()
       .references(() => lineItems.id, { onDelete: "cascade" }),
     defaultDescription: text("default_description"),
+    /**
+     * The narrative to carry into next month's expense (R8.3).
+     *
+     * Lives here rather than on `vendor_defaults` on purpose: the vendor library is learned
+     * automatically on every save with latest-write-wins (R8.2), so one expense saved with an
+     * empty narrative would wipe the remembered paragraph. A recurring item is curated, so
+     * the text only changes when someone means it to (D-66).
+     */
+    defaultNarrative: text("default_narrative"),
+    /** Stored as the label, matching `expenses.payment_source` (R5.2). */
+    defaultPaymentSource: text("default_payment_source"),
+    /** A subscription's tax and fees are the same every month; null means never set. */
+    defaultTaxCents: nullableCents("default_tax_cents"),
+    defaultFeesCents: nullableCents("default_fees_cents"),
     sortOrder: integer("sort_order").notNull().default(0),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
