@@ -7,6 +7,7 @@ Docs-first, AI-native project. **These files are the source of truth.** Code ser
 | Path | What it is |
 |---|---|
 | `TASKS.md` | **Outstanding work** — everything unfinished, why it matters, and what is blocked on whom |
+| `PHASE-2.md` | **Phase 2 enhancements** — the six client-requested changes, phased, with passing criteria and the open questions each one is blocked on |
 | `00-product/prd.md` | Product requirements — problem, scope, flows, acceptance |
 | `01-domain/domain-rules.md` | The rulebook: money math, gates, statuses, canonical wordings |
 | `01-domain/data-model.md` | Entities, fields, relationships, S3 key scheme |

@@ -270,7 +270,16 @@ export const expenses = pgTable(
      * packet it appears in — a 2026-02 reference sitting in the March packet would be worse
      * than a renumbered one.
      */
-    referenceSeq: integer("reference_seq").notNull().default(0),
+    /**
+     * Per-month reference number (R2.6). **No default on purpose.**
+     *
+     * With a default, Drizzle makes this optional on insert and any new insert path that
+     * forgets it silently lands on the same value — two of them then collide on
+     * `expenses_org_month_reference_uq`. That is exactly what happened to the recurring
+     * one-click add. Required here, so forgetting is a type error; `claimReferenceSeq` in
+     * `modules/expenses/references.ts` is the only supplier.
+     */
+    referenceSeq: integer("reference_seq").notNull(),
     /**
      * Set when the expense was created by one-click "Add to month" (R8.3).
      * Remove targets this link rather than matching on name, so undoing an add can never
@@ -288,6 +297,9 @@ export const expenses = pgTable(
     // What makes a reference trustworthy. Assignment reads max+1 and can race, so the
     // database is the arbiter and the caller retries rather than hoping.
     uniqueIndex("expenses_org_month_reference_uq").on(t.orgId, t.month, t.referenceSeq),
+    // References start at 1 (R2.6). Catches anything reaching the table outside Drizzle —
+    // a raw SQL insert cannot fall back to 0 and collide with the next one.
+    check("expenses_reference_seq_ck", sql`${t.referenceSeq} >= 1`),
     check(
       "expenses_no_receipt_reason_ck",
       sql`not ${t.noReceipt} or (${t.noReceiptReason} is not null and btrim(${t.noReceiptReason}) <> '')`,

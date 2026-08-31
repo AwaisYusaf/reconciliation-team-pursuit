@@ -22,6 +22,7 @@ import { fail, ok, type ActionResult } from "@/src/lib/action-result";
 import { actionSession } from "@/src/lib/action-session";
 import { deleteExpenseDocument } from "@/src/services/storage/documents";
 import { isUuid } from "@/src/lib/ids";
+import { claimReferenceSeq } from "@/src/modules/expenses/references";
 
 
 export async function saveRecurringItemAction(input: {
@@ -159,6 +160,10 @@ export async function addRecurringToMonthAction(
     paymentSource: defaultSource?.label ?? "Paid by us, reimbursement requested",
     subtotalCents: item.amountCents,
     sortOrder: Number(next),
+    // R2.6: a one-click add is an expense like any other and needs the month's next
+    // reference. Omitting this left every added row at the column default, so the second
+    // add into a month collided on `expenses_org_month_reference_uq` and failed.
+    referenceSeq: await claimReferenceSeq(current.orgId, month),
     recurringItemId: id,
   });
 

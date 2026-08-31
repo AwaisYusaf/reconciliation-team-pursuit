@@ -48,11 +48,11 @@ describe.skipIf(!hasDatabase)("query layer (integration)", async () => {
       .returning({ id: lineItems.id });
 
     await db.insert(expenses).values([
-      { orgId, lineItemId, month: "2025-12", date: "2025-12-15", name: "Earlier year", paymentSource: "x", subtotalCents: 1000 },
-      { orgId, lineItemId, month: "2026-01", date: "2026-01-15", name: "Earlier", paymentSource: "x", subtotalCents: 2000 },
-      { orgId, lineItemId, month: "2026-02", date: "2026-02-15", name: "This month", paymentSource: "x", subtotalCents: 4000 },
-      { orgId, lineItemId, month: "2026-03", date: "2026-03-15", name: "Later", paymentSource: "x", subtotalCents: 8000 },
-      { orgId, lineItemId, month: "2026-10", date: "2026-10-15", name: "Much later", paymentSource: "x", subtotalCents: 16000 },
+      { orgId, lineItemId, month: "2025-12", date: "2025-12-15", name: "Earlier year", paymentSource: "x", subtotalCents: 1000, referenceSeq: 1 },
+      { orgId, lineItemId, month: "2026-01", date: "2026-01-15", name: "Earlier", paymentSource: "x", subtotalCents: 2000, referenceSeq: 1 },
+      { orgId, lineItemId, month: "2026-02", date: "2026-02-15", name: "This month", paymentSource: "x", subtotalCents: 4000, referenceSeq: 1 },
+      { orgId, lineItemId, month: "2026-03", date: "2026-03-15", name: "Later", paymentSource: "x", subtotalCents: 8000, referenceSeq: 1 },
+      { orgId, lineItemId, month: "2026-10", date: "2026-10-15", name: "Much later", paymentSource: "x", subtotalCents: 16000, referenceSeq: 1 },
       {
         orgId: otherOrgId,
         lineItemId: otherItem.id,
@@ -61,6 +61,7 @@ describe.skipIf(!hasDatabase)("query layer (integration)", async () => {
         name: "Other org expense",
         paymentSource: "x",
         subtotalCents: 500000,
+        referenceSeq: 1,
       },
     ]);
   });

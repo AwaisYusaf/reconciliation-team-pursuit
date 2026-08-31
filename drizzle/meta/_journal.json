@@ -57,6 +57,13 @@
       "when": 1788089679445,
       "tag": "0007_gray_thunderbird",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1788168280358,
+      "tag": "0008_fix_recurring_reference_seq",
+      "breakpoints": true
     }
   ]
 }

@@ -7,10 +7,11 @@ import { and, eq, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
 import { db } from "@/src/db";
-import { expenseDocuments, expenses, lineItems, monthStatuses, vendorDefaults } from "@/src/db/schema";
+import { expenseDocuments, expenses, lineItems, vendorDefaults } from "@/src/db/schema";
 import { parseMoneyToCentsOrZero } from "@/src/domain/money";
 import { fail, ok, type ActionResult } from "@/src/lib/action-result";
 import { actionSession } from "@/src/lib/action-session";
+import { claimReferenceSeq } from "./references";
 import { deleteExpenseDocument as removeStoredDocument } from "@/src/services/storage/documents";
 import { isUuid } from "@/src/lib/ids";
 import { isKnownPaymentSource } from "@/src/modules/settings/labels";
@@ -50,31 +51,6 @@ function toRow(input: ExpenseInput) {
     noReceipt: input.noReceipt,
     noReceiptReason: input.noReceipt ? input.noReceiptReason.trim() : null,
   };
-}
-
-/**
- * Claim the next reference number for a month (R2.6).
- *
- * One statement, so the counter is read and advanced under the same row lock: two saves in
- * the same month cannot be handed the same number, and nothing has to detect a collision and
- * retry. Deleting an expense leaves its number spent — a reference that has been printed is
- * never handed to something else.
- *
- * `month_statuses` gains a row here if the month has none. That is harmless: the only other
- * column is `submitted_at`, and a row with it null already means exactly what no row means.
- */
-async function claimReferenceSeq(orgId: string, month: string): Promise<number> {
-  const [claimed] = await db
-    .insert(monthStatuses)
-    .values({ orgId, month, nextReferenceSeq: 2 })
-    .onConflictDoUpdate({
-      target: [monthStatuses.orgId, monthStatuses.month],
-      set: { nextReferenceSeq: sql`${monthStatuses.nextReferenceSeq} + 1` },
-    })
-    .returning({ next: monthStatuses.nextReferenceSeq });
-
-  // The row now holds the *next* number, so the one just claimed is one below it.
-  return Number(claimed.next) - 1;
 }
 
 /**

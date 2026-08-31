@@ -305,6 +305,18 @@ async function main() {
       return;
     }
 
+    // Number from wherever the month's counter already stands, not from 1: a month can be
+    // empty because its expenses were deleted, and R2.6 says a reference that has been handed
+    // out is never handed out again.
+    const [counter] = await db
+      .select({ next: schema.monthStatuses.nextReferenceSeq })
+      .from(schema.monthStatuses)
+      .where(
+        and(eq(schema.monthStatuses.orgId, org.id), eq(schema.monthStatuses.month, MONTH)),
+      )
+      .limit(1);
+    const firstReference = Number(counter?.next ?? 1);
+
     let sortOrder = 0;
     let day = 2;
     const values: (typeof schema.expenses.$inferInsert)[] = [];
@@ -326,12 +338,25 @@ async function main() {
           paymentSource: SOURCE,
           subtotalCents: cents,
           sortOrder: sortOrder++,
+          // R2.6. The month is empty (checked above), so the fixture owns this block of the
+          // sequence; `month_statuses` is advanced past it after the insert.
+          referenceSeq: firstReference + values.length,
         });
         day = (day % 27) + 1;
       }
     }
 
     await db.insert(schema.expenses).values(values);
+
+    // Hand the counter over past what the fixture just used, or the next expense saved in
+    // the app would claim reference 1 and collide with the fixture's own first row.
+    await db
+      .insert(schema.monthStatuses)
+      .values({ orgId: org.id, month: MONTH, nextReferenceSeq: firstReference + values.length })
+      .onConflictDoUpdate({
+        target: [schema.monthStatuses.orgId, schema.monthStatuses.month],
+        set: { nextReferenceSeq: firstReference + values.length },
+      });
 
     const vendorRows = values.map((value) => ({
       orgId: org.id,

@@ -46,8 +46,8 @@ describe.skipIf(!hasDatabase)("line item usage counts (integration)", async () =
     unusedId = inserted.find((row) => row.name === "Unused")!.id;
 
     await db.insert(expenses).values([
-      { orgId, lineItemId: usedId, month: "2026-01", date: "2026-01-10", name: "Payroll 1", paymentSource: "x", subtotalCents: 1000 },
-      { orgId, lineItemId: usedId, month: "2026-02", date: "2026-02-10", name: "Payroll 2", paymentSource: "x", subtotalCents: 2000 },
+      { orgId, lineItemId: usedId, month: "2026-01", date: "2026-01-10", name: "Payroll 1", paymentSource: "x", subtotalCents: 1000, referenceSeq: 1 },
+      { orgId, lineItemId: usedId, month: "2026-02", date: "2026-02-10", name: "Payroll 2", paymentSource: "x", subtotalCents: 2000, referenceSeq: 1 },
     ]);
 
     await db.insert(recurringItems).values([
