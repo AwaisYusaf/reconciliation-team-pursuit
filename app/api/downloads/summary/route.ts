@@ -15,7 +15,9 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /** Bump when the workbook's layout changes, so cached artifacts rebuild (R10.4). */
-const GENERATOR_VERSION = "summary-2";
+// Bumped "summary-3": the detail sheet gained a Receipt Total column (R1.3a). Without this, pinned and cached
+// artifacts would keep serving output built before the change.
+const GENERATOR_VERSION = "summary-3";
 
 /**
  * Download the contract summary workbook for a month.

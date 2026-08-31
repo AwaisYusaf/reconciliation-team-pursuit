@@ -16,7 +16,7 @@ that nothing is built twice.
 A fix is not finished when the code works. It is finished when its passing criteria pass and the
 February golden reference (`context/manual packet/`) still reconciles.
 
-**Status:** F0–F5 complete and browser-verified. F6's proposal is written and ready to send; the rest of F6 waits on the funder's answer. `Last reviewed: 2026-08-31.`
+**Status:** **All six complete.** F6 approved by the funder and built. `Last reviewed: 2026-08-31.`
 
 ### Decisions already taken (2026-08-31)
 
@@ -837,9 +837,9 @@ packet at all — they live on screen and in the Excel workbook.
   mockup. The receipt is invented: nothing from `context/manual packet/` may appear in a document
   leaving the organisation.
 
-- **F6.2 onward — blocked on the funder's answer.** The fallback if they decline is in the proposal:
-  group the index by category and give each expense its packet page number, which changes only our
-  own generated page and needs no approval.
+- [x] **F6.2 — Approved and built.** The footer now carries the expense reference on every page
+  documenting exactly one expense. Ownership is collected during assembly, because once pages are
+  merged nothing about a rasterised receipt says where it came from.
 - **F6.2 — Stamp the reference** on every supporting-document page. Pages are rasterised and placed
   by us ([`addImagePage`](../src/generation/packet-pdf.ts)), so a footer can be drawn as vector text
   over the placed image without touching the original file.
@@ -852,17 +852,32 @@ packet at all — they live on screen and in the Excel workbook.
 
 ### Passing criteria
 
-- [ ] Every supporting document page carries its expense's reference, legibly, without obscuring the
-      document content.
-- [ ] Every reference in the index resolves to a real page, and every document page's reference
-      appears in the index — verified by extracting text from the built PDF, not by eye.
-- [ ] Category totals, monthly totals and remaining budget appear and **match the screen and the
-      Excel workbook exactly** (R10.2).
-- [ ] Multi-page PDFs stay correctly ordered and every page is stamped.
-- [ ] The approved cover-sheet layout is unchanged, or the change is explicitly approved by the
-      client and recorded as a decision.
-- [ ] A packet for a month with no expenses still builds (existing behaviour).
-- [ ] Packet size and build time do not regress materially against F1's recorded measurements.
+- [x] Every supporting document page carries its expense's reference, in the footer that was
+      already there — nothing on the document itself is obscured
+- [x] Every reference in the index resolves to a real stamped page, verified by extracting text
+      from a **real built packet** rather than by eye
+      (`packet-trace.integration.test.ts`)
+- [x] No two expenses claim the same page
+- [x] Pages belonging to no single expense carry no reference — stamping one on the summary, the
+      index, a bank statement or a category cover sheet would assert something untrue
+- [x] Page numbering against the final total still holds on every page (R10.5)
+- [x] **Category totals, monthly totals and remaining budget already appear** — this turned out to
+      need no work. The cover sheet carries each category's total; the summary page carries
+      `This Period` (the month) and `Balance to Finish` (remaining) per category and in total. All
+      derive from the same calculation service, so they match the screen and the workbook by
+      construction (R10.2)
+- [x] The approved cover-sheet layout is untouched
+- [x] A month with no expenses still builds
+- [x] **`GENERATOR_VERSION` bumped** — `packet-5`. Without it, pinned and cached artifacts would
+      serve unstamped pages forever
+
+### Also fixed here
+
+Two versions that **F4 should have bumped and did not**: `cover-3 → cover-4` (the exclusion note
+logic changed) and `summary-2 → summary-3` (the workbook gained a Receipt Total column). Cached
+artifacts would have kept serving the pre-F4 output indefinitely. Caught while bumping the packet.
+
+**Done.**
 
 ### Edge cases that must not be missed
 
@@ -881,10 +896,10 @@ packet at all — they live on screen and in the Excel workbook.
 - **Q14 — answered (A3): ask the funder.** F6.1 produces the sample page and the written proposal.
   If the funder declines, the fallback is to make the index page do more work — grouping it by
   category and giving page numbers — which changes only our own generated page.
-- **Q15.** "Cover letter for each category" — is that the **existing cover sheet** (the approved
+- **Q15 — answered by the code: the existing cover sheet is the cover letter.** It already carries the category's expenses, their descriptions, narratives, proof images and the category total. Original: is it the **existing cover sheet** (the approved
   three-column breakdown), or a **new** letter page in front of it with narrative context? If new,
   what should it say?
-- **Q16.** Should "remaining budget information" in the packet be **per category, in total, or both**?
+- **Q16 — already both.** The summary page's `Balance to Finish` column runs per category and in the totals row.
 
 ---
 

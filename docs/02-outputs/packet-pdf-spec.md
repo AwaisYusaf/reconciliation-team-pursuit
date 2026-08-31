@@ -23,6 +23,26 @@ Proof-of-payment images appear **only** inside cover sheets (R11.3) — never du
 
 Every page, including section 1: `{docName} — {Month YYYY} — Page {i} of {N}`, 9 pt gray (#787878), bottom-center, 0.35" from bottom. Stamped after assembly so N is final.
 
+**Pages documenting one expense also carry its reference**, inserted before the page number
+(D-70, funder-approved):
+
+| Page | Footer |
+|---|---|
+| Summary, index, month documents, cover sheet | `{docName} — {Month YYYY} — Page {i} of {N}` |
+| A receipt or supporting document | `{docName} — {Month YYYY} — {reference} — Page {i} of {N}` |
+
+Same position, size and colour — the reference is added to the existing line, not a new mark on
+the page. Ownership is collected during assembly, because once pages are merged nothing about a
+rasterised receipt says which expense it came from. A cover sheet covers a whole category, a bank
+statement the whole month, and the summary and index neither, so none of them carry one. **Proof
+of payment is not stamped**: it is embedded in the cover sheet directly under its expense's own
+heading, where it is already labelled.
+
+This is what makes the packet self-navigating in both directions — index → evidence, and evidence
+→ claim — which is the goal the funder set: *"if a fiduciary, funder, auditor, or organization
+reviews the packet, they should be able to follow the financial trail without needing someone to
+manually explain where the documentation is located."*
+
 ## Size & compatibility
 
 - Target ≤ **25 MB** (DocuSign envelope ceiling). If a build exceeds it: rebuild at 120 DPI / JPEG 70; still over → one final step at 100 DPI / JPEG 60, then **deliver anyway** with a warning stating the final size and that DocuSign may reject it — never block the download on size. February's manual equivalent was 25 MB at 133 pages — we expect to land well under with JPEG.

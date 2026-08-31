@@ -19,7 +19,9 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 600;
 
 /** Bump when the packet's layout or ordering changes, so cached artifacts rebuild (R10.4). */
-const GENERATOR_VERSION = "packet-4";
+// Bumped "packet-5": the page footer now carries the expense reference (D-70). Without this, pinned and cached
+// artifacts would keep serving output built before the change.
+const GENERATOR_VERSION = "packet-5";
 
 /**
  * Download the month-end packet.

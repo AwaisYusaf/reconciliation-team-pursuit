@@ -37,7 +37,12 @@ export async function buildDeliverablePacket(snapshot: MonthSnapshot): Promise<B
 
   for (const [step, quality] of RASTER_LADDER.entries()) {
     const assembled = await buildPacketPdf(snapshot, quality);
-    const pdf = await stampFooters(assembled.pdf, snapshot.docName, label);
+    const pdf = await stampFooters(
+      assembled.pdf,
+      snapshot.docName,
+      label,
+      assembled.pageOwners,
+    );
 
     last = { pdf, pageCount: assembled.pageCount, step, warning: null };
     if (pdf.byteLength <= MAX_PACKET_BYTES) return last;

@@ -16,7 +16,7 @@ import { PDFDocument, type PDFImage } from "pdf-lib";
 
 import { coverSheetRows } from "@/src/domain/cover-sheet";
 import { monthLabel } from "@/src/domain/dates";
-import { coverSheetTitle } from "@/src/domain/strings";
+import { coverSheetTitle, expenseReference } from "@/src/domain/strings";
 import { storage } from "@/src/services/storage/driver";
 import { keyBelongsToOrg } from "@/src/services/storage/keys";
 
@@ -133,6 +133,15 @@ async function appendGenerated(pdf: PDFDocument, source: Buffer): Promise<void> 
 export type PacketResult = {
   pdf: Buffer;
   pageCount: number;
+  /**
+   * The expense reference each page belongs to, by page index — null for pages that belong to
+   * no single expense (the summary, the index, month documents, cover sheets).
+   *
+   * Collected during assembly because that is the only point at which it is known: once the
+   * pages are merged, nothing about a rasterised receipt says which expense it came from.
+   * `stampFooters` turns this into the footer that makes the packet self-navigating (R10.5).
+   */
+  pageOwners: Array<string | null>;
 };
 
 /** Assemble the packet in canonical order. */
@@ -144,9 +153,19 @@ export async function buildPacketPdf(
   pdf.setTitle(`${snapshot.docName} ${monthLabel(snapshot.month)} Packet`);
   const label = monthLabel(snapshot.month);
 
+  const pageOwners: Array<string | null> = [];
+  /** Attribute whatever pages `append` adds to `reference` (null = belongs to no one expense). */
+  async function owned(reference: string | null, append: () => Promise<void>): Promise<void> {
+    const before = pdf.getPageCount();
+    await append();
+    for (let index = before; index < pdf.getPageCount(); index += 1) {
+      pageOwners[index] = reference;
+    }
+  }
+
   /* ------------------------------------------------ 1. contract summary */
   try {
-    await appendGenerated(pdf, await buildSummarySectionPdf(snapshot));
+    await owned(null, async () => appendGenerated(pdf, await buildSummarySectionPdf(snapshot)));
   } catch (error) {
     throw new PacketError("the contract summary section", error);
   }
@@ -155,7 +174,7 @@ export async function buildPacketPdf(
   // Directly after the summary, where a contents page belongs: a reviewer meets the totals,
   // then the list of what makes them up, then the evidence.
   try {
-    await appendGenerated(pdf, await buildIndexSectionPdf(snapshot));
+    await owned(null, async () => appendGenerated(pdf, await buildIndexSectionPdf(snapshot)));
   } catch (error) {
     throw new PacketError("the expense index section", error);
   }
@@ -163,7 +182,8 @@ export async function buildPacketPdf(
   /* -------------------------------------------------- 2. month documents */
   for (const document of orderedMonthDocuments(snapshot.monthDocuments)) {
     try {
-      await appendUpload(pdf, snapshot.orgId, document, quality);
+      // A month document (a bank statement) belongs to the month, not to any one expense.
+      await owned(null, async () => appendUpload(pdf, snapshot.orgId, document, quality));
     } catch (error) {
       throw new PacketError(document.title || document.filename, error);
     }
@@ -183,7 +203,8 @@ export async function buildPacketPdf(
         totalCents: composed.totalCents,
         images: await loadProofImages(snapshot.orgId, expenses, quality),
       });
-      await appendGenerated(pdf, await convertDocxToPdf(docx));
+      // The cover sheet covers the whole category, so it carries no single reference.
+      await owned(null, async () => appendGenerated(pdf, await convertDocxToPdf(docx)));
     } catch (error) {
       throw new PacketError(`the ${lineItem.name} cover sheet`, error);
     }
@@ -191,7 +212,9 @@ export async function buildPacketPdf(
     for (const expense of expenses) {
       for (const document of packetDocumentsFor(expense)) {
         try {
-          await appendUpload(pdf, snapshot.orgId, document, quality);
+          await owned(expenseReference(snapshot.month, expense.referenceSeq), async () =>
+            appendUpload(pdf, snapshot.orgId, document, quality),
+          );
         } catch (error) {
           throw new PacketError(`${expense.name} — ${document.filename}`, error);
         }
@@ -203,5 +226,5 @@ export async function buildPacketPdf(
   // packet again doubles peak memory at the worst possible moment.
   const saved = await pdf.save();
   const bytes = Buffer.from(saved.buffer, saved.byteOffset, saved.byteLength);
-  return { pdf: bytes, pageCount: pdf.getPageCount() };
+  return { pdf: bytes, pageCount: pdf.getPageCount(), pageOwners };
 }

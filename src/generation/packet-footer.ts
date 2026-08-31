@@ -19,22 +19,29 @@ const FOOTER_FROM_BOTTOM = inchesToPoints(0.35);
 export const MAX_PACKET_BYTES = 25 * 1024 * 1024;
 
 /**
- * Stamp `{DocName} — {Month YYYY} — Page {i} of {N}` on every page (R10.5).
+ * Stamp `{DocName} — {Month YYYY} — [{reference} —] Page {i} of {N}` on every page (R10.5).
  *
  * Applied after assembly, which is the only point at which N is known — numbering pages as
  * sections are appended would print a total that later grows.
+ *
+ * `pageOwners` carries the expense each page documents, collected during assembly because
+ * nothing about a merged, rasterised receipt says where it came from. A page belonging to no
+ * single expense simply gets the footer it always had.
  */
 export async function stampFooters(
   packet: Buffer,
   docName: string,
   monthLabel: string,
+  pageOwners: ReadonlyArray<string | null> = [],
 ): Promise<Buffer> {
   const pdf = await PDFDocument.load(packet);
   const font = await pdf.embedFont(StandardFonts.Helvetica);
   const pages = pdf.getPages();
 
   pages.forEach((page, index) => {
-    const text = winAnsiSafe(packetFooter(docName, monthLabel, index + 1, pages.length));
+    const text = winAnsiSafe(
+      packetFooter(docName, monthLabel, index + 1, pages.length, pageOwners[index]),
+    );
     const width = font.widthOfTextAtSize(text, FOOTER_SIZE);
     page.drawText(text, {
       // Centred on the page's own width, so a page of any size is still centred.

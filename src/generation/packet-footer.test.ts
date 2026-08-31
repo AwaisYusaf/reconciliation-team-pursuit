@@ -76,6 +76,34 @@ describe.skipIf(!hasPdftotext())("footer text", () => {
     expect(await pageText(stamped, 1)).toContain("Page 1 of 1");
   });
 
+  it("names the expense a page documents, and only those pages (D-70)", async () => {
+    // The traceability the funder approved: a reviewer holding this page can read which claim
+    // it supports, and find that reference in the index.
+    const stamped = await stampFooters(await makePdf(4), "Team Pursuit", "February 2026", [
+      null, // summary — belongs to no single expense
+      "2026-02-014",
+      "2026-02-014", // a two-page receipt: both pages carry it
+      null, // a month document, e.g. the bank statement
+    ]);
+
+    expect(await pageText(stamped, 1)).toContain("Team Pursuit — February 2026 — Page 1 of 4");
+    expect(await pageText(stamped, 1)).not.toContain("2026-02");
+
+    expect(await pageText(stamped, 2)).toContain(
+      "Team Pursuit — February 2026 — 2026-02-014 — Page 2 of 4",
+    );
+    expect(await pageText(stamped, 3)).toContain("2026-02-014 — Page 3 of 4");
+
+    // A bank statement documents the month, not one expense; claiming otherwise would be wrong.
+    expect(await pageText(stamped, 4)).not.toContain("2026-02-014");
+  });
+
+  it("falls back to the footer it always had when no owners are given", async () => {
+    // Every existing caller and every already-delivered packet keep the exact same footer.
+    const stamped = await stampFooters(await makePdf(2), "Team Pursuit", "February 2026");
+    expect(await pageText(stamped, 1)).toContain("Team Pursuit — February 2026 — Page 1 of 2");
+  });
+
   it("leaves the page's own content intact", async () => {
     const stamped = await stampFooters(await makePdf(2), "Team Pursuit", "February 2026");
     const text = await pageText(stamped, 1);

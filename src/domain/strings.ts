@@ -123,8 +123,20 @@ export function packetFooter(
   monthLabel: string,
   page: number,
   total: number,
+  /**
+   * The expense this page documents, when it documents exactly one (R10.5, D-70).
+   *
+   * Approved by the funder as an addition to the footer they already receive, rather than a
+   * new mark on the page: it is what lets a reviewer holding a receipt find the claim it
+   * supports, and the index find the receipt. Absent on the summary, the index, month
+   * documents and cover sheets, none of which belong to a single expense.
+   */
+  reference?: string | null,
 ): string {
-  return `${docName} — ${monthLabel} — Page ${page} of ${total}`;
+  const parts = [docName, monthLabel];
+  if (reference) parts.push(reference);
+  parts.push(`Page ${page} of ${total}`);
+  return parts.join(" — ");
 }
 
 /** Packet summary page title (packet-pdf-spec §1). */
