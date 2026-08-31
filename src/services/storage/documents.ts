@@ -9,7 +9,7 @@ import "server-only";
  * storage. It is one request instead of two, there is no window in which an orphaned draft
  * object exists, and the S3 and filesystem drivers behave identically.
  */
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, sql, type SQL } from "drizzle-orm";
 import { v7 as uuidv7 } from "uuid";
 
 import { db } from "@/src/db";
@@ -48,6 +48,44 @@ export const MAX_ORG_BYTES = 500 * 1024 * 1024;
  * reason — they are the system's own output and can be regenerated, so charging the
  * organisation for them would make a month unmanageable as its packet grew.
  */
+/** Take back objects written for an upload whose row was then refused. */
+async function discardStored(key: string, hadThumbnail: boolean): Promise<void> {
+  const store = storage();
+  await Promise.allSettled([
+    store.delete(key),
+    ...(hadThumbnail ? [store.delete(thumbnailKey(key))] : []),
+  ]);
+}
+
+/**
+ * Serialise the "count, then insert" pair for one parent (expense, or month) so two uploads
+ * cannot both read the same count and both insert past the cap.
+ *
+ * A transaction-scoped advisory lock rather than a row lock: month documents have no single
+ * parent row to lock, and locking `organizations` would contend with unrelated writes like
+ * the active-month change. The key is hashed, so a collision only over-serialises two
+ * unrelated uploads for a few milliseconds — it never lets one through.
+ */
+async function withParentLock<T>(
+  tx: { execute: (query: SQL) => Promise<unknown> },
+  key: string,
+  run: () => Promise<T>,
+): Promise<T> {
+  await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${key}))`);
+  return run();
+}
+
+export function storageQuotaError(usedBytes: number, incomingBytes: number): string | null {
+  if (usedBytes + incomingBytes <= MAX_ORG_BYTES) return null;
+
+  const usedMb = Math.round(usedBytes / (1024 * 1024));
+  const limitMb = Math.round(MAX_ORG_BYTES / (1024 * 1024));
+  return (
+    `This organisation is using ${usedMb} MB of its ${limitMb} MB of storage, and this file ` +
+    "would take it over. Remove some documents from an earlier month, or contact Mantaq."
+  );
+}
+
 async function orgStorageError(orgId: string, incomingBytes: number): Promise<string | null> {
   const [{ used }] = await db
     .select({
@@ -60,14 +98,7 @@ async function orgStorageError(orgId: string, incomingBytes: number): Promise<st
     .where(eq(organizations.id, orgId))
     .limit(1);
 
-  if (Number(used) + incomingBytes <= MAX_ORG_BYTES) return null;
-
-  const usedMb = Math.round(Number(used) / (1024 * 1024));
-  const limitMb = Math.round(MAX_ORG_BYTES / (1024 * 1024));
-  return (
-    `This organisation is using ${usedMb} MB of its ${limitMb} MB of storage, and this file ` +
-    "would take it over. Remove some documents from an earlier month, or contact Mantaq."
-  );
+  return storageQuotaError(Number(used), incomingBytes);
 }
 
 function precheck(file: { size: number; type: string }): string | null {
@@ -135,14 +166,18 @@ export async function ingestExpenseDocument(input: {
     return { ok: false, error: `An expense can hold at most ${MAX_DOCUMENTS_PER_EXPENSE} files.` };
   }
 
-  const quotaError = await orgStorageError(input.orgId, input.file.size);
-  if (quotaError) return { ok: false, error: quotaError };
-
   const inspection = await inspectUpload({
     body: Buffer.from(await input.file.arrayBuffer()),
     declaredMimeType: input.file.type,
   });
   if (!inspection.ok) return { ok: false, error: inspection.error };
+
+  // Charged against the bytes actually stored, which is why this runs after inspection
+  // rather than before it: HEIC and WebP are re-encoded to JPEG, so `file.size` is not what
+  // lands in the bucket — and `size_bytes` below records the inspected length. Checking one
+  // number and recording another let the running total drift from what was charged.
+  const quotaError = await orgStorageError(input.orgId, inspection.body.byteLength);
+  if (quotaError) return { ok: false, error: quotaError };
 
   const documentId = uuidv7();
   const key = expenseDocumentKey({
@@ -164,23 +199,45 @@ export async function ingestExpenseDocument(input: {
     });
   }
 
-  await db.insert(expenseDocuments).values({
-    id: documentId,
-    orgId: input.orgId,
-    expenseId: input.expenseId,
-    kind: input.scope,
-    supportingType: input.scope === "supporting" ? (input.supportingType ?? null) : null,
-    // Stored only after the bytes are proven, so the documentation gate can trust it (R4.6).
-    status: "attached",
-    s3Key: key,
-    filename: input.file.name,
-    mimeType: inspection.mimeType,
-    sizeBytes: inspection.body.byteLength,
-    pageCount: inspection.pageCount,
-    widthPx: inspection.widthPx,
-    heightPx: inspection.heightPx,
-    sortOrder: total,
-  });
+  // The count above is a fast rejection, not the decision: it is read outside any transaction,
+  // so two concurrent uploads can both see room. The cap is re-checked here under a lock, with
+  // the sort order taken from the same read — otherwise both rows also land on the same
+  // position, and packet document order is defined by it (R10.1 determinism).
+  const placed = await db.transaction(async (tx) =>
+    withParentLock(tx, `expense-docs:${input.expenseId}`, async () => {
+      const [{ live }] = await tx
+        .select({ live: sql<number>`count(*)::int` })
+        .from(expenseDocuments)
+        .where(eq(expenseDocuments.expenseId, input.expenseId));
+      if (live >= MAX_DOCUMENTS_PER_EXPENSE) return false;
+
+      await tx.insert(expenseDocuments).values({
+        id: documentId,
+        orgId: input.orgId,
+        expenseId: input.expenseId,
+        kind: input.scope,
+        supportingType: input.scope === "supporting" ? (input.supportingType ?? null) : null,
+        // Stored only after the bytes are proven, so the documentation gate can trust it (R4.6).
+        status: "attached",
+        s3Key: key,
+        filename: input.file.name,
+        mimeType: inspection.mimeType,
+        sizeBytes: inspection.body.byteLength,
+        pageCount: inspection.pageCount,
+        widthPx: inspection.widthPx,
+        heightPx: inspection.heightPx,
+        sortOrder: live,
+      });
+      return true;
+    }),
+  );
+
+  if (!placed) {
+    // Losing the race means the bytes were already written; take them back out rather than
+    // leaving the organisation charged for an object no row points at.
+    await discardStored(key, inspection.thumbnail !== null);
+    return { ok: false, error: `An expense can hold at most ${MAX_DOCUMENTS_PER_EXPENSE} files.` };
+  }
 
   return { ok: true, documentId };
 }
@@ -204,14 +261,18 @@ export async function ingestMonthDocument(input: {
     return { ok: false, error: `A month can hold at most ${MAX_MONTH_DOCUMENTS} documents.` };
   }
 
-  const quotaError = await orgStorageError(input.orgId, input.file.size);
-  if (quotaError) return { ok: false, error: quotaError };
-
   const inspection = await inspectUpload({
     body: Buffer.from(await input.file.arrayBuffer()),
     declaredMimeType: input.file.type,
   });
   if (!inspection.ok) return { ok: false, error: inspection.error };
+
+  // Charged against the bytes actually stored, which is why this runs after inspection
+  // rather than before it: HEIC and WebP are re-encoded to JPEG, so `file.size` is not what
+  // lands in the bucket — and `size_bytes` below records the inspected length. Checking one
+  // number and recording another let the running total drift from what was charged.
+  const quotaError = await orgStorageError(input.orgId, inspection.body.byteLength);
+  if (quotaError) return { ok: false, error: quotaError };
 
   const documentId = uuidv7();
   const key = monthDocumentKey({
@@ -232,22 +293,38 @@ export async function ingestMonthDocument(input: {
     });
   }
 
-  await db.insert(monthDocuments).values({
-    id: documentId,
-    orgId: input.orgId,
-    month: input.month,
-    category: input.category,
-    title: input.title?.trim() || null,
-    status: "attached",
-    s3Key: key,
-    filename: input.file.name,
-    mimeType: inspection.mimeType,
-    sizeBytes: inspection.body.byteLength,
-    pageCount: inspection.pageCount,
-    widthPx: inspection.widthPx,
-    heightPx: inspection.heightPx,
-    sortOrder: total,
-  });
+  const placed = await db.transaction(async (tx) =>
+    withParentLock(tx, `month-docs:${input.orgId}:${input.month}`, async () => {
+      const [{ live }] = await tx
+        .select({ live: sql<number>`count(*)::int` })
+        .from(monthDocuments)
+        .where(and(eq(monthDocuments.orgId, input.orgId), eq(monthDocuments.month, input.month)));
+      if (live >= MAX_MONTH_DOCUMENTS) return false;
+
+      await tx.insert(monthDocuments).values({
+        id: documentId,
+        orgId: input.orgId,
+        month: input.month,
+        category: input.category,
+        title: input.title?.trim() || null,
+        status: "attached",
+        s3Key: key,
+        filename: input.file.name,
+        mimeType: inspection.mimeType,
+        sizeBytes: inspection.body.byteLength,
+        pageCount: inspection.pageCount,
+        widthPx: inspection.widthPx,
+        heightPx: inspection.heightPx,
+        sortOrder: live,
+      });
+      return true;
+    }),
+  );
+
+  if (!placed) {
+    await discardStored(key, inspection.thumbnail !== null);
+    return { ok: false, error: `A month can hold at most ${MAX_MONTH_DOCUMENTS} documents.` };
+  }
 
   return { ok: true, documentId };
 }

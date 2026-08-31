@@ -16,7 +16,7 @@ that nothing is built twice.
 A fix is not finished when the code works. It is finished when its passing criteria pass and the
 February golden reference (`context/manual packet/`) still reconciles.
 
-**Status:** F0/B1 done. B2 and B3 outstanding. `Last reviewed: 2026-08-31.`
+**Status:** F0 complete except B4, which is deferred into F1 by design. F1 is next. `Last reviewed: 2026-08-31.`
 
 ### Decisions already taken (2026-08-31)
 
@@ -103,27 +103,62 @@ the one that does succeed is numbered `YYYY-MM-000` when references are specifie
 
 **Done.** 481 tests pass (7 new, against a real database), lint and typecheck clean.
 
-### B2 — The storage quota is measured against the wrong number · *not started*
+### B2 — The storage quota is measured against the wrong number
 
 `orgStorageError` is called with `input.file.size` — the size *before* inspection — while the row
 stores `inspection.body.byteLength` ([documents.ts:138, :178](../src/services/storage/documents.ts)).
 HEIC→JPEG normalisation changes that value, so the running total drifts from what was actually
 charged. F1 raises this cap, which makes the drift matter more.
 
-- [ ] Quota is checked and stored against the same number
-- [ ] A HEIC upload is proven to charge the org exactly the bytes it stores
+- [x] Quota is checked and stored against the same number — the check moved after inspection and
+      now takes `inspection.body.byteLength`, in **both** ingest paths
+- [x] The drift is proven real, not theoretical: a WebP measured 3,492 bytes uploaded and 11,539
+      stored — the org was charged **under a third** of what the file consumes. Direction is
+      systematic for every re-encoded type (HEIC, WebP)
+- [x] The arithmetic is unit-tested without a database (`storageQuotaError` split out of
+      `orgStorageError`), including the exact-cap boundary and the already-over case
 
-### B3 — Count-then-insert race on the per-expense cap · *not started*
+**Done.** One deliberate consequence: an upload that is both over quota and corrupt now reports the
+corruption first, because inspection runs earlier. That is the more actionable message.
+
+### B3 — Count-then-insert race on the per-expense cap
 
 The cap is read and then inserted against with no transaction, unique constraint or DB-level check
 ([documents.ts:130](../src/services/storage/documents.ts)). Two concurrent uploads both read 19 and
 both insert. **A byte-based cap inherits this and is worse** — a single file can overshoot by up to
 `MAX_UPLOAD_BYTES` (25 MB). F1 must fix the race, not port it.
 
-- [ ] The cap is enforced where it cannot be raced
-- [ ] Concurrent uploads cannot exceed it
+- [x] The cap is enforced where it cannot be raced — the count and the insert now happen inside one
+      transaction under a `pg_advisory_xact_lock` keyed on the parent (the expense, or the
+      org+month). A row lock was not usable: month documents have no single parent row, and locking
+      `organizations` would contend with unrelated writes such as the active-month change
+- [x] Concurrent uploads cannot exceed it — proven by driving the real `ingestExpenseDocument` with
+      40 simultaneous uploads against a real database and the local storage driver: exactly 20 are
+      admitted, the other 20 are refused with a message
+- [x] **The test is proven to catch the bug**: with the lock removed it fails, with it restored it
+      passes. A concurrency test that passes either way is worthless
+- [x] Racing uploads no longer collide on `sort_order` — it comes from the same locked read. Packet
+      document order is defined by it, so the old code made that order non-deterministic (R10.1)
+- [x] An upload refused *after* its bytes were written takes them back out, rather than leaving the
+      organisation charged for an object no row points at
+
+**Done.**
 
 ---
+
+### B4 — Thumbnail bytes are stored but never counted · *found while fixing B2*
+
+Every **image** upload writes two objects: the normalised document and a thumbnail
+([inspect.ts:144](../src/services/storage/inspect.ts), null for PDFs). Only the document's length
+reaches `size_bytes`, and `orgStorageError` sums that column — so **thumbnails occupy the bucket
+without ever being charged.**
+
+Not folded into B2 on purpose: counting them means either inflating `size_bytes` (which is also the
+displayed file size and part of the artifact cache key) or adding a column. The right place is
+**F1**, where the caps are being reworked anyway. Recorded here so it is not lost.
+
+- [ ] Thumbnail bytes are either counted or documented as deliberately excluded, with the drift
+      quantified
 
 ---
 
