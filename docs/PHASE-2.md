@@ -117,9 +117,31 @@ charged. F1 raises this cap, which makes the drift matter more.
       systematic for every re-encoded type (HEIC, WebP)
 - [x] The arithmetic is unit-tested without a database (`storageQuotaError` split out of
       `orgStorageError`), including the exact-cap boundary and the already-over case
+- [x] **A real regression test**, after the review pointed out that the unit tests would all have
+      passed with the bug still in place — they exercised arithmetic that was never wrong. The
+      integration test fills an organisation to a headroom set *between* a file's uploaded and
+      stored sizes, so the upload fits on the number the old code measured and does not fit on the
+      number it stored. Verified by reintroducing the bug: the test fails, then passes again
 
-**Done.** One deliberate consequence: an upload that is both over quota and corrupt now reports the
-corruption first, because inspection runs earlier. That is the more actionable message.
+**Done**, after an agent review found three things the first attempt missed:
+
+- [x] **The quota was still raced.** The first fix moved the check but left it *outside* the lock B3
+      had just added — the very thing this file warned about ("a byte-based cap inherits this and is
+      worse"). The check now runs inside the transaction, and the lock was re-keyed from the parent
+      to the **organisation**, because the 500 MB cap is org-wide: two uploads to different expenses
+      race on it just as readily as two to the same one
+- [x] **A full organisation is rejected before inspection again.** Moving the only check after
+      inspection meant an at-cap org paid a full sharp decode — up to `MAX_PIXELS`, ~240–320 MB of
+      raster — before being told no. There is now a cheap `used >= cap` early-out, which is safe
+      because a stored file is never zero bytes, so "already full" can never become "fits"
+- [x] **Error precedence restored.** With the early-out, a user at 499/500 MB uploading a damaged
+      file is told the organisation is full — the blocker that applies to *every* subsequent upload
+      — rather than being sent to re-export a file that would not have fit anyway
+- [x] **The same bug, still live one line away**: `precheck` compared the 25 MB per-file cap against
+      the *uploaded* size only. WebP→JPEG grows ~1.4×, so a 24 MB WebP passed and landed ~35 MB in
+      the bucket — and `size_bytes` is the size the UI shows, beside copy promising 25 MB. The cap is
+      now re-applied to the stored length (R13.2)
+- [x] A missing organisation row no longer throws a 500 out of the quota query
 
 ### B3 — Count-then-insert race on the per-expense cap
 
@@ -157,8 +179,20 @@ Not folded into B2 on purpose: counting them means either inflating `size_bytes`
 displayed file size and part of the artifact cache key) or adding a column. The right place is
 **F1**, where the caps are being reworked anyway. Recorded here so it is not lost.
 
-- [ ] Thumbnail bytes are either counted or documented as deliberately excluded, with the drift
-      quantified
+**Drift, measured** at the real settings (320 px, q70):
+
+| Upload | Stored | Thumbnail | Uncounted |
+|---|---|---|---|
+| 4032×3024 phone photo | 8.55 MB | 6.3 KB | 0.1% |
+| A4 300 dpi scan, mostly white | 191 KB | 9.8 KB | 5.1% |
+| 800×600 flat PNG screenshot | 2.9 KB | 6.0 KB | **212%** |
+
+A 500 MB cap filled with phone photos overshoots by under 0.5%; filled with small screenshots it
+overshoots by roughly **14%**. Bucket usage is always ≥ what the database claims, never less.
+**F1 removing the count cap makes the small-file case reachable**, which is what turns this from
+academic into real.
+
+- [ ] Thumbnail bytes are either counted or documented as deliberately excluded
 
 ---
 

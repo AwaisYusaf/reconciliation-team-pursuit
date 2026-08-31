@@ -24,10 +24,12 @@ const hasDatabase = Boolean(process.env.DATABASE_URL);
 describe.skipIf(!hasDatabase)("upload caps under concurrency (integration)", async () => {
   const { db } = await import("@/src/db");
   const { expenseDocuments, expenses, lineItems, organizations } = await import("@/src/db/schema");
-  const { ingestExpenseDocument, MAX_DOCUMENTS_PER_EXPENSE } = await import("./documents");
+  const { ingestExpenseDocument, MAX_DOCUMENTS_PER_EXPENSE, MAX_ORG_BYTES } =
+    await import("./documents");
 
   let orgId: string;
   let expenseId: string;
+  let sizingExpenseId: string;
   let png: Buffer;
 
   beforeAll(async () => {
@@ -58,6 +60,23 @@ describe.skipIf(!hasDatabase)("upload caps under concurrency (integration)", asy
       .returning({ id: expenses.id });
     expenseId = expense.id;
 
+    // A second expense, so the byte-accounting test is not competing with the cap test.
+    const [sizing] = await db
+      .insert(expenses)
+      .values({
+        orgId,
+        lineItemId: item.id,
+        month: "2099-01",
+        date: "2099-01-06",
+        name: "Sizing",
+        paymentSource: "x",
+        subtotalCents: 1000,
+        sortOrder: 1,
+        referenceSeq: 2,
+      })
+      .returning({ id: expenses.id });
+    sizingExpenseId = sizing.id;
+
     png = await sharp({
       create: { width: 40, height: 40, channels: 3, background: { r: 10, g: 20, b: 30 } },
     })
@@ -82,6 +101,63 @@ describe.skipIf(!hasDatabase)("upload caps under concurrency (integration)", asy
       file: new File([new Uint8Array(png)], `receipt-${index}.png`, { type: "image/png" }),
     });
   }
+
+  it("refuses a file whose uploaded size fits but whose stored size does not (B2)", async () => {
+    // The actual regression. The quota checked `file.size` but recorded the post-inspection
+    // length, and WebP is re-encoded to JPEG — so a file could be admitted on a number
+    // smaller than the one it then consumed, taking the organisation past its cap.
+    //
+    // Headroom is set BETWEEN the two sizes: the upload fits on what the old code measured
+    // and does not fit on what it stored. With the bug this upload is accepted.
+    const webp = await sharp({
+      create: { width: 900, height: 700, channels: 3, background: { r: 200, g: 120, b: 40 } },
+    })
+      .webp({ quality: 80 })
+      .toBuffer();
+
+    const { inspectUpload } = await import("./inspect");
+    const inspected = await inspectUpload({ body: webp, declaredMimeType: "image/webp" });
+    if (!inspected.ok) throw new Error(inspected.error);
+
+    const uploadedSize = webp.byteLength;
+    const storedSize = inspected.body.byteLength;
+    // Precondition: without growth there is nothing for this test to catch.
+    expect(storedSize).toBeGreaterThan(uploadedSize);
+
+    const headroom = Math.floor((uploadedSize + storedSize) / 2);
+    await db.insert(expenseDocuments).values({
+      orgId,
+      expenseId: sizingExpenseId,
+      kind: "supporting",
+      supportingType: "Ballast",
+      status: "attached",
+      s3Key: `org/${orgId}/ballast`,
+      filename: "ballast.pdf",
+      mimeType: "application/pdf",
+      sizeBytes: MAX_ORG_BYTES - headroom,
+      sortOrder: 0,
+    });
+
+    const result = await ingestExpenseDocument({
+      orgId,
+      expenseId: sizingExpenseId,
+      scope: "proof" as const,
+      file: new File([new Uint8Array(webp)], "receipt.webp", { type: "image/webp" }),
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.ok ? "" : result.error).toContain("storage");
+
+    // And nothing was left in the bucket or the table for the refused upload.
+    const rows = await db
+      .select({ key: expenseDocuments.s3Key })
+      .from(expenseDocuments)
+      .where(eq(expenseDocuments.expenseId, sizingExpenseId));
+    expect(rows).toHaveLength(1);
+
+    // Drop the ballast, or the organisation stays full for every test after this one.
+    await db.delete(expenseDocuments).where(eq(expenseDocuments.expenseId, sizingExpenseId));
+  }, 30_000);
 
   it("never admits more than the cap, however many upload at once", async () => {
     // Twice the cap, all in flight together. Before the lock, every one of these read the

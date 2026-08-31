@@ -114,5 +114,5 @@ Let `opening` = line item's opening previously-billed balance (setup figure), `e
 
 ## 13. Limits (enforced at presign/save; friendly errors)
 
-- **R13.1** ≤ 20 files per expense (all kinds combined) · ≤ 50 month documents per month · ≤ 500 MB total storage per org (soft cap: block new presigns with an explanatory message).
-- **R13.2** Per file: images (jpg/png/webp/heic) and PDFs only, ≤ 25 MB. Encrypted, corrupt, or 0-page PDFs are rejected at process & attach (R4.6).
+- **R13.1** ≤ 20 files per expense (all kinds combined) · ≤ 50 month documents per month · ≤ 500 MB total storage per org (soft cap: refuse the upload with an explanatory message). **Measured on stored bytes, not uploaded bytes** — HEIC and WebP are re-encoded to JPEG, so the two differ. All three are checked inside one transaction under a per-organisation advisory lock, so concurrent uploads cannot each see room and both be admitted (D-64). Thumbnails are written alongside images and are **not** counted; see PHASE-2 B4.
+- **R13.2** Per file: images (jpg/png/webp/heic) and PDFs only, ≤ 25 MB — applied to the uploaded bytes *and* re-applied to the stored bytes, because conversion to JPEG grows a file by roughly 1.4×. Encrypted, corrupt, or 0-page PDFs are rejected at process & attach (R4.6).
