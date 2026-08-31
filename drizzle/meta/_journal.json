@@ -64,6 +64,13 @@
       "when": 1788168280358,
       "tag": "0008_fix_recurring_reference_seq",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1788170436803,
+      "tag": "0009_thumbnail_bytes",
+      "breakpoints": true
     }
   ]
 }

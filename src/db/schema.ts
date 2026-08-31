@@ -329,6 +329,14 @@ export const expenseDocuments = pgTable(
     filename: text().notNull(),
     mimeType: text("mime_type").notNull(),
     sizeBytes: bigint("size_bytes", { mode: "number" }).notNull().default(0),
+    /**
+     * Bytes of the thumbnail written alongside an image, 0 when there is none (PDFs).
+     *
+     * Separate from `size_bytes`, which is the document's own size and is what the UI shows
+     * and what the artifact cache key hashes. Recorded so the storage quota can charge for
+     * every object actually put in the bucket — it previously charged for none of these.
+     */
+    thumbnailBytes: integer("thumbnail_bytes").notNull().default(0),
     /** Filled at process-and-attach; PDFs get their real page count, images 1. */
     pageCount: integer("page_count"),
     /** Filled at process-and-attach; drives cover-sheet and packet page estimates. */
@@ -366,6 +374,8 @@ export const monthDocuments = pgTable(
     filename: text().notNull(),
     mimeType: text("mime_type").notNull(),
     sizeBytes: bigint("size_bytes", { mode: "number" }).notNull().default(0),
+    /** As on `expense_documents` — bytes of the thumbnail, 0 when there is none. */
+    thumbnailBytes: integer("thumbnail_bytes").notNull().default(0),
     pageCount: integer("page_count"),
     widthPx: integer("width_px"),
     heightPx: integer("height_px"),

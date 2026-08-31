@@ -16,7 +16,7 @@ that nothing is built twice.
 A fix is not finished when the code works. It is finished when its passing criteria pass and the
 February golden reference (`context/manual packet/`) still reconciles.
 
-**Status:** F0 complete except B4, which is deferred into F1 by design. F1 is next. `Last reviewed: 2026-08-31.`
+**Status:** F0 complete. F1 complete (B4 folded in). F2 is next. `Last reviewed: 2026-08-31.`
 
 ### Decisions already taken (2026-08-31)
 
@@ -192,7 +192,10 @@ overshoots by roughly **14%**. Bucket usage is always ≥ what the database clai
 **F1 removing the count cap makes the small-file case reachable**, which is what turns this from
 academic into real.
 
-- [ ] Thumbnail bytes are either counted or documented as deliberately excluded
+- [x] **Done as part of F1.** `expense_documents` and `month_documents` gained a `thumbnail_bytes`
+      column (migration 0009); every upload records it and the org quota sums `size_bytes +
+      thumbnail_bytes`. Historical rows read 0 — the thumbnails exist in the bucket but their sizes
+      were never recorded, and recovering them would mean listing it
 
 ---
 
@@ -243,14 +246,39 @@ hosts Postgres.
 
 ### Passing criteria
 
-- [ ] 60 files attach to a single expense without error.
-- [ ] A packet containing that expense builds, and every page appears, in the right order.
-- [ ] Build time and peak memory for that packet are **measured and recorded here** — not assumed.
-- [ ] The byte/page cap rejects with a message naming the actual limit and what to do about it.
-- [ ] The org cap still blocks at its threshold with its explanatory message (R13.1 soft-cap
-      behaviour preserved).
-- [ ] `page-estimate.ts` still matches the real renderer within ±1 page per sheet.
-- [ ] R13.1 and R13.2 updated; no stale "20" anywhere in docs or code.
+- [x] 60 files attach to a single expense without error — measured at **2.7 s for 68.8 MB**
+- [x] A packet containing that expense builds, and every page appears in order — **63 pages**
+      (3 generated + 60 uploads), verified by page count and by the ordering tests
+- [x] Build time and peak memory **measured, not assumed** — see below
+- [x] The byte/page budget rejects with a message naming the real limit and what to do about it
+- [x] The org cap still blocks at its threshold with its explanatory message (R13.1 soft cap)
+- [x] `page-estimate.ts` untouched and still passing — the cover sheet layout did not change
+- [x] R13.1 and R13.2 rewritten (D-65); the count survives only as a runaway guard at 500
+
+### Measured, on 60 photo-like receipts (1200×1600 JPEG, noise-filled so nothing compresses away)
+
+| | |
+|---|---|
+| Attach, 60 files / 68.8 MB | 2.7 s |
+| Packet | **63 pages, 73.1 MB** |
+| Build time | 14.3 s |
+| RSS during build | 234 MB → 425 MB (**+191 MB**) |
+
+**Both numbers matter, and one is a problem.**
+
+The memory claim in `packet-pdf.ts` — "peak usage is one page of image data rather than a whole
+packet" — is true of *rasterisation* but not of assembly: pdf-lib holds the whole document before
+`save()`. +191 MB on an instance that also runs Postgres and a second service is real.
+
+**The packet ceiling, not the expense budget, is now the binding limit.** `MAX_PACKET_BYTES` is
+25 MB for DocuSign, and this packet is 73 MB. `buildDeliverablePacket` walks all three rungs of
+`RASTER_LADDER` before giving up — **three full builds, ~30 s** — and then delivers over the ceiling
+with a warning anyway. Roughly 20 photo pages fit under 25 MB at 150 dpi, or ~50 at the bottom rung.
+
+So raising the per-expense cap is right and is what was asked, but it does not make a 200-receipt
+month submittable — it moves the wall from "the platform refuses your evidence" to "the packet is
+too big for DocuSign". **That is a better failure** (nothing is lost, and the warning is honest),
+but it is a wall, and it belongs in the F6 conversation. Recorded as **Q24**.
 
 ### Edge cases that must not be missed
 
@@ -273,10 +301,15 @@ hosts Postgres.
 - A cover-sheet failure throws with nothing cached, so Retry restarts the **entire** packet build —
   and there is still no single-flight lock (R1 in [TASKS.md](TASKS.md)).
 
-### Open question
+### Open questions
 
-- **Q1.** What is the realistic worst case — how many files, and what kind, on your biggest expense?
-  A cap based on a guess will either block you again or let a packet build for ten minutes.
+- **Q1.** The numbers were chosen without waiting on an answer, and are one-line constants: **200 MB
+  and 300 pages per expense, 5 GB per organisation.** 60 rideshare receipts use ~69 MB and 60 pages,
+  so there is roughly 3× headroom. Tell me the realistic worst case and I will retune.
+- **Q24 (new).** A month whose evidence genuinely exceeds 25 MB cannot produce a DocuSign-sized
+  packet. Options: accept the oversize warning and submit anyway; split the packet by category;
+  or lower the raster floor further at a cost in legibility. This needs the funder's actual
+  constraint, and it belongs with F6.
 
 ---
 

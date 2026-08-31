@@ -24,12 +24,12 @@ const hasDatabase = Boolean(process.env.DATABASE_URL);
 describe.skipIf(!hasDatabase)("upload caps under concurrency (integration)", async () => {
   const { db } = await import("@/src/db");
   const { expenseDocuments, expenses, lineItems, organizations } = await import("@/src/db/schema");
-  const { ingestExpenseDocument, MAX_DOCUMENTS_PER_EXPENSE, MAX_ORG_BYTES } =
-    await import("./documents");
+  const { ingestExpenseDocument, MAX_EXPENSE_BYTES, MAX_ORG_BYTES } = await import("./documents");
 
   let orgId: string;
   let expenseId: string;
   let sizingExpenseId: string;
+  let ballastExpenseId: string;
   let png: Buffer;
 
   beforeAll(async () => {
@@ -76,6 +76,22 @@ describe.skipIf(!hasDatabase)("upload caps under concurrency (integration)", asy
       })
       .returning({ id: expenses.id });
     sizingExpenseId = sizing.id;
+
+    const [ballast] = await db
+      .insert(expenses)
+      .values({
+        orgId,
+        lineItemId: item.id,
+        month: "2099-01",
+        date: "2099-01-07",
+        name: "Ballast",
+        paymentSource: "x",
+        subtotalCents: 1000,
+        sortOrder: 2,
+        referenceSeq: 3,
+      })
+      .returning({ id: expenses.id });
+    ballastExpenseId = ballast.id;
 
     png = await sharp({
       create: { width: 40, height: 40, channels: 3, background: { r: 10, g: 20, b: 30 } },
@@ -124,63 +140,84 @@ describe.skipIf(!hasDatabase)("upload caps under concurrency (integration)", asy
     // Precondition: without growth there is nothing for this test to catch.
     expect(storedSize).toBeGreaterThan(uploadedSize);
 
+    // Headroom sits between the two sizes. The ballast lives on its own expense so it fills
+    // the ORGANISATION without also blowing the per-expense budget, which is far smaller.
     const headroom = Math.floor((uploadedSize + storedSize) / 2);
     await db.insert(expenseDocuments).values({
       orgId,
-      expenseId: sizingExpenseId,
+      expenseId: ballastExpenseId,
       kind: "supporting",
       supportingType: "Ballast",
       status: "attached",
-      s3Key: `org/${orgId}/ballast`,
+      s3Key: `org/${orgId}/org-ballast`,
       filename: "ballast.pdf",
       mimeType: "application/pdf",
       sizeBytes: MAX_ORG_BYTES - headroom,
       sortOrder: 0,
     });
 
-    const result = await ingestExpenseDocument({
-      orgId,
-      expenseId: sizingExpenseId,
-      scope: "proof" as const,
-      file: new File([new Uint8Array(webp)], "receipt.webp", { type: "image/webp" }),
-    });
+    let result;
+    try {
+      result = await ingestExpenseDocument({
+        orgId,
+        expenseId: sizingExpenseId,
+        scope: "proof" as const,
+        file: new File([new Uint8Array(webp)], "receipt.webp", { type: "image/webp" }),
+      });
+    } finally {
+      // Always drop the ballast: leaving it would keep the organisation full for every test
+      // after this one, turning one failure into four.
+      await db.delete(expenseDocuments).where(eq(expenseDocuments.expenseId, ballastExpenseId));
+    }
 
     expect(result.ok).toBe(false);
     expect(result.ok ? "" : result.error).toContain("storage");
 
-    // And nothing was left in the bucket or the table for the refused upload.
+    // Nothing was left in the table for the refused upload.
     const rows = await db
       .select({ key: expenseDocuments.s3Key })
       .from(expenseDocuments)
       .where(eq(expenseDocuments.expenseId, sizingExpenseId));
-    expect(rows).toHaveLength(1);
-
-    // Drop the ballast, or the organisation stays full for every test after this one.
-    await db.delete(expenseDocuments).where(eq(expenseDocuments.expenseId, sizingExpenseId));
+    expect(rows).toHaveLength(0);
   }, 30_000);
 
-  it("never admits more than the cap, however many upload at once", async () => {
-    // Twice the cap, all in flight together. Before the lock, every one of these read the
-    // same count and inserted, so the expense ended up holding far more than the cap.
-    const attempts = MAX_DOCUMENTS_PER_EXPENSE * 2;
-    const results = await Promise.all(
-      Array.from({ length: attempts }, (_, index) => upload(index)),
-    );
+  it("never admits more than the budget, however many upload at once", async () => {
+    // The per-expense limit is bytes now, not a file count, so the race is run against that.
+    // Ballast leaves room for exactly three more uploads; twenty go in at once.
+    const { inspectUpload } = await import("./inspect");
+    const inspected = await inspectUpload({ body: png, declaredMimeType: "image/png" });
+    if (!inspected.ok) throw new Error(inspected.error);
+    const perUpload = inspected.body.byteLength + (inspected.thumbnail?.byteLength ?? 0);
 
+    const room = perUpload * 3;
+    await db.insert(expenseDocuments).values({
+      orgId,
+      expenseId,
+      kind: "supporting",
+      supportingType: "Ballast",
+      status: "attached",
+      s3Key: `org/${orgId}/expense-ballast`,
+      filename: "ballast.pdf",
+      mimeType: "application/pdf",
+      sizeBytes: MAX_EXPENSE_BYTES - room,
+      sortOrder: 0,
+    });
+
+    const results = await Promise.all(Array.from({ length: 20 }, (_, index) => upload(index)));
     const accepted = results.filter((result) => result.ok).length;
+
+    // Before the lock, every one of these read the same total and inserted anyway.
+    expect(accepted).toBe(3);
+
     const rows = await db
-      .select({ sortOrder: expenseDocuments.sortOrder })
+      .select({ sizeBytes: expenseDocuments.sizeBytes })
       .from(expenseDocuments)
       .where(eq(expenseDocuments.expenseId, expenseId));
+    const held = rows.reduce((sum, row) => sum + Number(row.sizeBytes), 0);
+    expect(held).toBeLessThanOrEqual(MAX_EXPENSE_BYTES);
 
-    expect(rows).toHaveLength(MAX_DOCUMENTS_PER_EXPENSE);
-    expect(accepted).toBe(MAX_DOCUMENTS_PER_EXPENSE);
-
-    // The rejected half must say why, not fail silently.
-    const refusals = results.filter((result) => !result.ok);
-    expect(refusals).toHaveLength(attempts - MAX_DOCUMENTS_PER_EXPENSE);
-    for (const refusal of refusals) {
-      expect(refusal.ok ? "" : refusal.error).toContain("at most");
+    for (const refusal of results.filter((result) => !result.ok)) {
+      expect(refusal.ok ? "" : refusal.error).toContain("MB");
     }
   }, 60_000);
 
@@ -194,8 +231,21 @@ describe.skipIf(!hasDatabase)("upload caps under concurrency (integration)", asy
 
     const orders = rows.map((row) => row.sortOrder);
     expect(new Set(orders).size).toBe(orders.length);
-    expect(Math.min(...orders)).toBe(0);
-    expect(Math.max(...orders)).toBe(MAX_DOCUMENTS_PER_EXPENSE - 1);
+  });
+
+  it("records the thumbnail's bytes, so the bucket is fully accounted for (B4)", async () => {
+    const rows = await db
+      .select({
+        mimeType: expenseDocuments.mimeType,
+        thumbnailBytes: expenseDocuments.thumbnailBytes,
+      })
+      .from(expenseDocuments)
+      .where(eq(expenseDocuments.expenseId, expenseId));
+
+    // Every image upload writes a thumbnail; the ballast row is a PDF and has none.
+    const images = rows.filter((row) => row.mimeType.startsWith("image/"));
+    expect(images.length).toBeGreaterThan(0);
+    for (const image of images) expect(image.thumbnailBytes).toBeGreaterThan(0);
   });
 
   it("leaves no stored object behind for a refused upload", async () => {
@@ -205,11 +255,14 @@ describe.skipIf(!hasDatabase)("upload caps under concurrency (integration)", asy
     expect(refused.ok).toBe(false);
 
     const stored = await db
-      .select({ key: expenseDocuments.s3Key })
+      .select({ key: expenseDocuments.s3Key, mimeType: expenseDocuments.mimeType })
       .from(expenseDocuments)
       .where(and(eq(expenseDocuments.expenseId, expenseId)));
-    expect(stored).toHaveLength(MAX_DOCUMENTS_PER_EXPENSE);
 
-    for (const row of stored) expect(await storage().exists(row.key)).toBe(true);
+    // Every row still has its object; nothing was left behind by the refusal.
+    for (const row of stored) {
+      if (row.mimeType === "application/pdf") continue; // the synthetic ballast row
+      expect(await storage().exists(row.key)).toBe(true);
+    }
   }, 30_000);
 });

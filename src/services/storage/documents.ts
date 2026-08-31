@@ -32,12 +32,58 @@ export type IngestResult =
   | { ok: true; documentId: string }
   | { ok: false; error: string };
 
-/** Per-expense cap, so one record cannot balloon the packet (R13.1). */
-export const MAX_DOCUMENTS_PER_EXPENSE = 20;
+/**
+ * Per-expense budgets (R13.1).
+ *
+ * A count was the wrong unit. One expense legitimately holds every Lyft receipt for a month,
+ * and a low file count forced people to invent extra line items purely to get their evidence
+ * in — the platform shaping the accounting rather than recording it.
+ *
+ * What actually costs something is bytes (storage) and **pages** (packet assembly: every
+ * uploaded page becomes one rasterised packet page). So both are budgeted, and the file count
+ * survives only as a runaway guard — a loop uploading forever, not a person attaching receipts.
+ */
+export const MAX_EXPENSE_BYTES = 200 * 1024 * 1024;
+export const MAX_EXPENSE_PAGES = 300;
+export const MAX_DOCUMENTS_PER_EXPENSE = 500;
 /** Per-month cap on packet-level documents (R13.1). */
 export const MAX_MONTH_DOCUMENTS = 50;
 /** Total stored bytes per organisation (R13.1) — a soft cap that blocks new uploads. */
-export const MAX_ORG_BYTES = 500 * 1024 * 1024;
+export const MAX_ORG_BYTES = 5 * 1024 * 1024 * 1024;
+
+function megabytes(bytes: number): number {
+  return Math.round(bytes / (1024 * 1024));
+}
+
+/**
+ * Whether this expense has room for another file, given what it already holds (R13.1).
+ *
+ * Pure, so the budget arithmetic is testable without a database — and so the same numbers can
+ * be shown in the UI before someone picks a file rather than after they save.
+ */
+export function expenseBudgetError(
+  current: { files: number; bytes: number; pages: number },
+  incoming: { bytes: number; pages: number },
+): string | null {
+  if (current.bytes + incoming.bytes > MAX_EXPENSE_BYTES) {
+    return (
+      `This expense already holds ${megabytes(current.bytes)} MB of its ` +
+      `${megabytes(MAX_EXPENSE_BYTES)} MB, and this file would take it over. Split the receipts ` +
+      "across two expenses, or remove something already attached."
+    );
+  }
+  if (current.pages + incoming.pages > MAX_EXPENSE_PAGES) {
+    return (
+      `This expense already holds ${current.pages} pages of its ${MAX_EXPENSE_PAGES}, and this ` +
+      `file adds ${incoming.pages}. Every page becomes a page of the packet, so the limit is ` +
+      "there to keep the submission readable."
+    );
+  }
+  if (current.files >= MAX_DOCUMENTS_PER_EXPENSE) {
+    return `An expense can hold at most ${MAX_DOCUMENTS_PER_EXPENSE} files.`;
+  }
+  return null;
+}
 
 /** Take back objects written for an upload whose row was then refused. */
 async function discardStored(key: string, hadThumbnail: boolean): Promise<void> {
@@ -105,8 +151,8 @@ async function orgStorageError(
   const rows = await tx
     .select({
       used: sql<number>`
-        coalesce((select sum(size_bytes) from expense_documents where org_id = ${orgId}), 0)
-        + coalesce((select sum(size_bytes) from month_documents where org_id = ${orgId}), 0)
+        coalesce((select sum(size_bytes + thumbnail_bytes) from expense_documents where org_id = ${orgId}), 0)
+        + coalesce((select sum(size_bytes + thumbnail_bytes) from month_documents where org_id = ${orgId}), 0)
       `,
     })
     .from(organizations)
@@ -176,14 +222,6 @@ export async function ingestExpenseDocument(input: {
     };
   }
 
-  const [{ total }] = await db
-    .select({ total: sql<number>`count(*)::int` })
-    .from(expenseDocuments)
-    .where(eq(expenseDocuments.expenseId, input.expenseId));
-  if (total >= MAX_DOCUMENTS_PER_EXPENSE) {
-    return { ok: false, error: `An expense can hold at most ${MAX_DOCUMENTS_PER_EXPENSE} files.` };
-  }
-
   // A full organisation is rejected before inspection, which costs a sharp decode of up to
   // MAX_PIXELS and a re-encode. Safe as an early-out because a stored file is never zero
   // bytes, so "already at the cap" can never become "fits" after inspection — and it keeps
@@ -208,6 +246,9 @@ export async function ingestExpenseDocument(input: {
       error: "That file is larger than 25 MB once converted for storage. Upload a smaller export.",
     };
   }
+
+  // Everything this upload puts in the bucket: the document and, for an image, its thumbnail.
+  const incomingBytes = inspection.body.byteLength + (inspection.thumbnail?.byteLength ?? 0);
 
   const documentId = uuidv7();
   const key = expenseDocumentKey({
@@ -235,17 +276,24 @@ export async function ingestExpenseDocument(input: {
   // position, and packet document order is defined by it (R10.1 determinism).
   const placed = await db.transaction(async (tx) =>
     withOrgUploadLock(tx, input.orgId, async (): Promise<string | null> => {
-      const [{ live }] = await tx
-        .select({ live: sql<number>`count(*)::int` })
+      const [held] = await tx
+        .select({
+          files: sql<number>`count(*)::int`,
+          bytes: sql<number>`coalesce(sum(size_bytes + thumbnail_bytes), 0)::bigint`,
+          pages: sql<number>`coalesce(sum(coalesce(page_count, 1)), 0)::int`,
+        })
         .from(expenseDocuments)
         .where(eq(expenseDocuments.expenseId, input.expenseId));
-      if (live >= MAX_DOCUMENTS_PER_EXPENSE) {
-        return `An expense can hold at most ${MAX_DOCUMENTS_PER_EXPENSE} files.`;
-      }
 
-      // Inside the lock, because a byte cap races exactly like the count does — two uploads
-      // reading the same total and both inserting overshoot by up to one file each.
-      const quotaError = await orgStorageError(tx, input.orgId, inspection.body.byteLength);
+      // Inside the lock, because a byte or page budget races exactly like a count does — two
+      // uploads reading the same total and both inserting overshoot by a whole file each.
+      const budgetError = expenseBudgetError(
+        { files: Number(held.files), bytes: Number(held.bytes), pages: Number(held.pages) },
+        { bytes: incomingBytes, pages: inspection.pageCount ?? 1 },
+      );
+      if (budgetError) return budgetError;
+
+      const quotaError = await orgStorageError(tx, input.orgId, incomingBytes);
       if (quotaError) return quotaError;
 
       await tx.insert(expenseDocuments).values({
@@ -260,10 +308,11 @@ export async function ingestExpenseDocument(input: {
         filename: input.file.name,
         mimeType: inspection.mimeType,
         sizeBytes: inspection.body.byteLength,
+        thumbnailBytes: inspection.thumbnail?.byteLength ?? 0,
         pageCount: inspection.pageCount,
         widthPx: inspection.widthPx,
         heightPx: inspection.heightPx,
-        sortOrder: live,
+        sortOrder: Number(held.files),
       });
       return null;
     }),
@@ -323,6 +372,9 @@ export async function ingestMonthDocument(input: {
     };
   }
 
+  // Everything this upload puts in the bucket: the document and, for an image, its thumbnail.
+  const incomingBytes = inspection.body.byteLength + (inspection.thumbnail?.byteLength ?? 0);
+
   const documentId = uuidv7();
   const key = monthDocumentKey({
     orgId: input.orgId,
@@ -352,7 +404,7 @@ export async function ingestMonthDocument(input: {
         return `A month can hold at most ${MAX_MONTH_DOCUMENTS} documents.`;
       }
 
-      const quotaError = await orgStorageError(tx, input.orgId, inspection.body.byteLength);
+      const quotaError = await orgStorageError(tx, input.orgId, incomingBytes);
       if (quotaError) return quotaError;
 
       await tx.insert(monthDocuments).values({
@@ -366,6 +418,7 @@ export async function ingestMonthDocument(input: {
         filename: input.file.name,
         mimeType: inspection.mimeType,
         sizeBytes: inspection.body.byteLength,
+        thumbnailBytes: inspection.thumbnail?.byteLength ?? 0,
         pageCount: inspection.pageCount,
         widthPx: inspection.widthPx,
         heightPx: inspection.heightPx,
