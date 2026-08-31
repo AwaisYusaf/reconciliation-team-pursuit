@@ -37,7 +37,8 @@ Every expense of the month, insertion order grouped by line item (line item sort
 | F | Subtotal | 12 | `[$$-409]#,##0.00` |
 | G | Tax | 10 | |
 | H | Fees | 10 | |
-| I | Reimbursable Amount | 18 | subtotal + fees |
+| I | Receipt Total | 14 | subtotal + tax + fees, always (R1.3a) — what the attached document says |
+| J | Reimbursable Amount | 18 | subtotal + whichever of tax and fees this expense's flags allow (R1.3) |
 
 Header row: bold, fill `FFFF00`. Final row: `Totals` in D, sums in F–I, bold.
 

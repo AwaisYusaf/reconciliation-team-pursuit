@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 
 import {
   centsToDollars,
+  excludedParts,
   parseMoneyToCents,
   parseMoneyToCentsOrZero,
+  receiptTotalCents,
   reimbursableCents,
   sumBy,
   sumCents,
@@ -78,17 +80,102 @@ describe("arithmetic", () => {
 
 describe("reimbursableCents (R1.3)", () => {
   it("is subtotal plus fees, excluding tax", () => {
-    expect(reimbursableCents({ subtotalCents: 921150, feesCents: 0 })).toBe(921150);
-    expect(reimbursableCents({ subtotalCents: 4990, feesCents: 250 })).toBe(5240);
+    expect(reimbursableCents({ subtotalCents: 921150, taxCents: 0, feesCents: 0 , taxReimbursable: false, feesReimbursable: true})).toBe(921150);
+    expect(reimbursableCents({ subtotalCents: 4990, taxCents: 0, feesCents: 250 , taxReimbursable: false, feesReimbursable: true})).toBe(5240);
   });
 
   it("ignores tax entirely even when large", () => {
     // Real case: FedEx $49.90 subtotal + $3.50 tax reimburses $49.90.
-    const expense = { subtotalCents: 4990, taxCents: 350, feesCents: 0 };
+    const expense = { subtotalCents: 4990, taxCents: 350, feesCents: 0 , taxReimbursable: false, feesReimbursable: true};
     expect(reimbursableCents(expense)).toBe(4990);
   });
 
   it("supports refunds", () => {
-    expect(reimbursableCents({ subtotalCents: -14500, feesCents: 0 })).toBe(-14500);
+    expect(reimbursableCents({ subtotalCents: -14500, taxCents: 0, feesCents: 0 , taxReimbursable: false, feesReimbursable: true})).toBe(-14500);
+  });
+});
+
+describe("reimbursableCents with per-expense rules (R1.3)", () => {
+  const receipt = { subtotalCents: 10_000, taxCents: 600, feesCents: 125 };
+
+  it("is subtotal + fees under the original rule, unchanged", () => {
+    // The default every existing row was migrated to: nothing historical may move.
+    expect(
+      reimbursableCents({ ...receipt, taxReimbursable: false, feesReimbursable: true }),
+    ).toBe(10_125);
+  });
+
+  it("covers all four combinations", () => {
+    const at = (taxReimbursable: boolean, feesReimbursable: boolean) =>
+      reimbursableCents({ ...receipt, taxReimbursable, feesReimbursable });
+
+    expect(at(false, false)).toBe(10_000); // subtotal only
+    expect(at(false, true)).toBe(10_125); // + fees
+    expect(at(true, false)).toBe(10_600); // + tax
+    expect(at(true, true)).toBe(10_725); // the whole receipt
+  });
+
+  it("nets refunds correctly whichever parts are claimed (R1.4)", () => {
+    // The real ClickUp -$145 case, with a negative tax alongside it.
+    const refund = { subtotalCents: -14_500, taxCents: -870, feesCents: 0 };
+    expect(reimbursableCents({ ...refund, taxReimbursable: false, feesReimbursable: true })).toBe(
+      -14_500,
+    );
+    expect(reimbursableCents({ ...refund, taxReimbursable: true, feesReimbursable: true })).toBe(
+      -15_370,
+    );
+  });
+
+  it("never exceeds the receipt total", () => {
+    const total = receiptTotalCents(receipt);
+    for (const tax of [true, false]) {
+      for (const fees of [true, false]) {
+        expect(
+          reimbursableCents({ ...receipt, taxReimbursable: tax, feesReimbursable: fees }),
+        ).toBeLessThanOrEqual(total);
+      }
+    }
+  });
+});
+
+describe("receiptTotalCents", () => {
+  it("is always the whole receipt, whatever is claimed", () => {
+    expect(receiptTotalCents({ subtotalCents: 10_000, taxCents: 600, feesCents: 125 })).toBe(10_725);
+  });
+
+  it("nets a refund", () => {
+    expect(receiptTotalCents({ subtotalCents: -14_500, taxCents: 0, feesCents: 0 })).toBe(-14_500);
+  });
+});
+
+describe("excludedParts", () => {
+  const base = { subtotalCents: 10_000, taxCents: 600, feesCents: 125 };
+
+  it("names only what is both present and unclaimed", () => {
+    expect(excludedParts({ ...base, taxReimbursable: false, feesReimbursable: true })).toEqual([
+      "tax",
+    ]);
+    expect(excludedParts({ ...base, taxReimbursable: true, feesReimbursable: false })).toEqual([
+      "fees",
+    ]);
+    expect(excludedParts({ ...base, taxReimbursable: false, feesReimbursable: false })).toEqual([
+      "tax",
+      "fees",
+    ]);
+    expect(excludedParts({ ...base, taxReimbursable: true, feesReimbursable: true })).toEqual([]);
+  });
+
+  it("says nothing about a part that is zero", () => {
+    // There is no gap to explain, so the cover sheet must stay silent — otherwise every
+    // expense with no tax would carry a note about excluded tax it never had.
+    expect(
+      excludedParts({
+        subtotalCents: 10_000,
+        taxCents: 0,
+        feesCents: 0,
+        taxReimbursable: false,
+        feesReimbursable: false,
+      }),
+    ).toEqual([]);
   });
 });

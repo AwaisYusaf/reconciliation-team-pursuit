@@ -35,7 +35,7 @@ function expense(overrides: Partial<CoverSheetExpense> = {}): CoverSheetExpense 
     description: "Contracted services in support of programme delivery",
     subtotalCents: 100_000,
     taxCents: 0,
-    feesCents: 0,
+    feesCents: 0, taxReimbursable: false, feesReimbursable: true,
     note: null,
     narrative: null,
     noReceipt: false,

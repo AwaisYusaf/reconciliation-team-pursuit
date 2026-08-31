@@ -15,6 +15,8 @@ const BASE: ExpenseInput = {
   name: "Test Vendor",
   lineItemId: "11111111-1111-1111-1111-111111111111",
   paymentSource: "Paid by us, reimbursement requested",
+  taxReimbursable: false,
+  feesReimbursable: true,
   month: "2026-02",
   date: "2026-02-15",
   description: "Test",

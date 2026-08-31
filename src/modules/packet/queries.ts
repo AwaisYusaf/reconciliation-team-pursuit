@@ -76,6 +76,8 @@ export async function loadPacketReadiness(
         subtotalCents: expenses.subtotalCents,
         taxCents: expenses.taxCents,
         feesCents: expenses.feesCents,
+        taxReimbursable: expenses.taxReimbursable,
+        feesReimbursable: expenses.feesReimbursable,
         note: expenses.note,
         narrative: expenses.narrative,
         noReceipt: expenses.noReceipt,

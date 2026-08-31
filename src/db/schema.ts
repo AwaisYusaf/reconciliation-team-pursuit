@@ -173,6 +173,14 @@ export const paymentSources = pgTable(
     sortOrder: integer("sort_order").notNull().default(0),
     /** Deactivated labels leave pickers; history keeps its snapshot. */
     active: boolean().notNull().default(true),
+    /**
+     * The reimbursement rules this funder applies, offered as the default on a new expense
+     * (R1.3, D-67). "Different funding sources have different requirements" is the reason the
+     * feature exists, so the source is where the answer belongs — set once, not re-decided
+     * on every entry. The expense keeps its own copy once saved.
+     */
+    taxReimbursable: boolean("tax_reimbursable").notNull().default(false),
+    feesReimbursable: boolean("fees_reimbursable").notNull().default(true),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
@@ -248,7 +256,17 @@ export const expenses = pgTable(
     subtotalCents: cents("subtotal_cents"),
     taxCents: cents("tax_cents"),
     feesCents: cents("fees_cents"),
-    /** Inline heading note; the tax note additionally auto-prints when tax > 0 (R6.5). */
+    /**
+     * Which parts of the receipt this funder reimburses (R1.3).
+     *
+     * Recorded on the expense rather than derived from the payment source at read time: the
+     * source is a snapshot on the row and its rules can change, but what was *claimed* must
+     * stay what it was on the day it was submitted. Defaults reproduce the original rule
+     * exactly — tax excluded, fees included — so the migration moves no historical figure.
+     */
+    taxReimbursable: boolean("tax_reimbursable").notNull().default(false),
+    feesReimbursable: boolean("fees_reimbursable").notNull().default(true),
+    /** Inline heading note; a note naming what was excluded auto-prints when so (R6.5). */
     note: text(),
     /** Paragraph note printed under the heading (R6.6). */
     narrative: text(),

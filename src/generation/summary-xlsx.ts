@@ -10,7 +10,7 @@ import ExcelJS from "exceljs";
 
 import { monthLabel, monthShortLabel, formatDateUS, type MonthKey } from "@/src/domain/dates";
 import { percentValue } from "@/src/domain/format";
-import { centsToDollars, reimbursableCents, sumBy } from "@/src/domain/money";
+import { centsToDollars, receiptTotalCents, reimbursableCents, sumBy } from "@/src/domain/money";
 import { summaryFilename } from "@/src/domain/strings";
 import { contractSummary, type SummaryRow } from "@/src/domain/summary";
 
@@ -185,6 +185,7 @@ export async function buildSummaryWorkbook(snapshot: MonthSnapshot): Promise<Buf
     { width: 12 },
     { width: 10 },
     { width: 10 },
+    { width: 14 },
     { width: 18 },
   ];
 
@@ -197,6 +198,7 @@ export async function buildSummaryWorkbook(snapshot: MonthSnapshot): Promise<Buf
     "Subtotal",
     "Tax",
     "Fees",
+    "Receipt Total",
     "Reimbursable Amount",
   ]);
   styleHeader(detailHeader);
@@ -218,10 +220,14 @@ export async function buildSummaryWorkbook(snapshot: MonthSnapshot): Promise<Buf
       centsToDollars(expense.subtotalCents),
       centsToDollars(expense.taxCents),
       centsToDollars(expense.feesCents),
+      // What the receipt says, next to what is claimed from it. With tax and fees now
+      // optionally reimbursable, the gap between these two columns is the thing a reviewer
+      // reconciling against the attached document actually needs to see (R1.3).
+      centsToDollars(receiptTotalCents(expense)),
       centsToDollars(reimbursableCents(expense)),
     ]);
     for (const column of [1, 2, 3, 4, 5]) textCell(row.getCell(column), String(row.getCell(column).value ?? ""));
-    for (const column of [6, 7, 8, 9]) row.getCell(column).numFmt = MONEY_FORMAT;
+    for (const column of [6, 7, 8, 9, 10]) row.getCell(column).numFmt = MONEY_FORMAT;
   }
 
   const totalsRow = detail.addRow([
@@ -233,6 +239,7 @@ export async function buildSummaryWorkbook(snapshot: MonthSnapshot): Promise<Buf
     centsToDollars(sumBy(ordered, (expense) => expense.subtotalCents)),
     centsToDollars(sumBy(ordered, (expense) => expense.taxCents)),
     centsToDollars(sumBy(ordered, (expense) => expense.feesCents)),
+    centsToDollars(sumBy(ordered, receiptTotalCents)),
     centsToDollars(sumBy(ordered, reimbursableCents)),
   ]);
   totalsRow.eachCell((cell, column) => {

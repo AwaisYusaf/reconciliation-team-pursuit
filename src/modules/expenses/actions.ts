@@ -24,6 +24,9 @@ export type ExpenseInput = {
   name: string;
   lineItemId: string;
   paymentSource: string;
+  /** Which parts of the receipt this funder reimburses (R1.3); defaults come from the source. */
+  taxReimbursable: boolean;
+  feesReimbursable: boolean;
   month: string;
   date: string;
   description: string;
@@ -47,6 +50,8 @@ function toRow(input: ExpenseInput) {
     subtotalCents: parseMoneyToCentsOrZero(input.subtotal),
     taxCents: parseMoneyToCentsOrZero(input.tax),
     feesCents: parseMoneyToCentsOrZero(input.fees),
+    taxReimbursable: input.taxReimbursable,
+    feesReimbursable: input.feesReimbursable,
     note: input.note.trim() || null,
     narrative: input.narrative.trim() || null,
     noReceipt: input.noReceipt,

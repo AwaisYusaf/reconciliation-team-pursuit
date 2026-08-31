@@ -9,7 +9,7 @@ function expense(overrides: Partial<CoverSheetExpense> = {}): CoverSheetExpense 
     description: "Groceries for participant families",
     subtotalCents: 42108,
     taxCents: 0,
-    feesCents: 0,
+    feesCents: 0, taxReimbursable: false, feesReimbursable: true,
     note: null,
     narrative: null,
     noReceipt: false,
@@ -85,14 +85,14 @@ describe("cover sheet rows (R6.2)", () => {
   });
 
   it("amounts are reimbursable, so tax is excluded and fees are included (R1.3)", () => {
-    const row = coverSheetRow(expense({ subtotalCents: 19084, taxCents: 1500, feesCents: 250 }));
+    const row = coverSheetRow(expense({ subtotalCents: 19084, taxCents: 1500, feesCents: 250 , taxReimbursable: false, feesReimbursable: true}));
     expect(row.amountCents).toBe(19334);
   });
 
   it("totals the reimbursable amounts, not the gross", () => {
     const { rows, totalCents } = coverSheetRows([
       expense({ subtotalCents: 42108, taxCents: 2526 }),
-      expense({ subtotalCents: 19084, feesCents: 250 }),
+      expense({ subtotalCents: 19084, taxCents: 0, feesCents: 250 , taxReimbursable: false, feesReimbursable: true}),
       expense({ subtotalCents: 61000 }),
     ]);
 
@@ -124,5 +124,70 @@ describe("cover sheet rows (R6.2)", () => {
       expense({ subtotalCents: -2500 }),
     ]);
     expect(totalCents).toBe(7500);
+  });
+});
+
+describe("the exclusion note tells the truth (R6.5, D-67)", () => {
+  const base = {
+    name: "Canva",
+    description: "Design tool",
+    subtotalCents: 10_000,
+    taxCents: 600,
+    feesCents: 125,
+    note: null,
+    narrative: null,
+    noReceipt: false,
+    noReceiptReason: null,
+  };
+
+  it("keeps the approved wording, unchanged, when tax is the excluded part", () => {
+    // Byte-identical to the note in the February packet the funder approved.
+    expect(inlineNotes({ ...base, taxReimbursable: false, feesReimbursable: true })).toEqual([
+      "(Note: Statement includes tax which was excluded from reimbursement amount)",
+    ]);
+  });
+
+  it("says nothing when the whole receipt is reimbursed", () => {
+    // The note exists to explain a gap between the receipt and the claim. With no gap, the
+    // old wording would assert something false on a document sent to the funder.
+    expect(inlineNotes({ ...base, taxReimbursable: true, feesReimbursable: true })).toEqual([]);
+  });
+
+  it("names fees when fees are the excluded part", () => {
+    expect(inlineNotes({ ...base, taxReimbursable: true, feesReimbursable: false })).toEqual([
+      "(Note: Statement includes fees which were excluded from reimbursement amount)",
+    ]);
+  });
+
+  it("uses one combined note rather than two near-identical ones", () => {
+    expect(inlineNotes({ ...base, taxReimbursable: false, feesReimbursable: false })).toEqual([
+      "(Note: Statement includes tax and fees which were excluded from reimbursement amount)",
+    ]);
+  });
+
+  it("stays silent about a part that is zero, however it is flagged", () => {
+    const noExtras = { ...base, taxCents: 0, feesCents: 0 };
+    expect(inlineNotes({ ...noExtras, taxReimbursable: false, feesReimbursable: false })).toEqual(
+      [],
+    );
+  });
+
+  it("still prints alongside a custom note, in R6.5 order (D-22)", () => {
+    const notes = inlineNotes({
+      ...base,
+      note: "Split with partner org",
+      taxReimbursable: false,
+      feesReimbursable: true,
+    });
+    expect(notes[0]).toBe("Split with partner org");
+    expect(notes[1]).toContain("excluded from reimbursement");
+  });
+
+  it("puts the reimbursable amount on the row, not the receipt total", () => {
+    const { rows } = coverSheetRows([
+      { ...base, taxReimbursable: true, feesReimbursable: false },
+    ]);
+    // subtotal + tax, fees excluded.
+    expect(rows[0].amountCents).toBe(10_600);
   });
 });

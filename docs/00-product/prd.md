@@ -47,7 +47,7 @@ Receipt OCR/auto-extraction; bank feed integration; multi-project/multi-grant pe
 |---|---|
 | **Month** | The reporting period (e.g., `2026-02`). Every expense and month document belongs to exactly one. Header selector switches the whole app. |
 | **Line item** | Funder-approved budget category with scheduled value + opening previously-billed balance. |
-| **Expense** | One row on a cover sheet. Name = payee/label (vendor, person, or "ATM Withdrawal"), description = the "Role" column text, amount = subtotal + fees (tax tracked, excluded). One per person per month for salary. |
+| **Expense** | One row on a cover sheet. Name = payee/label (vendor, person, or "ATM Withdrawal"), description = the "Role" column text, amount = the reimbursable part of the receipt, which parts being per-funder (R1.3). One per person per month for salary. |
 | **Proof of payment** | 1–n images/PDF crops evidencing money moved (bank transaction crops, app payment screenshots). Rendered on the cover sheet under the payee heading. Always required. |
 | **Receipt / justification** | 1–n docs saying what was owed: receipt, invoice, or timesheet. Required unless "no receipt available" + reason (reason prints on the cover sheet). |
 | **Supporting document** | Typed extra evidence per expense: Check copy, Request form, Vendor invoice, Event flyer, Narrative, Other. |

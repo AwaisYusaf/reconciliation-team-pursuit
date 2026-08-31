@@ -16,7 +16,7 @@ that nothing is built twice.
 A fix is not finished when the code works. It is finished when its passing criteria pass and the
 February golden reference (`context/manual packet/`) still reconciles.
 
-**Status:** F0, F1, F2 and F3 complete, all browser-verified. F4 (optional taxes and fees) is next. `Last reviewed: 2026-08-31.`
+**Status:** F0–F4 complete, all browser-verified. F5 (monthly budget snapshots) is next — it can now be built against F4's settled definition of "spent". `Last reviewed: 2026-08-31.`
 
 ### Decisions already taken (2026-08-31)
 
@@ -592,19 +592,22 @@ That last sentence is why this is not a form change. One function
 
 ### Passing criteria
 
-- [ ] Every existing expense's reimbursable amount is **byte-identical** before and after the
-      migration.
-- [ ] An expense with tax included reimburses subtotal + tax + fees; with fees excluded,
-      subtotal only; all four combinations proven by unit tests.
-- [ ] Total receipt amount = subtotal + tax + fees always, regardless of flags, and is what the
-      receipt shows.
-- [ ] Dashboard, contract summary, cover sheet, packet index, packet summary and Excel all show the
-      **same** figure for the same month (R10.2).
-- [ ] The February packet regenerates identical to the golden reference.
-- [ ] Negative amounts (refunds, R1.4) still net correctly with flags in play.
-- [ ] Receipt and proof of payment remain attached and unchanged — the client asked for this
-      explicitly.
-- [ ] R1.3 rewritten; every doc quoting "subtotal + fees" updated.
+- [x] Every existing expense's reimbursable amount is **unchanged** — all 39 checked through the
+      *new* `reimbursableCents` against figures captured before the migration: **zero moved**,
+      total identical to the cent ($93,371.96)
+- [x] All four combinations proven by unit test: subtotal only, +fees, +tax, whole receipt
+- [x] Receipt total = subtotal + tax + fees always, whatever the flags
+- [x] Every view derives from the one function (R10.2) — the compiler enforced it by making the
+      flags **required**, which surfaced all 13 call sites including the two queries that never
+      selected tax at all
+- [x] The February golden reference still reconciles — 522 tests pass
+- [x] Refunds still net correctly with flags in play (R1.4)
+- [x] Receipt and proof of payment untouched
+- [x] R1.3 rewritten (plus R1.3a, R1.3b, R6.5a); PRD, data model, Excel spec, m02 and the scenarios
+      all updated
+- [x] **Browser-verified**: the panel appears only when there is something to decide, defaults to
+      the funder's rule, disables a zero amount, and the receipt total names the shortfall. Setting
+      a funder to reimburse tax in Settings made the next new expense inherit it.
 
 ### Edge cases that must not be missed
 
@@ -653,13 +656,13 @@ That last sentence is why this is not a form change. One function
   (b) per **payment source / funder** — since you framed it as *"different funding sources have
   different requirements"*, this looks right, and would set itself; (c) per line item. **(b) is my
   recommendation** — it matches the reason the feature exists and stops it being a per-expense chore.
-- **Q8.** Is "total receipt amount" **entered** by the user and checked against subtotal+tax+fees
+- **Q8 — answered: derived and displayed.** It is arithmetically subtotal+tax+fees, so entering it again would create a second source of truth and an error state to invent. Original: is it **entered** by the user and checked against subtotal+tax+fees
   (catching typos), or purely **derived** and displayed? Entered is more work and catches real
   mistakes.
-- **Q9.** When tax is excluded, must the cover sheet or packet **show** the excluded amount so a
+- **Q9 — answered: yes, in the workbook.** Excel gains a Receipt Total column beside Reimbursable, so the gap is visible without touching the approved cover sheet. Original: must the packet **show** the excluded amount so a
   reviewer can see why the reimbursement is less than the receipt? The approved cover sheet layout
   cannot gain a column, so this likely belongs on the index page.
-- **Q10.** Should changing a flag on an expense in a **submitted** month be blocked, warned, or
+- **Q10 — answered: warn, not block.** R10.6 already warns for any edit in a submitted month and F2 made that warning follow the selected month; blocking would be a new restriction nobody asked for. Original: should changing a flag in a **submitted** month be blocked, warned, or
   allowed silently?
 
 ---

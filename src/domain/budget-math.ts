@@ -8,14 +8,18 @@
  * Pure functions over plain shapes — no database types, no IO.
  */
 import { compareMonthKeys, type MonthKey } from "./dates";
-import { reimbursableCents } from "./money";
+import { reimbursableCents, type ExpenseComposition } from "./money";
 
-/** The minimum an expense must expose for budget maths. */
-export type ExpenseAmount = {
+/**
+ * The minimum an expense must expose for budget maths.
+ *
+ * Carries the whole composition, not just the parts that happen to be reimbursable today:
+ * which parts count is now per-expense (R1.3), so a query that selects only subtotal and
+ * fees would silently compute a different total from the cover sheet.
+ */
+export type ExpenseAmount = ExpenseComposition & {
   lineItemId: string;
   month: MonthKey;
-  subtotalCents: number;
-  feesCents: number;
 };
 
 /** The minimum a line item must expose. */

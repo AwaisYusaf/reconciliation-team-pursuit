@@ -27,7 +27,7 @@ function expense(overrides: Partial<SnapshotExpense> & { referenceSeq: number })
     paymentSource: "Paid by us, reimbursement requested",
     subtotalCents: 10_000,
     taxCents: 0,
-    feesCents: 0,
+    feesCents: 0, taxReimbursable: false, feesReimbursable: true,
     note: null,
     narrative: null,
     noReceipt: false,
@@ -149,7 +149,7 @@ describe("packet expense index", () => {
   it.skipIf(!hasPdftotext())("shows the reimbursable amount, which excludes tax (R1.3)", async () => {
     const bytes = await buildIndexSectionPdf(
       snapshotWith([
-        expense({ referenceSeq: 1, name: "Taxed", subtotalCents: 10_000, taxCents: 600, feesCents: 125 }),
+        expense({ referenceSeq: 1, name: "Taxed", subtotalCents: 10_000, taxCents: 600, feesCents: 125 , taxReimbursable: false, feesReimbursable: true}),
       ]),
     );
     // 100.00 + 1.25 fees, tax excluded.

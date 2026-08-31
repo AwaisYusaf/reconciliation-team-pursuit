@@ -131,6 +131,37 @@ export async function updateGrantSettingsAction(input: {
 
 /* ------------------------------------------------------------- lists */
 
+/**
+ * Set what a funder reimburses (R1.3, D-67).
+ *
+ * Stored on the payment source because that is the thing that actually decides — the client's
+ * own framing was "different funding sources have different reimbursement requirements".
+ * Changing it here sets the default for *new* expenses only; every saved expense keeps the
+ * rules it was claimed under, so a rule change never silently restates a submitted figure.
+ */
+export async function updateReimbursementRulesAction(input: {
+  id: string;
+  taxReimbursable: boolean;
+  feesReimbursable: boolean;
+}): Promise<ActionResult> {
+  const current = await actionSession();
+  if ("expired" in current) return current.expired;
+  if (!isUuid(input.id)) return fail("That payment source no longer exists.");
+
+  const updated = await db
+    .update(paymentSources)
+    .set({
+      taxReimbursable: input.taxReimbursable,
+      feesReimbursable: input.feesReimbursable,
+    })
+    .where(and(eq(paymentSources.id, input.id), eq(paymentSources.orgId, current.orgId)))
+    .returning({ id: paymentSources.id });
+  if (updated.length === 0) return fail("That payment source no longer exists.");
+
+  revalidatePath("/", "layout");
+  return ok();
+}
+
 type ListKind = "paymentSource" | "supportingDocType";
 
 function table(kind: ListKind) {

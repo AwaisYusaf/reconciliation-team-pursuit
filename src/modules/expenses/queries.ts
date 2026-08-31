@@ -38,6 +38,8 @@ export type ExpenseDetail = {
   subtotalCents: number;
   taxCents: number;
   feesCents: number;
+  taxReimbursable: boolean;
+  feesReimbursable: boolean;
   note: string | null;
   narrative: string | null;
   noReceipt: boolean;
@@ -57,7 +59,11 @@ export async function loadExpenseFormOptions(orgId: string) {
       .where(eq(lineItems.orgId, orgId))
       .orderBy(asc(lineItems.sortOrder), asc(lineItems.name)),
     db
-      .select({ label: paymentSources.label })
+      .select({
+        label: paymentSources.label,
+        taxReimbursable: paymentSources.taxReimbursable,
+        feesReimbursable: paymentSources.feesReimbursable,
+      })
       .from(paymentSources)
       .where(and(eq(paymentSources.orgId, orgId), eq(paymentSources.active, true)))
       .orderBy(asc(paymentSources.sortOrder)),
@@ -71,6 +77,16 @@ export async function loadExpenseFormOptions(orgId: string) {
   return {
     lineItems: items,
     paymentSources: sources.map((row) => row.label),
+    /**
+     * Each funder's reimbursement rules, so choosing a payment source sets the flags rather
+     * than leaving them to be re-decided on every expense (R1.3, D-67).
+     */
+    reimbursementRules: Object.fromEntries(
+      sources.map((row) => [
+        row.label,
+        { taxReimbursable: row.taxReimbursable, feesReimbursable: row.feesReimbursable },
+      ]),
+    ),
     supportingDocTypes: docTypes.map((row) => row.label),
   };
 }
@@ -125,6 +141,8 @@ export async function loadExpense(orgId: string, id: string): Promise<ExpenseDet
       subtotalCents: expenses.subtotalCents,
       taxCents: expenses.taxCents,
       feesCents: expenses.feesCents,
+      taxReimbursable: expenses.taxReimbursable,
+      feesReimbursable: expenses.feesReimbursable,
       note: expenses.note,
       narrative: expenses.narrative,
       noReceipt: expenses.noReceipt,
@@ -159,6 +177,8 @@ export async function loadMonthExpenses(orgId: string, month: string): Promise<E
       subtotalCents: expenses.subtotalCents,
       taxCents: expenses.taxCents,
       feesCents: expenses.feesCents,
+      taxReimbursable: expenses.taxReimbursable,
+      feesReimbursable: expenses.feesReimbursable,
       note: expenses.note,
       narrative: expenses.narrative,
       noReceipt: expenses.noReceipt,

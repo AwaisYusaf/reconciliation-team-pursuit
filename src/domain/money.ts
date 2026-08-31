@@ -90,14 +90,57 @@ export function sumBy<T>(items: readonly T[], project: (item: T) => number): num
 }
 
 /**
- * Reimbursable amount = subtotal + fees (R1.3).
- * Sales tax is captured but excluded — the City does not reimburse it.
+ * What an expense is composed of, and which parts this funder reimburses (R1.3).
+ *
+ * The flags are required rather than optional, deliberately. Defaulting them here would let
+ * a caller that has not been updated silently fall back to one funder's rules while the rest
+ * of the app uses another's — and every figure in the system is this number, so the two
+ * would disagree without anything failing.
  */
-export function reimbursableCents(amounts: {
+export type ExpenseComposition = {
   subtotalCents: number;
+  taxCents: number;
+  feesCents: number;
+  taxReimbursable: boolean;
+  feesReimbursable: boolean;
+};
+
+/**
+ * Reimbursable amount = subtotal, plus whichever of tax and fees this funder allows (R1.3).
+ *
+ * Different funders reimburse differently: the City pays the base expense but not sales tax,
+ * where another may allow the whole receipt. The composition is recorded once and the
+ * eligible amount is derived, so the original receipt still reconciles even when only part
+ * of it is claimed.
+ */
+export function reimbursableCents(amounts: ExpenseComposition): number {
+  return (
+    amounts.subtotalCents +
+    (amounts.taxReimbursable ? amounts.taxCents : 0) +
+    (amounts.feesReimbursable ? amounts.feesCents : 0)
+  );
+}
+
+/**
+ * What the receipt actually says: everything paid, regardless of what is claimed (R1.3).
+ *
+ * Always the full sum — this is the figure that must match the document in the packet, which
+ * is why it takes no flags.
+ */
+export function receiptTotalCents(amounts: {
+  subtotalCents: number;
+  taxCents: number;
   feesCents: number;
 }): number {
-  return amounts.subtotalCents + amounts.feesCents;
+  return amounts.subtotalCents + amounts.taxCents + amounts.feesCents;
+}
+
+/** The parts of a receipt this funder will not pay for — what the cover sheet must explain. */
+export function excludedParts(amounts: ExpenseComposition): Array<"tax" | "fees"> {
+  const excluded: Array<"tax" | "fees"> = [];
+  if (!amounts.taxReimbursable && amounts.taxCents > 0) excluded.push("tax");
+  if (!amounts.feesReimbursable && amounts.feesCents > 0) excluded.push("fees");
+  return excluded;
 }
 
 function clampToCents(cents: number): number | null {

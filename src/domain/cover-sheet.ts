@@ -5,15 +5,12 @@
  * PDF renderer and the on-screen preview all compose from here, so the three can never
  * disagree about which notes an expense carries or what its amount is.
  */
-import { reimbursableCents } from "./money";
-import { noReceiptNote, TAX_NOTE } from "./strings";
+import { excludedParts, reimbursableCents, type ExpenseComposition } from "./money";
+import { exclusionNote, noReceiptNote } from "./strings";
 
-export type CoverSheetExpense = {
+export type CoverSheetExpense = ExpenseComposition & {
   name: string;
   description: string;
-  subtotalCents: number;
-  taxCents: number;
-  feesCents: number;
   note: string | null;
   narrative: string | null;
   noReceipt: boolean;
@@ -36,8 +33,9 @@ export type CoverSheetRow = {
 /**
  * The inline notes for one expense, in the order R6.5 fixes.
  *
- * A custom note never suppresses the tax note: the scope of work says the tax note is
- * always appended when tax was excluded, and both print when both apply (D-22).
+ * A custom note never suppresses the exclusion note: the scope of work says the disclosure is
+ * always appended when part of the receipt was not reimbursed, and both print when both apply
+ * (D-22, amended by D-67).
  */
 export function inlineNotes(expense: CoverSheetExpense): string[] {
   const notes: string[] = [];
@@ -45,7 +43,10 @@ export function inlineNotes(expense: CoverSheetExpense): string[] {
   const custom = expense.note?.trim();
   if (custom) notes.push(custom);
 
-  if (expense.taxCents > 0) notes.push(TAX_NOTE);
+  // Named for what was actually excluded. Printing the tax wording whenever tax exists would
+  // now be a false statement on a funder document, because tax can be reimbursed (D-67).
+  const exclusion = exclusionNote(excludedParts(expense));
+  if (exclusion) notes.push(exclusion);
 
   if (expense.noReceipt) {
     const reason = expense.noReceiptReason?.trim();

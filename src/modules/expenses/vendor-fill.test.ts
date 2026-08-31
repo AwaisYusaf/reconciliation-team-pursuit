@@ -7,6 +7,8 @@ const BLANK: ExpenseInput = {
   name: "",
   lineItemId: "",
   paymentSource: "",
+  taxReimbursable: false,
+  feesReimbursable: true,
   month: "2026-02",
   date: "2026-02-10",
   description: "",

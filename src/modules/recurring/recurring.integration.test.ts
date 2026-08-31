@@ -91,7 +91,7 @@ describe.skipIf(!hasDatabase)("recurring narratives (integration)", async () => 
         paymentSource: item.defaultPaymentSource ?? "Paid by us, reimbursement requested",
         subtotalCents: item.amountCents,
         taxCents: item.defaultTaxCents ?? 0,
-        feesCents: item.defaultFeesCents ?? 0,
+        feesCents: item.defaultFeesCents ?? 0, taxReimbursable: false, feesReimbursable: true,
         sortOrder: 0,
         referenceSeq: await claimReferenceSeq(orgId, month),
         recurringItemId: itemId,

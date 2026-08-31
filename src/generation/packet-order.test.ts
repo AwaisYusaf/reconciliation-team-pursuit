@@ -54,7 +54,7 @@ function expense(documents: SnapshotDocument[]): SnapshotExpense {
     paymentSource: "Paid by us, reimbursement requested",
     subtotalCents: 1000,
     taxCents: 0,
-    feesCents: 0,
+    feesCents: 0, taxReimbursable: false, feesReimbursable: true,
     note: null,
     narrative: null,
     noReceipt: false,

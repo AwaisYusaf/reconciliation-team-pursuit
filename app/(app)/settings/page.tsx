@@ -43,6 +43,8 @@ export default async function SettingsPage() {
           id: row.id,
           label: row.label,
           active: row.active,
+          taxReimbursable: row.taxReimbursable,
+          feesReimbursable: row.feesReimbursable,
         }))}
         supportingDocTypes={data.docTypes.map((row) => ({
           id: row.id,

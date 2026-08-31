@@ -46,8 +46,8 @@ describe("lineItemStats (R3.1–R3.5)", () => {
 
   it("adds earlier months to the opening balance (R3.1)", () => {
     const expenses: ExpenseAmount[] = [
-      { lineItemId: "salary", month: JAN, subtotalCents: 100000, feesCents: 0 },
-      { lineItemId: "salary", month: FEB, subtotalCents: 200000, feesCents: 0 },
+      { lineItemId: "salary", month: JAN, subtotalCents: 100000, taxCents: 0, feesCents: 0 , taxReimbursable: false, feesReimbursable: true},
+      { lineItemId: "salary", month: FEB, subtotalCents: 200000, taxCents: 0, feesCents: 0 , taxReimbursable: false, feesReimbursable: true},
     ];
     const stats = lineItemStats(salary, expenses, FEB);
 
@@ -58,8 +58,8 @@ describe("lineItemStats (R3.1–R3.5)", () => {
 
   it("excludes months after the reporting month — they are not billed yet", () => {
     const expenses: ExpenseAmount[] = [
-      { lineItemId: "salary", month: FEB, subtotalCents: 200000, feesCents: 0 },
-      { lineItemId: "salary", month: MAR, subtotalCents: 999999, feesCents: 0 },
+      { lineItemId: "salary", month: FEB, subtotalCents: 200000, taxCents: 0, feesCents: 0 , taxReimbursable: false, feesReimbursable: true},
+      { lineItemId: "salary", month: MAR, subtotalCents: 999999, taxCents: 0, feesCents: 0 , taxReimbursable: false, feesReimbursable: true},
     ];
     const stats = lineItemStats(salary, expenses, FEB);
 
@@ -69,22 +69,22 @@ describe("lineItemStats (R3.1–R3.5)", () => {
 
   it("ignores other line items' expenses", () => {
     const expenses: ExpenseAmount[] = [
-      { lineItemId: "analytical", month: FEB, subtotalCents: 500000, feesCents: 0 },
+      { lineItemId: "analytical", month: FEB, subtotalCents: 500000, taxCents: 0, feesCents: 0 , taxReimbursable: false, feesReimbursable: true},
     ];
     expect(lineItemStats(salary, expenses, FEB).spentThisMonthCents).toBe(0);
   });
 
   it("includes fees and excludes tax (R1.3)", () => {
     const expenses: ExpenseAmount[] = [
-      { lineItemId: "salary", month: FEB, subtotalCents: 4990, feesCents: 250 },
+      { lineItemId: "salary", month: FEB, subtotalCents: 4990, taxCents: 0, feesCents: 250 , taxReimbursable: false, feesReimbursable: true},
     ];
     expect(lineItemStats(salary, expenses, FEB).spentThisMonthCents).toBe(5240);
   });
 
   it("nets refunds (R1.4)", () => {
     const expenses: ExpenseAmount[] = [
-      { lineItemId: "salary", month: FEB, subtotalCents: 100000, feesCents: 0 },
-      { lineItemId: "salary", month: FEB, subtotalCents: -14500, feesCents: 0 },
+      { lineItemId: "salary", month: FEB, subtotalCents: 100000, taxCents: 0, feesCents: 0 , taxReimbursable: false, feesReimbursable: true},
+      { lineItemId: "salary", month: FEB, subtotalCents: -14500, taxCents: 0, feesCents: 0 , taxReimbursable: false, feesReimbursable: true},
     ];
     expect(lineItemStats(salary, expenses, FEB).spentThisMonthCents).toBe(85500);
   });

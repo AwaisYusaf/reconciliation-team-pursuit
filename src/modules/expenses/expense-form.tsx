@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 
 import { Button } from "@/src/components/ui/button";
 import { Dialog } from "@/src/components/ui/dialog";
@@ -14,9 +14,15 @@ import { reportResult } from "@/src/components/ui/toast";
 import { projectedRemainingCents } from "@/src/domain/budget-math";
 import { compareMonthKeys, monthLabel } from "@/src/domain/dates";
 import { formatMoney } from "@/src/domain/format";
-import { parseMoneyToCents, parseMoneyToCentsOrZero } from "@/src/domain/money";
+import {
+  parseMoneyToCents,
+  parseMoneyToCentsOrZero,
+  receiptTotalCents,
+  reimbursableCents as domainReimbursable,
+} from "@/src/domain/money";
 import { TAX_NOTE, UI } from "@/src/domain/strings";
 import { SESSION_EXPIRED } from "@/src/lib/action-result";
+import { cn } from "@/src/lib/cn";
 
 import { fillFromClick, fillFromTypedName, type VendorFill } from "./vendor-fill";
 import {
@@ -35,6 +41,12 @@ export type FormOptions = {
   paymentSources: string[];
   supportingDocTypes: string[];
   months: string[];
+  /**
+   * What each funder reimburses, keyed by payment source label (R1.3, D-67). Optional so the
+   * type survives a caller that has not been updated; an absent entry simply leaves the
+   * flags alone rather than silently asserting one funder's rules.
+   */
+  reimbursementRules?: Record<string, { taxReimbursable: boolean; feesReimbursable: boolean }>;
 };
 
 export type RemainingByLineItem = Record<string, number>;
@@ -75,6 +87,8 @@ const EMPTY: ExpenseInput = {
   subtotal: "",
   tax: "",
   fees: "",
+  taxReimbursable: false,
+  feesReimbursable: true,
   note: "",
   narrative: "",
   noReceipt: false,
@@ -95,7 +109,12 @@ export function ExpenseForm({
   const editing = Boolean(existing);
 
   const [values, setValues] = useState<ExpenseInput>(
-    existing?.values ?? { ...EMPTY, month: activeMonth, date: today },
+    existing?.values ?? {
+      ...EMPTY,
+      month: activeMonth,
+      date: today,
+      ...(options.reimbursementRules?.[options.paymentSources[0] ?? ""] ?? {}),
+    },
   );
   const [error, setError] = useState<string | null>(null);
   const [autofilled, setAutofilled] = useState(false);
@@ -121,12 +140,24 @@ export function ExpenseForm({
 
   const subtotalCents = parseMoneyToCentsOrZero(values.subtotal);
 
-  const reimbursableCents = useMemo(
-    () => subtotalCents + parseMoneyToCentsOrZero(values.fees),
-    [subtotalCents, values.fees],
-  );
-
   const taxCents = parseMoneyToCentsOrZero(values.tax);
+  const feesCents = parseMoneyToCentsOrZero(values.fees);
+
+  // The whole receipt, whatever is claimed from it — the figure that must match the document
+  // being attached (R1.3).
+  const receiptTotal = receiptTotalCents({ subtotalCents, taxCents, feesCents });
+
+  // Calls the domain rule rather than restating it: this box and the saved record must never
+  // be able to disagree, which is exactly what the previous inline copy allowed. Not memoised
+  // — it is three additions, and the memo could not be preserved across the derived inputs.
+  const reimbursableCents = domainReimbursable({
+    subtotalCents,
+    taxCents,
+    feesCents,
+    taxReimbursable: values.taxReimbursable,
+    feesReimbursable: values.feesReimbursable,
+  });
+
   // A heads-up, not a block — tax on a return or adjustment can genuinely exceed the subtotal
   // it's attached to, so this is worth a second look rather than a hard rejection (C-05).
   const taxExceedsSubtotal = taxCents > 0 && taxCents > subtotalCents;
@@ -142,7 +173,9 @@ export function ExpenseForm({
   // expense is saved in — the Month dropdown moves it (R2.2).
   const remainingForMonth = remainingByMonth?.[values.month] ?? remaining;
 
-  const projection = useMemo(() => {
+  // Plain arithmetic like the amount above, for the same reason: memoising it forced the
+  // React compiler to skip optimising the whole component.
+  const projection = ((): number | null => {
     if (!values.lineItemId) return null;
     const base = remainingForMonth[values.lineItemId];
     if (base === undefined) return null;
@@ -163,7 +196,7 @@ export function ExpenseForm({
           ? existing.savedReimbursableCents
           : 0,
     });
-  }, [values.lineItemId, values.month, remainingForMonth, reimbursableCents, existing]);
+  })();
 
   const lineItemName = options.lineItems.find((item) => item.id === values.lineItemId)?.name ?? "";
 
@@ -409,7 +442,13 @@ export function ExpenseForm({
             id="paymentSource"
             aria-labelledby="paymentSource-label"
             value={values.paymentSource}
-            onValueChange={(value) => set("paymentSource", value)}
+            onValueChange={(value) => {
+              // The funder decides what it reimburses, so choosing one applies its rules
+              // (D-67) — set once per source rather than re-decided on every expense. Still
+              // editable afterwards, because one expense can legitimately differ.
+              const rules = options.reimbursementRules?.[value];
+              setValues((current) => ({ ...current, paymentSource: value, ...(rules ?? {}) }));
+            }}
           >
             <option value="">Choose a payment source</option>
             {/*
@@ -483,6 +522,43 @@ export function ExpenseForm({
           ))}
         </div>
 
+        {(taxCents !== 0 || feesCents !== 0) && (
+          <div className="border border-line rounded-[3px] bg-section px-4 py-3.5">
+            <div className="text-[15px] font-semibold text-ink mb-2.5">
+              Include in reimbursement
+            </div>
+            <div className="flex flex-wrap gap-x-6 gap-y-2.5">
+              {(
+                [
+                  ["taxReimbursable", "Tax", taxCents],
+                  ["feesReimbursable", "Fees", feesCents],
+                ] as const
+              ).map(([field, label, cents]) => (
+                <label
+                  key={field}
+                  className={cn(
+                    "flex items-center gap-2.5 text-base",
+                    cents === 0 ? "text-disabled-ink" : "text-ink cursor-pointer",
+                  )}
+                >
+                  <input
+                    type="checkbox"
+                    className="w-[18px] h-[18px] accent-accent"
+                    checked={values[field]}
+                    disabled={cents === 0}
+                    onChange={(event) => set(field, event.target.checked)}
+                  />
+                  {label} ({formatMoney(cents)})
+                </label>
+              ))}
+            </div>
+            <Helper className="mt-2.5">
+              Funders differ on what they reimburse. Whatever is left out stays on the receipt
+              and is disclosed on the cover sheet.
+            </Helper>
+          </div>
+        )}
+
         {subtotalIsZero && (
           <div className="text-[15px] text-caution">{UI.subtotalIsZeroWarning}</div>
         )}
@@ -495,7 +571,12 @@ export function ExpenseForm({
           <div className="text-2xl font-bold tabular-nums">
             Reimbursable amount: {formatMoney(reimbursableCents)}
           </div>
-          <div className="text-[15px] text-sub mt-2 leading-relaxed">{UI.reimburseHint}</div>
+          <div className="text-[15px] text-sub mt-2 leading-relaxed tabular-nums">
+            Receipt total: {formatMoney(receiptTotal)}
+            {receiptTotal !== reimbursableCents && (
+              <> — {formatMoney(receiptTotal - reimbursableCents)} not reimbursed</>
+            )}
+          </div>
         </div>
 
         {projection !== null && (

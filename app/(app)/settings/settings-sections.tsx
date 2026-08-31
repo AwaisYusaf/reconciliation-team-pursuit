@@ -16,6 +16,7 @@ import {
   updateContractAction,
   updateGrantSettingsAction,
   updateOrganisationAction,
+  updateReimbursementRulesAction,
 } from "@/src/modules/settings/actions";
 import { VendorTable, type LabelRow, type Vendor } from "./vendor-table";
 
@@ -247,6 +248,60 @@ export function SettingsSections({
             run={run}
           />
         </div>
+        <div className="mt-8 pt-7 border-t border-line">
+          <div className="text-[17px] font-serif font-bold text-ink mb-1.5">
+            What each funder reimburses
+          </div>
+          <Helper className="mb-4 max-w-[62ch]">
+            Funders differ: one pays the base expense but not sales tax, another allows the whole
+            receipt. This sets the starting point for new expenses on each source — every expense
+            keeps its own copy, so changing a rule here never restates anything already claimed.
+          </Helper>
+          <div className="flex flex-col gap-2.5">
+            {paymentSources
+              .filter((row) => row.active)
+              .map((row) => (
+                <div
+                  key={row.id}
+                  className="flex flex-wrap items-center gap-x-6 gap-y-2 border border-line rounded-[3px] px-4 py-3 bg-surface"
+                >
+                  <div className="text-base text-ink flex-1 min-w-[220px]">{row.label}</div>
+                  {(
+                    [
+                      ["taxReimbursable", "Reimburses tax"],
+                      ["feesReimbursable", "Reimburses fees"],
+                    ] as const
+                  ).map(([field, label]) => (
+                    <label
+                      key={field}
+                      className="flex items-center gap-2.5 text-[15px] text-ink cursor-pointer"
+                    >
+                      <input
+                        type="checkbox"
+                        className="w-[18px] h-[18px] accent-accent"
+                        disabled={pending}
+                        checked={row[field] ?? false}
+                        onChange={(event) =>
+                          run(
+                            () =>
+                              updateReimbursementRulesAction({
+                                id: row.id,
+                                taxReimbursable: row.taxReimbursable ?? false,
+                                feesReimbursable: row.feesReimbursable ?? true,
+                                [field]: event.target.checked,
+                              }),
+                            "Reimbursement rules saved",
+                          )
+                        }
+                      />
+                      {label}
+                    </label>
+                  ))}
+                </div>
+              ))}
+          </div>
+        </div>
+
         <Helper className="mt-5">
           Renames apply to menus going forward; saved expenses keep the label they were
           entered with, which is what keeps their documents reproducible.

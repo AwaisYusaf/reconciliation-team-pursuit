@@ -91,7 +91,7 @@ Same shape as payment_sources; seeded with the six defaults.
 | reference_seq | int | **Per-month, unique** with (org_id, month) — the number behind the printed reference `{month}-{seq}` (R2.6), drawn from `month_statuses.next_reference_seq`. Distinct from `sort_order`, which races and is reused after a delete |
 | recurring_item_id | uuid null | Set when the row was created by a recurring item's one-click add (R8.3). Deliberately **not** a foreign key: the link records provenance, and deleting the recurring item must not alter an expense that is already part of a submitted month. Indexed. |
 
-Derived (never stored): `reimbursable = subtotal + fees`; documentation status from documents (R4).
+Stored: `tax_reimbursable`, `fees_reimbursable` — what this funder pays for, defaulted from the payment source at entry and fixed on the row thereafter (R1.3). Derived (never stored): `reimbursable` per R1.3 and `receipt total` per R1.3a; documentation status from documents (R4).
 
 ### expense_documents
 | Field | Type | Notes |

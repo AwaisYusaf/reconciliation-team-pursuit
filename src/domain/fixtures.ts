@@ -22,14 +22,35 @@ export const LINE_ITEMS: LineItemBudget[] = [
   { id: "profdev", name: "Professional Development", scheduledValueCents: 1500000, openingBilledCents: 174900, sortOrder: 5 },
 ];
 
-/** One expense per line item for February, summing to each published "This Period" figure. */
+/**
+ * One expense per line item for February, summing to each published "This Period" figure.
+ *
+ * Flags set to the original rule (tax excluded, fees included) so these keep reproducing the
+ * approved February packet exactly — that is what makes them a golden reference (R1.3).
+ */
+/**
+ * The original reimbursement rule — tax excluded, fees included (R1.3) — which is what these
+ * fixtures must keep reproducing to stay a golden reference for the approved February packet.
+ */
+function febAmount(lineItemId: string, subtotalCents: number): ExpenseAmount {
+  return {
+    lineItemId,
+    month: FEB,
+    subtotalCents,
+    taxCents: 0,
+    feesCents: 0,
+    taxReimbursable: false,
+    feesReimbursable: true,
+  };
+}
+
 export const FEB_EXPENSES: ExpenseAmount[] = [
-  { lineItemId: "salary", month: FEB, subtotalCents: 4564112, feesCents: 0 },
-  { lineItemId: "analytical", month: FEB, subtotalCents: 1989083, feesCents: 0 },
-  { lineItemId: "promo", month: FEB, subtotalCents: 1185165, feesCents: 0 },
-  { lineItemId: "social", month: FEB, subtotalCents: 1023108, feesCents: 0 },
-  { lineItemId: "community", month: FEB, subtotalCents: 425128, feesCents: 0 },
-  { lineItemId: "profdev", month: FEB, subtotalCents: 159900, feesCents: 0 },
+  febAmount("salary", 4564112),
+  febAmount("analytical", 1989083),
+  febAmount("promo", 1185165),
+  febAmount("social", 1023108),
+  febAmount("community", 425128),
+  febAmount("profdev", 159900),
 ];
 
 export const SETTINGS: ContractSettingsInput = {

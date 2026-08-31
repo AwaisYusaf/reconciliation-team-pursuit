@@ -7,7 +7,7 @@
  * built from the same records. A fixture whose two sheets describe different data cannot
  * detect the failure that matters most here — the sheets disagreeing (R10.2).
  */
-import ExcelJS from "exceljs";
+import ExcelJS, { type Worksheet } from "exceljs";
 import { describe, expect, it } from "vitest";
 
 import { FEB, FEB_EXPENSES, LINE_ITEMS, SETTINGS } from "@/src/domain/fixtures";
@@ -32,6 +32,8 @@ const EXPENSES: SnapshotExpense[] = FEB_EXPENSES.map((amount, index) => {
     // reconciliation between the two sheets (R1.3).
     taxCents: index === 1 ? 12_34 : 0,
     feesCents: amount.feesCents,
+    taxReimbursable: false,
+    feesReimbursable: true,
     note: null,
     narrative: null,
     noReceipt: false,
@@ -174,16 +176,31 @@ describe("Detail sheet", () => {
     expect(sheet.rowCount).toBe(8);
   });
 
+  /**
+   * Columns are located by their header rather than by index, so inserting one shifts nothing
+   * silently — which is exactly what happened when "Receipt Total" was added between Fees and
+   * Reimbursable Amount and the index-based assertions started reading the wrong column.
+   */
+  function columnOf(sheet: Worksheet, header: string): number {
+    const row = sheet.getRow(1);
+    for (let index = 1; index <= row.cellCount; index += 1) {
+      if (row.getCell(index).value === header) return index;
+    }
+    throw new Error(`No "${header}" column on ${sheet.name}`);
+  }
+
   it("carries the payment source column and excludes tax from reimbursable", async () => {
     const sheet = (await open()).getWorksheet("Feb Detail")!;
     expect(sheet.getRow(1).getCell(5).value).toBe("Payment Source");
     expect(sheet.getRow(2).getCell(5).value).toBe("Paid by us, reimbursement requested");
 
-    // Analytical Support carries $12.34 of tax, which must not reach the reimbursable column.
+    // Analytical Support carries $12.34 of tax, which must not reach the reimbursable column
+    // under the original rule — but must appear in the receipt total beside it (R1.3).
     const analytical = sheet.getRow(3);
-    expect(analytical.getCell(6).value).toBe(19890.83);
-    expect(analytical.getCell(7).value).toBe(12.34);
-    expect(analytical.getCell(9).value).toBe(19890.83);
+    expect(analytical.getCell(columnOf(sheet, "Subtotal")).value).toBe(19890.83);
+    expect(analytical.getCell(columnOf(sheet, "Tax")).value).toBe(12.34);
+    expect(analytical.getCell(columnOf(sheet, "Reimbursable Amount")).value).toBe(19890.83);
+    expect(analytical.getCell(columnOf(sheet, "Receipt Total")).value).toBe(19903.17);
   });
 
   /**
@@ -196,7 +213,9 @@ describe("Detail sheet", () => {
     const detail = workbook.getWorksheet("Feb Detail")!;
 
     const thisPeriod = summary.getRow(9).getCell(4).value as number;
-    const reimbursable = detail.getRow(detail.rowCount).getCell(9).value as number;
+    const reimbursable = detail
+      .getRow(detail.rowCount)
+      .getCell(columnOf(detail, "Reimbursable Amount")).value as number;
 
     expect(reimbursable).toBe(thisPeriod);
     expect(reimbursable).toBe(93464.96);
@@ -206,9 +225,10 @@ describe("Detail sheet", () => {
     const sheet = (await open()).getWorksheet("Feb Detail")!;
     const totals = sheet.getRow(sheet.rowCount);
     expect(totals.getCell(4).value).toBe("Totals");
-    expect(totals.getCell(6).value).toBe(93464.96);
-    expect(totals.getCell(7).value).toBe(12.34);
-    expect(totals.getCell(9).font?.bold).toBe(true);
+    expect(totals.getCell(columnOf(sheet, "Subtotal")).value).toBe(93464.96);
+    expect(totals.getCell(columnOf(sheet, "Tax")).value).toBe(12.34);
+    expect(totals.getCell(columnOf(sheet, "Receipt Total")).value).toBe(93477.3);
+    expect(totals.getCell(columnOf(sheet, "Reimbursable Amount")).font?.bold).toBe(true);
   });
 
   it("writes a name beginning with = as text, never as a formula", async () => {

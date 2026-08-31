@@ -49,7 +49,7 @@ R6.7 wording; clearing the flag re-blocks the record.
 
 Record an expense with tax.
 
-**Must hold:** the reimbursable amount excludes tax everywhere it appears; the tax note
+**Must hold:** the reimbursable amount matches R1.3 everywhere it appears; the exclusion note
 prints on the cover sheet whenever tax > 0; a custom note prints *in addition*, never
 instead; the workbook's Detail sheet shows tax in its own column and excludes it from the
 reimbursable total.

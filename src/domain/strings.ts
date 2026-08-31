@@ -10,6 +10,32 @@
 /** Printed on a cover sheet heading whenever tax > 0 (R6.5). Exact text — singular "Statement". */
 export const TAX_NOTE = "(Note: Statement includes tax which was excluded from reimbursement amount)";
 
+/** The same disclosure when service fees rather than tax are the part not reimbursed. */
+export const FEES_NOTE =
+  "(Note: Statement includes fees which were excluded from reimbursement amount)";
+
+/** Both at once, so an expense never carries two nearly identical notes. */
+export const TAX_AND_FEES_NOTE =
+  "(Note: Statement includes tax and fees which were excluded from reimbursement amount)";
+
+/**
+ * The disclosure for whatever this funder did not reimburse (R6.5).
+ *
+ * Its whole purpose is to explain a receipt total that exceeds the amount claimed, so it is
+ * printed only when there is a gap to explain — and it names the actual gap. Now that tax can
+ * be reimbursable, printing the tax wording unconditionally would put a false statement on a
+ * document submitted to the funder (D-67). The tax-only wording is unchanged from the
+ * approved February packet.
+ */
+export function exclusionNote(excluded: ReadonlyArray<"tax" | "fees">): string | null {
+  const tax = excluded.includes("tax");
+  const fees = excluded.includes("fees");
+  if (tax && fees) return TAX_AND_FEES_NOTE;
+  if (tax) return TAX_NOTE;
+  if (fees) return FEES_NOTE;
+  return null;
+}
+
 /** The one sentence that follows every cover sheet table (R6.3). */
 export const SEE_BELOW = "Please see below for additional information for some of the above items.";
 

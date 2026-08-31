@@ -25,6 +25,7 @@ One per line item per month, generated as **.docx** (canonical) and **.pdf** (co
 2. For **every** expense, in table order:
    - **Heading paragraph:** bold `{Name}:` — followed inline (same paragraph, bold, highlight `yellow`), in R6.5 order: the custom note if set, then the auto tax note whenever `tax > 0` (both print when both apply — D-22), then the no-receipt note per R6.7 if applicable. Example:
      `Kroger: (Note: Statement includes tax which was excluded from reimbursement amount)`
+     The note names whatever was actually excluded and is omitted when nothing was (R6.5a).
    - **Narrative paragraph** (if `narrative` set): regular weight, no highlight, full width (R6.6).
    - **Proof images:** each proof (kind=proof, status=attached) in sort order as an inline image, max width = text width (6.5"), height scaled to preserve aspect; PDFs uploaded as proofs are rasterized first at **150 DPI via the shared `raster.ts`** (one image per source page). 6 pt spacing between images, 12 pt before the next heading.
    - Expenses always have ≥1 attached proof in valid output (R4.1/R4.6); the "proof of payment missing" placeholder box exists only in the m04 on-screen gated preview, never in a downloaded file.

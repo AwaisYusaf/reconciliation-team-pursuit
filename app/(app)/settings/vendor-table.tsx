@@ -16,7 +16,14 @@ import { formatMoney } from "@/src/domain/format";
 import type { ActionResult } from "@/src/lib/action-result";
 import { deleteVendorAction, saveVendorAction } from "@/src/modules/settings/actions";
 
-export type LabelRow = { id: string; label: string; active: boolean };
+export type LabelRow = {
+  id: string;
+  label: string;
+  active: boolean;
+  /** Payment sources only: what this funder reimburses (R1.3, D-67). */
+  taxReimbursable?: boolean;
+  feesReimbursable?: boolean;
+};
 
 export type Vendor = {
   id: string;

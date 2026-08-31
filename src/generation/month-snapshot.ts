@@ -50,6 +50,8 @@ export type SnapshotExpense = {
   subtotalCents: number;
   taxCents: number;
   feesCents: number;
+  taxReimbursable: boolean;
+  feesReimbursable: boolean;
   note: string | null;
   narrative: string | null;
   noReceipt: boolean;
@@ -155,6 +157,8 @@ export async function loadMonthSnapshot(
           subtotalCents: expenses.subtotalCents,
           taxCents: expenses.taxCents,
           feesCents: expenses.feesCents,
+          taxReimbursable: expenses.taxReimbursable,
+          feesReimbursable: expenses.feesReimbursable,
           note: expenses.note,
           narrative: expenses.narrative,
           noReceipt: expenses.noReceipt,
@@ -178,7 +182,10 @@ export async function loadMonthSnapshot(
           lineItemId: expenses.lineItemId,
           month: expenses.month,
           subtotalCents: expenses.subtotalCents,
+          taxCents: expenses.taxCents,
           feesCents: expenses.feesCents,
+          taxReimbursable: expenses.taxReimbursable,
+          feesReimbursable: expenses.feesReimbursable,
         })
         .from(expenses)
         .where(and(eq(expenses.orgId, orgId), lt(expenses.month, month)))
@@ -250,7 +257,10 @@ export async function loadMonthSnapshot(
             lineItemId: row.lineItemId,
             month,
             subtotalCents: row.subtotalCents,
+            taxCents: row.taxCents,
             feesCents: row.feesCents,
+            taxReimbursable: row.taxReimbursable,
+            feesReimbursable: row.feesReimbursable,
           })),
         ],
         monthDocuments: docs

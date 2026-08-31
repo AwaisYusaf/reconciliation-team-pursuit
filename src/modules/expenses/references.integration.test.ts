@@ -147,7 +147,7 @@ describe.skipIf(!hasDatabase)("expense references (integration)", async () => {
         paymentSource: "x",
         subtotalCents: 40_000,
         taxCents: 2_400,
-        feesCents: 1_500,
+        feesCents: 1_500, taxReimbursable: false, feesReimbursable: true,
         sortOrder: seq,
         referenceSeq: seq,
       })

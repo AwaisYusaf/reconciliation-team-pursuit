@@ -19,7 +19,8 @@ Writes `expenses`, `expense_documents`, upserts `vendor_defaults` (R8.2). Reads 
 | Date | Date input, defaults today in America/Detroit (R2.5), any date allowed. |
 | Description / role | Textarea, label: `Description / role — this exact text will print on the cover sheet`. |
 | Subtotal / Tax / Fees | Money inputs; negatives allowed (refunds). |
-| Reimbursable box | Live `subtotal + fees` + hint `Sales tax is excluded. The funder does not reimburse it.` |
+| Include in reimbursement | Tax / Fees checkboxes, shown only when that amount is non-zero; defaults from the payment source (R1.3) |
+| Reimbursable box | Live reimbursable per R1.3, with the receipt total beneath it and the shortfall named when they differ (R1.3a) |
 | Projection line | `Remaining on {line item} after this expense: {amount}` — red/bold when negative (R3.7). |
 | Proof of payment | Multi-file upload (images/PDF), 1–n, thumbnails, remove; required to be documentation-complete. Files count only after server-side process & attach succeeds (R4.6) — failed files show the R12 `upload-failed` chip. |
 | Receipt / justification | Multi-file upload (receipt, invoice, or timesheet) — OR checkbox `No receipt available` revealing a required reason textarea (empty → R12 `no-receipt-reason-required`; prints per R6.7). Checking it hides the upload; already-attached receipt files are kept until save, then deleted (confirmation inline) — service rejects the combined state (R4.2). |

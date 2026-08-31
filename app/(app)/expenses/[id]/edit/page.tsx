@@ -91,6 +91,8 @@ export default async function EditExpensePage({
             month: expense.month,
             date: expense.date,
             description: expense.description,
+            taxReimbursable: expense.taxReimbursable,
+            feesReimbursable: expense.feesReimbursable,
             subtotal: toMoney(expense.subtotalCents),
             tax: toMoney(expense.taxCents),
             fees: toMoney(expense.feesCents),

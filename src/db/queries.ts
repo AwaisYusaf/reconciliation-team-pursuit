@@ -45,7 +45,10 @@ export async function loadExpenseAmounts(
       lineItemId: expenses.lineItemId,
       month: expenses.month,
       subtotalCents: expenses.subtotalCents,
+      taxCents: expenses.taxCents,
       feesCents: expenses.feesCents,
+      taxReimbursable: expenses.taxReimbursable,
+      feesReimbursable: expenses.feesReimbursable,
     })
     .from(expenses)
     .where(and(eq(expenses.orgId, orgId), lte(expenses.month, uptoMonth)));
