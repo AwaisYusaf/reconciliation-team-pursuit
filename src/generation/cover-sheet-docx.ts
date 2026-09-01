@@ -35,9 +35,14 @@ import { SEE_BELOW } from "@/src/domain/strings";
 import { COVER_IMAGE_BOX, COVER_MARGIN_IN, COVER_TEXT_WIDTH_IN, fitWithin } from "./layout-constants";
 
 /**
- * Aptos is the golden documents' theme font. The fallback chain matters for the conversion
- * container, which has no Aptos: Carlito is metric-compatible with Calibri, so line breaks
- * land in the same places and the PDF matches the docx.
+ * Aptos is the golden documents' theme font.
+ *
+ * OOXML names one family per run — there is no fallback list — so what a converter does with
+ * a font it lacks is entirely the container's business. This comment used to claim Carlito
+ * covered that, which was false: fontconfig ships Carlito as a substitute for *Calibri*, so
+ * `fc-match Aptos` returned DejaVu Sans and every converted cover sheet was set in it, about
+ * a quarter wider per digit. The Dockerfile now aliases Aptos to Carlito explicitly (D-78);
+ * the alias, not the package, is what makes the PDF break lines where Word does.
  */
 const FONT = "Aptos";
 

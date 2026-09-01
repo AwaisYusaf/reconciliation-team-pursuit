@@ -139,10 +139,13 @@ async function main(): Promise<void> {
   // widen the column to fit and the check could never fail.
   //
   // The figure is deliberately one digit longer than the longest real amount (a seven-figure
-  // refund, R1.4). This container has no Aptos and substitutes Carlito, which is narrower, so
-  // a check sized to the real maximum still passed at the broken 15% width — it could not see
-  // the client's bug at all. The extra digit stands in for the missing font width, and with it
-  // the check fails at 15% and passes at 18%.
+  // refund, R1.4), so the column is asked for more than it will ever really need.
+  //
+  // That margin makes this a font check as well as a width check. The container has no Aptos;
+  // it must resolve to Carlito via the alias the Dockerfile installs (D-78). When it fell back
+  // to DejaVu Sans instead — a quarter wider per digit — this check failed at the shipped 18%,
+  // which is exactly how the wrong font was caught. Measured in the real image: DejaVu wraps
+  // this at 18% and Carlito does not.
   const WIDEST = -1_234_567_890;
   const coverDocx = await buildCoverSheetDocx({
     title: "Team Pursuit Global February 2026 Salary Breakdown",

@@ -7,7 +7,7 @@ One per line item per month, generated as **.docx** (canonical) and **.pdf** (co
 | Property | Value |
 |---|---|
 | Page | US Letter portrait, 1" margins |
-| Base font | **Aptos 10 pt** (what the golden docs' text actually uses — their `docDefaults` say 11 pt, but every run overrides to 10 pt; see `04-engineering/review-2026-08-20-february.md`), black. Font fallback chain for environments without Aptos (Linux/LibreOffice container): **Aptos → Calibri → Carlito** (Carlito is metric-compatible with Calibri). The docx references the theme font; the conversion container must have Carlito installed |
+| Base font | **Aptos 10 pt** (what the golden docs' text actually uses — their `docDefaults` say 11 pt, but every run overrides to 10 pt; see `04-engineering/review-2026-08-20-february.md`), black. In environments without Aptos (the Linux/LibreOffice container) it must resolve to **Carlito**, which is metric-compatible with Calibri. OOXML names one family per run — there is no fallback chain — so this is the container's job, and installing Carlito alone does **not** do it: fontconfig ships Carlito as a substitute for *Calibri*, so Aptos fell through to DejaVu Sans until the image aliased it explicitly (D-78). The Dockerfile fails the build if `fc-match Aptos` does not return Carlito |
 | Title | Bold, centered, 12 pt: `{docName} {Month YYYY} {Line Item} Breakdown` (e.g. `Team Pursuit February 2026 Analytical Support Breakdown`) |
 | Spacing | Single line spacing; 6 pt after paragraphs; one empty line between title and table |
 
@@ -16,10 +16,14 @@ One per line item per month, generated as **.docx** (canonical) and **.pdf** (co
 - 3 columns, full text width. Widths: Name 24%, Role 58%, Amount 18%. Fixed layout, so every
   renderer sizes the columns identically rather than to its own font metrics. All borders:
   0.5 pt solid black, all cells.
-  - Amount was 15% until D-76. Rendered, a seven-figure total began breaking mid-number just
-    under 14%, so the column cleared its worst case by a single point and wrapped in Word,
-    whose Aptos is wider than the Carlito our container substitutes. `ROLE_CHARS_PER_LINE` in
-    `page-estimate.ts` is derived from the Role width and moves with it.
+  - Amount was 15% until D-76. `ROLE_CHARS_PER_LINE` in `page-estimate.ts` is derived from the
+    Role width and moves with it.
+  - The width was only half the story, and the first explanation for it was wrong. D-76 blamed
+    Word rendering wider than our own PDFs; measured in the real container (D-78), the sheets
+    were being set in **DejaVu Sans**, a quarter wider per digit than Calibri, because nothing
+    aliased Aptos. At 15% that wrapped even a realistic $458,692.46 — which is precisely what
+    the client reported. With the alias in place, 18% clears a figure a full digit longer than
+    any amount the column can hold.
 - Header row: cells shaded `#FFFF00`, text bold, centered: `Name | Role | Amount`.
 - Body rows: one per expense in `sort_order`. **All cells centered** (matching the golden docs — Name, Role, and Amount alike). Amounts formatted per R1.2. Cell padding ~4 pt. **No empty filler rows** (manual docs had them; we don't).
 - Total row: Name and Role cells empty (borders kept); Amount cell shaded `#FFFF00`, bold, centered = Σ reimbursable of the rows.

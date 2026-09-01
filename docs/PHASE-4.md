@@ -3,7 +3,7 @@
 Two items, from a client who says she is **ready to send this month's packet to the city**. One is
 already built and only needs deploying; the other is real work.
 
-**Status:** T4 done. Item 1 needs deploying only. `Last reviewed: 2026-09-01.`
+**Status:** T4 done. T5 done — item 1 was not only a width problem. `Last reviewed: 2026-09-01.`
 
 ---
 
@@ -119,3 +119,53 @@ would have been byte-identical and every existing month would have kept serving 
 - `scripts/render-smoke.ts` does not cover packet order: it never calls `buildPacketPdf` (that
   needs storage) and its fixture has no month documents. The deploy gate therefore cannot catch a
   future reordering — the integration test is the guard, and it needs a database to run.
+
+---
+
+# T5 · The cover sheet was being set in the wrong font — done
+
+Deploying T4 made the deploy-time render gate fail, in the container, on the check added in
+Phase 3: *"the total prints on one line (D-76) — the amount column is too narrow"*. It passed on
+the developer machine. **The two environments disagreed about a funder-approved document**, which
+is the one thing that check exists to catch.
+
+### What it turned out to be
+
+`fc-match Aptos` in the container returns **DejaVu Sans**. The Dockerfile installs
+`fonts-crosextra-carlito` and a comment claimed that covered Aptos; it does not. Fontconfig ships
+Carlito as a metric substitute for *Calibri*, nothing in the image mentioned Aptos, and there was
+no alias for it anywhere in `/etc/fonts`. Every cover sheet the container has ever rendered — the
+ones inside every packet — was set in DejaVu Sans, about a quarter wider per digit than Calibri.
+
+Measured in a faithful rebuild of the image:
+
+| Amount column | realistic `$458,692.46` | worst real `-$1,234,567.89` | guard `-$12,345,678.90` |
+|---|---|---|---|
+| 15% (before D-76), DejaVu | **wrapped** | wrapped | wrapped |
+| 18% (D-76), DejaVu | one line | **wrapped** | wrapped |
+| 18%, Carlito (D-78) | one line | one line | one line |
+
+The first row is the client's complaint, exactly: at the width we shipped for months, a perfectly
+ordinary six-figure total broke mid-number. **D-76's explanation was wrong** — it blamed Word
+rendering wider than our PDFs. The width increase was still worth having, and it is what made
+realistic totals fit; but the cause was ours, in our own container, in the file the city receives.
+
+### The fix
+
+Alias Aptos to the Carlito already installed, and **fail the image build** if
+`fc-match Aptos` does not return Carlito. The width stays at 18%, which with the correct font
+clears a figure a full digit longer than any amount the column can hold.
+
+The render gate now guards the font as well as the width: sized one digit long, it fails under
+DejaVu at 18% and passes under Carlito. That is how the wrong font was caught in the first place.
+
+`page-estimate.ts`'s constants assume roughly half the point size per character — true of Calibri,
+not of DejaVu — so they had been wrong for the container's whole life and are now right.
+
+### What is verified, and what is not
+
+- **Verified**: the whole render smoke suite passes inside a locally built copy of the production
+  image; before the alias, the same suite failed there exactly as it did on the server.
+- **Not verified**: the `.docx` opened in Word with genuine Aptos. Aptos is a little wider than
+  Calibri and is not installable here. The PDF that goes to the city is now measured; the Word
+  view of the download still rests on Misty's eyes.

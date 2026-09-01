@@ -16,6 +16,27 @@ RUN apt-get update && apt-get install --no-install-recommends -y \
       ca-certificates \
  && rm -rf /var/lib/apt/lists/*
 
+# Point Aptos — the cover sheet's font — at Carlito (D-78).
+#
+# Installing Carlito is not enough on its own: fontconfig ships it as a metric substitute for
+# *Calibri*, and nothing in the image mentions Aptos, so `fc-match Aptos` returned DejaVu Sans,
+# the generic sans fallback. Every cover sheet this container has ever rendered used it. DejaVu
+# is about a quarter wider than Calibri per digit, which is why the yellow total broke
+# mid-number in the packet while the same document looked correct everywhere else, and why the
+# page estimate — whose constants assume roughly half the point size per character — drifted.
+RUN printf '%s\n' \
+      '<?xml version="1.0"?>' \
+      '<!DOCTYPE fontconfig SYSTEM "fonts.dtd">' \
+      '<fontconfig>' \
+      '  <match target="pattern">' \
+      '    <test qual="any" name="family"><string>Aptos</string></test>' \
+      '    <edit name="family" mode="assign" binding="same"><string>Carlito</string></edit>' \
+      '  </match>' \
+      '</fontconfig>' \
+      > /etc/fonts/conf.d/30-aptos-carlito.conf \
+ && fc-cache -f \
+ && fc-match Aptos | grep -q Carlito
+
 ENV NODE_ENV=production
 WORKDIR /app
 
