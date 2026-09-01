@@ -155,4 +155,33 @@ describe("packet expense index", () => {
     // 100.00 + 1.25 fees, tax excluded.
     expect(await extractText(bytes)).toContain("$101.25");
   });
+
+  it.skipIf(!hasPdftotext())("explains an expense that has no supporting document (D-74)", async () => {
+    // Its reference appears in this index and on no page anywhere, because there is nothing
+    // to stamp it on. Unexplained that reads as a missing document; the trail has to say why.
+    const bytes = await buildIndexSectionPdf(
+      snapshotWith([
+        expense({ referenceSeq: 1, name: "Canva" }),
+        expense({
+          referenceSeq: 2,
+          name: "ATM Withdrawal",
+          noReceipt: true,
+          noReceiptReason: "Cash withdrawal for participant stipends; no vendor receipt exists",
+        }),
+      ]),
+    );
+    const text = await extractText(bytes);
+
+    expect(text).toContain("no supporting document");
+    expect(text).toContain("2026-02-002");
+    expect(text).toContain("ATM Withdrawal");
+    expect(text).toContain("participant stipends");
+  });
+
+  it.skipIf(!hasPdftotext())("says nothing when every expense is documented", async () => {
+    const text = await extractText(
+      await buildIndexSectionPdf(snapshotWith([expense({ referenceSeq: 1, name: "Canva" })])),
+    );
+    expect(text).not.toContain("no supporting document");
+  });
 });

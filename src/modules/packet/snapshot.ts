@@ -28,10 +28,14 @@ import type { MonthKey } from "@/src/domain/dates";
 export async function captureMonthSnapshot(orgId: string, month: MonthKey): Promise<void> {
   await db.transaction(
     async (tx) => {
+      // Read THROUGH the transaction. Passing `orgId` alone reads on another connection,
+      // outside the repeatable-read snapshot — which is what this code did while the comment
+      // above claimed otherwise, so a save landing mid-capture could persist a torn month
+      // (D-72).
       const [lineItems, amounts, settings] = await Promise.all([
-        loadLineItemBudgets(orgId),
-        loadExpenseAmounts(orgId, month),
-        loadContractSettings(orgId),
+        loadLineItemBudgets(orgId, tx),
+        loadExpenseAmounts(orgId, month, tx),
+        loadContractSettings(orgId, tx),
       ]);
 
       const stats = allLineItemStats(lineItems, amounts, month);

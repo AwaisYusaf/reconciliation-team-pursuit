@@ -14,9 +14,23 @@ import type { ExpenseAmount, LineItemBudget } from "@/src/domain/budget-math";
 import type { MonthKey } from "@/src/domain/dates";
 import type { ContractSettingsInput } from "@/src/domain/summary";
 
+/**
+ * The connection, or an open transaction.
+ *
+ * Every loader takes one so a caller that needs several reads to see a single instant can
+ * pass its own transaction. Defaulting to `db` keeps the ordinary call sites unchanged —
+ * and makes the omission visible: a caller inside a transaction that forgets to pass `tx`
+ * is reading outside it, which is exactly what `captureMonthSnapshot` was doing while its
+ * comment claimed repeatable-read isolation (D-72).
+ */
+export type Reader = Pick<typeof db, "select">;
+
 /** Line items in the organisation's configured document order. */
-export async function loadLineItemBudgets(orgId: string): Promise<LineItemBudget[]> {
-  return db
+export async function loadLineItemBudgets(
+  orgId: string,
+  reader: Reader = db,
+): Promise<LineItemBudget[]> {
+  return reader
     .select({
       id: lineItems.id,
       name: lineItems.name,
@@ -39,8 +53,9 @@ export async function loadLineItemBudgets(orgId: string): Promise<LineItemBudget
 export async function loadExpenseAmounts(
   orgId: string,
   uptoMonth: MonthKey,
+  reader: Reader = db,
 ): Promise<ExpenseAmount[]> {
-  return db
+  return reader
     .select({
       lineItemId: expenses.lineItemId,
       month: expenses.month,
@@ -55,8 +70,11 @@ export async function loadExpenseAmounts(
 }
 
 /** Contract settings, with zeroed defaults when onboarding skipped them. */
-export async function loadContractSettings(orgId: string): Promise<ContractSettingsInput> {
-  const rows = await db
+export async function loadContractSettings(
+  orgId: string,
+  reader: Reader = db,
+): Promise<ContractSettingsInput> {
+  const rows = await reader
     .select({
       contractValueCents: contractSettings.contractValueCents,
       perfGrantScheduledCents: contractSettings.perfGrantScheduledCents,

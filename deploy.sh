@@ -117,6 +117,22 @@ preflight() {
   fi
 }
 
+# Prove the container can actually RENDER, not merely serve a page. Every generation defect
+# this project has hit was invisible until something was rendered in a container: LibreOffice
+# crushing proof images, a cover sheet at the wrong point size, a stale GENERATOR_VERSION
+# serving pre-change bytes. `/login` answering says nothing about any of them.
+#
+# Advisory, not fatal: a deploy that serves correctly should not be rolled back because
+# poppler is missing from the image. It prints loudly enough to be noticed.
+smoke() {
+  echo "==> Render smoke test"
+  if $COMPOSE exec -T app npx tsx --conditions=react-server scripts/render-smoke.ts; then
+    return 0
+  fi
+  echo "warning: the render smoke test failed — the app is serving, but generated documents" >&2
+  echo "         are not what they should be. Check before telling anyone to download a packet." >&2
+}
+
 finish() {
   echo "==> Status"
   $COMPOSE ps
@@ -128,6 +144,7 @@ finish() {
       'fetch("http://127.0.0.1:3000/login").then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))' \
       >/dev/null 2>&1; then
       echo "    healthy after $((i * 5))s"
+      smoke
       return 0
     fi
     sleep 5

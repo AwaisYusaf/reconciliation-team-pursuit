@@ -88,57 +88,93 @@ describe("grantPosition (R3.8)", () => {
   });
 });
 
-describe("snapshotDrift (D-68)", () => {
-  const submitted = [
-    { lineItemName: "Promotional", spentThisMonthCents: 20_000 },
-    { lineItemName: "Travel", spentThisMonthCents: 5_000 },
-  ];
+describe("snapshotDrift (D-68, D-72)", () => {
+  /** What the month was submitted as, in the shape the snapshot stores. */
+  function submittedAs(overrides: Partial<{ promo: number; travel: number }> = {}) {
+    const may = monthPositions(allLineItemStats(ITEMS, AMOUNTS, "2026-05"));
+    return may.map((row) => ({
+      lineItemId: row.lineItemId,
+      lineItemName: row.name,
+      openingCents: row.openingCents,
+      spentThisMonthCents:
+        overrides[row.lineItemId as "promo" | "travel"] ?? row.thisMonthCents,
+      closingCents: row.closingCents,
+    }));
+  }
+
+  const current = () => monthPositions(allLineItemStats(ITEMS, AMOUNTS, "2026-05"));
 
   it("is silent while the submitted figures still hold", () => {
-    const current = monthPositions(allLineItemStats(ITEMS, AMOUNTS, "2026-05"));
-    expect(snapshotDrift(submitted, current)).toEqual([]);
+    expect(snapshotDrift(submittedAs(), current())).toEqual([]);
   });
 
   it("reports a category corrected after submission", () => {
     const corrected = [...AMOUNTS, spend("promo", "2026-05", 3_000)];
-    const current = monthPositions(allLineItemStats(ITEMS, corrected, "2026-05"));
+    const drift = snapshotDrift(
+      submittedAs(),
+      monthPositions(allLineItemStats(ITEMS, corrected, "2026-05")),
+    );
 
-    const drift = snapshotDrift(submitted, current);
-    expect(drift).toHaveLength(1);
-    expect(drift[0]).toMatchObject({
-      name: "Promotional",
-      submittedThisMonthCents: 20_000,
-      currentThisMonthCents: 23_000,
-      differenceCents: 3_000,
-    });
+    const promo = drift.find((row) => row.name === "Promotional")!;
+    const spent = promo.changes.find((c) => c.field === "spent")!;
+    expect(spent.submittedCents).toBe(20_000);
+    expect(spent.currentCents).toBe(23_000);
+    expect(spent.differenceCents).toBe(3_000);
+    // The closing balance moved with it, and is reported too.
+    expect(promo.changes.some((c) => c.field === "closing")).toBe(true);
   });
 
-  it("reports a category that gained its first expense only after submission", () => {
-    // No submitted row exists for it at all, which is just as much a divergence.
-    const current = monthPositions(allLineItemStats(ITEMS, AMOUNTS, "2026-05"));
-    const drift = snapshotDrift([{ lineItemName: "Promotional", spentThisMonthCents: 20_000 }], current);
-    expect(drift.map((row) => row.name)).toContain("Travel");
+  it("catches a budget change that never touches the month's own spend (D-72)", () => {
+    // The gap that let a submitted month's closing balance drift in silence: editing a line
+    // item's scheduled value or opening balance moves opening and closing while `spent`
+    // stays exactly as submitted.
+    const rebudgeted: LineItemBudget[] = [
+      { ...ITEMS[0], scheduledValueCents: 90_000 },
+      ITEMS[1],
+    ];
+    const drift = snapshotDrift(
+      submittedAs(),
+      monthPositions(allLineItemStats(rebudgeted, AMOUNTS, "2026-05")),
+    );
+
+    const promo = drift.find((row) => row.name === "Promotional")!;
+    expect(promo.changes.map((c) => c.field).sort()).toEqual(["closing", "opening"]);
+    expect(promo.changes.every((c) => c.differenceCents === -10_000)).toBe(true);
+    // Spend is untouched, so it must not be reported as having moved.
+    expect(promo.changes.some((c) => c.field === "spent")).toBe(false);
   });
 
-  it("reports an expense removed after submission", () => {
-    const current = monthPositions(allLineItemStats(ITEMS, [spend("promo", "2026-05", 20_000)], "2026-05"));
-    const drift = snapshotDrift(submitted, current);
-    expect(drift.find((row) => row.name === "Travel")?.differenceCents).toBe(-5_000);
-  });
-
-  it("does not read a rename as a change in the money", () => {
-    // The snapshot stores the name it was submitted under, so renaming the line item later
-    // must not make a figure look corrected when nothing about it moved.
+  it("does not report a rename as movement in the money (D-72)", () => {
+    // Matched on the id captured at submission. Matching by name alone invented two
+    // movements: the old name dropping to zero and the new one appearing from nowhere.
     const renamed: LineItemBudget[] = [
       { ...ITEMS[0], name: "Promotional & Marketing" },
       ITEMS[1],
     ];
-    const current = monthPositions(allLineItemStats(renamed, AMOUNTS, "2026-05"));
-    const drift = snapshotDrift(submitted, current);
+    expect(
+      snapshotDrift(submittedAs(), monthPositions(allLineItemStats(renamed, AMOUNTS, "2026-05"))),
+    ).toEqual([]);
+  });
 
-    // It reports the old name as gone and the new one as arrived, rather than silently
-    // matching them up — a rename is visible, but no figure is claimed to have changed.
-    const total = drift.reduce((sum, row) => sum + row.differenceCents, 0);
-    expect(total).toBe(0);
+  it("reports a category that gained its first expense only after submission", () => {
+    const before = submittedAs().filter((row) => row.lineItemName === "Promotional");
+    const drift = snapshotDrift(before, current());
+    expect(drift.map((row) => row.name)).toContain("Travel");
+  });
+
+  it("reports an expense removed after submission", () => {
+    const drift = snapshotDrift(
+      submittedAs(),
+      monthPositions(allLineItemStats(ITEMS, [spend("promo", "2026-05", 20_000)], "2026-05")),
+    );
+    const travel = drift.find((row) => row.name === "Travel")!;
+    expect(travel.changes.find((c) => c.field === "spent")!.differenceCents).toBe(-5_000);
+  });
+
+  it("still names a deleted line item by the name it was submitted under", () => {
+    // Its id no longer resolves, so the fallback keeps the row findable in the packet the
+    // funder holds.
+    const drift = snapshotDrift(submittedAs(), [current()[0]]);
+    expect(drift.map((row) => row.name)).toContain("Travel");
   });
 });

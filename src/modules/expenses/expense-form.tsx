@@ -17,10 +17,11 @@ import { formatMoney } from "@/src/domain/format";
 import {
   parseMoneyToCents,
   parseMoneyToCentsOrZero,
+  excludedParts,
   receiptTotalCents,
   reimbursableCents as domainReimbursable,
 } from "@/src/domain/money";
-import { TAX_NOTE, UI } from "@/src/domain/strings";
+import { exclusionNote, UI } from "@/src/domain/strings";
 import { SESSION_EXPIRED } from "@/src/lib/action-result";
 import { cn } from "@/src/lib/cn";
 
@@ -76,6 +77,9 @@ export type ExpenseFormProps = {
     monthSubmittedOn: string | null;
   };
 };
+
+/** Long enough for a one-minute rate-limit window to have rolled over. */
+const RATE_LIMIT_RETRY_MS = 6_000;
 
 const EMPTY: ExpenseInput = {
   name: "",
@@ -198,6 +202,18 @@ export function ExpenseForm({
     });
   })();
 
+  // Exactly what the cover sheet will print, from the same domain rule that prints it —
+  // so the form cannot promise a disclosure the document does not carry (R6.5a).
+  const autoNote = exclusionNote(
+    excludedParts({
+      subtotalCents,
+      taxCents,
+      feesCents,
+      taxReimbursable: values.taxReimbursable,
+      feesReimbursable: values.feesReimbursable,
+    }),
+  );
+
   const lineItemName = options.lineItems.find((item) => item.id === values.lineItemId)?.name ?? "";
 
   // Warn about the month the expense is heading for, not the one it came from: moving into a
@@ -294,7 +310,17 @@ export function ExpenseForm({
       form.set("file", item.file);
 
       try {
-        const response = await fetch("/api/files/upload", { method: "POST", body: form });
+        let response = await fetch("/api/files/upload", { method: "POST", body: form });
+
+        // A rate-limited upload is a "wait", not a "no": a long queue is exactly what F1
+        // exists to allow, and losing its tail because the window filled would undo that.
+        // One patient retry, then treat it as a real failure (D-73).
+        if (response.status === 429) {
+          setStatus(`Uploading ${index + 1} of ${queued.length} — waiting for the queue…`);
+          await new Promise((resolve) => setTimeout(resolve, RATE_LIMIT_RETRY_MS));
+          response = await fetch("/api/files/upload", { method: "POST", body: form });
+        }
+
         const result = (await response.json()) as { ok: boolean; error?: string };
         if (!result.ok) {
           // Keep the files that have not been tried yet, so nothing disappears silently.
@@ -686,9 +712,11 @@ export function ExpenseForm({
           </Label>
           <Input id="note" value={values.note} onChange={(event) => set("note", event.target.value)} />
           <Helper>
-            {taxCents > 0
-              ? `Tax is entered, so this note prints in addition to the standard tax note: ${TAX_NOTE}`
-              : "If tax is entered, the standard tax note prints automatically as well."}
+            {/* Says what will actually print. It used to promise the tax note "whenever tax is
+                entered", which stopped being true once tax became reimbursable (R6.5a). */}
+            {autoNote
+              ? `This note prints in addition to the automatic disclosure: ${autoNote}`
+              : "Anything you leave out of the reimbursement is disclosed here automatically."}
           </Helper>
         </div>
 

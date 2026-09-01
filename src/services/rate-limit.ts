@@ -39,8 +39,20 @@ export const LIMITS = {
   loginPerAccount: { limit: 10, windowMs: 15 * 60 * 1000 },
   /** Per IP regardless of email — bounds argon2 CPU when an attacker rotates emails. */
   loginPerIp: { limit: 30, windowMs: 15 * 60 * 1000 },
-  /** Upload presigning, per organisation. */
-  presign: { limit: 60, windowMs: 60 * 1000 },
+  /**
+   * Uploads, per organisation.
+   *
+   * Sized against the per-expense budget rather than against a guess: F1 raised that to
+   * 200 MB / 300 pages precisely so a month of rideshare receipts fits on one expense, and
+   * at 60/min the flush stalled around the sixtieth file — the very case the change exists
+   * to enable (D-73).
+   *
+   * Raising it is safe because it was never the binding guard. Storage is bounded by the
+   * per-expense and per-organisation byte caps (R13.1), and CPU by the fact that the client
+   * posts files one at a time and awaits each: the burst this limit imagines never happens
+   * from the app. It remains as a backstop against a script.
+   */
+  presign: { limit: 400, windowMs: 60 * 1000 },
   /** Document generation, per organisation. */
   generate: { limit: 6, windowMs: 60 * 1000 },
   /**

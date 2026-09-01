@@ -7,10 +7,10 @@ import "server-only";
  * receipt can find what it belongs to, and anyone quoting `2026-02-014` in an email is
  * naming something the packet itself defines.
  *
- * The reference appears here and nowhere else in the packet. The cover sheet's three-column
- * table is the layout the funder approved, and adding a column to it — or editing the text
- * inside one — would change a document they signed off. An index page is additive: it takes
- * nothing away and alters nothing that was agreed.
+ * The reference also appears in the footer of every page documenting that one expense, which
+ * the funder approved (D-70). It is still never added to the cover sheet's three-column
+ * table: that is the layout they signed off, and neither gains a column nor has its text
+ * edited. An index page is additive — it takes nothing away and alters nothing agreed.
  *
  * Pure: takes a snapshot, returns bytes.
  */
@@ -42,6 +42,25 @@ const BODY_SIZE = 9;
 const ROW_HEIGHT = 18;
 const HEADER_HEIGHT = 22;
 const CELL_PAD = 4;
+const NOTE_SIZE = 8.5;
+
+/** Break a line to fit the content width — a disclosure must not run off the page. */
+function wrapToWidth(text: string, font: PDFFont, size: number, maxWidth: number): string[] {
+  const words = winAnsiSafe(text).split(/\s+/).filter(Boolean);
+  const lines: string[] = [];
+  let line = "";
+  for (const word of words) {
+    const candidate = line ? `${line} ${word}` : word;
+    if (font.widthOfTextAtSize(candidate, size) > maxWidth && line) {
+      lines.push(line);
+      line = word;
+    } else {
+      line = candidate;
+    }
+  }
+  if (line) lines.push(line);
+  return lines.length > 0 ? lines : [""];
+}
 
 /** Five columns summing to `INDEX_CONTENT_WIDTH` (7.5in at a 0.5in margin). */
 export const INDEX_COLUMNS = [
@@ -124,8 +143,19 @@ export async function buildIndexSectionPdf(snapshot: MonthSnapshot): Promise<Buf
 
   // Reference order, which is entry order — the same sequence the cover sheets and the rest
   // of the packet use, so the index reads as a table of contents rather than a re-sort.
-  const rows = [...snapshot.expenses]
-    .sort((a, b) => a.referenceSeq - b.referenceSeq)
+  const ordered = [...snapshot.expenses].sort((a, b) => a.referenceSeq - b.referenceSeq);
+
+  /**
+   * Expenses that contribute no page to the packet (R4.4).
+   *
+   * Their reference appears in this index and on no page anywhere, because there is no
+   * evidence to stamp it on. Left unexplained, that reads as a missing document; stated
+   * here, it is the disclosure the funder already accepted on the cover sheet. Without it
+   * the trail this index exists to close simply stops (D-74).
+   */
+  const undocumented = ordered.filter((expense) => expense.noReceipt);
+
+  const rows = ordered
     .map((expense) => [
       expenseReference(snapshot.month, expense.referenceSeq),
       formatDateUS(expense.date),
@@ -183,6 +213,39 @@ export async function buildIndexSectionPdf(snapshot: MonthSnapshot): Promise<Buf
       startPage(false);
     }
     y = drawRow(page, y, row, fonts);
+  }
+
+  for (const expense of undocumented) {
+    const reason = expense.noReceiptReason?.trim();
+    const line = `${expenseReference(snapshot.month, expense.referenceSeq)} — ${expense.name}: no receipt available${reason ? ` — ${reason}` : ""}`;
+    const wrapped = wrapToWidth(line, fonts.regular, NOTE_SIZE, INDEX_CONTENT_WIDTH);
+
+    // Height of the block plus its heading, so a disclosure is never split from its list.
+    const needed = wrapped.length * (NOTE_SIZE + 3) + (expense === undocumented[0] ? 26 : 0);
+    if (y - needed < MARGIN) {
+      page = pdf.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
+      y = PAGE_HEIGHT - MARGIN;
+    }
+
+    if (expense === undocumented[0]) {
+      y -= 16;
+      page.drawText(
+        winAnsiSafe("These expenses carry no supporting document, for the reason stated:"),
+        { x: MARGIN, y, size: NOTE_SIZE, font: fonts.bold, color: BLACK },
+      );
+      y -= 14;
+    }
+
+    for (const text of wrapped) {
+      page.drawText(winAnsiSafe(text), {
+        x: MARGIN,
+        y,
+        size: NOTE_SIZE,
+        font: fonts.regular,
+        color: BLACK,
+      });
+      y -= NOTE_SIZE + 3;
+    }
   }
 
   return Buffer.from(await pdf.save());

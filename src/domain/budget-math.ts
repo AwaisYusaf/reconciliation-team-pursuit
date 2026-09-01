@@ -200,48 +200,88 @@ export function grantPosition(stats: readonly LineItemStats[]): GrantPosition {
  * Both are true: one is what was sent, the other what is now known. Surfacing the difference
  * is the point — a silent divergence between a submitted packet and the current screen is
  * exactly what the client could not see before.
+ *
+ * All three figures are compared, not just the month's own spend: editing a line item's
+ * opening balance or its scheduled value moves the opening and closing figures of every
+ * submitted month while leaving `thisMonth` untouched, so watching spend alone let a
+ * submitted month's closing balance drift with no notice at all (D-72).
  */
+export type DriftField = "opening" | "spent" | "closing";
+
 export type SnapshotDrift = {
   name: string;
-  submittedThisMonthCents: number;
-  currentThisMonthCents: number;
-  differenceCents: number;
+  /** One entry per figure that moved. Never empty — a category with no movement is omitted. */
+  changes: Array<{
+    field: DriftField;
+    submittedCents: number;
+    currentCents: number;
+    differenceCents: number;
+  }>;
+};
+
+/** What a submitted month recorded for one category. */
+export type SubmittedPosition = {
+  lineItemId: string | null;
+  lineItemName: string;
+  openingCents: number;
+  spentThisMonthCents: number;
+  closingCents: number;
 };
 
 export function snapshotDrift(
-  submitted: ReadonlyArray<{ lineItemName: string; spentThisMonthCents: number }>,
+  submitted: readonly SubmittedPosition[],
   current: readonly MonthPosition[],
 ): SnapshotDrift[] {
+  // Matched on the id captured at submission, falling back to the name only for a row whose
+  // line item has since been deleted. Matching on name alone reported a rename as two
+  // fabricated movements — the old name dropping to zero and the new one appearing.
+  const byId = new Map(current.map((position) => [position.lineItemId, position]));
   const byName = new Map(current.map((position) => [position.name, position]));
+
   const drift: SnapshotDrift[] = [];
+  const matched = new Set<string>();
 
   for (const row of submitted) {
-    // Matched on the name captured at submission, so a later rename does not read as a
-    // change in the money — and a line item deleted since still reports its own figure.
-    const now = byName.get(row.lineItemName);
-    const currentCents = now?.thisMonthCents ?? 0;
-    if (currentCents !== row.spentThisMonthCents) {
-      drift.push({
-        name: row.lineItemName,
-        submittedThisMonthCents: row.spentThisMonthCents,
-        currentThisMonthCents: currentCents,
-        differenceCents: currentCents - row.spentThisMonthCents,
-      });
-    }
+    const now =
+      (row.lineItemId ? byId.get(row.lineItemId) : undefined) ?? byName.get(row.lineItemName);
+    if (now) matched.add(now.lineItemId);
+
+    const compare: Array<[DriftField, number, number]> = [
+      ["opening", row.openingCents, now?.openingCents ?? 0],
+      ["spent", row.spentThisMonthCents, now?.thisMonthCents ?? 0],
+      ["closing", row.closingCents, now?.closingCents ?? 0],
+    ];
+
+    const changes = compare
+      .filter(([, was, is]) => was !== is)
+      .map(([field, was, is]) => ({
+        field,
+        submittedCents: was,
+        currentCents: is,
+        differenceCents: is - was,
+      }));
+
+    // Reported under the name it was submitted as: that is the name on the packet the funder
+    // holds, so it is the one that lets them find the row being talked about.
+    if (changes.length > 0) drift.push({ name: row.lineItemName, changes });
   }
 
   // A category that gained its first expense after submission has no submitted row at all,
-  // and is just as much a divergence as one whose figure changed.
-  const submittedNames = new Set(submitted.map((row) => row.lineItemName));
+  // and is just as much a divergence as one whose figures changed.
   for (const position of current) {
-    if (!submittedNames.has(position.name) && position.thisMonthCents !== 0) {
-      drift.push({
-        name: position.name,
-        submittedThisMonthCents: 0,
-        currentThisMonthCents: position.thisMonthCents,
-        differenceCents: position.thisMonthCents,
-      });
-    }
+    if (matched.has(position.lineItemId)) continue;
+    if (position.thisMonthCents === 0) continue;
+    drift.push({
+      name: position.name,
+      changes: [
+        {
+          field: "spent",
+          submittedCents: 0,
+          currentCents: position.thisMonthCents,
+          differenceCents: position.thisMonthCents,
+        },
+      ],
+    });
   }
 
   return drift;

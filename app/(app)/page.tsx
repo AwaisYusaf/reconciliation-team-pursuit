@@ -14,6 +14,13 @@ import { monthLabel, monthShortLabel } from "@/src/domain/dates";
 import { formatMoney, formatPercent } from "@/src/domain/format";
 import { getSession } from "@/src/services/auth/session";
 
+/** Wording for each figure the drift notice can report (R3.8). */
+const DRIFT_LABEL: Record<"opening" | "spent" | "closing", string> = {
+  opening: "Opening balance",
+  spent: "Spent this month",
+  closing: "Closing balance",
+};
+
 export const metadata = { title: "Dashboard — Grant Expense Reconciliation" };
 
 /**
@@ -35,8 +42,14 @@ export default async function DashboardPage() {
   // What this month was submitted as, if it was. Present only for a submitted month (D-68).
   const submitted = await db
     .select({
+      lineItemId: monthSnapshots.lineItemId,
       lineItemName: monthSnapshots.lineItemName,
+      // The whole position, not just the spend: a budget edit moves opening and closing
+      // while leaving the month's own spend untouched (D-72).
+      scheduledValueCents: monthSnapshots.scheduledValueCents,
+      previouslyBilledCents: monthSnapshots.previouslyBilledCents,
       spentThisMonthCents: monthSnapshots.spentThisMonthCents,
+      remainingCents: monthSnapshots.remainingCents,
     })
     .from(monthSnapshots)
     .where(and(eq(monthSnapshots.orgId, session.orgId), eq(monthSnapshots.month, month)));
@@ -49,7 +62,16 @@ export default async function DashboardPage() {
   const grant = grantPosition(stats);
   // Both figures are true: one is what was sent, the other what is now known. A silent
   // divergence between a submitted packet and this screen is what could not be seen before.
-  const drift = submitted.length > 0 ? snapshotDrift(submitted, positions) : [];
+  // The snapshot stores what R3.1–R3.4 define; the month view states the same position as
+  // budget remaining (R3.8), so it is converted here rather than stored twice.
+  const submittedPositions = submitted.map((row) => ({
+    lineItemId: row.lineItemId,
+    lineItemName: row.lineItemName,
+    openingCents: row.scheduledValueCents - row.previouslyBilledCents,
+    spentThisMonthCents: row.spentThisMonthCents,
+    closingCents: row.remainingCents,
+  }));
+  const drift = submitted.length > 0 ? snapshotDrift(submittedPositions, positions) : [];
 
   return (
     <div>
@@ -67,14 +89,21 @@ export default async function DashboardPage() {
             The packet that was sent is unchanged and still downloadable. These categories now
             differ from it:
           </div>
-          <ul className="mt-2.5 flex flex-col gap-1 text-[15px] tabular-nums">
+          <ul className="mt-2.5 flex flex-col gap-2 text-[15px] tabular-nums">
             {drift.map((row) => (
               <li key={row.name}>
-                <span className="font-semibold">{row.name}</span> — submitted at{" "}
-                {formatMoney(row.submittedThisMonthCents)}, now{" "}
-                {formatMoney(row.currentThisMonthCents)} (
-                {row.differenceCents > 0 ? "+" : ""}
-                {formatMoney(row.differenceCents)})
+                <span className="font-semibold">{row.name}</span>
+                <ul className="ml-4 mt-0.5 flex flex-col gap-0.5">
+                  {row.changes.map((change) => (
+                    <li key={change.field}>
+                      {DRIFT_LABEL[change.field]} — submitted at{" "}
+                      {formatMoney(change.submittedCents)}, now{" "}
+                      {formatMoney(change.currentCents)} (
+                      {change.differenceCents > 0 ? "+" : ""}
+                      {formatMoney(change.differenceCents)})
+                    </li>
+                  ))}
+                </ul>
               </li>
             ))}
           </ul>
