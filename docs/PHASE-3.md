@@ -13,7 +13,7 @@ Two things learned in Phase 2 and applied from the start here:
 - **Render or click anything called verified.** The last three Phase 2 defects surfaced only when a
   document was actually opened rather than reasoned about.
 
-**Status:** T1 done. T2, T3 not started. `Last reviewed: 2026-09-01.`
+**Status:** T1, T2 done. T3 not started. `Last reviewed: 2026-09-01.`
 
 ---
 
@@ -74,7 +74,7 @@ mutates the value, fires `input`) with only the caret scripted:
 
 ---
 
-# T2 · Cover-letter total wraps
+# T2 · Cover-letter total wraps — done
 
 > Fix number formatting on the yellow-highlighted total; last digit and cents are wrapping to the
 > line below. Apply to all cover letters.
@@ -103,14 +103,36 @@ not alter what was signed off beyond what is needed to stop the wrap.
 
 ### Passing criteria
 
-- [ ] Reproduced in a rendered PDF before any change, and gone after.
-- [ ] Verified through **LibreOffice**, not only in the docx — the packet renders through it, and
+- [x] Reproduced in a rendered PDF before any change, and gone after.
+- [x] Verified through **LibreOffice**, not only in the docx — the packet renders through it, and
       Word and LibreOffice break lines differently.
-- [ ] Every amount, body and total, stays on one line at seven figures.
-- [ ] The approved layout is otherwise untouched: same fonts, sizes, borders, shading, alignment.
-- [ ] The February golden reference still reconciles.
-- [ ] `GENERATOR_VERSION` bumped for the cover sheet **and** the packet, or cached artifacts keep
+- [x] Every amount, body and total, stays on one line at seven figures.
+- [x] The approved layout is otherwise untouched: same fonts, sizes, borders, shading, alignment.
+- [x] The February golden reference still reconciles.
+- [x] `GENERATOR_VERSION` bumped for the cover sheet **and** the packet, or cached artifacts keep
       serving the wrapped version.
+
+### What was found in testing
+
+**The width theory was wrong on its own, and reproducing first is what caught it.** At the old
+15% nothing wrapped in our PDFs at any amount, up to −$1,234,567.89. Squeezing the column to 5%
+did wrap, character by character, which proved the renderer honours the declared widths and the
+harness could see the defect — so the missing piece was elsewhere.
+
+The real cause was the table being **auto-fit**: each renderer sized the columns to its own font
+metrics, so LibreOffice widened Amount to fit while Word wrapped it. The bug could not exist in
+anything we generated. Measured by rendering, the wrap threshold sits just under 14% — the old
+15% cleared its own worst case by one percentage point, and Aptos is wider than the Carlito this
+container substitutes.
+
+Fixed layout plus 18% clears the threshold by about a third. Rendered side by side, the approved
+sheet is unchanged: same fonts, borders, shading, alignment and row heights, with Role still
+wrapping at the same word.
+
+**The render guard needed a deliberate exaggeration to be honest.** Sized to the longest real
+amount it passed at the broken 15% — it could not see the client's bug, because this container
+has no Aptos. The check now uses a figure one digit longer, standing in for the missing font
+width; mutation-tested, it fails at 15% and passes at 18%.
 
 ### Edge cases that must not be missed
 

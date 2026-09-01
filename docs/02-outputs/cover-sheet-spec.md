@@ -13,7 +13,13 @@ One per line item per month, generated as **.docx** (canonical) and **.pdf** (co
 
 ## Table (immediately after title)
 
-- 3 columns, full text width. Widths: Name 24%, Role 61%, Amount 15%. All borders: 0.5 pt solid black, all cells.
+- 3 columns, full text width. Widths: Name 24%, Role 58%, Amount 18%. Fixed layout, so every
+  renderer sizes the columns identically rather than to its own font metrics. All borders:
+  0.5 pt solid black, all cells.
+  - Amount was 15% until D-76. Rendered, a seven-figure total began breaking mid-number just
+    under 14%, so the column cleared its worst case by a single point and wrapped in Word,
+    whose Aptos is wider than the Carlito our container substitutes. `ROLE_CHARS_PER_LINE` in
+    `page-estimate.ts` is derived from the Role width and moves with it.
 - Header row: cells shaded `#FFFF00`, text bold, centered: `Name | Role | Amount`.
 - Body rows: one per expense in `sort_order`. **All cells centered** (matching the golden docs — Name, Role, and Amount alike). Amounts formatted per R1.2. Cell padding ~4 pt. **No empty filler rows** (manual docs had them; we don't).
 - Total row: Name and Role cells empty (borders kept); Amount cell shaded `#FFFF00`, bold, centered = Σ reimbursable of the rows.

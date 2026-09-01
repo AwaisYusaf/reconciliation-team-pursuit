@@ -24,14 +24,16 @@ const HEADING_BEFORE_PX = 16;
 /**
  * Characters that fit on one line of the Role column at 10 pt.
  *
- * The column is 61% of a 6.5" text width; Aptos averages a little over half the point size
+ * The column is 58% of a 6.5" text width; Aptos averages a little over half the point size
  * per character, so a point smaller fits roughly a tenth more. Approximate on purpose — a row
  * being one line taller than guessed costs a few pixels, well inside the ±2 page tolerance.
  *
- * These move with `BODY_SIZE`: leaving them at the 11 pt values would make the estimate drift
- * from the renderer, which is the one thing this module exists not to do.
+ * These move with `BODY_SIZE` *and* with the column widths: leaving them behind would make the
+ * estimate drift from the renderer, which is the one thing this module exists not to do. The
+ * figure fell from 57 when Role gave 3% of its width to Amount so the total would stop
+ * wrapping (D-76) — 57 x 58/61.
  */
-const ROLE_CHARS_PER_LINE = 57;
+const ROLE_CHARS_PER_LINE = 54;
 const NARRATIVE_CHARS_PER_LINE = 104;
 
 export type EstimateRow = {

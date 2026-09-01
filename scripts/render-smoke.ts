@@ -22,6 +22,8 @@ import { PDFDocument } from "pdf-lib";
 import { FEB, FEB_EXPENSES, LINE_ITEMS, SETTINGS } from "@/src/domain/fixtures";
 import { buildIndexSectionPdf } from "@/src/generation/packet-index-pdf";
 import { buildSummarySectionPdf } from "@/src/generation/packet-summary-pdf";
+import { buildCoverSheetDocx } from "@/src/generation/cover-sheet-docx";
+import { convertDocxToPdf } from "@/src/generation/docx-to-pdf";
 import { buildSummaryWorkbook } from "@/src/generation/summary-xlsx";
 import { stampFooters } from "@/src/generation/packet-footer";
 import type { MonthSnapshot, SnapshotExpense } from "@/src/generation/month-snapshot";
@@ -128,6 +130,40 @@ async function main(): Promise<void> {
   const stamped = await stampFooters(index, "Team Pursuit", "February 2026", ["2026-02-014"]);
   const stampedText = await textOf(stamped);
   check("carries the expense reference (D-70)", stampedText.includes("2026-02-014 — Page 1 of"));
+
+  console.log("\ncover sheet");
+  // The client saw the yellow total break mid-number in Word while our own PDFs looked fine,
+  // because the table was auto-fit and each renderer sized the columns its own way. This
+  // renders the sheet for real and asserts the amount comes back as one unbroken string. It
+  // only means anything because the table is fixed-layout: under auto-fit the renderer would
+  // widen the column to fit and the check could never fail.
+  //
+  // The figure is deliberately one digit longer than the longest real amount (a seven-figure
+  // refund, R1.4). This container has no Aptos and substitutes Carlito, which is narrower, so
+  // a check sized to the real maximum still passed at the broken 15% width — it could not see
+  // the client's bug at all. The extra digit stands in for the missing font width, and with it
+  // the check fails at 15% and passes at 18%.
+  const WIDEST = -1_234_567_890;
+  const coverDocx = await buildCoverSheetDocx({
+    title: "Team Pursuit Global February 2026 Salary Breakdown",
+    rows: [
+      {
+        name: "Marcus Wainwright-Delacroix",
+        role: "Community Violence Intervention Outreach Specialist and Team Lead",
+        amountCents: WIDEST,
+        notes: [],
+        narrative: null,
+      },
+    ],
+    totalCents: WIDEST,
+    images: [[]],
+  });
+  const coverText = await textOf(await convertDocxToPdf(coverDocx));
+  check(
+    "the total prints on one line (D-76)",
+    coverText.includes("-$12,345,678.90"),
+    "the amount column is too narrow — the number wrapped",
+  );
 
   console.log("\nExcel workbook");
   const workbook = await buildSummaryWorkbook(snapshot);

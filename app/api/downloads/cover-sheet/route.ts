@@ -23,9 +23,10 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /** Bump when the sheet's layout changes, so cached artifacts rebuild (R10.4). */
-// Bumped "cover-4": the exclusion note now names what was actually excluded (D-67). Without this, pinned and cached
-// artifacts would keep serving output built before the change.
-const GENERATOR_VERSION = "cover-5";
+// Bumped "cover-6": the Amount column widened to 18% and the table is now fixed-layout, so the
+// total no longer breaks mid-number (D-76). Without this, pinned and cached artifacts would keep
+// serving output built before the change.
+const GENERATOR_VERSION = "cover-6";
 
 /**
  * Download one line item's cover sheet, as .docx or .pdf.

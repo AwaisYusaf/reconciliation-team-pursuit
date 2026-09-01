@@ -19,9 +19,9 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 600;
 
 /** Bump when the packet's layout or ordering changes, so cached artifacts rebuild (R10.4). */
-// Bumped "packet-6": the expense index now discloses undocumented expenses (D-74).
+// Bumped "packet-8": the packet embeds the cover sheet, whose Amount column changed (D-76).
 // Without a bump, pinned and cached artifacts keep serving output built before the change.
-const GENERATOR_VERSION = "packet-7";
+const GENERATOR_VERSION = "packet-8";
 
 /**
  * Download the month-end packet.

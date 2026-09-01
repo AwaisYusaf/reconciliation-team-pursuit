@@ -159,10 +159,17 @@ describe("table (R6.2)", () => {
 
   it("uses the documented column widths", async () => {
     const xml = await documentXml();
-    // 6.5" text width split 24% / 61% / 15%.
+    // 6.5" text width split 24% / 58% / 18%.
     expect(xml).toContain('w:w="2246"');
-    expect(xml).toContain('w:w="5710"');
-    expect(xml).toContain('w:w="1404"');
+    expect(xml).toContain('w:w="5429"');
+    expect(xml).toContain('w:w="1685"');
+  });
+
+  it("lays the table out fixed, so every renderer agrees on the columns", async () => {
+    const xml = await documentXml();
+    // Auto-fit let LibreOffice widen Amount to fit while Word wrapped the total, which is how
+    // a broken number reached the client through documents that looked correct to us.
+    expect(xml).toContain('<w:tblLayout w:type="fixed"/>');
   });
 
   it("borders every cell at 0.5 pt", async () => {

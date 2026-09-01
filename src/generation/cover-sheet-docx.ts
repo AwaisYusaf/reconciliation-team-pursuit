@@ -20,6 +20,7 @@ import {
   ShadingType,
   Table,
   TableCell,
+  TableLayoutType,
   TableRow,
   TextRun,
   VerticalAlign,
@@ -53,11 +54,23 @@ const PARAGRAPH_AFTER = 120;
 const BEFORE_HEADING = 240;
 
 const TEXT_WIDTH_TWIPS = convertInchesToTwip(COVER_TEXT_WIDTH_IN);
-/** Name 24% · Role 61% · Amount 15%. */
+/**
+ * Name 24% · Role 58% · Amount 18%.
+ *
+ * Amount was 15%, which fit the bold total with almost nothing to spare: rendered, a
+ * seven-figure amount began breaking mid-number just under 14%, so the margin was a single
+ * percentage point. Aptos is wider than the Carlito this container substitutes for it, which
+ * is why the client saw the last digit and the cents drop to the next line on a sheet that
+ * looked correct in our own PDFs. 18% clears the measured threshold by about a third, which
+ * covers the font difference and a negative seven-figure refund (R1.4) — the longest string
+ * the column can hold.
+ *
+ * The 3% comes from Role, which is free text and wraps deliberately; Name is untouched.
+ */
 const COLUMN_WIDTHS = [
   Math.round(TEXT_WIDTH_TWIPS * 0.24),
-  Math.round(TEXT_WIDTH_TWIPS * 0.61),
-  Math.round(TEXT_WIDTH_TWIPS * 0.15),
+  Math.round(TEXT_WIDTH_TWIPS * 0.58),
+  Math.round(TEXT_WIDTH_TWIPS * 0.18),
 ];
 
 const CELL_BORDERS = {
@@ -147,6 +160,12 @@ function buildTable(input: CoverSheetInput): Table {
   return new Table({
     rows: [header, ...body, total],
     width: { size: TEXT_WIDTH_TWIPS, type: WidthType.DXA },
+    // Without this the table is auto-fit, and each renderer redistributes the columns to suit
+    // its own font metrics — so LibreOffice quietly widened Amount to fit while Word wrapped
+    // it, and the defect could not be seen in anything we generated. Fixed layout makes the
+    // PDF in the packet and the docx the client opens lay out identically, and lets the
+    // render smoke test actually catch a column that is too narrow.
+    layout: TableLayoutType.FIXED,
     columnWidths: COLUMN_WIDTHS,
   });
 }
