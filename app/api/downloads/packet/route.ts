@@ -19,9 +19,10 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 600;
 
 /** Bump when the packet's layout or ordering changes, so cached artifacts rebuild (R10.4). */
-// Bumped "packet-8": the packet embeds the cover sheet, whose Amount column changed (D-76).
-// Without a bump, pinned and cached artifacts keep serving output built before the change.
-const GENERATOR_VERSION = "packet-8";
+// Bumped "packet-9": month documents moved to the end of the packet (D-77). A pure reorder
+// changes no snapshot field, so the cache key is byte-identical without this — every existing
+// month would keep serving a packet with the bank statement still at the front.
+const GENERATOR_VERSION = "packet-9";
 
 /**
  * Download the month-end packet.

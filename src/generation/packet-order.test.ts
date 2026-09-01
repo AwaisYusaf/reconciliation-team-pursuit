@@ -7,7 +7,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { SnapshotDocument, SnapshotExpense, SnapshotMonthDocument } from "./month-snapshot";
-import { orderedMonthDocuments, packetDocumentsFor } from "./packet-order";
+import { orderedMonthDocuments, packetContents, packetDocumentsFor } from "./packet-order";
 
 function monthDocument(
   overrides: Partial<SnapshotMonthDocument> & { id: string },
@@ -65,7 +65,7 @@ function expense(documents: SnapshotDocument[]): SnapshotExpense {
   };
 }
 
-describe("month documents (section 2)", () => {
+describe("month documents (the final section)", () => {
   it("orders by category, then sort order", () => {
     const ordered = orderedMonthDocuments([
       monthDocument({ id: "other", category: "other" }),
@@ -182,5 +182,60 @@ describe("expense documents (sections 3..n)", () => {
 
   it("returns nothing for an expense marked no-receipt with no uploads", () => {
     expect(packetDocumentsFor(expense([]))).toEqual([]);
+  });
+});
+
+describe("packetContents", () => {
+  const contents = () =>
+    packetContents({
+      summaryPages: 2,
+      indexPages: 1,
+      monthDocumentPages: 30,
+      lineItems: [
+        { lineItemId: "li-1", name: "Salary", estimatedPages: 21 },
+        { lineItemId: "li-2", name: "Travel", estimatedPages: 14 },
+      ],
+    });
+
+  it("opens on the summary and the index", () => {
+    expect(contents().slice(0, 2).map((section) => section.key)).toEqual(["summary", "index"]);
+  });
+
+  it("ends with the month documents (D-77)", () => {
+    // The client's complaint was a bank statement before the first cover letter. This is the
+    // screen's half of that fix; packet-trace.integration.test.ts asserts the rendered file.
+    expect(contents().at(-1)?.key).toBe("monthDocuments");
+  });
+
+  it("puts every line item between the index and the month documents", () => {
+    expect(contents().map((section) => section.key)).toEqual([
+      "summary",
+      "index",
+      "li-1",
+      "li-2",
+      "monthDocuments",
+    ]);
+  });
+
+  it("keeps the line items in the order given, and carries their pages", () => {
+    expect(contents().map((section) => section.label)).toEqual([
+      "Contract summary sheet",
+      "Expense index",
+      "Salary — cover sheet + documents",
+      "Travel — cover sheet + documents",
+      "Month documents",
+    ]);
+    expect(contents().map((section) => section.pages)).toEqual([2, 1, 21, 14, 30]);
+  });
+
+  it("still lists the month documents row when the month has none", () => {
+    // Position must not depend on there being any: the row reads 0 pages and stays last.
+    const empty = packetContents({
+      summaryPages: 1,
+      indexPages: 1,
+      monthDocumentPages: 0,
+      lineItems: [],
+    });
+    expect(empty.map((section) => section.key)).toEqual(["summary", "index", "monthDocuments"]);
   });
 });

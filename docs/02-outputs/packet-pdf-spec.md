@@ -7,9 +7,13 @@ The single merged, ordered, page-numbered PDF the org uploads to DocuSign. `{Doc
 | # | Section | Source |
 |---|---|---|
 | 1 | **Contract summary section** | Generated (vector text): title `{docName} — Contract Summary — {Month YYYY}`, one subtitle line with the R7.3 context (`Contract {number} · Base PO {n} · Performance PO {n} · Invoice period {R2.4}` — empty values omitted), the 7-column table (BASE rows → Base subtotal → PERFORMANCE GRANT 1 → Totals) matching summary-excel sheet 1, then the 4 reconciliation lines. Yellow header fill, black grid — same visual family as the Excel. May paginate when line items overflow one page. |
-| 1b | **Expense index** | One row per expense in reference order: `Ref · Date · Name · Line Item · Reimbursable`, drawn as vector text. A contents page, so a reviewer holding a receipt can find what it belongs to and a reference quoted in an email names something the packet defines (R2.6). Repeats its column header on every page. Prints "This month has no expenses." rather than being skipped, so a section the contents claims always exists. |
-| 2 | **Month documents** | Each `month_documents` file, category order: bank_statement → combined_hours → timesheet → fiduciary_invoice → other; within category by sort_order. **This ordering is the authority R11.2 references** — UI groups mirror it. |
+| 2 | **Expense index** | One row per expense in reference order: `Ref · Date · Name · Line Item · Reimbursable`, drawn as vector text. A contents page, so a reviewer holding a receipt can find what it belongs to and a reference quoted in an email names something the packet defines (R2.6). Repeats its column header on every page. Prints "This month has no expenses." rather than being skipped, so a section the contents claims always exists. |
 | 3…n | **One section per line item** (line item sort order, skipping line items with no expenses that month): cover sheet pages first (exact cover-sheet-spec content), then per expense in cover-sheet order: receipt/justification files, then supporting documents — all in upload order (`expense_documents.sort_order`); supporting type labels don't affect ordering. |
+| last | **Month documents** | Each `month_documents` file, category order: bank_statement → combined_hours → timesheet → fiduciary_invoice → other; within category by sort_order. **This ordering is the authority R11.2 references** — UI groups mirror it. Placed last (D-77): month-level backup sits behind the claim it supports, so the packet opens on the summary and the cover letters rather than on a bank statement. |
+
+The section sequence is declared once, in `packetContents` (`src/generation/packet-order.ts`).
+`buildPacketPdf` assembles in that order and the Month-End Packet screen renders from it, so the
+listing the user reads and the file they download cannot disagree (R11.2).
 
 Proof-of-payment images appear **only** inside cover sheets (R11.3) — never duplicated as standalone pages. This preserves the manual packet's information while removing its duplication (the 30 pages of payee screenshots at the back of February's packet become salary proofs on the Salary cover sheet, or month/supporting docs if the org still wants them full-page).
 
@@ -58,7 +62,7 @@ Download blocked while any expense of the month is documentation-incomplete (R4.
 
 ## Packet screen contents listing
 
-The Month-End Packet screen lists the sections in this exact order with live page counts and a grand total — replacing the prototype's hardcoded "approximately 130 pages". Uploaded files contribute their stored `page_count`; cover sheets are estimated from `layout-constants.ts` (first-page table-row capacity + Σ ceil(scaled proof-image heights ÷ usable page height), using stored image dimensions) — the same constants the real renderer uses, keeping estimates within ±2 pages.
+The Month-End Packet screen lists the sections in this exact order with live page counts and a grand total — replacing the prototype's hardcoded "approximately 130 pages". It renders from `packetContents`, the same declaration the assembler uses, so "in the order the funder will read them" is a fact rather than a promise kept by hand (D-77). Uploaded files contribute their stored `page_count`; cover sheets are estimated from `layout-constants.ts` (first-page table-row capacity + Σ ceil(scaled proof-image heights ÷ usable page height), using stored image dimensions) — the same constants the real renderer uses, keeping estimates within ±2 pages.
 
 ## Acceptance
 

@@ -97,7 +97,7 @@ Let `opening` = line item's opening previously-billed balance (setup figure), `e
 ## 11. Supporting & month documents
 
 - **R11.1** Supporting document types are an **org-configurable label list** (SOW §1 commitment), seeded with: `Check copy | Request form | Vendor invoice | Event flyer | Narrative | Other`. Editable in Settings; each supporting document stores its label text.
-- **R11.2** Month document categories (fixed): `Bank statement | Combined hours | Timesheet | Fiduciary invoice | Other`, each with optional title. **Ordering authority is `packet-pdf-spec.md` §2**; UI groups mirror it.
+- **R11.2** Month document categories (fixed): `Bank statement | Combined hours | Timesheet | Fiduciary invoice | Other`, each with optional title. **Ordering authority is `packet-pdf-spec.md` §Canonical section order**, implemented once in `packetContents`; UI groups mirror it. The month-documents section is **last** in the packet (D-77).
 - **R11.3** Placement in the packet is defined in `packet-pdf-spec.md` — proofs render only on cover sheets; receipts, supporting docs, and month docs render as full pages.
 
 ## 12. Canonical strings (verbatim; never paraphrase in output code)

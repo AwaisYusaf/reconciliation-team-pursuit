@@ -14,6 +14,7 @@ import { TableCard, Td, Th } from "@/src/components/ui/table";
 import { formatDateUS, monthLabel, todayIso } from "@/src/domain/dates";
 import { formatMoney } from "@/src/domain/format";
 import { UI } from "@/src/domain/strings";
+import { packetContents } from "@/src/generation/packet-order";
 import { loadPacketReadiness } from "@/src/modules/packet/queries";
 import { getSession } from "@/src/services/auth/session";
 
@@ -137,27 +138,22 @@ export default async function PacketPage() {
           <p className="text-sm text-muted mb-4">In the order the funder will read them.</p>
 
           <ol className="flex flex-col divide-y divide-line border-t border-line">
-            <ContentsRow
-              index={1}
-              label="Contract summary sheet"
-              pages={readiness.summaryPages}
-            />
-            <ContentsRow
-              index={2}
-              label="Expense index"
-              pages={readiness.indexPages}
-            />
-            <ContentsRow
-              index={3}
-              label="Month documents"
-              pages={readiness.monthDocumentPages}
-            />
-            {nonEmpty.map((row, index) => (
+            {/*
+              Rendered from `packetContents`, which is the same declaration `buildPacketPdf`
+              assembles in (R11.2). This list used to be a second hand-written sequence, so the
+              caption above could promise an order the file did not have.
+            */}
+            {packetContents({
+              summaryPages: readiness.summaryPages,
+              indexPages: readiness.indexPages,
+              monthDocumentPages: readiness.monthDocumentPages,
+              lineItems: nonEmpty,
+            }).map((section, index) => (
               <ContentsRow
-                key={row.lineItemId}
-                index={index + 4}
-                label={`${row.name} — cover sheet + documents`}
-                pages={row.estimatedPages}
+                key={section.key}
+                index={index + 1}
+                label={section.label}
+                pages={section.pages}
               />
             ))}
           </ol>

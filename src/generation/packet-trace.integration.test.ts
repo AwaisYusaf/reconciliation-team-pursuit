@@ -39,7 +39,9 @@ describe.skipIf(!canRun)("packet traceability (integration)", async () => {
   const { contractSettings, expenses, lineItems, organizations, paymentSources } = await import(
     "@/src/db/schema"
   );
-  const { ingestExpenseDocument } = await import("@/src/services/storage/documents");
+  const { ingestExpenseDocument, ingestMonthDocument } = await import(
+    "@/src/services/storage/documents"
+  );
   const { loadMonthSnapshot } = await import("./month-snapshot");
   const { buildDeliverablePacket } = await import("./packet-build");
 
@@ -98,6 +100,17 @@ describe.skipIf(!canRun)("packet traceability (integration)", async () => {
         if (!result.ok) throw new Error(result.error);
       }
     }
+
+    // One month-level document, so the packet has a section that belongs to no expense. The
+    // fixture had none, which is why nothing caught a bank statement sitting at the front.
+    const monthDoc = await ingestMonthDocument({
+      orgId,
+      month: MONTH,
+      category: "bank_statement",
+      title: "February statement",
+      file: new File([new Uint8Array(jpeg)], "statement.jpg", { type: "image/jpeg" }),
+    });
+    if (!monthDoc.ok) throw new Error(monthDoc.error);
 
     const packet = await buildDeliverablePacket(await loadMonthSnapshot(orgId, MONTH));
     pageCount = packet.pageCount;
@@ -168,5 +181,25 @@ describe.skipIf(!canRun)("packet traceability (integration)", async () => {
 
   it("keeps the organisation and month on every page", () => {
     for (const text of pageText) expect(text).toContain("Trace — February 2099");
+  });
+
+  it("puts the month documents after every expense's evidence (D-77)", () => {
+    // The client's complaint: a bank statement before the first cover letter. A month document
+    // carries no expense reference (D-70) and every receipt page does, so the position is
+    // readable from the footers alone.
+    const referenced = pageText
+      .map((text, index) => (/— \d{4}-\d{2}-\d{3} — Page/.test(text) ? index + 1 : 0))
+      .filter(Boolean);
+
+    expect(referenced.length).toBeGreaterThan(0);
+    // The single month document is the last page, so the last referenced page is the one before.
+    expect(Math.max(...referenced)).toBe(pageCount - 1);
+    expect(/— \d{4}-\d{2}-\d{3} — Page/.test(pageText[pageCount - 1])).toBe(false);
+  });
+
+  it("still opens on the summary and the index", () => {
+    // Moving one section must not disturb the two that introduce the packet.
+    expect(pageText[0]).toContain("Contract Summary");
+    expect(pageText[1]).toMatch(/Ref|Expense/);
   });
 });

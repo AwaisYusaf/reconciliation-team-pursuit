@@ -15,7 +15,7 @@ Reads everything for the month; writes `month_documents`. Calls packet + Excel g
 - **Zero-expense month:** downloadable (summary + month documents only) with the notice `This month has no expenses.`
 - **Submitted flag (R10.6):** after a successful packet download, a quiet `Mark as submitted` action appears; once set, the month shows `Submitted {date}` here and edit warnings elsewhere.
 - **Month documents manager:** card listing uploads grouped by category (`Bank statement · Timesheet · Combined hours · Fiduciary invoice · Other`), each row: filename, optional title, page count, Remove. Add flow: category select + optional title + file. Soft reminder (not blocking) when no bank statement uploaded: `No bank statement attached for {Month} yet.`
-- **Packet contents, in submission order:** numbered list mirroring packet-pdf-spec §order with live page counts (uploads use stored `page_count`; cover sheets estimated via `layout-constants.ts` per packet-pdf-spec): `1. Contract summary sheet — {n} page(s)`, `2. Month documents — {n} pages`, then `{Line Item} — cover sheet + documents — {n} pages` per non-empty line item; total row `Total: {N} pages`.
+- **Packet contents, in submission order:** numbered list with live page counts (uploads use stored `page_count`; cover sheets estimated via `layout-constants.ts` per packet-pdf-spec): `1. Contract summary sheet — {n} page(s)`, `2. Expense index — {n} page(s)`, then `{Line Item} — cover sheet + documents — {n} pages` per non-empty line item, and last `Month documents — {n} pages`; total row `Total: {N} pages`. The rows are **rendered from `packetContents`**, the same declaration `buildPacketPdf` assembles in — not a second hand-written list (R11.2, D-77).
 - **Downloads:** primary `Download Packet (PDF)` + `Download Summary (Excel)`; generation is a synchronous streaming request behind a single-flight lock (packet-pdf-spec §Failure handling) with an indeterminate "Assembling…" state; post-download toast with file size (artifact pinned per R10.6); if the final size > 25 MB show the compression warning per packet spec; on failure, the red failure panel with Retry.
 
 ## Server surface
@@ -53,8 +53,8 @@ Complete. Rows:
    Grand Total row bold: $94,281.62 · 51.
 
 3) MONTH DOCUMENTS card: h2 "Month documents", helper "Bank statements, timesheets and other
-documents that belong to the whole month. They are included in the packet after the summary
-sheet." Grouped rows:
+documents that belong to the whole month. They are included at the end of the packet."
+Grouped rows:
    BANK STATEMENT — "chase-business-march-2026.pdf" · 11 pages · Remove
    COMBINED HOURS — "combined-hours-march.pdf" · 1 page · Remove
    TIMESHEET — "timesheets-all-staff-march.pdf" · 17 pages · Remove
@@ -62,11 +62,11 @@ sheet." Grouped rows:
    Add row: category select + "Title (optional)" input + file button.
 
 4) PACKET CONTENTS table: headers # | Item | Pages. Rows: 1 Contract summary sheet 1 ·
-2 Month documents 30 · 3 Salary — cover sheet + documents 21 · 4 Analytical Support — cover
+2 Expense index 2 · 3 Salary — cover sheet + documents 21 · 4 Analytical Support — cover
 sheet + documents 14 · 5 Promotional & Marketing — cover sheet + documents 26 · 6 Social
 Services & Support — cover sheet + documents 24 · 7 Community Programs & Events — cover
-sheet + documents 8 · 8 Professional Development — cover sheet + documents 4 · bold total
-row "Total: 128 pages".
+sheet + documents 8 · 8 Professional Development — cover sheet + documents 4 · 9 Month
+documents 30 · bold total row "Total: 130 pages".
 
 5) Buttons row: "Download Packet (PDF)" and "Download Summary (Excel)" — both rendered in
 the DISABLED state (gray #C9C2B4 background, #7A7364 text, not-allowed cursor) since the

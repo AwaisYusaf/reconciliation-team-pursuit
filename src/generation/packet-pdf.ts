@@ -170,23 +170,13 @@ export async function buildPacketPdf(
     throw new PacketError("the contract summary section", error);
   }
 
-  /* -------------------------------------------------- 1b. expense index */
+  /* --------------------------------------------------- 2. expense index */
   // Directly after the summary, where a contents page belongs: a reviewer meets the totals,
   // then the list of what makes them up, then the evidence.
   try {
     await owned(null, async () => appendGenerated(pdf, await buildIndexSectionPdf(snapshot)));
   } catch (error) {
     throw new PacketError("the expense index section", error);
-  }
-
-  /* -------------------------------------------------- 2. month documents */
-  for (const document of orderedMonthDocuments(snapshot.monthDocuments)) {
-    try {
-      // A month document (a bank statement) belongs to the month, not to any one expense.
-      await owned(null, async () => appendUpload(pdf, snapshot.orgId, document, quality));
-    } catch (error) {
-      throw new PacketError(document.title || document.filename, error);
-    }
   }
 
   /* --------------------------------------- 3..n. one section per line item */
@@ -219,6 +209,19 @@ export async function buildPacketPdf(
           throw new PacketError(`${expense.name} — ${document.filename}`, error);
         }
       }
+    }
+  }
+
+  /* ------------------------------------------- last. month documents (D-77) */
+  // Month-level backup — bank statements, timesheets — goes behind the claim it supports, so
+  // the packet opens on the summary and the cover letters rather than on a bank statement.
+  // It used to sit ahead of the first cover sheet, which is what the client asked us to fix.
+  for (const document of orderedMonthDocuments(snapshot.monthDocuments)) {
+    try {
+      // A month document belongs to the month, not to any one expense, so it owns no reference.
+      await owned(null, async () => appendUpload(pdf, snapshot.orgId, document, quality));
+    } catch (error) {
+      throw new PacketError(document.title || document.filename, error);
     }
   }
 

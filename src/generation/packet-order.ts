@@ -28,12 +28,12 @@ function byOrderThenId(
   return a.sortOrder - b.sortOrder || a.id.localeCompare(b.id);
 }
 
-/** Month documents in category order, then by sort order (section 2). */
+/** Month documents in category order, then by sort order (the final section). */
 export function orderedMonthDocuments(
   documents: readonly SnapshotMonthDocument[],
 ): SnapshotMonthDocument[] {
-  // An unrecognised category sorts last, not first: `indexOf` returns -1, which would put
-  // a future enum value ahead of the bank statement at the very front of the submission.
+  // An unrecognised category sorts last, not first: `indexOf` returns -1, which would put a
+  // future enum value ahead of the bank statement at the head of the month-documents section.
   const rank = (category: string) => {
     const index = CATEGORY_ORDER.indexOf(category);
     return index === -1 ? CATEGORY_ORDER.length : index;
@@ -55,5 +55,46 @@ export function packetDocumentsFor(expense: SnapshotExpense): SnapshotDocument[]
   return [
     ...expense.documents.filter((document) => document.kind === "receipt").sort(byOrderThenId),
     ...expense.documents.filter((document) => document.kind === "supporting").sort(byOrderThenId),
+  ];
+}
+
+
+/** One row of the packet's contents, in the order a reader meets it. */
+export type PacketSection = {
+  /** Stable key for React, and for saying which section a row is. */
+  key: string;
+  label: string;
+  pages: number;
+};
+
+/**
+ * The packet's section sequence — the single place it is declared (R11.2).
+ *
+ * The Month-End Packet screen tells the user this is "the order the funder will read them", so
+ * the listing and the assembled file have to be the same order. They used to be two hand-written
+ * sequences: `buildPacketPdf`'s statement order, and a hardcoded `<ol>` of `index={1}`,
+ * `index={2}`, `index={3}`, `index + 4`. Nothing connected them, and this project's every shipped
+ * defect has been two paths that had to agree where only one was updated.
+ *
+ * Month documents come last (D-77). They are month-level backup — bank statements, timesheets —
+ * and putting them first meant a bank statement was the first thing after the summary, ahead of
+ * the first cover letter. `buildPacketPdf` appends in this same order; the integration test
+ * asserts the rendered packet ends with them, so the two cannot drift silently.
+ */
+export function packetContents(input: {
+  summaryPages: number;
+  indexPages: number;
+  monthDocumentPages: number;
+  lineItems: readonly { lineItemId: string; name: string; estimatedPages: number }[];
+}): PacketSection[] {
+  return [
+    { key: "summary", label: "Contract summary sheet", pages: input.summaryPages },
+    { key: "index", label: "Expense index", pages: input.indexPages },
+    ...input.lineItems.map((lineItem) => ({
+      key: lineItem.lineItemId,
+      label: `${lineItem.name} — cover sheet + documents`,
+      pages: lineItem.estimatedPages,
+    })),
+    { key: "monthDocuments", label: "Month documents", pages: input.monthDocumentPages },
   ];
 }

@@ -113,7 +113,7 @@ Same processing/status fields as expense_documents, plus:
 | id | uuid PK | |
 | org_id | uuid FK | |
 | month | char(7) | |
-| category | enum | `bank_statement` \| `combined_hours` \| `timesheet` \| `fiduciary_invoice` \| `other` — packet order authority: packet-pdf-spec §2 |
+| category | enum | `bank_statement` \| `combined_hours` \| `timesheet` \| `fiduciary_invoice` \| `other` — category order authority: packet-pdf-spec §Canonical section order (the section itself is last, D-77) |
 | title | text null | Optional label shown in packet manager |
 
 ### month_statuses (decision D-21)
