@@ -130,3 +130,28 @@ export function validateRecurring(input: {
   if (input.amountCents === 0) return "Enter an amount.";
   return null;
 }
+
+/** The Recurring tab's "no line item filter" option, and the value the Select shows for it. */
+export const ALL_LINE_ITEMS = "All line items";
+
+/**
+ * Does a recurring item survive the tab's search and line item filter?
+ *
+ * Shared deliberately. The list uses it to decide what to render, and the save handler uses it
+ * to decide whether a just-saved item would land outside the current controls — adding "Acme"
+ * while the search reads "Zephyr" otherwise saves into a list that cannot show it, which reads
+ * as a save that failed. Two copies of this predicate would be two things that must agree, and
+ * that is how every defect this project has shipped began.
+ */
+export function matchesRecurringFilters(
+  row: { name: string; defaultDescription: string; lineItemName: string },
+  filters: { query: string; lineFilter: string },
+): boolean {
+  const term = filters.query.trim().toLowerCase();
+  return (
+    (filters.lineFilter === ALL_LINE_ITEMS || row.lineItemName === filters.lineFilter) &&
+    (term === "" ||
+      row.name.toLowerCase().includes(term) ||
+      row.defaultDescription.toLowerCase().includes(term))
+  );
+}

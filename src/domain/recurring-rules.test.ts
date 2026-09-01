@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  ALL_LINE_ITEMS,
   addedState,
+  matchesRecurringFilters,
   removeConfirmation,
   validateRecurring,
   type ExpenseMatchable,
@@ -232,5 +234,48 @@ describe("removeConfirmation wording", () => {
   it("says so when the expense was entered by hand, not added from here", () => {
     expect(removeConfirmation("Adobe", 0, false)).toContain("was not added from this recurring item");
     expect(removeConfirmation("Adobe", 1, false)).toContain("and 1 attached file");
+  });
+});
+
+describe("matchesRecurringFilters", () => {
+  const row = {
+    name: "Zephyr Logistics",
+    defaultDescription: "Quarterly retainer",
+    lineItemName: "Travel",
+  };
+  const unfiltered = { query: "", lineFilter: ALL_LINE_ITEMS };
+
+  it("keeps everything when nothing is filtered", () => {
+    expect(matchesRecurringFilters(row, unfiltered)).toBe(true);
+  });
+
+  it("searches the name and the description, case-insensitively", () => {
+    expect(matchesRecurringFilters(row, { ...unfiltered, query: "zephyr" })).toBe(true);
+    expect(matchesRecurringFilters(row, { ...unfiltered, query: "RETAINER" })).toBe(true);
+    expect(matchesRecurringFilters(row, { ...unfiltered, query: "haulage" })).toBe(false);
+  });
+
+  it("ignores surrounding whitespace, so a stray space does not empty the table", () => {
+    expect(matchesRecurringFilters(row, { ...unfiltered, query: "  zephyr  " })).toBe(true);
+    expect(matchesRecurringFilters(row, { ...unfiltered, query: "   " })).toBe(true);
+  });
+
+  it("filters by line item", () => {
+    expect(matchesRecurringFilters(row, { query: "", lineFilter: "Travel" })).toBe(true);
+    expect(matchesRecurringFilters(row, { query: "", lineFilter: "Salaries" })).toBe(false);
+  });
+
+  it("requires the search and the filter to agree, not either one", () => {
+    expect(matchesRecurringFilters(row, { query: "zephyr", lineFilter: "Travel" })).toBe(true);
+    // Matches the search but sits under another line item — it must stay hidden.
+    expect(matchesRecurringFilters(row, { query: "zephyr", lineFilter: "Salaries" })).toBe(false);
+  });
+
+  it("is the predicate the save handler needs: a new row outside the controls does not match", () => {
+    // Saving "Acme" while the search reads "Zephyr" is what makes the tab clear its controls.
+    const saved = { name: "Acme", defaultDescription: "", lineItemName: "Travel" };
+    expect(matchesRecurringFilters(saved, { query: "Zephyr", lineFilter: ALL_LINE_ITEMS })).toBe(
+      false,
+    );
   });
 });

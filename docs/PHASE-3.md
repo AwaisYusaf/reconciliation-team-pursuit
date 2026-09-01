@@ -13,7 +13,7 @@ Two things learned in Phase 2 and applied from the start here:
 - **Render or click anything called verified.** The last three Phase 2 defects surfaced only when a
   document was actually opened rather than reasoned about.
 
-**Status:** T1, T2 done. T3 not started. `Last reviewed: 2026-09-01.`
+**Status:** all three done. `Last reviewed: 2026-09-01.`
 
 ---
 
@@ -146,7 +146,7 @@ width; mutation-tested, it fails at 15% and passes at 18%.
 
 ---
 
-# T3 · Recurring tab needs search, pagination and filtering
+# T3 · Recurring tab needs search, pagination and filtering — done
 
 > Add search field, pagination & line item based filtering.
 
@@ -172,16 +172,33 @@ badly with what is already there.
 
 ### Passing criteria
 
-- [ ] Search matches name and description, case-insensitively.
-- [ ] The line-item filter lists only line items that exist, and matches the expenses list's wording.
-- [ ] Search, filter and pagination compose without one clobbering another.
-- [ ] Changing a filter resets to page 1 — otherwise a user sits on an empty page 3.
-- [ ] **"Added to {Month}" state stays correct** for every row on every page: it is derived per row
+- [x] Search matches name and description, case-insensitively.
+- [x] The line-item filter lists only line items that exist, and matches the expenses list's wording.
+- [x] Search, filter and pagination compose without one clobbering another.
+- [x] Changing a filter resets to page 1 — otherwise a user sits on an empty page 3.
+- [x] **"Added to {Month}" state stays correct** for every row on every page: it is derived per row
       from this month's expenses, so a paged-away row must not read as not-added.
-- [ ] Add and Remove still act on the right row after filtering or paging.
-- [ ] A search matching nothing says so, rather than rendering an empty table.
-- [ ] Controls are hidden or inert when there is nothing to search — a two-item list should not
+- [x] Add and Remove still act on the right row after filtering or paging.
+- [x] A search matching nothing says so, rather than rendering an empty table.
+- [x] Controls are hidden or inert when there is nothing to search — a two-item list should not
       grow a filter bar.
+
+### What was found in testing
+
+The added-state trap turned out to be closed already: `added` is resolved per row on the server
+from the whole month, so it travels with the row and cannot be narrowed by a client-side filter.
+Verified rather than assumed — under the Travel filter exactly the two rows that should read as
+added did, and Edit on a filtered row opened that row.
+
+**One deviation from the plan.** The plan said controls should hide on short lists. They do not:
+Misty asked for a search field, and not seeing it on a three-item list reads as the feature
+missing. Only the pager is conditional, appearing above 25 rows.
+
+**One gap found while building, not in the plan.** Saving an item that the active search or
+filter excludes left it invisible, which reads as a failed save. The save now clears the controls
+only when the saved row would actually be hidden. That check and the list filter share one
+predicate — two copies would be two things that must agree, which is how every defect this
+project has shipped began.
 
 ### Edge cases that must not be missed
 
@@ -201,6 +218,6 @@ badly with what is already there.
 | # | Task | Question |
 |---|---|---|
 | Q1 | T1 | Built as a **silent** rejection — the character simply does not appear, which is what a field that can only hold a number should do. Say if you would rather it showed a message. |
-| Q2 | T3 | How many recurring items does Misty expect to hold? It decides the page size, and whether pagination should appear at all below a threshold. Assuming **25 per page, shown only above 25 items** until told otherwise. |
+| Q2 | T3 | Built as **25 per page, pager shown only above 25 items**, so the client's current list stays one uninterrupted table. Say if you expect a much longer list and want a different page size. |
 
 Neither blocks starting; both are one-line constants.

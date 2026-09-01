@@ -14,6 +14,17 @@ Reads/writes `recurring_items`; creates `expenses` (no documents — R4.5). Adde
 - **Remove** deletes the newest matching expense; if that expense has ≥ 1 document attached, a confirm dialog is required first (R8.3).
 - Subtext: `Vendors and salaries billed every month. Nothing is added automatically — confirm each one you want to add to {Month YYYY}.`
 - `+ Add recurring item` inline form: name, amount, line item, optional description. Edit/delete per row (delete = list only, never touches expenses). Recurring items are cascade-deleted with their line item after the R9.3 confirm.
+- **Search, line item filter, pagination.** Search matches name and default description; the
+  filter offers only line items that actually have a recurring item, so a chosen filter can never
+  show an empty table. 25 rows per page, and the pager appears only above that — a short list
+  stays one uninterrupted table. Any filter change returns to page 1, and the page is clamped at
+  render so deleting the last row of the last page cannot strand the reader on a page that no
+  longer exists. Saving an item the current search or filter would hide clears the controls, so a
+  save never looks like it failed. The list and that save check share one predicate,
+  `matchesRecurringFilters`.
+  - Added-state is unaffected: it is resolved per row on the server from the whole month, so it
+    travels with the row and stays correct on any page or filter. Narrowing the *lookup* instead
+    would make a filtered row read as not-added, and adding again would duplicate a salary.
 - Added-then-documented flow: the created expense is documentation-incomplete until proofs are attached — packet gate surfaces it (deliberate).
 
 ## Server surface

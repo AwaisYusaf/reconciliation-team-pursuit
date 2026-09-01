@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 
 import { Button } from "@/src/components/ui/button";
 import { Dialog } from "@/src/components/ui/dialog";
@@ -12,7 +12,11 @@ import { TableCard, Td, Th } from "@/src/components/ui/table";
 import { reportResult } from "@/src/components/ui/toast";
 import type { ActionResult } from "@/src/lib/action-result";
 import { formatMoney } from "@/src/domain/format";
-import { removeConfirmation } from "@/src/domain/recurring-rules";
+import {
+  ALL_LINE_ITEMS,
+  matchesRecurringFilters,
+  removeConfirmation,
+} from "@/src/domain/recurring-rules";
 import {
   addRecurringToMonthAction,
   deleteRecurringItemAction,
@@ -45,6 +49,12 @@ type Draft = {
   defaultTax: string;
   defaultFees: string;
 };
+
+/**
+ * Rows per page. Pagination only appears above this, so the client's current list — a couple
+ * of dozen vendors and salaries — stays a single uninterrupted table.
+ */
+const PAGE_SIZE = 25;
 
 const EMPTY_DRAFT: Draft = {
   name: "",
@@ -80,6 +90,55 @@ export function RecurringManager({
     null,
   );
   const [justChanged, setJustChanged] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
+  const [lineFilter, setLineFilter] = useState(ALL_LINE_ITEMS);
+  const [page, setPage] = useState(1);
+
+  // Only line items that actually have a recurring item, matching the expenses list. Offering
+  // every line item would let the reader pick one that can only ever show an empty table.
+  const lineItemNames = useMemo(
+    () => [...new Set(rows.map((row) => row.lineItemName))].sort(),
+    [rows],
+  );
+
+  const visible = useMemo(
+    () => rows.filter((row) => matchesRecurringFilters(row, { query, lineFilter })),
+    [rows, query, lineFilter],
+  );
+
+  const pageCount = Math.max(1, Math.ceil(visible.length / PAGE_SIZE));
+  // Clamped at render rather than tracked in an effect, so deleting the last row on the last
+  // page falls back to a page that exists instead of showing an empty table.
+  const safePage = Math.min(page, pageCount);
+  const shown = visible.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+
+  /** Narrowing the list can strand the reader past the end, so any filter change goes to page 1. */
+  function refine(apply: () => void) {
+    apply();
+    setPage(1);
+  }
+
+  /**
+   * Clear the controls when a saved item would land outside them.
+   *
+   * Adding "Acme" while the search reads "Zephyr" saves it into a list that cannot show it,
+   * which reads as a save that failed — as does editing a row into a line item the current
+   * filter excludes. Only clears when the row would actually be hidden, so working through a
+   * filtered list is not interrupted by every save.
+   */
+  function revealSaved(saved: Draft) {
+    const lineItemName = lineItems.find((item) => item.id === saved.lineItemId)?.name ?? "";
+    const matches = matchesRecurringFilters(
+      { name: saved.name, defaultDescription: saved.defaultDescription, lineItemName },
+      { query, lineFilter },
+    );
+
+    if (!matches) {
+      setQuery("");
+      setLineFilter(ALL_LINE_ITEMS);
+      setPage(1);
+    }
+  }
 
   function run(
     work: () => Promise<ActionResult<unknown>>,
@@ -177,9 +236,46 @@ export function RecurringManager({
         {confirmRemove?.message}
       </Dialog>
 
+      {rows.length > 0 && (
+        <div className="flex flex-wrap gap-[18px] mb-5">
+          <div className="flex-1 min-w-[240px] max-w-[340px]">
+            <Label id="recurringSearch-label" htmlFor="recurringSearch">Search</Label>
+            <Input
+              id="recurringSearch"
+              type="search"
+              aria-labelledby="recurringSearch-label"
+              placeholder="Name or description"
+              value={query}
+              onChange={(event) => refine(() => setQuery(event.target.value))}
+            />
+          </div>
+          <div className="flex-1 min-w-[240px] max-w-[340px]">
+            <Label id="recurringLineFilter-label" htmlFor="recurringLineFilter">
+              Filter by line item
+            </Label>
+            <Select
+              id="recurringLineFilter"
+              aria-labelledby="recurringLineFilter-label"
+              value={lineFilter}
+              onValueChange={(value) => refine(() => setLineFilter(value))}
+            >
+              <option>{ALL_LINE_ITEMS}</option>
+              {lineItemNames.map((name) => (
+                <option key={name}>{name}</option>
+              ))}
+            </Select>
+          </div>
+        </div>
+      )}
+
       {rows.length === 0 ? (
         <EmptyState>
           No recurring items yet. Add the vendors and salaries that repeat every month.
+        </EmptyState>
+      ) : visible.length === 0 ? (
+        <EmptyState>
+          No recurring items match this search. Clear the search or the line item filter to see
+          the rest.
         </EmptyState>
       ) : (
         <TableCard minWidth={860}>
@@ -194,7 +290,7 @@ export function RecurringManager({
             </tr>
           </thead>
           <tbody>
-            {rows.map((row) => (
+            {shown.map((row) => (
               <tr key={row.id} className={justChanged === row.id ? "bg-success-bg" : undefined}>
                 <Td>{row.name}</Td>
                 <Td align="right" numeric>
@@ -253,6 +349,36 @@ export function RecurringManager({
             ))}
           </tbody>
         </TableCard>
+      )}
+
+      {visible.length > PAGE_SIZE && (
+        <div className="flex items-center justify-between gap-4 mt-4 flex-wrap">
+          <span className="text-sm text-sub">
+            Showing {(safePage - 1) * PAGE_SIZE + 1}–{Math.min(safePage * PAGE_SIZE, visible.length)}{" "}
+            of {visible.length}
+          </span>
+          <div className="flex items-center gap-3.5">
+            <Button
+              variant="quiet"
+              className="min-h-9"
+              disabled={safePage <= 1}
+              onClick={() => setPage(safePage - 1)}
+            >
+              Previous
+            </Button>
+            <span className="text-sm text-sub whitespace-nowrap">
+              Page {safePage} of {pageCount}
+            </span>
+            <Button
+              variant="quiet"
+              className="min-h-9"
+              disabled={safePage >= pageCount}
+              onClick={() => setPage(safePage + 1)}
+            >
+              Next
+            </Button>
+          </div>
+        </div>
       )}
 
       {!draft ? (
@@ -376,7 +502,10 @@ export function RecurringManager({
               onClick={() =>
                 run(
                   () => saveRecurringItemAction(draft),
-                  () => setDraft(null),
+                  () => {
+                    setDraft(null);
+                    revealSaved(draft);
+                  },
                   draft.id ? "Recurring item saved" : "Recurring item added",
                 )
               }
