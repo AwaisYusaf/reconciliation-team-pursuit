@@ -1,6 +1,7 @@
 import type { ComponentProps, ReactNode } from "react";
 import { useId } from "react";
 
+import { sanitiseMoneyInput } from "@/src/domain/money";
 import { cn } from "@/src/lib/cn";
 
 /** Shared control chrome. Exported so the custom `Select` trigger matches Input/Textarea. */
@@ -43,7 +44,7 @@ export function Textarea({ className, ...props }: ComponentProps<"textarea">) {
  * tabular-numeral field, matching the approved design. The value stays a string
  * here; parsing to integer cents happens server-side in the domain layer.
  */
-export function MoneyInput({ className, ...props }: ComponentProps<"input">) {
+export function MoneyInput({ className, onChange, ...props }: ComponentProps<"input">) {
   return (
     <div
       className={cn(
@@ -54,6 +55,25 @@ export function MoneyInput({ className, ...props }: ComponentProps<"input">) {
       <span className="text-base text-sub">$</span>
       <input
         inputMode="decimal"
+        onChange={(event) => {
+          // Filter the value rather than the keystroke, so paste, autofill and dictation are
+          // covered too. `inputMode` alone is only a soft keyboard hint — on a desktop keyboard
+          // it stops nothing, which is how letters were reaching the parser and saving $0.00.
+          const input = event.currentTarget;
+          const clean = sanitiseMoneyInput(input.value);
+
+          if (clean !== input.value) {
+            // Keep the caret where the user left it instead of flinging it to the end.
+            // `sanitiseMoneyInput` is a left-to-right fold whose state depends only on the
+            // text so far, so sanitising the prefix gives exactly the prefix of the result.
+            const caret = input.selectionStart ?? input.value.length;
+            const kept = sanitiseMoneyInput(input.value.slice(0, caret)).length;
+            input.value = clean;
+            input.setSelectionRange(kept, kept);
+          }
+
+          onChange?.(event);
+        }}
         className="flex-1 min-w-0 border-none outline-none bg-transparent py-[11px] text-base text-ink text-right tabular-nums font-sans"
         {...props}
       />

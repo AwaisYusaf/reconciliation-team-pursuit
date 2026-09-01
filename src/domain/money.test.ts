@@ -7,6 +7,7 @@ import {
   parseMoneyToCentsOrZero,
   receiptTotalCents,
   reimbursableCents,
+  sanitiseMoneyInput,
   sumBy,
   sumCents,
 } from "./money";
@@ -191,5 +192,53 @@ describe("excludedParts", () => {
         feesReimbursable: false,
       }),
     ).toEqual([]);
+  });
+});
+
+describe("sanitiseMoneyInput", () => {
+  it("drops letters and symbols", () => {
+    expect(sanitiseMoneyInput("12abc")).toBe("12");
+    expect(sanitiseMoneyInput("abc")).toBe("");
+    expect(sanitiseMoneyInput("1e5")).toBe("15");
+    expect(sanitiseMoneyInput("$1,234.56")).toBe("1,234.56");
+    expect(sanitiseMoneyInput("145.00 USD")).toBe("145.00");
+  });
+
+  it("keeps every shape the parser accepts", () => {
+    // If any of these were stripped, real entry would break — so assert the round trip,
+    // not just the surviving text.
+    for (const raw of ["1,234.56", "$1,234.56", "-145.00", "(145.00)", "0.5", "1234"]) {
+      const clean = sanitiseMoneyInput(raw);
+      expect(parseMoneyToCents(clean)).toBe(parseMoneyToCents(raw));
+      expect(parseMoneyToCents(clean)).not.toBeNull();
+    }
+  });
+
+  it("leaves a half-typed value alone", () => {
+    // These are all invalid numbers, and all of them are what the field holds mid-keystroke.
+    for (const partial of ["", "-", "12.", ".", ".5", "(", "(1"]) {
+      expect(sanitiseMoneyInput(partial)).toBe(partial);
+    }
+  });
+
+  it("keeps only the first decimal point", () => {
+    // "12.5.3" parses to null, which `parseMoneyToCentsOrZero` would turn into $0.00.
+    expect(sanitiseMoneyInput("12.5.3")).toBe("12.53");
+  });
+
+  it("only lets a sign lead", () => {
+    expect(sanitiseMoneyInput("1-2")).toBe("12");
+    expect(sanitiseMoneyInput("1(2)")).toBe("12");
+    expect(sanitiseMoneyInput("145.00)")).toBe("145.00");
+  });
+
+  it("is a prefix-stable fold, so the caret can be restored by sanitising the prefix", () => {
+    // MoneyInput relies on this to avoid flinging the caret to the end mid-edit.
+    for (const raw of ["1a2.b3", "$1,234.56", "-1.2.3", "(1a)"]) {
+      const full = sanitiseMoneyInput(raw);
+      for (let i = 0; i <= raw.length; i += 1) {
+        expect(full.startsWith(sanitiseMoneyInput(raw.slice(0, i)))).toBe(true);
+      }
+    }
   });
 });

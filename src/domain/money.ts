@@ -65,6 +65,47 @@ function toCents(value: number): number {
   return scaled < 0 ? -Math.round(-scaled) : Math.round(scaled);
 }
 
+/**
+ * Strip anything that could not belong to an amount, as the user types (R1.1).
+ *
+ * Filters the *value* rather than blocking keystrokes: a keydown guard misses paste, browser
+ * autofill and mobile dictation, all of which are how a wrong figure actually arrives.
+ *
+ * Deliberately permissive about shape, strict about characters. Everything `parseMoneyToCents`
+ * accepts survives — thousands separators, a leading minus for refunds (R1.4), and the
+ * `(145.00)` accounting negative people paste out of spreadsheets — while letters and symbols
+ * cannot be entered at all. Half-typed values like `12.`, `-` and `.5` pass through untouched,
+ * because rejecting them would make the field impossible to type into.
+ *
+ * The parser remains the authority. This exists because `parseMoneyToCentsOrZero` turns
+ * unparseable input into `0.00`, so a typo used to save a silently wrong figure rather than
+ * being refused.
+ */
+export function sanitiseMoneyInput(raw: string): string {
+  let out = "";
+  let seenDot = false;
+
+  for (const char of raw) {
+    if (char >= "0" && char <= "9") {
+      out += char;
+    } else if (char === "." && !seenDot) {
+      // Only the first: "12.5.3" is a slip, and keeping both decimal points would leave a
+      // value that silently parses to zero.
+      seenDot = true;
+      out += char;
+    } else if (char === ",") {
+      out += char;
+    } else if ((char === "-" || char === "(") && out.length === 0) {
+      // A sign only leads. "1-2" is not a number anyone meant to type.
+      out += char;
+    } else if (char === ")" && out.startsWith("(")) {
+      out += char;
+    }
+  }
+
+  return out;
+}
+
 /** Parse, treating empty/invalid input as zero. For optional money fields that default to $0.00. */
 export function parseMoneyToCentsOrZero(input: string | number | null | undefined): number {
   return parseMoneyToCents(input) ?? 0;
