@@ -165,6 +165,20 @@ describe("excludedParts", () => {
     expect(excludedParts({ ...base, taxReimbursable: true, feesReimbursable: true })).toEqual([]);
   });
 
+  it("reports a refund's excluded tax, which still opens a gap (R1.4)", () => {
+    // The credit note totals -$153.70 while the claim is -$145.00. Without the note the
+    // cover sheet shows an $8.70 difference with nothing explaining it.
+    expect(
+      excludedParts({
+        subtotalCents: -14_500,
+        taxCents: -870,
+        feesCents: 0,
+        taxReimbursable: false,
+        feesReimbursable: true,
+      }),
+    ).toEqual(["tax"]);
+  });
+
   it("says nothing about a part that is zero", () => {
     // There is no gap to explain, so the cover sheet must stay silent — otherwise every
     // expense with no tax would carry a note about excluded tax it never had.

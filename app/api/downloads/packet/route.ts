@@ -21,7 +21,7 @@ export const maxDuration = 600;
 /** Bump when the packet's layout or ordering changes, so cached artifacts rebuild (R10.4). */
 // Bumped "packet-6": the expense index now discloses undocumented expenses (D-74).
 // Without a bump, pinned and cached artifacts keep serving output built before the change.
-const GENERATOR_VERSION = "packet-6";
+const GENERATOR_VERSION = "packet-7";
 
 /**
  * Download the month-end packet.

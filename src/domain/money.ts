@@ -138,8 +138,11 @@ export function receiptTotalCents(amounts: {
 /** The parts of a receipt this funder will not pay for — what the cover sheet must explain. */
 export function excludedParts(amounts: ExpenseComposition): Array<"tax" | "fees"> {
   const excluded: Array<"tax" | "fees"> = [];
-  if (!amounts.taxReimbursable && amounts.taxCents > 0) excluded.push("tax");
-  if (!amounts.feesReimbursable && amounts.feesCents > 0) excluded.push("fees");
+  // Non-zero, not positive: a refund carries negative tax and fees (R1.4), and one that is
+  // not reimbursed still opens a gap between the credit note and the claim — the same gap
+  // the note exists to explain. Only a genuine zero has nothing to disclose.
+  if (!amounts.taxReimbursable && amounts.taxCents !== 0) excluded.push("tax");
+  if (!amounts.feesReimbursable && amounts.feesCents !== 0) excluded.push("fees");
   return excluded;
 }
 
