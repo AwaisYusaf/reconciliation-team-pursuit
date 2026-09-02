@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useTransition } from "react";
 
+import { ConfirmButton } from "@/src/components/ui/confirm-button";
 import { reportResult } from "@/src/components/ui/toast";
 import type { ActionResult } from "@/src/lib/action-result";
 import { clearMonthSubmittedAction, markMonthSubmittedAction } from "@/src/modules/packet/actions";
@@ -34,14 +35,22 @@ export function SubmittedMarker({
     return (
       <div className="flex flex-wrap items-center gap-3 text-sm">
         <span className="text-muted">Submitted {submittedAt}</span>
-        <button
-          type="button"
-          onClick={() => run(() => clearMonthSubmittedAction(month), "Submission mark removed.")}
+        <ConfirmButton
+          variant="quiet"
           disabled={pending}
-          className="text-muted underline disabled:opacity-60"
+          title="Undo the submission mark?"
+          confirmLabel="Undo submission"
+          body={
+            <>
+              This also discards the figures captured when the month was marked submitted, which
+              are what later changes are compared against. Marking it submitted again captures
+              the month as it stands then, not as it stood before.
+            </>
+          }
+          onConfirm={() => run(() => clearMonthSubmittedAction(month), "Submission mark removed.")}
         >
           Undo
-        </button>
+        </ConfirmButton>
       </div>
     );
   }

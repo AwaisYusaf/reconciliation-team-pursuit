@@ -80,8 +80,9 @@ export function LineItemsManager({ rows }: { rows: LineItemRow[] }) {
         reportResult(result);
         return;
       }
-      // Deleting also removes recurring items, so the user confirms the list first (R9.3).
-      if (result.data?.requiresConfirmation?.length) {
+      // The server always asks first (R9.3); the list it returns may be empty, which is why
+      // this tests for presence rather than length.
+      if (result.data?.requiresConfirmation) {
         setConfirmDelete({ id: row.id, recurring: result.data.requiresConfirmation });
         return;
       }

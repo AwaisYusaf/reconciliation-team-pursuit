@@ -3,7 +3,7 @@
 Two items, from a client who says she is **ready to send this month's packet to the city**. One is
 already built and only needs deploying; the other is real work.
 
-**Status:** T4 done. T5 done — item 1 was not only a width problem. `Last reviewed: 2026-09-01.`
+**Status:** T4, T5, T6 done. `Last reviewed: 2026-09-01.`
 
 ---
 
@@ -169,3 +169,56 @@ not of DejaVu — so they had been wrong for the container's whole life and are 
 - **Not verified**: the `.docx` opened in Word with genuine Aptos. Aptos is a little wider than
   Calibri and is not installable here. The PDF that goes to the city is now measured; the Word
   view of the download still rests on Misty's eyes.
+
+---
+
+# T6 · Destructive actions ask first — done
+
+> When we are trying to click on the receipt and making a mistake to remove them. It should show
+> a confirmation instead of immediately deleting that record.
+
+Removing an attached receipt deleted the row, the stored file and its thumbnail on the first
+click. There is no soft delete, no versioning and no undo, and the source is often a photographed
+paper receipt — so the misclick could destroy the document permanently.
+
+The risk was known. The field carried the line *"Removing an attached file takes effect
+immediately — Cancel will not undo it."* A warning had been written where a question belonged.
+
+### What the audit found
+
+An audit of every destructive control (33 agents, each claim verified against the file) found the
+receipt was not alone. Two were high severity:
+
+1. **Remove on an attached document** — the reported bug, in all three sections (proof of payment,
+   receipt, supporting documents).
+2. **Ticking "No receipt available"** — saving then hard-deletes *every* attached receipt through
+   the same function, and ticking hid the list immediately, so the files were out of sight before
+   the existing warning could be read. Not reported, and quieter than the bug that was.
+
+Four more destroyed stored records on a single click: the recurring template, a vendor and its
+learned defaults, the month's captured submission snapshot, and a line item with nothing under it
+— that last one confirmed only when recurring items would cascade, so an empty one went straight
+away from a control sitting beside Edit.
+
+The month-documents Remove was already gated, but by a native `window.confirm`.
+
+### What changed
+
+A `ConfirmButton` pairs the control with its question, so a destructive control cannot be added
+without one, and all of them phrase, focus and dismiss identically. Six controls now ask, and the
+native confirm was replaced. Line item deletion asks once in every case: the server now always
+returns the confirmation step, rather than the client adding a second dialog on top of the
+cascade one.
+
+**Deliberately left alone.** Discarding unsaved typing — Cancel, or clicking Edit on another row —
+raises nothing, and neither does removing a queued file that has not been uploaded. A dialog on
+every cancel teaches people to dismiss dialogs unread, which is how the real ones stop working.
+
+### Verified in the browser
+
+Against the real components, not reasoning: clicking Remove opens the dialog with the filename and
+deletes nothing; Escape leaves the file attached; confirming removes it and restores page scroll;
+focus lands on the safe answer, never the destructive one. Ticking "No receipt available" with two
+receipts attached asks, leaves the box unticked and both files listed while it asks, and on
+"Keep them" changes nothing — while "Mark as no receipt" ticks the box and hides the list. The
+pre-existing "Delete this expense?" dialog still works.

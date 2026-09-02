@@ -32,6 +32,12 @@ export function planLineItemDelete(input: {
 /** Wording for the cascade confirmation, listing what will be removed alongside. */
 export function cascadeConfirmation(recurringNames: readonly string[]): string {
   const count = recurringNames.length;
+  // An empty list still gets a sentence. Deleting a line item used to be confirmed only when
+  // recurring items came with it, so an empty one — a name and its budget figures — went on the
+  // first click, from a control sitting beside Edit.
+  if (count === 0) {
+    return "Its name and budget figures are deleted. This cannot be undone.";
+  }
   return `Deleting also removes ${count} recurring item${count === 1 ? "" : "s"}: ${recurringNames.join(", ")}.`;
 }
 

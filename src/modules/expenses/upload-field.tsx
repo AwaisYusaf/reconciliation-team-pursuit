@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import toast from "react-hot-toast";
 
 import { Button } from "@/src/components/ui/button";
+import { ConfirmButton } from "@/src/components/ui/confirm-button";
 import {
   DocumentThumbnail,
   inlineSrc,
@@ -40,8 +41,11 @@ export type PendingUpload = {
  *
  * Files chosen on the add form are queued in the browser and uploaded once the expense
  * exists; in edit mode the expense is already there, so the same queue is flushed on save.
- * Already-attached files are listed with their page counts and can be removed immediately —
- * which the label states plainly, because Cancel will not bring them back.
+ * Already-attached files are listed with their page counts. Removing one deletes it for real
+ * — the row, the stored file and its thumbnail — so it asks first, naming the file. It used to
+ * go on the first click, with a line of helper text carrying the warning; a client destroyed a
+ * receipt by misclicking it. Queued files are different: nothing is stored yet, so dropping one
+ * from the list asks nothing.
  *
  * Size and type are checked when the file is picked, using the server's own limits. The
  * server checks again and is the authority; doing it here as well means someone who picks a
@@ -234,14 +238,22 @@ export function UploadField({
                   </span>
                 </span>
               </button>
-              <Button
+              <ConfirmButton
                 variant="quiet"
                 className="min-h-11"
                 disabled={disabled}
-                onClick={() => onRemoveAttached(document.id)}
+                title="Remove this file?"
+                confirmLabel="Remove file"
+                body={
+                  <>
+                    <strong>{document.filename}</strong> is deleted from this expense straight
+                    away, and Cancel will not bring it back. You would have to upload it again.
+                  </>
+                }
+                onConfirm={() => onRemoveAttached(document.id)}
               >
                 Remove
-              </Button>
+              </ConfirmButton>
             </div>
           ))}
 
@@ -282,12 +294,6 @@ export function UploadField({
               </Button>
             </div>
           ))}
-        </div>
-      )}
-
-      {attached.length > 0 && (
-        <div className="text-sm text-sub mt-2">
-          Removing an attached file takes effect immediately — Cancel will not undo it.
         </div>
       )}
 

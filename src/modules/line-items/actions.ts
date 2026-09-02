@@ -121,7 +121,9 @@ export async function deleteLineItemAction(
     recurringNames: recurring.map((row) => row.name),
   });
   if (!plan.allowed) return fail(plan.reason);
-  if (plan.cascadingRecurring.length > 0 && !confirmedRecurring) {
+  // Always ask, even when nothing cascades: the client shows exactly one dialog either way,
+  // and an empty line item is still a record someone typed.
+  if (!confirmedRecurring) {
     return ok({ requiresConfirmation: plan.cascadingRecurring });
   }
 

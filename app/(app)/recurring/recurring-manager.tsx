@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
 
 import { Button } from "@/src/components/ui/button";
+import { ConfirmButton } from "@/src/components/ui/confirm-button";
 import { Dialog } from "@/src/components/ui/dialog";
 import { Helper, Input, Label, MoneyInput, Textarea } from "@/src/components/ui/field";
 import { Select } from "@/src/components/ui/select";
@@ -516,10 +517,19 @@ export function RecurringManager({
               Cancel
             </Button>
             {draft.id && (
-              <Button
+              <ConfirmButton
                 variant="quiet"
                 disabled={pending}
-                onClick={() =>
+                title="Delete this recurring item?"
+                confirmLabel="Delete from list"
+                body={
+                  <>
+                    <strong>{draft.name || "This item"}</strong> is removed from the recurring
+                    list, along with its saved amount and defaults. Expenses already added to a
+                    month are left untouched.
+                  </>
+                }
+                onConfirm={() =>
                   run(
                     () => deleteRecurringItemAction(draft.id!),
                     () => setDraft(null),
@@ -528,7 +538,7 @@ export function RecurringManager({
                 }
               >
                 Delete from list
-              </Button>
+              </ConfirmButton>
             )}
           </div>
           {draft.id && (

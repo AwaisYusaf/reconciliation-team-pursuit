@@ -8,6 +8,7 @@
 import { useState } from "react";
 
 import { Button } from "@/src/components/ui/button";
+import { ConfirmButton } from "@/src/components/ui/confirm-button";
 import { Input, MoneyInput } from "@/src/components/ui/field";
 import { Select } from "@/src/components/ui/select";
 import { EmptyState } from "@/src/components/ui/surfaces";
@@ -237,13 +238,22 @@ export function VendorTable({
                       <Button variant="quiet" onClick={() => setEditing(toEdit(vendor))}>
                         Edit
                       </Button>
-                      <Button
+                      <ConfirmButton
                         variant="quiet"
                         disabled={pending}
-                        onClick={() => run(() => deleteVendorAction(vendor.id), "Vendor removed")}
+                        title="Delete this vendor?"
+                        confirmLabel="Delete vendor"
+                        body={
+                          <>
+                            <strong>{vendor.name}</strong> and everything remembered about it —
+                            line item, description, payment source and amounts — are deleted.
+                            Expenses already recorded for this vendor keep their own details.
+                          </>
+                        }
+                        onConfirm={() => run(() => deleteVendorAction(vendor.id), "Vendor removed")}
                       >
                         Delete
-                      </Button>
+                      </ConfirmButton>
                     </>
                   )}
                 </div>

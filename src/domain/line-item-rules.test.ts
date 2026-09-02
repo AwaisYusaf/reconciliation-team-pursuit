@@ -56,6 +56,14 @@ describe("cascadeConfirmation", () => {
   it("uses the singular for one item", () => {
     expect(cascadeConfirmation(["Adobe"])).toBe("Deleting also removes 1 recurring item: Adobe.");
   });
+
+  it("still says what is lost when nothing cascades", () => {
+    // The empty list is the case that used to skip the dialog entirely, so a line item with
+    // no recurring items was deleted on the first click.
+    expect(cascadeConfirmation([])).toBe(
+      "Its name and budget figures are deleted. This cannot be undone.",
+    );
+  });
 });
 
 describe("isDuplicateName (R9.1)", () => {

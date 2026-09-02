@@ -5,6 +5,7 @@ import { useRef, useState, useTransition } from "react";
 import toast from "react-hot-toast";
 
 import { Button } from "@/src/components/ui/button";
+import { ConfirmButton } from "@/src/components/ui/confirm-button";
 import { Select } from "@/src/components/ui/select";
 import { Card, CARD_PADDING, SectionTitle } from "@/src/components/ui/surfaces";
 import { reportResult } from "@/src/components/ui/toast";
@@ -74,8 +75,7 @@ export function MonthDocuments({
     }
   }
 
-  function remove(id: string, name: string) {
-    if (!window.confirm(`Remove "${name}" from this month? This cannot be undone.`)) return;
+  function remove(id: string) {
     startTransition(async () => {
       if (reportResult(await removeMonthDocumentAction(id), "Document removed.")) {
         router.refresh();
@@ -122,14 +122,23 @@ export function MonthDocuments({
                         <span className="text-muted"> · {document.pageCount} page(s)</span>
                       ) : null}
                     </span>
-                    <button
-                      type="button"
-                      onClick={() => remove(document.id, document.title || document.filename)}
+                    <ConfirmButton
+                      variant="quiet"
                       disabled={pending}
-                      className="text-sm text-danger underline disabled:opacity-60"
+                      title="Remove this document?"
+                      confirmLabel="Remove document"
+                      body={
+                        <>
+                          <strong>{document.title || document.filename}</strong> is deleted from
+                          {" "}
+                          {monthLabel} and will no longer appear in the packet. You would have to
+                          upload it again.
+                        </>
+                      }
+                      onConfirm={() => remove(document.id)}
                     >
                       Remove
-                    </button>
+                    </ConfirmButton>
                   </li>
                 ))}
               </ul>
