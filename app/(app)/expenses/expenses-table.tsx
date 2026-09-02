@@ -20,6 +20,13 @@ import { TableCard, Td, Th } from "@/src/components/ui/table";
 import { reportResult } from "@/src/components/ui/toast";
 import { formatDateUS } from "@/src/domain/dates";
 import { formatMoney } from "@/src/domain/format";
+import {
+  ALL_DOCUMENTATION,
+  DOCUMENTATION_FILTERS,
+  matchesDocumentationFilter,
+  type DocumentationFilter,
+  type MissingKind,
+} from "@/src/domain/gate";
 import { deleteExpenseAction } from "@/src/modules/expenses/actions";
 
 /** One attached document, as much of it as a row needs to preview it. */
@@ -64,6 +71,8 @@ export type ExpenseRow = {
   noReceipt: boolean;
   noReceiptReason: string | null;
   complete: boolean;
+  /** What R4.4 says this record is missing, or null when it is complete. From the gate. */
+  missing: MissingKind | null;
 };
 
 const ALL_LINE_ITEMS = "All line items";
@@ -84,6 +93,7 @@ export function ExpensesTable({
   const [pending, startTransition] = useTransition();
   const [lineFilter, setLineFilter] = useState(ALL_LINE_ITEMS);
   const [sourceFilter, setSourceFilter] = useState(ALL_SOURCES);
+  const [docFilter, setDocFilter] = useState<DocumentationFilter>(ALL_DOCUMENTATION);
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<SortKey>(DEFAULT_SORT);
   const [confirming, setConfirming] = useState<ExpenseRow | null>(null);
@@ -110,6 +120,7 @@ export function ExpensesTable({
       (row) =>
         (lineFilter === ALL_LINE_ITEMS || row.lineItemName === lineFilter) &&
         (sourceFilter === ALL_SOURCES || row.paymentSource === sourceFilter) &&
+        matchesDocumentationFilter(row, docFilter) &&
         // Reference, name and description: the three things someone actually knows when
         // they are looking for one expense among a month of them.
         (term === "" ||
@@ -119,7 +130,7 @@ export function ExpensesTable({
     );
     // Sorted on a copy — `rows` is a prop, and sorting in place would mutate it.
     return [...matched].sort(SORTS[sort].compare);
-  }, [rows, lineFilter, sourceFilter, query, sort]);
+  }, [rows, lineFilter, sourceFilter, docFilter, query, sort]);
 
   // Cards always total the whole month, never the filtered subset (R5.2).
   const totals = useMemo(() => {
@@ -131,7 +142,12 @@ export function ExpensesTable({
     return map;
   }, [rows, paymentSourceLabels]);
 
-  const incomplete = rows.filter((row) => !row.complete).length;
+  // Counted with the filter's own predicate rather than `!row.complete`. The two are equal by
+  // construction in the gate, but "equal by construction somewhere else" is how this project's
+  // defects have started; this way the strip and the filter are one code path.
+  const incomplete = rows.filter((row) =>
+    matchesDocumentationFilter(row, "Missing documentation"),
+  ).length;
 
   if (rows.length === 0) {
     return <EmptyState>No expenses recorded for {month} yet.</EmptyState>;
@@ -153,6 +169,24 @@ export function ExpensesTable({
       {incomplete > 0 && (
         <DangerPanel tone="notice" className="mb-6">
           {incomplete} record{incomplete === 1 ? " is" : "s are"} missing documents —{" "}
+          {docFilter === "Missing documentation" ? (
+            <button
+              type="button"
+              onClick={() => setDocFilter(ALL_DOCUMENTATION)}
+              className="underline"
+            >
+              show all records
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setDocFilter("Missing documentation")}
+              className="underline"
+            >
+              show only those
+            </button>
+          )}{" "}
+          or{" "}
           <Link href="/packet" className="underline">
             view Month-End Packet
           </Link>
@@ -230,6 +264,19 @@ export function ExpensesTable({
             <option>{ALL_LINE_ITEMS}</option>
             {lineItemNames.map((name) => (
               <option key={name}>{name}</option>
+            ))}
+          </Select>
+        </div>
+        <div className="flex-1 min-w-[240px] max-w-[340px]">
+          <Label id="docFilter-label" htmlFor="docFilter">Filter by documentation</Label>
+          <Select
+            id="docFilter"
+            aria-labelledby="docFilter-label"
+            value={docFilter}
+            onValueChange={(value) => setDocFilter(value as DocumentationFilter)}
+          >
+            {DOCUMENTATION_FILTERS.map((option) => (
+              <option key={option}>{option}</option>
             ))}
           </Select>
         </div>

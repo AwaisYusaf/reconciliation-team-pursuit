@@ -1,12 +1,14 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  DOCUMENTATION_FILTERS,
   blockingLabel,
   blockingRecords,
   documentationStatus,
   isLineItemBlocked,
   isMonthBlocked,
   lineItemReadiness,
+  matchesDocumentationFilter,
   missingPhrase,
   type GateExpense,
 } from "./gate";
@@ -183,5 +185,63 @@ describe("lineItemReadiness (m06 table)", () => {
   it("is complete when every record of that line item is documented", () => {
     const month = [expense({ id: "1", lineItemName: "Salary" })];
     expect(lineItemReadiness(month, "Salary").complete).toBe(true);
+  });
+});
+
+describe("matchesDocumentationFilter", () => {
+  const complete = { missing: null } as const;
+  const noProof = { missing: "proof" } as const;
+  const noReceipt = { missing: "receipt" } as const;
+  const neither = { missing: "both" } as const;
+
+  it("keeps everything under the default", () => {
+    for (const row of [complete, noProof, noReceipt, neither]) {
+      expect(matchesDocumentationFilter(row, "All records")).toBe(true);
+    }
+  });
+
+  it("finds every incomplete record, and only those", () => {
+    expect(matchesDocumentationFilter(complete, "Missing documentation")).toBe(false);
+    for (const row of [noProof, noReceipt, neither]) {
+      expect(matchesDocumentationFilter(row, "Missing documentation")).toBe(true);
+    }
+  });
+
+  it("counts a record missing both as missing each of them", () => {
+    // The case a hand-rolled `missing === "proof"` would get wrong: the worst records would
+    // vanish from the two filters most likely to be used to hunt them down.
+    expect(matchesDocumentationFilter(neither, "Missing proof of payment")).toBe(true);
+    expect(matchesDocumentationFilter(neither, "Missing receipt/justification")).toBe(true);
+  });
+
+  it("separates the two specific filters", () => {
+    expect(matchesDocumentationFilter(noProof, "Missing proof of payment")).toBe(true);
+    expect(matchesDocumentationFilter(noProof, "Missing receipt/justification")).toBe(false);
+    expect(matchesDocumentationFilter(noReceipt, "Missing receipt/justification")).toBe(true);
+    expect(matchesDocumentationFilter(noReceipt, "Missing proof of payment")).toBe(false);
+  });
+
+  it("never shows a complete record under any missing filter", () => {
+    for (const filter of DOCUMENTATION_FILTERS.filter((f) => f !== "All records")) {
+      expect(matchesDocumentationFilter(complete, filter)).toBe(false);
+    }
+  });
+
+  it("agrees with the gate: a row matches 'Missing documentation' exactly when incomplete", () => {
+    // The filter and the packet's blocking list must be one judgement (R4.3).
+    const expenses: GateExpense[] = [
+      { id: "a", name: "A", lineItemName: "Salary", noReceipt: false, documents: [] },
+      {
+        id: "b",
+        name: "B",
+        lineItemName: "Salary",
+        noReceipt: true,
+        documents: [{ kind: "proof", status: "attached" }],
+      },
+    ];
+    for (const expense of expenses) {
+      const status = documentationStatus(expense);
+      expect(matchesDocumentationFilter(status, "Missing documentation")).toBe(!status.complete);
+    }
   });
 });

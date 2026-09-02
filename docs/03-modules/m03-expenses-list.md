@@ -11,7 +11,18 @@ Reads `expenses` + `expense_documents` (status), calculation service for card to
 
 ## Behavior
 - One summary card per active payment source (R5.2), label = the org's source label, value = Σ reimbursable for the month (retired labels present in the month get their own card).
-- Filters: line item (All + each) and payment source (All + each); combinable.
+- Filters: line item (All + each), payment source (All + each), and **documentation** — `All
+  records | Missing documentation | Missing proof of payment | Missing receipt/justification`;
+  all combinable, and combinable with the search box.
+  - The documentation filter reads the row's `missing` (`MissingKind | null`), which the page
+    already gets from `documentationStatus` — the same judgement as the packet's blocking list
+    (R4.3). It is never re-derived from the row's document arrays: that would agree today and
+    diverge the day R4.1/R4.2 change, with nothing failing.
+  - A record missing **both** answers to *either* specific choice, since it is genuinely missing
+    each of them; bucketing "both" separately would hide the worst records from the two filters
+    most likely to be used to find them.
+  - The incomplete strip's count runs through the same predicate as the filter, so the number
+    shown and the rows the filter returns cannot disagree.
 - Table: `Ref / Date | Name | Line Item | Source | Amount | Proof | Receipt | Support | (actions)`.
   Headers are kept short and the reference shares its column with the date so the whole table fits
   the 1100px content width without scrolling sideways — a table that scrolls hides its own row
@@ -41,10 +52,10 @@ Row of three summary cards (bordered, white): labels in 13px #5B5147 / values 20
 $6,083.33", "Paid directly by fiduciary — $2,676.00".
 
 Below, a warning strip (thin, #F6E7E4 background, #8A2A22 text): "3 records are missing
-documents — view Month-End Packet" with the last part underlined.
+documents — show only those / show all records or view Month-End Packet", the last two underlined. "show only those" applies the Missing documentation filter, and flips to "show all records" while it is on.
 
-Filter row: "Filter by line item" select (All line items) + "Filter by payment source" select
-(All payment sources).
+Filter row: "Filter by line item" select (All line items) + "Filter by documentation" select
+(All records) + "Filter by payment source" select (All payment sources).
 
 Table with uppercase headers: Date | Name | Line Item | Payment Source | Reimbursable Amount
 | Proof | Receipt | Supporting | (blank). 8 rows of realistic data:

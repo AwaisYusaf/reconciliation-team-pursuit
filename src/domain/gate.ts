@@ -125,3 +125,50 @@ export function lineItemReadiness(
     complete: own.length > 0 && own.every((expense) => documentationStatus(expense).complete),
   };
 }
+
+/**
+ * The documentation filter offered on the expenses list, in the order it offers them.
+ *
+ * Lives here, with the rule it filters on, because the list must not form a second opinion
+ * about what "missing" means. The page already runs `documentationStatus` server-side; the
+ * filter reads the `missing` it produced. Deriving it again from the row's document arrays
+ * would agree today and diverge the day R4.1/R4.2 change — silently, with no test failing.
+ */
+export const DOCUMENTATION_FILTERS = [
+  "All records",
+  "Missing documentation",
+  "Missing proof of payment",
+  "Missing receipt/justification",
+] as const;
+
+export type DocumentationFilter = (typeof DOCUMENTATION_FILTERS)[number];
+
+/** The default, and the value that filters nothing out. */
+export const ALL_DOCUMENTATION: DocumentationFilter = "All records";
+
+/**
+ * Does a row survive the documentation filter?
+ *
+ * Takes the row's `missing` rather than its documents, so this and the packet's blocking list
+ * are the same judgement (R4.3, R4.4).
+ *
+ * A record missing *both* is missing proof of payment, and is also missing a
+ * receipt/justification, so it answers to either of the specific choices. Treating "both" as
+ * its own bucket would hide the worst records from the two filters most likely to be used to
+ * hunt them down.
+ */
+export function matchesDocumentationFilter(
+  row: { missing: MissingKind | null },
+  filter: DocumentationFilter,
+): boolean {
+  switch (filter) {
+    case "All records":
+      return true;
+    case "Missing documentation":
+      return row.missing !== null;
+    case "Missing proof of payment":
+      return row.missing === "proof" || row.missing === "both";
+    case "Missing receipt/justification":
+      return row.missing === "receipt" || row.missing === "both";
+  }
+}

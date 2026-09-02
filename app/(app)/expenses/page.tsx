@@ -76,6 +76,9 @@ export default async function ExpensesPage() {
       noReceipt: expense.noReceipt,
       noReceiptReason: expense.noReceiptReason,
       complete: status.complete,
+      // Kept, not recomputed in the table: the documentation filter reads this so it and the
+      // packet's blocking list are the same judgement (R4.3).
+      missing: status.missing,
     };
   });
 
