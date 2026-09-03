@@ -52,13 +52,16 @@ describe("addedState (R8.3)", () => {
     expect(addedState(adobe, [expense({ name: "Adobe Stock" })]).added).toBe(false);
   });
 
-  it("targets the newest when a manual entry and a one-click add collide", () => {
+  it("shows added when several name matches exist, but none is a Remove target without a link (D-79)", () => {
+    // No recurringItemId passed — none of these can be "created by this item," so "newest"
+    // among them is no longer a meaningful question for removal, only for display.
     const state = addedState(adobe, [
       expense({ id: "manual", sortOrder: 3 }),
       expense({ id: "one-click", sortOrder: 11 }),
       expense({ id: "older", sortOrder: 1 }),
     ]);
-    expect(state.targetExpenseId).toBe("one-click");
+    expect(state.added).toBe(true);
+    expect(state.targetExpenseId).toBeNull();
   });
 
   it("requires confirmation when its own target carries documents", () => {
