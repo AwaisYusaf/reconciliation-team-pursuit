@@ -11,7 +11,7 @@ Reads/writes `recurring_items`; creates `expenses` (no documents — R4.5). Adde
 
 ## Behavior
 - Table: `Name | Amount | Line Item | (action)`. Action: secondary `Add to {Mon}` → creates an expense (month = active month, date = today per R2.5, payment source = the template's own source when it is still active, else the org's first active one, description = the template's or the vendor-library default, **narrative / tax / fees = the template's**). The row flashes green and becomes `Added to {Month}` + quiet `Remove`. The flash waits for the add to succeed — it used to fire first, so a failed add still went green, which is how a live insert failure stayed invisible on this screen.
-- **Remove** deletes the newest matching expense; if that expense has ≥ 1 document attached, a confirm dialog is required first (R8.3).
+- **Remove** deletes the newest expense this item actually created (tracked by `recurring_item_id`); if that expense has ≥ 1 document attached, a confirm dialog is required first (R8.3). An expense that only matches by name and line item — typed in by hand, never created by this item — is shown as `Added` for information but is refused outright by Remove, no confirmation offered; the error names the expense and points to the Expenses list instead (D-79).
 - Subtext: `Vendors and salaries billed every month. Nothing is added automatically — confirm each one you want to add to {Month YYYY}.`
 - `+ Add recurring item` inline form: name, amount, line item, optional description. Edit/delete per row (delete = list only, never touches expenses). Recurring items are cascade-deleted with their line item after the R9.3 confirm.
 - **Search, line item filter, pagination.** Search matches name and default description; the

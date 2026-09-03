@@ -211,15 +211,22 @@ export async function addRecurringToMonthAction(
 }
 
 /**
- * Undo an add. Targets the newest matching expense, and refuses without confirmation when
- * that expense already carries documents, so a one-click undo cannot silently discard
- * uploaded evidence.
+ * Undo an add. Targets the newest expense this recurring item actually created (the
+ * `recurringItemId` link), and refuses without confirmation when that expense already
+ * carries documents, so a one-click undo cannot silently discard uploaded evidence.
+ *
+ * Deliberately refuses outright — no confirmation offered at all — when the only match is a
+ * name-and-line-item coincidence rather than a real link: that is someone's own hand-typed
+ * record, and marking something recurring must never be able to move or remove it. This used
+ * to be a confirmation dialog instead of a refusal, which still let a confirmed "Remove
+ * anyway" delete the record (first permanently, then — even after that was softened to a
+ * trash entry — still out of its month). Confirmed live: Metro Parking, $180, May 2026.
  */
 export async function removeRecurringFromMonthAction(
   id: string,
   month: string,
   confirmed = false,
-): Promise<ActionResult<{ requiresConfirmation?: string; createdByThisItem?: boolean }>> {
+): Promise<ActionResult<{ requiresConfirmation?: string }>> {
   const current = await actionSession();
   if ("expired" in current) return current.expired;
   if (!isUuid(id)) return fail("That recurring item no longer exists.");
@@ -249,26 +256,25 @@ export async function removeRecurringFromMonthAction(
     )
     .groupBy(expenses.id);
 
-  // Prefer expenses this recurring item actually created. Name matching remains as a
-  // fallback for rows added before the link existed, but it must never be the first
-  // choice: it can point at a manually entered expense that merely shares a payee.
   const state = addedState(item, monthRows, id);
-  if (!state.added || !state.targetExpenseId) return fail("That expense is already gone.");
+  if (!state.added) return fail("That expense is already gone.");
+
+  if (!state.createdByThisItem) {
+    return fail(
+      `The ${item.name} expense in this month wasn't added from this recurring item, so Remove can't touch it. Delete it from the Expenses list if you meant to remove it.`,
+    );
+  }
+  if (!state.targetExpenseId) return fail("That expense is already gone.");
+
   if (state.requiresConfirmation && !confirmed) {
     const target = monthRows.find((row) => row.id === state.targetExpenseId)!;
-    // The client words the question differently when the expense was typed by hand rather
-    // than added from here, so it needs to know which case this is.
-    return ok({
-      requiresConfirmation: String(target.documentCount),
-      createdByThisItem: state.createdByThisItem,
-    });
+    return ok({ requiresConfirmation: String(target.documentCount) });
   }
 
   // A trash-recoverable soft delete, exactly like the Delete button on the expenses list —
-  // this used to hard-delete the row (and, on a name-matched expense the item never
-  // created, someone's own hand-typed record) with no way back. Soft delete also means the
-  // documents are left alone here, the same as any other trashed expense: nothing to clean
-  // up in storage on this path at all.
+  // this used to hard-delete the row with no way back. Soft delete also means the documents
+  // are left alone here, the same as any other trashed expense: nothing to clean up in
+  // storage on this path at all.
   await db
     .update(expenses)
     .set({ deletedAt: new Date() })

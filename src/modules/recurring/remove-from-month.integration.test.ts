@@ -1,11 +1,18 @@
 /**
- * `removeRecurringFromMonthAction` and soft delete.
+ * `removeRecurringFromMonthAction` and the D-79 fix.
  *
  * The reported bug: creating a recurring item that happens to share a name and line item
  * with an expense the user typed in by hand made the Recurring screen show that expense as
- * "already added," and confirming Remove permanently, unrecoverably deleted it — a record
- * the recurring item never created. Fixed by routing this action's delete through the same
- * soft-delete path the main expenses list uses, so it lands in the trash instead of vanishing.
+ * "already added," and Remove could delete it — a record the recurring item never created.
+ * Confirmed live: Metro Parking, $180, May 2026, re-entered by hand after the packet had
+ * already gone to DCC.
+ *
+ * First fix (this session, earlier): route the delete through soft delete instead of a hard
+ * delete, so the record was at least recoverable from the trash. That was not enough — the
+ * expense still left its month the moment "Remove anyway" was confirmed. The actual fix:
+ * Remove now refuses outright on an expense it did not create. No confirmation is offered for
+ * that case at all, so there is no click that can move or delete it — it stays in its
+ * original month, with its attachments, completely untouched.
  *
  * Skipped when DATABASE_URL is absent.
  */
@@ -69,7 +76,7 @@ describe.skipIf(!hasDatabase)("removeRecurringFromMonthAction (integration)", as
     if (orgId) await db.delete(organizations).where(eq(organizations.id, orgId));
   });
 
-  it("soft-deletes (never hard-deletes) an expense matched only by name, and it's recoverable from the trash", async () => {
+  it("refuses to touch an expense matched only by name — it stays active, in its month, untouched", async () => {
     asOrg(orgId);
 
     // Hand-typed directly — no recurring item involved.
@@ -106,28 +113,30 @@ describe.skipIf(!hasDatabase)("removeRecurringFromMonthAction (integration)", as
       .from(recurringItems)
       .where(eq(recurringItems.orgId, orgId));
 
-    // Requires confirmation first, exactly as the UI does before actually removing.
-    const asked = await removeRecurringFromMonthAction(recurringItem.id, MONTH, false);
-    expect(asked.ok).toBe(true);
-    if (!asked.ok) throw new Error("unreachable");
-    expect(asked.data.requiresConfirmation).toBeDefined();
-    expect(asked.data.createdByThisItem).toBe(false);
+    // No confirmation offered at all — the action refuses outright, unconfirmed.
+    const unconfirmed = await removeRecurringFromMonthAction(recurringItem.id, MONTH, false);
+    expect(unconfirmed.ok).toBe(false);
+    if (unconfirmed.ok) throw new Error("unreachable");
+    expect(unconfirmed.error).toContain("Metro Parking");
+    expect(unconfirmed.error).toContain("wasn't added from this recurring item");
 
-    // Confirmed, as if the user clicked "Remove anyway".
-    const result = await removeRecurringFromMonthAction(recurringItem.id, MONTH, true);
-    expect(result.ok).toBe(true);
+    // Confirmed does not bypass the refusal — there is no click sequence that deletes it.
+    const confirmed = await removeRecurringFromMonthAction(recurringItem.id, MONTH, true);
+    expect(confirmed.ok).toBe(false);
 
-    // Gone from the active list...
+    // Still exactly as it was: active, in its original month, not even soft-deleted.
     const [row] = await db.select().from(expenses).where(eq(expenses.id, handTyped.id));
-    expect(row).toBeDefined(); // the row itself still exists in the table
-    expect(row.deletedAt).not.toBeNull(); // ...because it's soft-deleted, not hard-deleted
+    expect(row).toBeDefined();
+    expect(row.deletedAt).toBeNull();
+    expect(row.month).toBe(MONTH);
+    expect(row.subtotalCents).toBe(5000);
 
-    // ...and recoverable from the trash, unlike before this fix.
+    // Never even reached the trash.
     const trashed = await loadTrashedExpenses(orgId);
-    expect(trashed.map((entry) => entry.id)).toContain(handTyped.id);
+    expect(trashed.map((entry) => entry.id)).not.toContain(handTyped.id);
   });
 
-  it("leaves attached documents untouched, since this is now a soft delete", async () => {
+  it("leaves attached documents untouched on the same refusal", async () => {
     asOrg(orgId);
 
     const [expense] = await db
@@ -174,12 +183,54 @@ describe.skipIf(!hasDatabase)("removeRecurringFromMonthAction (integration)", as
       .from(recurringItems)
       .where(and(eq(recurringItems.orgId, orgId), eq(recurringItems.name, "Metro Parking With Receipt")));
 
-    await removeRecurringFromMonthAction(recurringItem.id, MONTH, true);
+    const result = await removeRecurringFromMonthAction(recurringItem.id, MONTH, true);
+    expect(result.ok).toBe(false);
 
     const docs = await db
       .select()
       .from(expenseDocuments)
       .where(eq(expenseDocuments.expenseId, expense.id));
-    expect(docs).toHaveLength(1); // still there — soft delete never touches documents
+    expect(docs).toHaveLength(1); // still there — the action never touched the expense at all
+
+    const [row] = await db.select().from(expenses).where(eq(expenses.id, expense.id));
+    expect(row.deletedAt).toBeNull();
+  });
+
+  it("still removes (soft-deletes) an expense the recurring item actually created", async () => {
+    asOrg(orgId);
+
+    await saveRecurringItemAction({
+      name: "Genuine One-Click Add",
+      amount: "75.00",
+      lineItemId,
+      defaultDescription: "",
+      defaultNarrative: "",
+      defaultPaymentSource: "Cash",
+      defaultTax: "",
+      defaultFees: "",
+    });
+    const [recurringItem] = await db
+      .select({ id: recurringItems.id })
+      .from(recurringItems)
+      .where(and(eq(recurringItems.orgId, orgId), eq(recurringItems.name, "Genuine One-Click Add")));
+
+    const { addRecurringToMonthAction } = await import("./actions");
+    const added = await addRecurringToMonthAction(recurringItem.id, MONTH);
+    expect(added.ok).toBe(true);
+
+    const [createdExpense] = await db
+      .select({ id: expenses.id })
+      .from(expenses)
+      .where(and(eq(expenses.orgId, orgId), eq(expenses.name, "Genuine One-Click Add")));
+
+    // No confirmation needed — freshly created, no documents.
+    const result = await removeRecurringFromMonthAction(recurringItem.id, MONTH, false);
+    expect(result.ok).toBe(true);
+
+    const [row] = await db.select().from(expenses).where(eq(expenses.id, createdExpense.id));
+    expect(row.deletedAt).not.toBeNull(); // this one Remove is genuinely allowed to touch
+
+    const trashed = await loadTrashedExpenses(orgId);
+    expect(trashed.map((entry) => entry.id)).toContain(createdExpense.id);
   });
 });

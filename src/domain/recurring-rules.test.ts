@@ -83,8 +83,8 @@ describe("addedState (R8.3)", () => {
   });
 });
 
-describe("link matching beats name matching", () => {
-  it("targets the expense this item actually created", () => {
+describe("link matching only — a name match is display, never a Remove target (D-79)", () => {
+  it("targets the expense this item actually created, ignoring a same-named manual entry", () => {
     const state = addedState(
       adobe,
       [
@@ -100,20 +100,30 @@ describe("link matching beats name matching", () => {
     expect(state.targetExpenseId).toBe("created");
   });
 
-  it("ignores expenses created by a different recurring item", () => {
+  it("gives Remove no target when the only match belongs to a different recurring item", () => {
     const state = addedState(
       adobe,
       [expense({ id: "other", recurringItemId: "rec-2" })],
       "rec-1",
     );
-    // No link match, so it falls back to name matching — which this row satisfies.
-    expect(state.targetExpenseId).toBe("other");
+    // Still shown as added (informational — this month already has an Adobe expense), but
+    // this item did not create it, so Remove must not be able to reach it.
+    expect(state.added).toBe(true);
+    expect(state.createdByThisItem).toBe(false);
+    expect(state.targetExpenseId).toBeNull();
   });
 
-  it("falls back to name matching for rows added before the link existed", () => {
-    const state = addedState(adobe, [expense({ id: "legacy", recurringItemId: null })], "rec-1");
+  it("gives Remove no target for a row with no link at all — a name match is display only", () => {
+    // This is the exact shape of the reported bug: a hand-typed expense (recurringItemId
+    // null) that happens to share a name and line item with a newly created recurring item.
+    // Confirmed live: Metro Parking, $180, May 2026 — marking it recurring must never be able
+    // to move or delete the hand-typed record, so it stays untouched no matter what Remove
+    // does with it.
+    const state = addedState(adobe, [expense({ id: "hand-typed", recurringItemId: null })], "rec-1");
     expect(state.added).toBe(true);
-    expect(state.targetExpenseId).toBe("legacy");
+    expect(state.createdByThisItem).toBe(false);
+    expect(state.targetExpenseId).toBeNull();
+    expect(state.requiresConfirmation).toBe(false);
   });
 
   it("picks the newest among several the same item created", () => {
@@ -155,8 +165,9 @@ describe("validateRecurring", () => {
  * matching on name and line item, while the actions passed the id and preferred the link.
  *
  * R8.3 wants the *display* to match on name and line item — the row is telling the user
- * this month already has such a record, whoever entered it. Removal is the dangerous half,
- * so it is held to a stricter standard.
+ * this month already has such a record, whoever entered it. Removal is the dangerous half:
+ * it only ever targets an expense carrying this item's own link, full stop (D-79) — a name
+ * match alone never gives it anything to act on.
  */
 describe("the screen and the actions must agree (R8.3)", () => {
   const item = { id: "rec-1", name: "Quincy Smith", lineItemId: "salary" };
@@ -188,17 +199,19 @@ describe("the screen and the actions must agree (R8.3)", () => {
     expect(addedState(item, month, item.id).requiresConfirmation).toBe(false);
   });
 
-  it("still shows added for a manually entered expense sharing the payee (R8.3 display)", () => {
+  it("still shows added for a manually entered expense sharing the payee (R8.3 display), but gives Remove nothing to target", () => {
     const month = [expense({ id: "exp-9" })];
     const state = addedState(item, month, item.id);
 
     expect(state.added).toBe(true);
-    // But it is not this item's to undo silently.
+    // But it is not this item's to undo — not even behind a confirmation. Marking something
+    // recurring must never be able to move or remove a record it didn't create (D-79).
     expect(state.createdByThisItem).toBe(false);
-    expect(state.requiresConfirmation).toBe(true);
+    expect(state.targetExpenseId).toBeNull();
+    expect(state.requiresConfirmation).toBe(false);
   });
 
-  it("confirms before deleting a documented expense either way", () => {
+  it("confirms before deleting a documented expense it created", () => {
     const month = [expense({ id: "exp-1", recurringItemId: "rec-1", documentCount: 3 })];
     expect(addedState(item, month, item.id).requiresConfirmation).toBe(true);
   });
@@ -222,18 +235,15 @@ describe("the screen and the actions must agree (R8.3)", () => {
 });
 
 describe("removeConfirmation wording", () => {
-  it("says plainly what will be deleted when the item created it", () => {
+  // Only ever shown for an expense this recurring item actually created (see addedState /
+  // D-79) — a hand-typed match is refused by the action before a confirmation is offered.
+  it("says plainly what will be deleted", () => {
     expect(removeConfirmation("Quincy Smith", 0)).toBe(
       "Remove Quincy Smith? This deletes the expense.",
     );
     expect(removeConfirmation("Quincy Smith", 2)).toBe(
       "Remove Quincy Smith? This deletes the expense and 2 attached files.",
     );
-  });
-
-  it("says so when the expense was entered by hand, not added from here", () => {
-    expect(removeConfirmation("Adobe", 0, false)).toContain("was not added from this recurring item");
-    expect(removeConfirmation("Adobe", 1, false)).toContain("and 1 attached file");
   });
 });
 

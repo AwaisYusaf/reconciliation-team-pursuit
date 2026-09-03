@@ -41,13 +41,16 @@ export type AddedState = {
  *
  * Display matching is by name (case-insensitively, since the user may have retyped it) plus
  * line item, as R8.3 specifies — the row is telling the user this month already has such a
- * record, whoever entered it. When several match, Remove targets the newest, so it undoes
- * the most recent action rather than an arbitrary one.
+ * record, whoever entered it, purely informational.
  *
- * Removal is held to a stricter standard than display. An expense this item actually
- * created can be removed on the same terms as any undo; one that merely shares a payee was
- * typed by the user, and deleting it is always confirmed first even when it carries no
- * documents.
+ * Removal is held to a stricter standard than display: `targetExpenseId` is only ever set
+ * for an expense this item actually created (the `recurringItemId` link). A name-and-line-item
+ * match that isn't linked was typed in by the user — Remove has nothing it may act on, so it
+ * gets no target at all, not even a confirmable one. A confirmation dialog is a warning, not
+ * a guarantee: a rushed "Remove anyway" click on a busy day is exactly how a hand-typed record
+ * was permanently lost before, twice over (first as a hard delete, then — even softened to a
+ * trash entry — as a record that still left its month). Marking something recurring must never
+ * be able to move or remove a record it didn't create, full stop.
  */
 export function addedState(
   recurring: RecurringMatchable,
@@ -58,8 +61,8 @@ export function addedState(
   const name = recurring.name.trim().toLowerCase();
 
   // An expense this item actually created is an exact match. Falling back to name matching
-  // would risk targeting a manually entered expense that merely shares a payee and line
-  // item, deleting work the user never meant to undo.
+  // is for *display* only (below) — it must never feed a delete target, or Remove could reach
+  // a manually entered expense that merely shares a payee and line item.
   const linked = recurringItemId
     ? monthExpenses.filter((expense) => expense.recurringItemId === recurringItemId)
     : [];
@@ -92,30 +95,21 @@ export function addedState(
 
   return {
     added: true,
-    targetExpenseId: newest.id,
-    // Confirmed when files would be lost, and always when the expense is not this item's
-    // to undo.
-    requiresConfirmation: newest.documentCount > 0 || !createdByThisItem,
+    // Never a hand-typed match: see the doc comment above.
+    targetExpenseId: createdByThisItem ? newest.id : null,
+    requiresConfirmation: createdByThisItem && newest.documentCount > 0,
     createdByThisItem,
   };
 }
 
-/** Confirmation wording when Remove would discard attached files. */
-export function removeConfirmation(
-  name: string,
-  documentCount: number,
-  createdByThisItem = true,
-): string {
+/** Confirmation wording when Remove would discard attached files. Only ever shown for an
+ * expense this recurring item actually created — see addedState. */
+export function removeConfirmation(name: string, documentCount: number): string {
   const files =
     documentCount > 0
       ? ` and ${documentCount} attached file${documentCount === 1 ? "" : "s"}`
       : "";
-
-  // An expense this item did not create was entered by hand, and saying so is the whole
-  // point of asking — the user may not realise the two are being treated as the same record.
-  return createdByThisItem
-    ? `Remove ${name}? This deletes the expense${files}.`
-    : `The ${name} expense in this month was not added from this recurring item. Removing it deletes that expense${files}.`;
+  return `Remove ${name}? This deletes the expense${files}.`;
 }
 
 /** Validation for the add/edit form (R8.3). */
