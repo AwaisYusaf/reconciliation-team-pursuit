@@ -41,6 +41,7 @@ describe.skipIf(!hasDatabase)("expense trash (integration)", async () => {
   const { ingestExpenseDocument } = await import("@/src/services/storage/documents");
   const { loadLineItemRows } = await import("@/src/modules/line-items/queries");
   const { planLineItemDelete } = await import("@/src/domain/line-item-rules");
+  const { storage } = await import("@/src/services/storage/driver");
 
   const session = vi.mocked(actionSession);
 
@@ -292,6 +293,37 @@ describe.skipIf(!hasDatabase)("expense trash (integration)", async () => {
         .from(expenseDocuments)
         .where(eq(expenseDocuments.expenseId, id));
       expect(rows).toHaveLength(0);
+    });
+
+    it("permanent delete removes the actual stored object, not just the database row", async () => {
+      // The bug this proves fixed: expenseDocuments cascades away the instant the expense
+      // row is deleted (onDelete: "cascade"), so a cleanup step that looks the row back up
+      // by id *after* that delete finds nothing and silently never touches storage. A real
+      // object has to actually exist in the driver for that gap to be provable — a
+      // database row with a made-up key, like `attachDummyDocument` above uses, would pass
+      // even on the old, buggy code, since nothing ever checked whether the key was real.
+      asOrg(orgId);
+      const id = await insertExpense({ orgId, lineItemId });
+      const key = `org/${orgId}/trash-test/${id}/real-object.pdf`;
+      await storage().put({ key, body: Buffer.from("not a real pdf"), contentType: "application/pdf" });
+      await db.insert(expenseDocuments).values({
+        orgId,
+        expenseId: id,
+        kind: "receipt",
+        status: "attached",
+        s3Key: key,
+        filename: "receipt.pdf",
+        mimeType: "application/pdf",
+        sizeBytes: 14,
+        sortOrder: 0,
+      });
+
+      expect(await storage().exists(key)).toBe(true);
+
+      await deleteExpenseAction(id);
+      await permanentlyDeleteExpenseAction(id);
+
+      expect(await storage().exists(key)).toBe(false);
     });
 
     it("ingestExpenseDocument refuses a trashed expense", async () => {
