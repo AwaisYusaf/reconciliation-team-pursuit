@@ -3,10 +3,10 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { buttonClassName } from "@/src/components/ui/button";
-import { PageTitle, Subtext } from "@/src/components/ui/surfaces";
+import { DangerPanel, PageTitle, Subtext } from "@/src/components/ui/surfaces";
 import { db } from "@/src/db";
 import { paymentSources } from "@/src/db/schema";
-import { monthLabel } from "@/src/domain/dates";
+import { isValidMonthKey, monthLabel } from "@/src/domain/dates";
 import { expenseReference } from "@/src/domain/strings";
 import { documentationStatus, type GateExpense } from "@/src/domain/gate";
 import { reimbursableCents } from "@/src/domain/money";
@@ -27,11 +27,25 @@ function viewable(
 
 export const metadata = { title: "Expenses — Grant Expense Reconciliation" };
 
-export default async function ExpensesPage() {
+export default async function ExpensesPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ month?: string }>;
+}) {
   const session = await getSession();
   if (!session) redirect("/login");
 
-  const month = session.activeMonth;
+  // Saving or editing an expense into a month other than the org's active one (R2.2 lets
+  // the form's own month field differ from it) used to redirect here regardless, landing on
+  // the active month's list with no sign the save had gone somewhere else — indistinguishable
+  // from the record having vanished. The save always passes its own month back explicitly now,
+  // shown here instead of (never persisted as) the org-wide active month, which stays exactly
+  // what it was (R2.3) — one save must not silently redirect the whole organisation's shared
+  // reporting period out from under everyone else using it.
+  const { month: requestedMonth } = await searchParams;
+  const viewingRequestedMonth = Boolean(requestedMonth && isValidMonthKey(requestedMonth));
+  const month = viewingRequestedMonth ? requestedMonth! : session.activeMonth;
+
   const [expenses, sources] = await Promise.all([
     loadMonthExpenses(session.orgId, month),
     db
@@ -87,12 +101,24 @@ export default async function ExpensesPage() {
   // Cards cover every source present in the month, including labels since retired (R5.2).
   const labels = [...new Set([...sources.map((row) => row.label), ...rows.map((row) => row.paymentSource)])];
 
+  const viewingOtherMonth = viewingRequestedMonth && month !== session.activeMonth;
+
   return (
     <div>
       <div className="flex flex-wrap items-start justify-between gap-3 mb-6">
         <div>
           <PageTitle className="mb-1.5">Expenses This Month</PageTitle>
           <Subtext>{monthLabel(month)}</Subtext>
+          {viewingOtherMonth && (
+            <DangerPanel tone="notice" className="mt-3 max-w-[560px]">
+              This is where your last save landed — not your active month (
+              {monthLabel(session.activeMonth)}).{" "}
+              <Link href="/expenses" className="underline">
+                Go to your active month
+              </Link>
+              .
+            </DangerPanel>
+          )}
         </div>
         <Link
           href="/expenses/trash"
