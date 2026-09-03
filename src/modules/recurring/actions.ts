@@ -20,7 +20,6 @@ import { parseMoneyToCents } from "@/src/domain/money";
 import { addedState, validateRecurring } from "@/src/domain/recurring-rules";
 import { fail, ok, type ActionResult } from "@/src/lib/action-result";
 import { actionSession } from "@/src/lib/action-session";
-import { deleteExpenseDocument } from "@/src/services/storage/documents";
 import { isUuid } from "@/src/lib/ids";
 import { reimbursementRulesFor } from "@/src/modules/expenses/reimbursement";
 import { claimReferenceSeq } from "@/src/modules/expenses/references";
@@ -265,18 +264,21 @@ export async function removeRecurringFromMonthAction(
     });
   }
 
-  const documents = await db
-    .select({ id: expenseDocuments.id })
-    .from(expenseDocuments)
-    .where(eq(expenseDocuments.expenseId, state.targetExpenseId));
-
+  // A trash-recoverable soft delete, exactly like the Delete button on the expenses list —
+  // this used to hard-delete the row (and, on a name-matched expense the item never
+  // created, someone's own hand-typed record) with no way back. Soft delete also means the
+  // documents are left alone here, the same as any other trashed expense: nothing to clean
+  // up in storage on this path at all.
   await db
-    .delete(expenses)
-    .where(and(eq(expenses.id, state.targetExpenseId), eq(expenses.orgId, current.orgId)));
-
-  for (const document of documents) {
-    await deleteExpenseDocument(current.orgId, document.id);
-  }
+    .update(expenses)
+    .set({ deletedAt: new Date() })
+    .where(
+      and(
+        eq(expenses.id, state.targetExpenseId),
+        eq(expenses.orgId, current.orgId),
+        isNull(expenses.deletedAt),
+      ),
+    );
 
   revalidatePath("/", "layout");
   return ok({});
