@@ -443,6 +443,21 @@ export async function ingestMonthDocument(input: {
   return { ok: true, documentId };
 }
 
+/**
+ * Remove the stored object and its thumbnail for an already-known key. Best-effort; the
+ * nightly sweep is the backstop for whichever of the two calls fails.
+ *
+ * Split out so a caller whose own DELETE already removed the DB row (e.g. via a foreign-key
+ * cascade) can still clean up storage: `deleteExpenseDocument` below only works when the row
+ * is deleted *by* that call, since it reads the key back from the same statement's
+ * `RETURNING` — a row cascaded away by something else first is already gone, so that lookup
+ * finds nothing and storage is silently never touched.
+ */
+export async function deleteStoredObjects(key: string): Promise<void> {
+  const store = storage();
+  await Promise.allSettled([store.delete(key), store.delete(thumbnailKey(key))]);
+}
+
 /** Remove a document and its stored objects. Best-effort on storage; the sweep is the backstop. */
 export async function deleteExpenseDocument(orgId: string, documentId: string): Promise<boolean> {
   const rows = await db
@@ -453,8 +468,7 @@ export async function deleteExpenseDocument(orgId: string, documentId: string): 
   const row = rows[0];
   if (!row) return false;
 
-  const store = storage();
-  await Promise.allSettled([store.delete(row.key), store.delete(thumbnailKey(row.key))]);
+  await deleteStoredObjects(row.key);
   return true;
 }
 
@@ -468,7 +482,6 @@ export async function deleteMonthDocument(orgId: string, documentId: string): Pr
   const row = rows[0];
   if (!row) return false;
 
-  const store = storage();
-  await Promise.allSettled([store.delete(row.key), store.delete(thumbnailKey(row.key))]);
+  await deleteStoredObjects(row.key);
   return true;
 }

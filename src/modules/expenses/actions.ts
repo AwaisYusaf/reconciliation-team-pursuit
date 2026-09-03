@@ -13,7 +13,10 @@ import { fail, ok, type ActionResult } from "@/src/lib/action-result";
 import { actionSession } from "@/src/lib/action-session";
 import { carryNarrativeToTemplate } from "@/src/modules/recurring/narrative";
 import { claimReferenceSeq } from "./references";
-import { deleteExpenseDocument as removeStoredDocument } from "@/src/services/storage/documents";
+import {
+  deleteExpenseDocument as removeStoredDocument,
+  deleteStoredObjects,
+} from "@/src/services/storage/documents";
 import { isUuid } from "@/src/lib/ids";
 import { isKnownPaymentSource } from "@/src/modules/settings/labels";
 
@@ -330,8 +333,11 @@ export async function permanentlyDeleteExpenseAction(id: string): Promise<Action
   if ("expired" in current) return current.expired;
   if (!isUuid(id)) return fail("That expense no longer exists.");
 
+  // The key is captured now, before the expense is deleted below — the expenseDocuments
+  // rows cascade with it (onDelete: "cascade"), so a lookup by id afterward would find
+  // nothing and silently skip the storage cleanup entirely.
   const documents = await db
-    .select({ id: expenseDocuments.id })
+    .select({ s3Key: expenseDocuments.s3Key })
     .from(expenseDocuments)
     .where(and(eq(expenseDocuments.expenseId, id), eq(expenseDocuments.orgId, current.orgId)));
 
@@ -343,10 +349,10 @@ export async function permanentlyDeleteExpenseAction(id: string): Promise<Action
     .returning({ id: expenses.id });
   if (deleted.length === 0) return fail("That expense no longer exists.");
 
-  // Rows cascade with the expense; the stored objects are removed best-effort here and
-  // swept later if any deletion fails (data-model §Cleanup).
+  // The rows are already gone (cascaded above); only the stored objects are left to clean
+  // up, best-effort — swept later if any deletion fails (data-model §Cleanup).
   for (const document of documents) {
-    await removeStoredDocument(current.orgId, document.id);
+    await deleteStoredObjects(document.s3Key);
   }
 
   revalidatePath("/", "layout");
