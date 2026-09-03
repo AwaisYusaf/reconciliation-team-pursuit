@@ -435,7 +435,10 @@ export function ExpenseForm({
           return;
         }
         toast.success(savedMessage());
-        router.push("/expenses");
+        // The expense's own month, not wherever the org's shared active month happens to be
+        // (R2.2 lets them differ) — otherwise landing on the active month's list after saving
+        // into a different one made the just-saved record look like it had vanished.
+        router.push(`/expenses?month=${values.month}`);
         router.refresh();
         return;
       }
@@ -458,7 +461,7 @@ export function ExpenseForm({
         return;
       }
       toast.success(savedMessage());
-      router.push("/expenses");
+      router.push(`/expenses?month=${values.month}`);
       router.refresh();
     });
   }

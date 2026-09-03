@@ -184,17 +184,13 @@ export function RecurringManager({
         reportResult(result);
         return;
       }
-      // Confirmed first when files would be lost, and always when the expense was entered
-      // by hand rather than added from here — deleting someone's own record is a different
-      // act from undoing a click.
+      // Only ever reachable for an expense this recurring item actually created — one that
+      // merely shares a name is refused outright by the action itself, no confirmation
+      // offered, so `error` above is what the user sees for that case instead.
       if (result.data?.requiresConfirmation) {
         setConfirmRemove({
           row,
-          message: removeConfirmation(
-            row.name,
-            Number(result.data.requiresConfirmation),
-            result.data.createdByThisItem !== false,
-          ),
+          message: removeConfirmation(row.name, Number(result.data.requiresConfirmation)),
         });
         return;
       }
