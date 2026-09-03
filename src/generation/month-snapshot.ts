@@ -8,7 +8,7 @@ import "server-only";
  * against fixtures and guarantees the cover sheet, the workbook and the packet are all
  * describing the same instant.
  */
-import { and, asc, eq, inArray, lt } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, lt } from "drizzle-orm";
 
 import { db } from "@/src/db";
 import {
@@ -171,7 +171,7 @@ export async function loadMonthSnapshot(
           lineItems,
           and(eq(lineItems.id, expenses.lineItemId), eq(lineItems.orgId, orgId)),
         )
-        .where(and(eq(expenses.orgId, orgId), eq(expenses.month, month)))
+        .where(and(eq(expenses.orgId, orgId), eq(expenses.month, month), isNull(expenses.deletedAt)))
         .orderBy(asc(expenses.sortOrder), asc(expenses.id));
 
       // Only prior months are queried; this month's figures are derived from the rows above,
@@ -188,7 +188,7 @@ export async function loadMonthSnapshot(
           feesReimbursable: expenses.feesReimbursable,
         })
         .from(expenses)
-        .where(and(eq(expenses.orgId, orgId), lt(expenses.month, month)))
+        .where(and(eq(expenses.orgId, orgId), lt(expenses.month, month), isNull(expenses.deletedAt)))
         .orderBy(asc(expenses.month), asc(expenses.id));
 
       const settings = await tx

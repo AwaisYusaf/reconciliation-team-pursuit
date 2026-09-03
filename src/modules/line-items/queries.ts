@@ -27,6 +27,8 @@ export async function loadLineItemRows(orgId: string): Promise<LineItemRow[]> {
       .from(lineItems)
       .where(eq(lineItems.orgId, orgId))
       .orderBy(asc(lineItems.sortOrder), asc(lineItems.name)),
+    // Not filtered on `deletedAt`: must agree with the delete gate in
+    // line-items/actions.ts, or this screen would say "0 expenses" while delete refuses.
     db
       .select({ lineItemId: expenses.lineItemId, total: count() })
       .from(expenses)

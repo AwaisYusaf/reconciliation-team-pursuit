@@ -201,29 +201,29 @@ export function ExpensesTable({
 
       <Dialog
         open={confirming !== null}
-        title="Delete this expense?"
+        title="Move this expense to the trash?"
         dismissLabel="Keep it"
         onDismiss={() => setConfirming(null)}
         confirm={{
-          label: "Delete expense",
+          label: "Move to trash",
           disabled: pending,
           onConfirm: () => {
             const row = confirming!;
             startTransition(async () => {
               setError(null);
               const result = await deleteExpenseAction(row.id);
-              // Stays open (Delete disabled via `pending`) until the outcome is known, so a
-              // failure is visible in place instead of the dialog vanishing before the user
-              // can tell what happened.
+              // Stays open (Move to trash disabled via `pending`) until the outcome is known,
+              // so a failure is visible in place instead of the dialog vanishing before the
+              // user can tell what happened.
               setConfirming(null);
-              if (reportResult(result, `${row.name} deleted`)) router.refresh();
+              if (reportResult(result, `${row.name} moved to trash`)) router.refresh();
               else setError(result.error);
             });
           },
         }}
       >
         {confirming &&
-          `${confirming.name} — ${formatMoney(confirming.reimbursableCents)}. Its attached files are removed too. This cannot be undone.`}
+          `${confirming.name} — ${formatMoney(confirming.reimbursableCents)}. It moves to the trash with its files, and can be restored.`}
       </Dialog>
 
       <div className="flex flex-wrap gap-[18px] mb-5">

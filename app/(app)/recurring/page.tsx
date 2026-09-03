@@ -1,4 +1,4 @@
-import { and, asc, count, eq } from "drizzle-orm";
+import { and, asc, count, eq, isNull } from "drizzle-orm";
 import { redirect } from "next/navigation";
 
 import { PageTitle, Subtext } from "@/src/components/ui/surfaces";
@@ -57,7 +57,13 @@ export default async function RecurringPage() {
       })
       .from(expenses)
       .leftJoin(expenseDocuments, eq(expenseDocuments.expenseId, expenses.id))
-      .where(and(eq(expenses.orgId, session.orgId), eq(expenses.month, month)))
+      .where(
+        and(
+          eq(expenses.orgId, session.orgId),
+          eq(expenses.month, month),
+          isNull(expenses.deletedAt),
+        ),
+      )
       .groupBy(expenses.id),
   ]);
 

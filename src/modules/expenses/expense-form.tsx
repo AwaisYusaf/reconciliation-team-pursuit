@@ -933,19 +933,19 @@ export function ExpenseForm({
 
               <Dialog
                 open={confirmingDelete}
-                title="Delete this expense?"
+                title="Move this expense to the trash?"
                 dismissLabel="Keep it"
                 onDismiss={() => setConfirmingDelete(false)}
                 confirm={{
-                  label: "Delete expense",
+                  label: "Move to trash",
                   disabled: pending,
                   onConfirm: () => {
                     startTransition(async () => {
                       const result = await deleteExpenseAction(existing!.id);
-                      // Stays open (Delete disabled via `pending`) until the outcome is known, so
-                      // the dialog doesn't vanish out from under a failure the general error banner
-                      // is about to show — the dialog would otherwise hide that banner behind its
-                      // overlay.
+                      // Stays open (Move to trash disabled via `pending`) until the outcome is
+                      // known, so the dialog doesn't vanish out from under a failure the general
+                      // error banner is about to show — the dialog would otherwise hide that
+                      // banner behind its overlay.
                       setConfirmingDelete(false);
                       if (!result.ok) {
                         setError(result.error);
@@ -957,9 +957,8 @@ export function ExpenseForm({
                   },
                 }}
               >
-                Its {existing!.documents.length} attached file
-                {existing!.documents.length === 1 ? "" : "s"} will be removed
-                too. This cannot be undone.
+                It moves to the trash with its {existing!.documents.length} attached file
+                {existing!.documents.length === 1 ? "" : "s"}, and can be restored.
               </Dialog>
             </>
           )}

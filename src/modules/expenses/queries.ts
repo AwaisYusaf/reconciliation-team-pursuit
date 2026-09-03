@@ -3,7 +3,7 @@ import "server-only";
 /**
  * Expense reads for m02 and m03.
  */
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, desc, eq, isNotNull, isNull } from "drizzle-orm";
 
 import { db } from "@/src/db";
 import { isUuid } from "@/src/lib/ids";
@@ -15,6 +15,7 @@ import {
   supportingDocTypes,
 } from "@/src/db/schema";
 import type { DocumentKind } from "@/src/db/schema";
+import { reimbursableCents } from "@/src/domain/money";
 
 export type AttachedDocument = {
   id: string;
@@ -152,7 +153,7 @@ export async function loadExpense(orgId: string, id: string): Promise<ExpenseDet
     })
     .from(expenses)
     .innerJoin(lineItems, eq(lineItems.id, expenses.lineItemId))
-    .where(and(eq(expenses.id, id), eq(expenses.orgId, orgId)))
+    .where(and(eq(expenses.id, id), eq(expenses.orgId, orgId), isNull(expenses.deletedAt)))
     .limit(1);
 
   const expense = rows[0];
@@ -188,7 +189,7 @@ export async function loadMonthExpenses(orgId: string, month: string): Promise<E
     })
     .from(expenses)
     .innerJoin(lineItems, eq(lineItems.id, expenses.lineItemId))
-    .where(and(eq(expenses.orgId, orgId), eq(expenses.month, month)))
+    .where(and(eq(expenses.orgId, orgId), eq(expenses.month, month), isNull(expenses.deletedAt)))
     .orderBy(asc(expenses.sortOrder));
 
   const documents = await documentsFor(
@@ -197,4 +198,51 @@ export async function loadMonthExpenses(orgId: string, month: string): Promise<E
   );
 
   return rows.map((row) => ({ ...row, documents: documents.get(row.id) ?? [] }));
+}
+
+/** One trashed expense, as much of it as the Trash screen shows. */
+export type TrashedExpense = {
+  id: string;
+  name: string;
+  month: string;
+  lineItemName: string;
+  amountCents: number;
+  deletedAt: Date;
+  // Soft delete leaves documents attached (they only go away on permanent delete), so the
+  // trash can show what would be restored or lost, the same as the active list does.
+  documents: AttachedDocument[];
+};
+
+/** Everything currently in the trash, newest deletion first. All months, no scoping. */
+export async function loadTrashedExpenses(orgId: string): Promise<TrashedExpense[]> {
+  const rows = await db
+    .select({
+      id: expenses.id,
+      name: expenses.name,
+      month: expenses.month,
+      lineItemName: lineItems.name,
+      subtotalCents: expenses.subtotalCents,
+      taxCents: expenses.taxCents,
+      feesCents: expenses.feesCents,
+      taxReimbursable: expenses.taxReimbursable,
+      feesReimbursable: expenses.feesReimbursable,
+      deletedAt: expenses.deletedAt,
+    })
+    .from(expenses)
+    .innerJoin(lineItems, eq(lineItems.id, expenses.lineItemId))
+    .where(and(eq(expenses.orgId, orgId), isNotNull(expenses.deletedAt)))
+    .orderBy(desc(expenses.deletedAt));
+
+  const documents = await documentsFor(orgId, rows.map((row) => row.id));
+
+  return rows.map((row) => ({
+    id: row.id,
+    name: row.name,
+    month: row.month,
+    lineItemName: row.lineItemName,
+    amountCents: reimbursableCents(row),
+    // Narrowed by the WHERE above: every row here has a `deletedAt` already.
+    deletedAt: row.deletedAt!,
+    documents: documents.get(row.id) ?? [],
+  }));
 }

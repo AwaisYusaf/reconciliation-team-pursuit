@@ -105,6 +105,9 @@ export async function deleteLineItemAction(
   if (!lineItem) return fail("That line item no longer exists.");
 
   const [[{ total }], recurring] = await Promise.all([
+    // Not filtered on `deletedAt`: the FK is `onDelete: "restrict"`, so a trashed expense
+    // still blocks this delete at the database. Filtering here would turn a clean refusal
+    // into a Postgres FK error — the trash has to be emptied first.
     db
       .select({ total: count() })
       .from(expenses)
