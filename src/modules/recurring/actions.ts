@@ -3,7 +3,7 @@
 /**
  * Recurring items (m05) — the fixed monthly set, added on confirmation only (R8.3).
  */
-import { and, asc, count, eq, sql } from "drizzle-orm";
+import { and, asc, count, eq, isNull, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
 import { db } from "@/src/db";
@@ -170,6 +170,8 @@ export async function addRecurringToMonthAction(
     defaultSource?.label ??
     "Paid by us, reimbursement requested";
 
+  // Deliberately not filtered on `deletedAt`: see the same counter in
+  // `createExpenseAction` — a trashed row keeps its sortOrder.
   const [{ next }] = await db
     .select({ next: sql<number>`coalesce(max(${expenses.sortOrder}), -1) + 1` })
     .from(expenses)
@@ -243,7 +245,9 @@ export async function removeRecurringFromMonthAction(
     })
     .from(expenses)
     .leftJoin(expenseDocuments, eq(expenseDocuments.expenseId, expenses.id))
-    .where(and(eq(expenses.orgId, current.orgId), eq(expenses.month, month)))
+    .where(
+      and(eq(expenses.orgId, current.orgId), eq(expenses.month, month), isNull(expenses.deletedAt)),
+    )
     .groupBy(expenses.id);
 
   // Prefer expenses this recurring item actually created. Name matching remains as a

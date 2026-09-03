@@ -309,6 +309,8 @@ export const expenses = pgTable(
      * delete a manually entered expense that happens to share a payee and line item.
      */
     recurringItemId: uuid("recurring_item_id"),
+    /** Set when trashed; null means active. Restore clears it, permanent delete removes the row. */
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },

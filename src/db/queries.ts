@@ -6,7 +6,7 @@ import "server-only";
  * Every function takes an `orgId` that callers must source from the session — never from
  * client input — which is what keeps one organisation's data out of another's screens.
  */
-import { and, asc, eq, lte } from "drizzle-orm";
+import { and, asc, eq, isNull, lte } from "drizzle-orm";
 
 import { db } from "@/src/db";
 import { contractSettings, expenses, lineItems } from "@/src/db/schema";
@@ -66,7 +66,9 @@ export async function loadExpenseAmounts(
       feesReimbursable: expenses.feesReimbursable,
     })
     .from(expenses)
-    .where(and(eq(expenses.orgId, orgId), lte(expenses.month, uptoMonth)));
+    .where(
+      and(eq(expenses.orgId, orgId), lte(expenses.month, uptoMonth), isNull(expenses.deletedAt)),
+    );
 }
 
 /** Contract settings, with zeroed defaults when onboarding skipped them. */

@@ -3,7 +3,7 @@
 /**
  * Expense capture (m02) — the single point where the packet's raw material is recorded.
  */
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, isNotNull, isNull, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
 import { db } from "@/src/db";
@@ -138,6 +138,9 @@ export async function createExpenseAction(
 
   // One monotonic counter per month keeps the flat list, the cover sheet rows and the
   // Excel grouping in one consistent order (data-model).
+  //
+  // Deliberately not filtered on `deletedAt`: a trashed row keeps its sortOrder, and
+  // excluding it here would let a new expense take a number a restored row already holds.
   const [{ next }] = await db
     .select({ next: sql<number>`coalesce(max(${expenses.sortOrder}), -1) + 1` })
     .from(expenses)
@@ -191,7 +194,13 @@ export async function updateExpenseAction(input: ExpenseInput): Promise<ActionRe
       paymentSource: expenses.paymentSource,
     })
     .from(expenses)
-    .where(and(eq(expenses.id, input.id), eq(expenses.orgId, current.orgId)))
+    .where(
+      and(
+        eq(expenses.id, input.id),
+        eq(expenses.orgId, current.orgId),
+        isNull(expenses.deletedAt),
+      ),
+    )
     .limit(1);
   if (!existing) return fail("That expense no longer exists.");
 
@@ -210,6 +219,7 @@ export async function updateExpenseAction(input: ExpenseInput): Promise<ActionRe
 
   let sortOrder = existing.sortOrder;
   if (existing.month !== row.month) {
+    // Deliberately not filtered on `deletedAt`: see the same counter in createExpenseAction.
     const [{ next }] = await db
       .select({ next: sql<number>`coalesce(max(${expenses.sortOrder}), -1) + 1` })
       .from(expenses)
@@ -230,7 +240,9 @@ export async function updateExpenseAction(input: ExpenseInput): Promise<ActionRe
       sortOrder,
       ...(movedMonth ? { referenceSeq: await claimReferenceSeq(current.orgId, row.month) } : {}),
     })
-    .where(and(eq(expenses.id, expenseId), eq(expenses.orgId, current.orgId)))
+    .where(
+      and(eq(expenses.id, expenseId), eq(expenses.orgId, current.orgId), isNull(expenses.deletedAt)),
+    )
     .returning({ id: expenses.id });
   if (updated.length === 0) return fail("That expense no longer exists.");
 
@@ -271,7 +283,49 @@ export async function updateExpenseAction(input: ExpenseInput): Promise<ActionRe
   return ok();
 }
 
+/** Move an expense to the trash. Its documents are left in place, for restore. */
 export async function deleteExpenseAction(id: string): Promise<ActionResult> {
+  const current = await actionSession();
+  if ("expired" in current) return current.expired;
+  if (!isUuid(id)) return fail("That expense no longer exists.");
+
+  const trashed = await db
+    .update(expenses)
+    .set({ deletedAt: new Date() })
+    .where(
+      and(eq(expenses.id, id), eq(expenses.orgId, current.orgId), isNull(expenses.deletedAt)),
+    )
+    .returning({ id: expenses.id });
+  if (trashed.length === 0) return fail("That expense no longer exists.");
+
+  revalidatePath("/", "layout");
+  return ok();
+}
+
+/** Bring a trashed expense back. Its documents were never touched, so nothing to restore there. */
+export async function restoreExpenseAction(id: string): Promise<ActionResult> {
+  const current = await actionSession();
+  if ("expired" in current) return current.expired;
+  if (!isUuid(id)) return fail("That expense no longer exists.");
+
+  const restored = await db
+    .update(expenses)
+    .set({ deletedAt: null })
+    .where(
+      and(eq(expenses.id, id), eq(expenses.orgId, current.orgId), isNotNull(expenses.deletedAt)),
+    )
+    .returning({ id: expenses.id });
+  if (restored.length === 0) return fail("That expense no longer exists.");
+
+  revalidatePath("/", "layout");
+  return ok();
+}
+
+/**
+ * Remove a trashed expense for good. The WHERE requires `deletedAt` already set, so an
+ * active expense can never be hard-deleted without going through the trash first.
+ */
+export async function permanentlyDeleteExpenseAction(id: string): Promise<ActionResult> {
   const current = await actionSession();
   if ("expired" in current) return current.expired;
   if (!isUuid(id)) return fail("That expense no longer exists.");
@@ -283,7 +337,9 @@ export async function deleteExpenseAction(id: string): Promise<ActionResult> {
 
   const deleted = await db
     .delete(expenses)
-    .where(and(eq(expenses.id, id), eq(expenses.orgId, current.orgId)))
+    .where(
+      and(eq(expenses.id, id), eq(expenses.orgId, current.orgId), isNotNull(expenses.deletedAt)),
+    )
     .returning({ id: expenses.id });
   if (deleted.length === 0) return fail("That expense no longer exists.");
 

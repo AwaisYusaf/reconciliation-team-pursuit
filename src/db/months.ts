@@ -8,7 +8,7 @@ import "server-only";
  * happened when the form built its own narrower list from `monthWindow` alone (D-62 added
  * contract months to the header and not to the form).
  */
-import { eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 
 import { db } from "@/src/db";
 import { contractSettings, expenses } from "@/src/db/schema";
@@ -19,7 +19,11 @@ export async function loadSelectableMonths(
   alsoInclude: readonly MonthKey[] = [],
 ): Promise<MonthKey[]> {
   const [monthRows, contractRows] = await Promise.all([
-    db.selectDistinct({ month: expenses.month }).from(expenses).where(eq(expenses.orgId, orgId)),
+    // A month holding only trashed rows is not selectable.
+    db
+      .selectDistinct({ month: expenses.month })
+      .from(expenses)
+      .where(and(eq(expenses.orgId, orgId), isNull(expenses.deletedAt))),
     db
       .select({ start: contractSettings.contractStart, end: contractSettings.contractEnd })
       .from(contractSettings)

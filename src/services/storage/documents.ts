@@ -9,7 +9,7 @@ import "server-only";
  * storage. It is one request instead of two, there is no window in which an orphaned draft
  * object exists, and the S3 and filesystem drivers behave identically.
  */
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { v7 as uuidv7 } from "uuid";
 
 import { db } from "@/src/db";
@@ -204,10 +204,17 @@ export async function ingestExpenseDocument(input: {
     }
   }
 
+  // No attaching files to a trashed expense.
   const owner = await db
     .select({ month: expenses.month, noReceipt: expenses.noReceipt })
     .from(expenses)
-    .where(and(eq(expenses.id, input.expenseId), eq(expenses.orgId, input.orgId)))
+    .where(
+      and(
+        eq(expenses.id, input.expenseId),
+        eq(expenses.orgId, input.orgId),
+        isNull(expenses.deletedAt),
+      ),
+    )
     .limit(1);
   const expense = owner[0];
   if (!expense) return { ok: false, error: "That expense no longer exists." };

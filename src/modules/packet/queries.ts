@@ -6,7 +6,7 @@ import "server-only";
  * The page-count listing is built from the same ordering and estimation the assembler uses,
  * so the contents the user reads before downloading describe the file they get.
  */
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, isNull } from "drizzle-orm";
 
 import { db } from "@/src/db";
 import { expenseDocuments, expenses, lineItems, monthDocuments, monthStatuses } from "@/src/db/schema";
@@ -85,7 +85,9 @@ export async function loadPacketReadiness(
       })
       .from(expenses)
       .innerJoin(lineItems, eq(lineItems.id, expenses.lineItemId))
-      .where(and(eq(expenses.orgId, orgId), eq(expenses.month, month)))
+      .where(
+        and(eq(expenses.orgId, orgId), eq(expenses.month, month), isNull(expenses.deletedAt)),
+      )
       .orderBy(asc(expenses.sortOrder), asc(expenses.id)),
     db
       .select({
@@ -98,7 +100,13 @@ export async function loadPacketReadiness(
       })
       .from(expenseDocuments)
       .innerJoin(expenses, eq(expenses.id, expenseDocuments.expenseId))
-      .where(and(eq(expenseDocuments.orgId, orgId), eq(expenses.month, month)))
+      .where(
+        and(
+          eq(expenseDocuments.orgId, orgId),
+          eq(expenses.month, month),
+          isNull(expenses.deletedAt),
+        ),
+      )
       .orderBy(asc(expenseDocuments.sortOrder), asc(expenseDocuments.id)),
     db
       .select({

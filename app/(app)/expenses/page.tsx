@@ -1,6 +1,8 @@
 import { and, asc, eq } from "drizzle-orm";
+import Link from "next/link";
 import { redirect } from "next/navigation";
 
+import { buttonClassName } from "@/src/components/ui/button";
 import { PageTitle, Subtext } from "@/src/components/ui/surfaces";
 import { db } from "@/src/db";
 import { paymentSources } from "@/src/db/schema";
@@ -87,8 +89,28 @@ export default async function ExpensesPage() {
 
   return (
     <div>
-      <PageTitle className="mb-1.5">Expenses This Month</PageTitle>
-      <Subtext className="mb-6">{monthLabel(month)}</Subtext>
+      <div className="flex flex-wrap items-start justify-between gap-3 mb-6">
+        <div>
+          <PageTitle className="mb-1.5">Expenses This Month</PageTitle>
+          <Subtext>{monthLabel(month)}</Subtext>
+        </div>
+        <Link
+          href="/expenses/trash"
+          className={buttonClassName("secondary", "min-h-11 px-4 text-[15px] gap-2")}
+        >
+          <svg viewBox="0 0 20 20" className="w-4 h-4 flex-none" aria-hidden="true">
+            <path
+              d="M4 6h12M8 6V4.5A1.5 1.5 0 019.5 3h1A1.5 1.5 0 0112 4.5V6m-6.5 0 .6 9.4a1.5 1.5 0 001.497 1.4h3.806a1.5 1.5 0 001.497-1.4L14.5 6"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+          Trash
+        </Link>
+      </div>
 
       <ExpensesTable
         rows={rows}
