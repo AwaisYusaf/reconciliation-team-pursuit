@@ -201,26 +201,30 @@ export function MonthDocuments({
             required
             accept="image/jpeg,image/png,image/webp,image/heic,application/pdf"
             className="sr-only"
-            onChange={(event) => setFileName(event.target.files?.[0]?.name ?? null)}
+            onChange={(event) => {
+              const file = event.target.files?.[0] ?? null;
+              setFileName(file?.name ?? null);
+              // Picking a file was the user's confirmation — the separate "Add document"
+              // click was a second step people kept getting stuck on. requestSubmit() runs
+              // the same `upload` action a real submit would.
+              if (file) formRef.current?.requestSubmit();
+            }}
           />
           <div className="flex items-center gap-3">
             <Button
               type="button"
-              variant="quiet"
-              className="min-h-11"
+              variant="secondary"
+              className="min-h-11 px-[18px] text-[15px]"
+              disabled={uploading}
               onClick={() => fileInputRef.current?.click()}
             >
               Choose file
             </Button>
             <span className="text-[15px] text-muted truncate max-w-[220px]">
-              {fileName ?? "No file chosen"}
+              {uploading ? "Uploading…" : (fileName ?? "No file chosen")}
             </span>
           </div>
         </div>
-
-        <Button type="submit" variant="secondary" disabled={uploading}>
-          {uploading ? "Uploading…" : "Add document"}
-        </Button>
       </form>
     </Card>
   );
