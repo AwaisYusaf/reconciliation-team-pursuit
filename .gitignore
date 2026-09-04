@@ -48,3 +48,6 @@ context/
 
 # local development file storage (D-29) — never commit uploaded documents
 .storage/
+
+# Playwright MCP session output (screenshots, snapshots, downloaded test files)
+.playwright-mcp/

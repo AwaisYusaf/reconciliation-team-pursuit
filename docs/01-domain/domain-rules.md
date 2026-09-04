@@ -41,10 +41,11 @@ Let `opening` = line item's opening previously-billed balance (setup figure), `e
 
 - **R4.1** Every expense requires **≥ 1 proof of payment**. No exceptions, no overrides.
 - **R4.2** Every expense requires **≥ 1 receipt/justification document** (receipt, invoice, or timesheet) **unless** it is explicitly marked `noReceipt` with a non-empty reason. The reason prints on the cover sheet (R6.7). `noReceipt` and attached receipt documents are mutually exclusive: saving with `noReceipt = true` deletes the expense's receipt documents (after an in-form confirmation); the service layer rejects the combined state.
-- **R4.3** An expense violating R4.1/R4.2 is **documentation-incomplete**. While any expense in the active month is incomplete, packet PDF and summary Excel downloads are **blocked**; cover sheet downloads for a line item are blocked while that line item has an incomplete expense.
-- **R4.4** The blocking UI intro line is `The following records are missing a receipt/justification or proof of payment:` and each record renders exactly as `{name} — {line item} — missing {proof of payment | receipt/justification | both}`, with a direct link to edit that expense.
-- **R4.5** Recurring one-click adds create expenses with **no documents** — they are intentionally incomplete until the user attaches files (the gate is the reminder).
+- **R4.3** An expense violating R4.1/R4.2/R4.7 is **documentation-incomplete**. While any expense in the active month is incomplete, packet PDF and summary Excel downloads are **blocked**; cover sheet downloads for a line item are blocked while that line item has an incomplete expense.
+- **R4.4** The blocking UI intro line is `The following records are missing a receipt/justification, proof of payment, or narrative:` and each record renders as `{name} — {line item} — missing {reasons}`, where `{reasons}` is `proof of payment` / `receipt/justification` / `narrative` for a single gap, the fixed legacy phrase `both` for proof-of-payment-and-receipt together (unchanged since before R4.7 existed), and otherwise the missing items joined in plain English with an Oxford comma (e.g. `proof of payment and narrative`, `proof of payment, receipt/justification, and narrative`) — with a direct link to edit that expense.
+- **R4.5** Recurring one-click adds create expenses with **no documents** — they are intentionally incomplete until the user attaches files (the gate is the reminder). The created expense's narrative comes from the template's own default narrative (m05); a template saved with no default narrative produces an expense that is also incomplete under R4.7 until the narrative is filled in — the same reminder mechanism, not a save-time block, since the one-click add never goes through the expense form's validation.
 - **R4.6** A file counts as attached only after the server-side **process & attach** step succeeds (validation, conversion, page count — see data-model §Upload processing). Failed files show a per-file error and do not satisfy R4.1/R4.2.
+- **R4.7** Every expense requires a **non-blank narrative**. Unlike R4.1/R4.2, this is enforced **at save time**: the expense form rejects a create or an update with an empty or whitespace-only narrative, naming the reason. Expenses saved before this rule existed are not retroactively invalidated — the column may still be blank for them — but they surface exactly like an R4.1/R4.2 gap: in the Expenses tab's "Missing narrative" filter and row indicator, and in the packet's blocking list (R4.3/R4.4), until someone opens and completes them. The cover sheet still prints the narrative per R6.6.
 
 ## 5. Payment sources
 
@@ -59,7 +60,7 @@ Let `opening` = line item's opening previously-billed balance (setup figure), `e
 - **R6.4** Then, for every expense, in table order: a bold heading `{Name}:` followed by its proof-of-payment images in upload order, full column width, aspect preserved. Heading names always equal table Names.
 - **R6.5** **Inline notes** (yellow-highlighted, appended to the heading, in this order): (a) the expense's custom note if set; (b) the **exclusion note**, whenever part of the receipt was not reimbursed — see R6.5a for which wording and when. Both print when both apply (SOW §2: the disclosure is always appended; a custom note never suppresses it — D-22, amended by D-67).
 - **R6.5a** The exclusion note names **what was actually excluded** and prints only when something was — superseding R6.5's original "whenever `tax > 0`", which predates tax being reimbursable. Exact strings, singular "Statement": tax only → **`(Note: Statement includes tax which was excluded from reimbursement amount)`** (the wording approved in the February packet, unchanged); fees only → **`(Note: Statement includes fees which were excluded from reimbursement amount)`**; both → **`(Note: Statement includes tax and fees which were excluded from reimbursement amount)`**. Nothing prints when the whole receipt is reimbursed, or when the excluded part is zero — the note exists to explain a gap between the receipt and the claim, and asserting one that does not exist would put a false statement on a funder document (D-67).
-- **R6.6** **Narrative note**: optional paragraph (plain text, not highlighted) rendered under the heading before the proof images — used for aggregated reimbursements and context (e.g., an out-of-pocket explanation).
+- **R6.6** **Narrative note**: paragraph (plain text, not highlighted) rendered under the heading before the proof images — used for aggregated reimbursements and context (e.g., an out-of-pocket explanation). Required at save time (R4.7); this rule covers how it prints, not whether it exists.
 - **R6.7** **No-receipt disclosure:** when `noReceipt`, append a further yellow inline note: `(Note: No receipt available — {reason})`.
 - **R6.8** Salary is not special: people are expenses (name = person, role = description), so the Salary cover sheet is the per-person Name/Role/Amount sheet the City already receives.
 
@@ -110,10 +111,11 @@ Let `opening` = line item's opening previously-billed balance (setup figure), `e
 | reimburse-hint (UI) | `Sales tax is excluded. The funder does not reimburse it.` |
 | blocked-title (UI) | `This packet cannot be downloaded yet.` |
 | blocked-title-line-item (UI) | `Downloads unavailable for this line item.` |
-| blocked-intro (UI) | `The following records are missing a receipt/justification or proof of payment:` |
+| blocked-intro (UI) | `The following records are missing a receipt/justification, proof of payment, or narrative:` |
 | delete-blocked (UI) | `"{name}" has expenses recorded against it and cannot be deleted.` |
 | duplicate-email (UI) | `An organisation with that email already exists — sign in instead.` |
 | no-receipt-reason-required (UI) | `Enter the reason no receipt is available.` |
+| expense-missing-narrative (UI) | `Enter a narrative for this expense.` |
 | upload-failed (UI) | `Upload failed — try again.` |
 | forgot-password (UI) | `Forgot your password? Email` + a mailto link to `tech@teampursuit.org` |
 | tax-exceeds-subtotal-warning (UI) | `Tax is more than the subtotal — double-check this entry.` |

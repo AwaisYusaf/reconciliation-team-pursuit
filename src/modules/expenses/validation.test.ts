@@ -24,7 +24,7 @@ const BASE: ExpenseInput = {
   tax: "",
   fees: "",
   note: "",
-  narrative: "",
+  narrative: "Consulting services rendered in February.",
   noReceipt: false,
   noReceiptReason: "",
 };
@@ -60,5 +60,25 @@ describe("validate — money fields", () => {
 
   it("still accepts a zero subtotal", () => {
     expect(validate({ ...BASE, subtotal: "0" })).toBeNull();
+  });
+});
+
+describe("validate — narrative (R4.7)", () => {
+  it("rejects an empty narrative", () => {
+    expect(validate({ ...BASE, narrative: "" })).toBe("Enter a narrative for this expense.");
+  });
+
+  it("rejects a whitespace-only narrative", () => {
+    expect(validate({ ...BASE, narrative: "   " })).toBe("Enter a narrative for this expense.");
+  });
+
+  it("accepts a real narrative", () => {
+    expect(validate({ ...BASE, narrative: "Monthly consulting retainer." })).toBeNull();
+  });
+
+  it("applies the same rule to an update as to a create — validate() is shared", () => {
+    expect(validate({ ...BASE, id: "some-id", narrative: "" })).toBe(
+      "Enter a narrative for this expense.",
+    );
   });
 });

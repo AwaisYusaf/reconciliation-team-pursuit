@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
-import { DownloadButton } from "@/src/components/ui/download-button";
 import {
   Card,
   CARD_PADDING,
@@ -15,10 +14,12 @@ import { formatDateUS, monthLabel, todayIso } from "@/src/domain/dates";
 import { formatMoney } from "@/src/domain/format";
 import { UI } from "@/src/domain/strings";
 import { packetContents } from "@/src/generation/packet-order";
+import { loadTrashedExpenses } from "@/src/modules/expenses/queries";
 import { loadPacketReadiness } from "@/src/modules/packet/queries";
 import { getSession } from "@/src/services/auth/session";
 
 import { MonthDocuments } from "./month-documents";
+import { PacketDownloadButtons, type DeletedItem } from "./packet-download-buttons";
 import { SubmittedMarker } from "./submitted-marker";
 
 export const metadata = { title: "Month-End Packet — Grant Expense Reconciliation" };
@@ -36,10 +37,20 @@ export default async function PacketPage() {
 
   const month = session.activeMonth;
   const label = monthLabel(month);
-  const readiness = await loadPacketReadiness(session.orgId, month);
+  const [readiness, deletedInMonth] = await Promise.all([
+    loadPacketReadiness(session.orgId, month),
+    loadTrashedExpenses(session.orgId, month),
+  ]);
 
   const blocked = readiness.blocking.length > 0;
   const nonEmpty = readiness.rows.filter((row) => row.recordCount > 0);
+  const deletedItems: DeletedItem[] = deletedInMonth.map((expense) => ({
+    id: expense.id,
+    name: expense.name,
+    lineItemName: expense.lineItemName,
+    amountCents: expense.amountCents,
+    deletedAt: formatDateUS(todayIso(expense.deletedAt)),
+  }));
 
   return (
     <div>
@@ -168,22 +179,7 @@ export default async function PacketPage() {
             Page counts are estimated within about two pages of the final document.
           </p>
 
-          <div className="flex flex-wrap gap-3 mt-6">
-            <DownloadButton
-              href={`/api/downloads/packet?month=${month}`}
-              disabled={blocked}
-              pendingLabel="Assembling…"
-            >
-              Download Packet (PDF)
-            </DownloadButton>
-            <DownloadButton
-              href={`/api/downloads/summary?month=${month}`}
-              variant="secondary"
-              disabled={blocked}
-            >
-              Download Summary (Excel)
-            </DownloadButton>
-          </div>
+          <PacketDownloadButtons month={month} blocked={blocked} deletedItems={deletedItems} />
         </Card>
 
         <MonthDocuments

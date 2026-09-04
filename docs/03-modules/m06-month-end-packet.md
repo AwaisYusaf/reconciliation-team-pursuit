@@ -10,7 +10,8 @@ Route `/packet`. Readiness table · blocking panel · month documents manager ·
 Reads everything for the month; writes `month_documents`. Calls packet + Excel generators (`02-outputs/packet-pdf-spec.md`, `summary-excel-spec.md`). Rules R4.3–R4.4, R11.2–R11.3.
 
 ## Behavior
-- **Blocking panel** (only when incomplete records exist): red panel, R12 `blocked-title` + `blocked-intro` strings, then one row per record in the exact R4.4 template (`missing proof of payment` / `missing receipt/justification` / `missing both`) with an `Open expense` link to m02 edit. Both download buttons disabled while present.
+- **Deleted-items safeguard** (only when something was deleted from this reporting period): a panel above the blocking panel lists every expense soft-deleted from the active month — name, line item, amount, deleted-on date — each with an inline `Restore`. Both download buttons stay disabled until the user checks "Yes, these deletions were intentional," independent of and in addition to the documentation gate below. The confirmation is not persisted — it resets on the next page load, so it is re-asked each time someone is actually about to download, not answered once and forgotten. A month with nothing deleted shows no panel and needs no confirmation, same as before this existed.
+- **Blocking panel** (only when incomplete records exist): red panel, R12 `blocked-title` + `blocked-intro` strings, then one row per record in the R4.4 template — one combined list covering all three gap types (proof, receipt, narrative) rather than separate lists per type — with an `Open expense` link to m02 edit. Both download buttons disabled while present.
 - **Readiness table:** `Line Item | Amount This Month | Records | Documentation Complete` (Yes / red bold No) + Grand Total row (Σ amount, Σ records). **All** line items appear — zero-record rows show `$0.00 · 0 · —`.
 - **Zero-expense month:** downloadable (summary + month documents only) with the notice `This month has no expenses.`
 - **Submitted flag (R10.6):** after a successful packet download, a quiet `Mark as submitted` action appears; once set, the month shows `Submitted {date}` here and edit warnings elsewhere.
@@ -22,7 +23,7 @@ Reads everything for the month; writes `month_documents`. Calls packet + Excel g
 `presignMonthDocUpload` (quota-checked), `attachMonthDocument(docId)`, `deleteMonthDocument`, `getPacketReadiness(month)`, `downloadPacket(month)`, `downloadSummary(month)`, `markMonthSubmitted(month)`.
 
 ## Acceptance
-Blocking list matches m03's strip exactly and uses R4.4 wording verbatim; downloads enabled the moment the last missing doc is attached; page counts within ±2 of the generated PDF; generated files match their specs; a 130-page month generates ≤ 60 s; double-click produces one generation run.
+Blocking list matches m03's strip exactly and uses R4.4 wording verbatim; downloads enabled the moment the last missing doc is attached; page counts within ±2 of the generated PDF; generated files match their specs; a 130-page month generates ≤ 60 s; double-click produces one generation run; a month with no deletions shows no deleted-items panel and downloads are gated by the documentation blocking list alone; a month with deletions blocks both downloads until the confirmation checkbox is checked, restoring an item updates the list in place without a full page reload, and the confirmation is not remembered across a fresh page load.
 
 ---
 

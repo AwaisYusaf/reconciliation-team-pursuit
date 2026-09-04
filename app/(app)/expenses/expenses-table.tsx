@@ -70,6 +70,7 @@ export type ExpenseRow = {
   allDocuments: RowDocument[];
   noReceipt: boolean;
   noReceiptReason: string | null;
+  hasNarrative: boolean;
   complete: boolean;
   /** What R4.4 says this record is missing, or null when it is complete. From the gate. */
   missing: MissingKind | null;
@@ -296,7 +297,7 @@ export function ExpensesTable({
         </div>
       </div>
 
-      <TableCard minWidth={1040}>
+      <TableCard minWidth={1160}>
         <thead>
           <tr>
             <Th sticky>Ref / Date</Th>
@@ -307,6 +308,7 @@ export function ExpensesTable({
             <Th>Proof</Th>
             <Th>Receipt</Th>
             <Th>Support</Th>
+            <Th>Narrative</Th>
             <Th align="right" stickyEnd />
           </tr>
         </thead>
@@ -363,6 +365,13 @@ export function ExpensesTable({
                   </button>
                 ) : (
                   "—"
+                )}
+              </Td>
+              <Td>
+                {row.hasNarrative ? (
+                  <span className="text-[15px] text-sub">Provided</span>
+                ) : (
+                  <span className="text-base font-bold text-danger">MISSING</span>
                 )}
               </Td>
               <Td align="right" stickyEnd className="whitespace-nowrap">

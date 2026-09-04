@@ -44,7 +44,7 @@ describe("UI copy (R12)", () => {
     expect(UI.blockedTitle).toBe("This packet cannot be downloaded yet.");
     expect(UI.blockedTitleLineItem).toBe("Downloads unavailable for this line item.");
     expect(UI.blockedIntro).toBe(
-      "The following records are missing a receipt/justification or proof of payment:",
+      "The following records are missing a receipt/justification, proof of payment, or narrative:",
     );
     expect(UI.forgotPassword).toBe("Forgot your password? Email");
     expect(UI.supportEmail).toBe("tech@teampursuit.org");

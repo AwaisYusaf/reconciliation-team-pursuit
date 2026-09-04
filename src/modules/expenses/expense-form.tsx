@@ -873,9 +873,7 @@ export function ExpenseForm({
           </div>
 
           <div>
-            <Label htmlFor="narrative">
-              Narrative <span className="font-normal text-sub">(optional)</span>
-            </Label>
+            <Label htmlFor="narrative">Narrative</Label>
             <Textarea
               id="narrative"
               rows={3}

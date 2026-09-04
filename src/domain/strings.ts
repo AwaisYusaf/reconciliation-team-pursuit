@@ -69,7 +69,7 @@ export const UI = {
   blockedTitleLineItem: "Downloads unavailable for this line item.",
   /** Line that introduces the blocking list (R4.4). */
   blockedIntro:
-    "The following records are missing a receipt/justification or proof of payment:",
+    "The following records are missing a receipt/justification, proof of payment, or narrative:",
   /** Login page — there is no self-serve reset (D-24); email is the escalation path. */
   forgotPassword: "Forgot your password? Email",
   /** The mailbox the login page's "forgot password" link points to (D-24). */
@@ -83,6 +83,9 @@ export const UI = {
   signInWrongPassword: "That password doesn't match this organization email.",
   expenseMissingFields:
     "Please enter a name, choose a line item, and choose a payment source.",
+  /** m02 — narrative is required at save time (R4.7), unlike receipt/proof which gate only
+   *  the download. */
+  expenseMissingNarrative: "Enter a narrative for this expense.",
   recurringMissingFields: "Enter a name, an amount, and a line item.",
   lineItemDuplicate: "A line item with that name already exists.",
   signupsClosed: "Sign-ups are closed.",

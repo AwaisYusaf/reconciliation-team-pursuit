@@ -36,10 +36,11 @@ const HEAD_BASE =
  * Scrolling sideways otherwise takes the row's identity away with everything else, leaving a
  * row of figures belonging to nothing.
  *
- * Released at `xl`, not `lg`. The design language caps content at 1100px, so the widest table
- * needs about 1050 and only genuinely fits from 1280 up; releasing at 1024 dropped the pin at
- * exactly the width where the table still overflowed by ~66px, which is the width a laptop
- * actually is.
+ * Released at `xl`, not `lg`. The design language caps content at 1220px, so the widest table
+ * (expenses, with its Narrative column) needs about 1160 and only genuinely fits once the
+ * viewport reaches the `xl` (1280px) breakpoint, where that 1220px cap is no longer squeezed
+ * by a narrower viewport; releasing at 1024 dropped the pin at a width where the table still
+ * overflowed, which is the width a laptop actually is.
  */
 const STICKY_FIRST =
   "sticky left-0 z-10 bg-surface xl:static xl:bg-transparent " +

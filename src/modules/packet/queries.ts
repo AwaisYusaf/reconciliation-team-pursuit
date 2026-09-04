@@ -154,6 +154,7 @@ export async function loadPacketReadiness(
         name: expense.name,
         lineItemName: expense.lineItemName,
         noReceipt: expense.noReceipt,
+        hasNarrative: (expense.narrative ?? "").trim() !== "",
         documents: attached.map((document) => ({
           kind: document.kind,
           status: "attached" as const,
