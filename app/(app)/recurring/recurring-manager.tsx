@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useMemo, useState, useTransition } from "react";
+import { Fragment, useMemo, useState, useTransition } from "react";
 
 import { Button } from "@/src/components/ui/button";
 import { ConfirmButton } from "@/src/components/ui/confirm-button";
@@ -113,6 +113,11 @@ export function RecurringManager({
   const safePage = Math.min(page, pageCount);
   const shown = visible.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
 
+  // Whether the row being edited is on the current page/filter, so the edit form can sit
+  // inline under it. If a filter change hides that row mid-edit, the form falls back to the
+  // bottom of the page (below) rather than disappearing entirely.
+  const editingRowVisible = Boolean(draft?.id && shown.some((row) => row.id === draft.id));
+
   /** Narrowing the list can strand the reader past the end, so any filter change goes to page 1. */
   function refine(apply: () => void) {
     apply();
@@ -197,6 +202,178 @@ export function RecurringManager({
       flash(row.id);
       router.refresh();
     });
+  }
+
+  /**
+   * The add/edit form. Rendered inline under the row being edited so a click on "Edit" doesn't
+   * require scrolling to the bottom of the page to find it; the "+ Add recurring item" flow
+   * still renders it below the table, where there is no row to sit under.
+   */
+  function renderDraftForm(currentDraft: Draft) {
+    return (
+      <Card className="p-6 max-w-[860px]">
+        <div className="flex flex-wrap gap-4">
+          <div className="flex-[2] min-w-[220px]">
+            <Label htmlFor="rec-name">Name</Label>
+            <Input
+              id="rec-name"
+              value={currentDraft.name}
+              onChange={(event) => setDraft({ ...currentDraft, name: event.target.value })}
+            />
+          </div>
+          <div className="flex-1 min-w-[160px]">
+            <Label htmlFor="rec-amount">Amount</Label>
+            <MoneyInput
+              id="rec-amount"
+              value={currentDraft.amount}
+              placeholder="0.00"
+              onChange={(event) => setDraft({ ...currentDraft, amount: event.target.value })}
+            />
+          </div>
+          <div className="flex-[2] min-w-[220px]">
+            <Label id="rec-line-label" htmlFor="rec-line">Line item</Label>
+            <Select
+              id="rec-line"
+              aria-labelledby="rec-line-label"
+              value={currentDraft.lineItemId}
+              onValueChange={(value) => setDraft({ ...currentDraft, lineItemId: value })}
+            >
+              <option value="">Choose a line item</option>
+              {lineItems.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.name}
+                </option>
+              ))}
+            </Select>
+          </div>
+        </div>
+
+        <div className="mt-[18px]">
+          <Label htmlFor="rec-desc">
+            Default description <span className="font-normal text-sub">(optional)</span>
+          </Label>
+          <Input
+            id="rec-desc"
+            value={currentDraft.defaultDescription}
+            onChange={(event) =>
+              setDraft({ ...currentDraft, defaultDescription: event.target.value })
+            }
+          />
+          <Helper>Used as the cover-sheet role when this item is added to a month.</Helper>
+        </div>
+
+        <div className="mt-[18px]">
+          <Label htmlFor="rec-narrative">
+            Default narrative <span className="font-normal text-sub">(optional)</span>
+          </Label>
+          <Textarea
+            id="rec-narrative"
+            rows={3}
+            value={currentDraft.defaultNarrative}
+            onChange={(event) =>
+              setDraft({ ...currentDraft, defaultNarrative: event.target.value })
+            }
+          />
+          <Helper>
+            Fills in automatically each month and stays editable. Correcting it on the expense
+            updates this, so next month starts from the current wording.
+          </Helper>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-[18px]">
+          <div>
+            <Label id="rec-source-label" htmlFor="rec-source">
+              Payment source <span className="font-normal text-sub">(optional)</span>
+            </Label>
+            <Select
+              id="rec-source"
+              aria-labelledby="rec-source-label"
+              value={currentDraft.defaultPaymentSource}
+              onValueChange={(value) =>
+                setDraft({ ...currentDraft, defaultPaymentSource: value })
+              }
+            >
+              <option value="">Use the default</option>
+              {paymentSources.map((label) => (
+                <option key={label} value={label}>
+                  {label}
+                </option>
+              ))}
+            </Select>
+          </div>
+          <div>
+            <Label htmlFor="rec-tax">
+              Tax <span className="font-normal text-sub">(optional)</span>
+            </Label>
+            <MoneyInput
+              id="rec-tax"
+              placeholder="0.00"
+              value={currentDraft.defaultTax}
+              onChange={(event) => setDraft({ ...currentDraft, defaultTax: event.target.value })}
+            />
+          </div>
+          <div>
+            <Label htmlFor="rec-fees">
+              Fees <span className="font-normal text-sub">(optional)</span>
+            </Label>
+            <MoneyInput
+              id="rec-fees"
+              placeholder="0.00"
+              value={currentDraft.defaultFees}
+              onChange={(event) => setDraft({ ...currentDraft, defaultFees: event.target.value })}
+            />
+          </div>
+        </div>
+
+        <div className="flex flex-wrap gap-3 mt-5">
+          <Button
+            disabled={pending}
+            onClick={() =>
+              run(
+                () => saveRecurringItemAction(currentDraft),
+                () => {
+                  setDraft(null);
+                  revealSaved(currentDraft);
+                },
+                currentDraft.id ? "Recurring item saved" : "Recurring item added",
+              )
+            }
+          >
+            {currentDraft.id ? "Save changes" : "Add recurring item"}
+          </Button>
+          <Button variant="secondary" onClick={() => setDraft(null)}>
+            Cancel
+          </Button>
+          {currentDraft.id && (
+            <ConfirmButton
+              variant="quiet"
+              disabled={pending}
+              title="Delete this recurring item?"
+              confirmLabel="Delete from list"
+              body={
+                <>
+                  <strong>{currentDraft.name || "This item"}</strong> is removed from the
+                  recurring list, along with its saved amount and defaults. Expenses already
+                  added to a month are left untouched.
+                </>
+              }
+              onConfirm={() =>
+                run(
+                  () => deleteRecurringItemAction(currentDraft.id!),
+                  () => setDraft(null),
+                  "Removed from the recurring list",
+                )
+              }
+            >
+              Delete from list
+            </ConfirmButton>
+          )}
+        </div>
+        {currentDraft.id && (
+          <Helper>Deleting the list entry leaves any expenses already added untouched.</Helper>
+        )}
+      </Card>
+    );
   }
 
   return (
@@ -288,7 +465,8 @@ export function RecurringManager({
           </thead>
           <tbody>
             {shown.map((row) => (
-              <tr key={row.id} className={justChanged === row.id ? "bg-success-bg" : undefined}>
+              <Fragment key={row.id}>
+              <tr className={justChanged === row.id ? "bg-success-bg" : undefined}>
                 <Td>{row.name}</Td>
                 <Td align="right" numeric>
                   {formatMoney(row.amountCents)}
@@ -343,6 +521,14 @@ export function RecurringManager({
                   </div>
                 </Td>
               </tr>
+              {draft?.id === row.id && (
+                <tr>
+                  <td colSpan={4} className="p-0 border-b border-line">
+                    <div className="p-4 sm:p-6">{renderDraftForm(draft)}</div>
+                  </td>
+                </tr>
+              )}
+              </Fragment>
             ))}
           </tbody>
         </TableCard>
@@ -384,163 +570,8 @@ export function RecurringManager({
             + Add recurring item
           </Button>
         </div>
-      ) : (
-        <Card className="mt-8 p-6 max-w-[860px]">
-          <div className="flex flex-wrap gap-4">
-            <div className="flex-[2] min-w-[220px]">
-              <Label htmlFor="rec-name">Name</Label>
-              <Input
-                id="rec-name"
-                value={draft.name}
-                onChange={(event) => setDraft({ ...draft, name: event.target.value })}
-              />
-            </div>
-            <div className="flex-1 min-w-[160px]">
-              <Label htmlFor="rec-amount">Amount</Label>
-              <MoneyInput
-                id="rec-amount"
-                value={draft.amount}
-                placeholder="0.00"
-                onChange={(event) => setDraft({ ...draft, amount: event.target.value })}
-              />
-            </div>
-            <div className="flex-[2] min-w-[220px]">
-              <Label id="rec-line-label" htmlFor="rec-line">Line item</Label>
-              <Select
-                id="rec-line"
-                aria-labelledby="rec-line-label"
-                value={draft.lineItemId}
-                onValueChange={(value) => setDraft({ ...draft, lineItemId: value })}
-              >
-                <option value="">Choose a line item</option>
-                {lineItems.map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.name}
-                  </option>
-                ))}
-              </Select>
-            </div>
-          </div>
-
-          <div className="mt-[18px]">
-            <Label htmlFor="rec-desc">
-              Default description <span className="font-normal text-sub">(optional)</span>
-            </Label>
-            <Input
-              id="rec-desc"
-              value={draft.defaultDescription}
-              onChange={(event) => setDraft({ ...draft, defaultDescription: event.target.value })}
-            />
-            <Helper>Used as the cover-sheet role when this item is added to a month.</Helper>
-          </div>
-
-          <div className="mt-[18px]">
-            <Label htmlFor="rec-narrative">
-              Default narrative <span className="font-normal text-sub">(optional)</span>
-            </Label>
-            <Textarea
-              id="rec-narrative"
-              rows={3}
-              value={draft.defaultNarrative}
-              onChange={(event) => setDraft({ ...draft, defaultNarrative: event.target.value })}
-            />
-            <Helper>
-              Fills in automatically each month and stays editable. Correcting it on the expense
-              updates this, so next month starts from the current wording.
-            </Helper>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-[18px]">
-            <div>
-              <Label id="rec-source-label" htmlFor="rec-source">
-                Payment source <span className="font-normal text-sub">(optional)</span>
-              </Label>
-              <Select
-                id="rec-source"
-                aria-labelledby="rec-source-label"
-                value={draft.defaultPaymentSource}
-                onValueChange={(value) => setDraft({ ...draft, defaultPaymentSource: value })}
-              >
-                <option value="">Use the default</option>
-                {paymentSources.map((label) => (
-                  <option key={label} value={label}>
-                    {label}
-                  </option>
-                ))}
-              </Select>
-            </div>
-            <div>
-              <Label htmlFor="rec-tax">
-                Tax <span className="font-normal text-sub">(optional)</span>
-              </Label>
-              <MoneyInput
-                id="rec-tax"
-                placeholder="0.00"
-                value={draft.defaultTax}
-                onChange={(event) => setDraft({ ...draft, defaultTax: event.target.value })}
-              />
-            </div>
-            <div>
-              <Label htmlFor="rec-fees">
-                Fees <span className="font-normal text-sub">(optional)</span>
-              </Label>
-              <MoneyInput
-                id="rec-fees"
-                placeholder="0.00"
-                value={draft.defaultFees}
-                onChange={(event) => setDraft({ ...draft, defaultFees: event.target.value })}
-              />
-            </div>
-          </div>
-
-          <div className="flex flex-wrap gap-3 mt-5">
-            <Button
-              disabled={pending}
-              onClick={() =>
-                run(
-                  () => saveRecurringItemAction(draft),
-                  () => {
-                    setDraft(null);
-                    revealSaved(draft);
-                  },
-                  draft.id ? "Recurring item saved" : "Recurring item added",
-                )
-              }
-            >
-              {draft.id ? "Save changes" : "Add recurring item"}
-            </Button>
-            <Button variant="secondary" onClick={() => setDraft(null)}>
-              Cancel
-            </Button>
-            {draft.id && (
-              <ConfirmButton
-                variant="quiet"
-                disabled={pending}
-                title="Delete this recurring item?"
-                confirmLabel="Delete from list"
-                body={
-                  <>
-                    <strong>{draft.name || "This item"}</strong> is removed from the recurring
-                    list, along with its saved amount and defaults. Expenses already added to a
-                    month are left untouched.
-                  </>
-                }
-                onConfirm={() =>
-                  run(
-                    () => deleteRecurringItemAction(draft.id!),
-                    () => setDraft(null),
-                    "Removed from the recurring list",
-                  )
-                }
-              >
-                Delete from list
-              </ConfirmButton>
-            )}
-          </div>
-          {draft.id && (
-            <Helper>Deleting the list entry leaves any expenses already added untouched.</Helper>
-          )}
-        </Card>
+      ) : editingRowVisible ? null : (
+        <div className="mt-8">{renderDraftForm(draft)}</div>
       )}
     </div>
   );
