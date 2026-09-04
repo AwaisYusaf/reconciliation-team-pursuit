@@ -18,15 +18,18 @@ export type GateExpense = {
   name: string;
   lineItemName: string;
   noReceipt: boolean;
+  hasNarrative: boolean;
   documents: readonly DocumentState[];
 };
 
-/** What an incomplete record is missing, in the vocabulary R4.4 prints. */
-export type MissingKind = "proof" | "receipt" | "both";
+/** What an incomplete record is missing, in the vocabulary R4.4 prints. Canonical order: proof, receipt, narrative. */
+export type MissingItem = "proof" | "receipt" | "narrative";
+export type MissingKind = readonly MissingItem[];
 
 export type DocumentationStatus = {
   hasProof: boolean;
   hasReceipt: boolean;
+  hasNarrative: boolean;
   complete: boolean;
   missing: MissingKind | null;
 };
@@ -45,23 +48,42 @@ function hasAttached(documents: readonly DocumentState[], kind: DocumentState["k
 export function documentationStatus(expense: GateExpense): DocumentationStatus {
   const hasProof = hasAttached(expense.documents, "proof");
   const hasReceipt = expense.noReceipt || hasAttached(expense.documents, "receipt");
+  const hasNarrative = expense.hasNarrative;
 
-  const missing: MissingKind | null =
-    hasProof && hasReceipt ? null : !hasProof && !hasReceipt ? "both" : hasProof ? "receipt" : "proof";
+  const items: MissingItem[] = [];
+  if (!hasProof) items.push("proof");
+  if (!hasReceipt) items.push("receipt");
+  if (!hasNarrative) items.push("narrative");
+  const missing: MissingKind | null = items.length ? items : null;
 
-  return { hasProof, hasReceipt, complete: missing === null, missing };
+  return { hasProof, hasReceipt, hasNarrative, complete: missing === null, missing };
 }
+
+const MISSING_ITEM_LABEL: Record<MissingItem, string> = {
+  proof: "proof of payment",
+  receipt: "receipt/justification",
+  narrative: "narrative",
+};
 
 /** The exact phrase R4.4 uses for each missing state. */
 export function missingPhrase(missing: MissingKind): string {
-  switch (missing) {
-    case "proof":
-      return "missing proof of payment";
-    case "receipt":
-      return "missing receipt/justification";
-    case "both":
-      return "missing both";
+  // Legacy contract (R4.4): proof + receipt together is "missing both", verbatim.
+  if (missing.length === 2 && missing.includes("proof") && missing.includes("receipt")) {
+    return "missing both";
   }
+  if (missing.length === 0) {
+    // Unreachable by construction — documentationStatus never returns an empty array — but
+    // this is a document-generation path, so fail soft rather than throw.
+    return "missing documentation";
+  }
+  const labels = missing.map((item) => MISSING_ITEM_LABEL[item]);
+  const joined =
+    labels.length === 1
+      ? labels[0]
+      : labels.length === 2
+        ? `${labels[0]} and ${labels[1]}`
+        : `${labels.slice(0, -1).join(", ")}, and ${labels[labels.length - 1]}`;
+  return `missing ${joined}`;
 }
 
 /** One blocking-list line: `{name} — {line item} — missing …` (R4.4). */
@@ -139,6 +161,7 @@ export const DOCUMENTATION_FILTERS = [
   "Missing documentation",
   "Missing proof of payment",
   "Missing receipt/justification",
+  "Missing narrative",
 ] as const;
 
 export type DocumentationFilter = (typeof DOCUMENTATION_FILTERS)[number];
@@ -152,10 +175,10 @@ export const ALL_DOCUMENTATION: DocumentationFilter = "All records";
  * Takes the row's `missing` rather than its documents, so this and the packet's blocking list
  * are the same judgement (R4.3, R4.4).
  *
- * A record missing *both* is missing proof of payment, and is also missing a
- * receipt/justification, so it answers to either of the specific choices. Treating "both" as
- * its own bucket would hide the worst records from the two filters most likely to be used to
- * hunt them down.
+ * A record missing more than one item still answers to each of that item's specific filters —
+ * e.g. missing proof and receipt answers to both "Missing proof of payment" and "Missing
+ * receipt/justification". Treating multi-missing records as their own bucket would hide the
+ * worst records from the filters most likely to be used to hunt them down.
  */
 export function matchesDocumentationFilter(
   row: { missing: MissingKind | null },
@@ -167,8 +190,10 @@ export function matchesDocumentationFilter(
     case "Missing documentation":
       return row.missing !== null;
     case "Missing proof of payment":
-      return row.missing === "proof" || row.missing === "both";
+      return row.missing?.includes("proof") ?? false;
     case "Missing receipt/justification":
-      return row.missing === "receipt" || row.missing === "both";
+      return row.missing?.includes("receipt") ?? false;
+    case "Missing narrative":
+      return row.missing?.includes("narrative") ?? false;
   }
 }

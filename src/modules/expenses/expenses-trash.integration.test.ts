@@ -376,7 +376,7 @@ describe.skipIf(!hasDatabase)("expense trash (integration)", async () => {
         tax: "0",
         fees: "0",
         note: "",
-        narrative: "",
+        narrative: "New expense created while a sibling was trashed.",
         noReceipt: false,
         noReceiptReason: "",
       });
@@ -467,6 +467,32 @@ describe.skipIf(!hasDatabase)("expense trash (integration)", async () => {
       const [row] = await db.select().from(expenses).where(eq(expenses.id, first));
       const trashedRow = trashed.find((entry) => entry.id === first)!;
       expect(trashedRow.amountCents).toBe(reimbursableCents(row));
+    });
+
+    it("scopes to one month when given, for the packet page's deletion safeguard", async () => {
+      asOrg(orgId);
+      const monthA = "2099-05";
+      const monthB = "2099-06";
+
+      const inA = await insertExpense({ orgId, lineItemId, month: monthA, name: "Deleted in A" });
+      await deleteExpenseAction(inA);
+      const inB = await insertExpense({ orgId, lineItemId, month: monthB, name: "Deleted in B" });
+      await deleteExpenseAction(inB);
+
+      const scopedToA = await loadTrashedExpenses(orgId, monthA);
+      expect(scopedToA.map((row) => row.id)).toEqual([inA]);
+
+      const scopedToB = await loadTrashedExpenses(orgId, monthB);
+      expect(scopedToB.map((row) => row.id)).toEqual([inB]);
+
+      // No month given still means every month, unchanged from before this parameter existed.
+      const unscoped = await loadTrashedExpenses(orgId);
+      const unscopedIds = unscoped.map((row) => row.id);
+      expect(unscopedIds).toContain(inA);
+      expect(unscopedIds).toContain(inB);
+
+      // A month with nothing deleted in it returns empty, not every month's rows.
+      expect(await loadTrashedExpenses(orgId, "2099-07")).toEqual([]);
     });
   });
 

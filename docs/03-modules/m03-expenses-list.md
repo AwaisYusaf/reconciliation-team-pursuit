@@ -12,8 +12,8 @@ Reads `expenses` + `expense_documents` (status), calculation service for card to
 ## Behavior
 - One summary card per active payment source (R5.2), label = the org's source label, value = Σ reimbursable for the month (retired labels present in the month get their own card).
 - Filters: line item (All + each), payment source (All + each), and **documentation** — `All
-  records | Missing documentation | Missing proof of payment | Missing receipt/justification`;
-  all combinable, and combinable with the search box.
+  records | Missing documentation | Missing proof of payment | Missing receipt/justification |
+  Missing narrative`; all combinable, and combinable with the search box.
   - The documentation filter reads the row's `missing` (`MissingKind | null`), which the page
     already gets from `documentationStatus` — the same judgement as the packet's blocking list
     (R4.3). It is never re-derived from the row's document arrays: that would agree today and
@@ -23,14 +23,17 @@ Reads `expenses` + `expense_documents` (status), calculation service for card to
     most likely to be used to find them.
   - The incomplete strip's count runs through the same predicate as the filter, so the number
     shown and the rows the filter returns cannot disagree.
-- Table: `Ref / Date | Name | Line Item | Source | Amount | Proof | Receipt | Support | (actions)`.
-  Headers are kept short and the reference shares its column with the date so the whole table fits
-  the 1100px content width without scrolling sideways — a table that scrolls hides its own row
-  actions. "Amount" is unqualified on purpose: R1.3 defines that as the reimbursable one.
-  The reference is the click target for every document filed under the expense (R2.6).
+- Table: `Ref / Date | Name | Line Item | Source | Amount | Proof | Receipt | Support | Narrative |
+  (actions)`. Headers are kept short and the reference shares its column with the date so the
+  whole table fits the 1220px content width (widened from 1100px for the Narrative column)
+  without scrolling sideways, from the `xl` viewport breakpoint up — a table that scrolls
+  hides its own row actions. "Amount" is unqualified on purpose: R1.3 defines that as the
+  reimbursable one. The reference is the click target for every document filed under the
+  expense (R2.6).
   - Proof column: `{n} attached` with first-file thumbnail, or bold red `Missing` (R4.1).
   - Receipt column: `{n} attached`, or `No receipt (reason)` in secondary text when flagged (R4.2), or bold red `Missing`.
   - Supporting: count.
+  - Narrative column: `Provided`, or bold red `MISSING` (R4.7) — same visual treatment as Proof/Receipt, though narrative is a field rather than an uploaded file.
   - Actions: Edit · Delete.
 - Row order: the per-month insertion counter (`sort_order`, data-model). Empty state: `No expenses recorded for {Month YYYY} yet.`
 - A thin status strip above the table when the month has incomplete records: `{n} records are missing documents — view Month-End Packet` (link) — keeps the gate visible early.

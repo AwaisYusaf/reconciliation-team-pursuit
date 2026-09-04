@@ -26,11 +26,11 @@ Writes `expenses`, `expense_documents`, upserts `vendor_defaults` (R8.2). Reads 
 | Receipt / justification | Multi-file upload (receipt, invoice, or timesheet) — OR checkbox `No receipt available` revealing a required reason textarea (empty → R12 `no-receipt-reason-required`; prints per R6.7). Checking it hides the upload; already-attached receipt files are kept until save, then deleted (confirmation inline) — service rejects the combined state (R4.2). |
 | Supporting documents | Repeatable: type select (R11.1) + file; list with remove. |
 | Note (inline) | Optional single-line; overrides auto tax note (R6.5). Helper shows the auto note that will print when tax > 0 and note empty. |
-| Narrative | Optional textarea (R6.6), helper: "Prints as a paragraph under this expense on the cover sheet." |
+| Narrative | Required textarea (R4.7, prints per R6.6), helper: "Prints as a paragraph under this expense on the cover sheet." |
 
 ## Behavior
-- Save validation: name, line item, payment source required — error: `Please enter a name, choose a line item, and choose a payment source.` Amounts default 0. `No receipt available` requires reason.
-- Saving without proofs/receipt is **allowed** (capture-first philosophy) — the record is simply documentation-incomplete and shows up in gates (R4.5 pattern). The form shows a passive notice when saving incomplete: "Saved — still missing proof of payment."
+- Save validation: name, line item, payment source, and narrative are required — error: `Please enter a name, choose a line item, and choose a payment source.` for the first three, `Enter a narrative for this expense.` (R4.7) when narrative is blank. Amounts default 0. `No receipt available` requires reason.
+- Saving without proofs/receipt is **allowed** (capture-first philosophy) — the record is simply documentation-incomplete and shows up in gates (R4.5 pattern). The form shows a passive notice when saving incomplete: "Saved — still missing proof of payment." Narrative has no such passive path: unlike proof/receipt, it blocks the save itself (R4.7) rather than only gating the download later. Expenses saved before R4.7 existed keep whatever narrative they have (possibly none) and are not rejected on read, only on the next save.
 - Uploads: presigned POST direct to S3 (server-generated docId keys under the client-generated expense uuid), then `attachDocument(docId)` runs process & attach (R4.6) with progress + per-file status chips. `createExpense` receives the expense uuid + the list of attached docIds — never raw S3 keys. Abandoned drafts are removed by the nightly sweep (>24 h, no expense row).
 - Document removals (chips' ×) are immediate and labeled "Removed now — not undone by Cancel"; Cancel discards field edits only.
 - After save: to Expenses list, new row highlighted. Edit mode identical, prefilled, plus Delete (confirm dialog). Projection uses the edit-mode formula (R3.7). Editing a month marked Submitted shows the R10.6 warning banner.
@@ -82,7 +82,7 @@ Fields in order:
     "Event flyer — connections-gems-retreat.pdf" with Remove.
 12. "Note (optional)" text input, helper "If tax is entered and this is empty, the standard
     tax note prints automatically."
-13. "Narrative (optional)" textarea, helper "Prints as a paragraph under this expense on the
+13. "Narrative" textarea (required), helper "Prints as a paragraph under this expense on the
     cover sheet."
 
 Bottom: primary "Save expense" button and a quiet "Cancel" link. Also show the validation

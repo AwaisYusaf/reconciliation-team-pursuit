@@ -46,14 +46,14 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         </div>
 
         <div className="bg-surface border-b border-line px-4 sm:px-6 pt-3 sm:pt-4">
-          <div className="max-w-[1100px] mx-auto">
+          <div className="max-w-[1220px] mx-auto">
             <MonthSelector months={months} activeMonth={activeMonth} />
             <AppNav />
           </div>
         </div>
       </header>
 
-      <main className="max-w-[1100px] mx-auto px-4 sm:px-6 pt-6 sm:pt-8 pb-12 sm:pb-16">
+      <main className="max-w-[1220px] mx-auto px-4 sm:px-6 pt-6 sm:pt-8 pb-12 sm:pb-16">
         {children}
       </main>
       <AppToaster />

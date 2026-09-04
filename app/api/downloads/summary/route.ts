@@ -7,6 +7,7 @@ import { inputsHash } from "@/src/generation/cache-key";
 import { gateExpenses, loadMonthSnapshot } from "@/src/generation/month-snapshot";
 import { buildSummaryWorkbook, summaryWorkbookName } from "@/src/generation/summary-xlsx";
 import { attachmentHeader } from "@/src/lib/http";
+import { deletedItemsRefusal, loadTrashedExpenses } from "@/src/modules/expenses/queries";
 import { getSession } from "@/src/services/auth/session";
 import { consume } from "@/src/services/rate-limit";
 
@@ -53,8 +54,20 @@ export async function GET(request: Request) {
     );
   }
 
-  const month = new URL(request.url).searchParams.get("month") ?? "";
+  const url = new URL(request.url);
+  const month = url.searchParams.get("month") ?? "";
   if (!isValidMonthKey(month)) return new NextResponse("Unknown month", { status: 400 });
+
+  // Re-checked here, not just in the packet screen's dialog — see the packet route's own
+  // comment on this same gate. A promise enforced only in the browser is not enforced.
+  const confirmedDeletions = url.searchParams.get("confirmedDeletions") === "1";
+  const deletedThisMonth = await loadTrashedExpenses(session.orgId, month);
+  if (deletedThisMonth.length > 0 && !confirmedDeletions) {
+    return new NextResponse(deletedItemsRefusal(deletedThisMonth), {
+      status: 409,
+      headers: { "Content-Type": "text/plain; charset=utf-8" },
+    });
+  }
 
   const snapshot = await loadMonthSnapshot(session.orgId, month as MonthKey);
 

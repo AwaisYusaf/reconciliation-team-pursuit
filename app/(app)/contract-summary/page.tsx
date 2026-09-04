@@ -84,6 +84,7 @@ export default async function ContractSummaryPage() {
     name: expense.name,
     lineItemName: expense.lineItemName,
     noReceipt: expense.noReceipt,
+    hasNarrative: (expense.narrative ?? "").trim() !== "",
     documents: expense.documents,
   }));
   // R4.3 is the only gate the specs put on a download. A month with no expenses still has

@@ -46,7 +46,8 @@ describe.skipIf(!hasDatabase)("loadPacketReadiness and trash (integration)", asy
 
   it("drops the amount, the record count and the blocking entry once trashed, and restores all three", async () => {
     // Deliberately no documents attached — this expense is documentation-incomplete and must
-    // block the month (R4.3) for as long as it is active.
+    // block the month (R4.3) for as long as it is active. Narrative is filled in so the only
+    // gap under test is proof/receipt (R4.4's "missing both" wording), not R4.7's narrative gap.
     const [expense] = await db
       .insert(expenses)
       .values({
@@ -55,6 +56,7 @@ describe.skipIf(!hasDatabase)("loadPacketReadiness and trash (integration)", asy
         month: MONTH,
         date: `${MONTH}-08`,
         name: "Undocumented consulting fee",
+        narrative: "Consulting services for the month.",
         paymentSource: "x",
         subtotalCents: 6_000,
         taxCents: 0,

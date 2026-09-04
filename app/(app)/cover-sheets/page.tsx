@@ -128,6 +128,7 @@ function CoverSheetSection({
     name: expense.name,
     lineItemName: expense.lineItemName,
     noReceipt: expense.noReceipt,
+    hasNarrative: (expense.narrative ?? "").trim() !== "",
     documents: expense.documents,
   }));
   const blocking = blockingRecords(gate);

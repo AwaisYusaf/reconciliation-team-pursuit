@@ -15,6 +15,7 @@ import {
   supportingDocTypes,
 } from "@/src/db/schema";
 import type { DocumentKind } from "@/src/db/schema";
+import { formatMoney } from "@/src/domain/format";
 import { reimbursableCents } from "@/src/domain/money";
 
 export type AttachedDocument = {
@@ -213,8 +214,17 @@ export type TrashedExpense = {
   documents: AttachedDocument[];
 };
 
-/** Everything currently in the trash, newest deletion first. All months, no scoping. */
-export async function loadTrashedExpenses(orgId: string): Promise<TrashedExpense[]> {
+/**
+ * Everything currently in the trash, newest deletion first.
+ *
+ * All months, no scoping, unless `month` is given — the packet screen uses that to show only
+ * what was deleted from the reporting period it is about to download, without a second
+ * near-identical query.
+ */
+export async function loadTrashedExpenses(
+  orgId: string,
+  month?: string,
+): Promise<TrashedExpense[]> {
   const rows = await db
     .select({
       id: expenses.id,
@@ -230,7 +240,13 @@ export async function loadTrashedExpenses(orgId: string): Promise<TrashedExpense
     })
     .from(expenses)
     .innerJoin(lineItems, eq(lineItems.id, expenses.lineItemId))
-    .where(and(eq(expenses.orgId, orgId), isNotNull(expenses.deletedAt)))
+    .where(
+      and(
+        eq(expenses.orgId, orgId),
+        isNotNull(expenses.deletedAt),
+        month ? eq(expenses.month, month) : undefined,
+      ),
+    )
     .orderBy(desc(expenses.deletedAt));
 
   const documents = await documentsFor(orgId, rows.map((row) => row.id));
@@ -245,4 +261,22 @@ export async function loadTrashedExpenses(orgId: string): Promise<TrashedExpense
     deletedAt: row.deletedAt!,
     documents: documents.get(row.id) ?? [],
   }));
+}
+
+/**
+ * The plain-text refusal a download route sends when a month has deletions the user has not
+ * confirmed — the safeguard the packet screen's dialog exists for. A promise enforced only in
+ * the browser is not enforced (the same principle `downloads/summary/route.ts` already states
+ * for the documentation gate), so both download routes call this rather than trusting the
+ * client to have shown the dialog at all.
+ */
+export function deletedItemsRefusal(trashed: readonly TrashedExpense[]): string {
+  const plural = trashed.length !== 1;
+  return (
+    `${trashed.length} expense${plural ? "s" : ""} ${plural ? "were" : "was"} deleted from ` +
+    `this reporting period and ${plural ? "have" : "has"} not been confirmed:\n` +
+    trashed
+      .map((expense) => `• ${expense.name} — ${expense.lineItemName} — ${formatMoney(expense.amountCents)}`)
+      .join("\n")
+  );
 }

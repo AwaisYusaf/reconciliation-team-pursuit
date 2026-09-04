@@ -61,6 +61,7 @@ export default async function ExpensesPage({
       name: expense.name,
       lineItemName: expense.lineItemName,
       noReceipt: expense.noReceipt,
+      hasNarrative: (expense.narrative ?? "").trim() !== "",
       documents: expense.documents,
     };
     const status = documentationStatus(gate);
@@ -91,6 +92,7 @@ export default async function ExpensesPage({
       ],
       noReceipt: expense.noReceipt,
       noReceiptReason: expense.noReceiptReason,
+      hasNarrative: status.hasNarrative,
       complete: status.complete,
       // Kept, not recomputed in the table: the documentation filter reads this so it and the
       // packet's blocking list are the same judgement (R4.3).

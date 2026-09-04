@@ -318,6 +318,7 @@ export function gateExpenses(expenses: readonly SnapshotExpense[]): GateExpense[
     name: expense.name,
     lineItemName: expense.lineItemName,
     noReceipt: expense.noReceipt,
+    hasNarrative: (expense.narrative ?? "").trim() !== "",
     documents: expense.documents.map((document) => ({
       kind: document.kind as "proof" | "receipt" | "supporting",
       status: "attached" as const,

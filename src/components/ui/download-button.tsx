@@ -13,22 +13,17 @@ import toast from "react-hot-toast";
 
 import { buttonClassName, type ButtonVariant } from "./button";
 
-export function DownloadButton({
-  href,
-  children,
-  variant = "primary",
-  disabled = false,
-  pendingLabel = "Preparing…",
-}: {
-  href: string;
-  children: React.ReactNode;
-  variant?: ButtonVariant;
-  disabled?: boolean;
-  pendingLabel?: string;
-}) {
+/**
+ * The fetch-blob-save-toast mechanics behind a download link, without the button markup —
+ * so a caller that needs to gate the click on something first (a confirmation dialog) can
+ * call `download(href)` itself once ready, instead of only ever getting it wired to an
+ * unconditional click. `href` is taken per call, not bound once, so a caller can add a query
+ * param (e.g. proof that a confirmation dialog was answered) right before the real request.
+ */
+export function useDownload(): { busy: boolean; download: (href: string) => Promise<void> } {
   const [busy, setBusy] = useState(false);
 
-  async function run() {
+  async function download(href: string) {
     setBusy(true);
     let objectUrl: string | null = null;
     try {
@@ -62,10 +57,28 @@ export function DownloadButton({
     }
   }
 
+  return { busy, download };
+}
+
+export function DownloadButton({
+  href,
+  children,
+  variant = "primary",
+  disabled = false,
+  pendingLabel = "Preparing…",
+}: {
+  href: string;
+  children: React.ReactNode;
+  variant?: ButtonVariant;
+  disabled?: boolean;
+  pendingLabel?: string;
+}) {
+  const { busy, download } = useDownload();
+
   return (
     <button
       type="button"
-      onClick={run}
+      onClick={() => download(href)}
       disabled={disabled || busy}
       className={buttonClassName(variant)}
     >

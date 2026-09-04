@@ -22,25 +22,34 @@ function expense(overrides: Partial<GateExpense> = {}): GateExpense {
     name: "Stock Media",
     lineItemName: "Promotional & Marketing",
     noReceipt: false,
+    hasNarrative: true,
     documents: [attached("proof"), attached("receipt")],
     ...overrides,
   };
 }
 
-describe("documentationStatus (R4.1, R4.2)", () => {
-  it("is complete with both a proof and a receipt", () => {
+describe("documentationStatus (R4.1, R4.2, R4.7)", () => {
+  it("is complete with proof, a receipt, and a narrative", () => {
     const status = documentationStatus(expense());
-    expect(status).toEqual({ hasProof: true, hasReceipt: true, complete: true, missing: null });
+    expect(status).toEqual({
+      hasProof: true,
+      hasReceipt: true,
+      hasNarrative: true,
+      complete: true,
+      missing: null,
+    });
   });
 
   it("requires proof of payment with no exception", () => {
     const status = documentationStatus(expense({ documents: [attached("receipt")] }));
     expect(status.complete).toBe(false);
-    expect(status.missing).toBe("proof");
+    expect(status.missing).toEqual(["proof"]);
   });
 
   it("requires a receipt unless the expense is marked no-receipt", () => {
-    expect(documentationStatus(expense({ documents: [attached("proof")] })).missing).toBe("receipt");
+    expect(documentationStatus(expense({ documents: [attached("proof")] })).missing).toEqual([
+      "receipt",
+    ]);
     expect(
       documentationStatus(expense({ documents: [attached("proof")], noReceipt: true })).complete,
     ).toBe(true);
@@ -49,16 +58,16 @@ describe("documentationStatus (R4.1, R4.2)", () => {
   it("still requires proof even when marked no-receipt", () => {
     const status = documentationStatus(expense({ documents: [], noReceipt: true }));
     expect(status.complete).toBe(false);
-    expect(status.missing).toBe("proof");
+    expect(status.missing).toEqual(["proof"]);
   });
 
-  it("reports 'both' when nothing is attached", () => {
-    expect(documentationStatus(expense({ documents: [] })).missing).toBe("both");
+  it("reports both proof and receipt missing when nothing is attached", () => {
+    expect(documentationStatus(expense({ documents: [] })).missing).toEqual(["proof", "receipt"]);
   });
 
   it("ignores supporting documents — they never satisfy the gate", () => {
     const status = documentationStatus(expense({ documents: [attached("supporting")] }));
-    expect(status.missing).toBe("both");
+    expect(status.missing).toEqual(["proof", "receipt"]);
   });
 
   it("counts only attached uploads, never pending or failed ones (R4.6)", () => {
@@ -70,7 +79,7 @@ describe("documentationStatus (R4.1, R4.2)", () => {
         ],
       }),
     );
-    expect(pending.missing).toBe("proof");
+    expect(pending.missing).toEqual(["proof"]);
 
     const failed = documentationStatus(
       expense({
@@ -80,7 +89,7 @@ describe("documentationStatus (R4.1, R4.2)", () => {
         ],
       }),
     );
-    expect(failed.missing).toBe("both");
+    expect(failed.missing).toEqual(["proof", "receipt"]);
   });
 
   it("accepts several proofs, as salary expenses have (D-05)", () => {
@@ -91,27 +100,60 @@ describe("documentationStatus (R4.1, R4.2)", () => {
     });
     expect(documentationStatus(salary).complete).toBe(true);
   });
+
+  it("requires a narrative (R4.7): an otherwise-complete expense with none is incomplete", () => {
+    const status = documentationStatus(expense({ hasNarrative: false }));
+    expect(status.complete).toBe(false);
+    expect(status.missing).toEqual(["narrative"]);
+  });
+
+  it("can be missing narrative alongside proof and/or receipt", () => {
+    expect(
+      documentationStatus(expense({ hasNarrative: false, documents: [attached("receipt")] }))
+        .missing,
+    ).toEqual(["proof", "narrative"]);
+    expect(
+      documentationStatus(expense({ hasNarrative: false, documents: [attached("proof")] }))
+        .missing,
+    ).toEqual(["receipt", "narrative"]);
+    expect(documentationStatus(expense({ hasNarrative: false, documents: [] })).missing).toEqual([
+      "proof",
+      "receipt",
+      "narrative",
+    ]);
+  });
 });
 
 describe("blocking list wording (R4.4)", () => {
-  it("uses the rulebook's exact phrases", () => {
-    expect(missingPhrase("proof")).toBe("missing proof of payment");
-    expect(missingPhrase("receipt")).toBe("missing receipt/justification");
-    expect(missingPhrase("both")).toBe("missing both");
+  it("uses the rulebook's exact phrases for a single missing item", () => {
+    expect(missingPhrase(["proof"])).toBe("missing proof of payment");
+    expect(missingPhrase(["receipt"])).toBe("missing receipt/justification");
+    expect(missingPhrase(["narrative"])).toBe("missing narrative");
+  });
+
+  it("keeps the legacy 'missing both' wording verbatim for proof + receipt", () => {
+    expect(missingPhrase(["proof", "receipt"])).toBe("missing both");
+  });
+
+  it("joins any other combination in plain English, Oxford comma on three", () => {
+    expect(missingPhrase(["proof", "narrative"])).toBe("missing proof of payment and narrative");
+    expect(missingPhrase(["receipt", "narrative"])).toBe(
+      "missing receipt/justification and narrative",
+    );
+    expect(missingPhrase(["proof", "receipt", "narrative"])).toBe(
+      "missing proof of payment, receipt/justification, and narrative",
+    );
   });
 
   it("renders the lines the approved packet screen shows", () => {
-    expect(blockingLabel(expense(), "proof")).toBe(
+    expect(blockingLabel(expense(), ["proof"])).toBe(
       "Stock Media — Promotional & Marketing — missing proof of payment",
     );
     expect(
-      blockingLabel(
-        expense({ name: "JDS Silkscreen & Embroidery" }),
-        "both",
-      ),
+      blockingLabel(expense({ name: "JDS Silkscreen & Embroidery" }), ["proof", "receipt"]),
     ).toBe("JDS Silkscreen & Embroidery — Promotional & Marketing — missing both");
     expect(
-      blockingLabel(expense({ name: "Cornelius Webb", lineItemName: "Salary" }), "proof"),
+      blockingLabel(expense({ name: "Cornelius Webb", lineItemName: "Salary" }), ["proof"]),
     ).toBe("Cornelius Webb — Salary — missing proof of payment");
   });
 
@@ -125,12 +167,12 @@ describe("blocking list wording (R4.4)", () => {
     expect(blockingRecords(month)).toEqual([
       {
         expenseId: "b",
-        missing: "proof",
+        missing: ["proof"],
         label: "Stock Media — Promotional & Marketing — missing proof of payment",
       },
       {
         expenseId: "c",
-        missing: "both",
+        missing: ["proof", "receipt"],
         label: "JDS Silkscreen & Embroidery — Promotional & Marketing — missing both",
       },
     ]);
@@ -155,7 +197,7 @@ describe("gate scope (R4.3)", () => {
 
   it("recurring one-click adds arrive incomplete, which is the reminder (R4.5)", () => {
     const justAdded = expense({ id: "recurring", name: "Cornelius Webb", documents: [] });
-    expect(documentationStatus(justAdded).missing).toBe("both");
+    expect(documentationStatus(justAdded).missing).toEqual(["proof", "receipt"]);
     expect(isMonthBlocked([justAdded])).toBe(true);
   });
 });
@@ -190,35 +232,44 @@ describe("lineItemReadiness (m06 table)", () => {
 
 describe("matchesDocumentationFilter", () => {
   const complete = { missing: null } as const;
-  const noProof = { missing: "proof" } as const;
-  const noReceipt = { missing: "receipt" } as const;
-  const neither = { missing: "both" } as const;
+  const noProof = { missing: ["proof"] } as const;
+  const noReceipt = { missing: ["receipt"] } as const;
+  const noNarrative = { missing: ["narrative"] } as const;
+  const neither = { missing: ["proof", "receipt"] } as const;
+  const allThree = { missing: ["proof", "receipt", "narrative"] } as const;
 
   it("keeps everything under the default", () => {
-    for (const row of [complete, noProof, noReceipt, neither]) {
+    for (const row of [complete, noProof, noReceipt, noNarrative, neither, allThree]) {
       expect(matchesDocumentationFilter(row, "All records")).toBe(true);
     }
   });
 
   it("finds every incomplete record, and only those", () => {
     expect(matchesDocumentationFilter(complete, "Missing documentation")).toBe(false);
-    for (const row of [noProof, noReceipt, neither]) {
+    for (const row of [noProof, noReceipt, noNarrative, neither, allThree]) {
       expect(matchesDocumentationFilter(row, "Missing documentation")).toBe(true);
     }
   });
 
-  it("counts a record missing both as missing each of them", () => {
+  it("counts a record missing several things as missing each of them", () => {
     // The case a hand-rolled `missing === "proof"` would get wrong: the worst records would
-    // vanish from the two filters most likely to be used to hunt them down.
+    // vanish from the filters most likely to be used to hunt them down.
     expect(matchesDocumentationFilter(neither, "Missing proof of payment")).toBe(true);
     expect(matchesDocumentationFilter(neither, "Missing receipt/justification")).toBe(true);
+    expect(matchesDocumentationFilter(allThree, "Missing proof of payment")).toBe(true);
+    expect(matchesDocumentationFilter(allThree, "Missing receipt/justification")).toBe(true);
+    expect(matchesDocumentationFilter(allThree, "Missing narrative")).toBe(true);
   });
 
-  it("separates the two specific filters", () => {
+  it("separates the three specific filters", () => {
     expect(matchesDocumentationFilter(noProof, "Missing proof of payment")).toBe(true);
     expect(matchesDocumentationFilter(noProof, "Missing receipt/justification")).toBe(false);
+    expect(matchesDocumentationFilter(noProof, "Missing narrative")).toBe(false);
     expect(matchesDocumentationFilter(noReceipt, "Missing receipt/justification")).toBe(true);
     expect(matchesDocumentationFilter(noReceipt, "Missing proof of payment")).toBe(false);
+    expect(matchesDocumentationFilter(noNarrative, "Missing narrative")).toBe(true);
+    expect(matchesDocumentationFilter(noNarrative, "Missing proof of payment")).toBe(false);
+    expect(matchesDocumentationFilter(noNarrative, "Missing receipt/justification")).toBe(false);
   });
 
   it("never shows a complete record under any missing filter", () => {
@@ -230,12 +281,13 @@ describe("matchesDocumentationFilter", () => {
   it("agrees with the gate: a row matches 'Missing documentation' exactly when incomplete", () => {
     // The filter and the packet's blocking list must be one judgement (R4.3).
     const expenses: GateExpense[] = [
-      { id: "a", name: "A", lineItemName: "Salary", noReceipt: false, documents: [] },
+      { id: "a", name: "A", lineItemName: "Salary", noReceipt: false, hasNarrative: true, documents: [] },
       {
         id: "b",
         name: "B",
         lineItemName: "Salary",
         noReceipt: true,
+        hasNarrative: false,
         documents: [{ kind: "proof", status: "attached" }],
       },
     ];

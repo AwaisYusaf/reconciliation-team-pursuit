@@ -31,5 +31,6 @@ export function validate(input: ExpenseInput): string | null {
   if (invalidMoneyField(input.tax)) return "Enter a valid tax amount, like 12.34.";
   if (invalidMoneyField(input.fees)) return "Enter a valid fees amount, like 12.34.";
   if (input.noReceipt && !input.noReceiptReason.trim()) return UI.noReceiptReasonRequired;
+  if (!input.narrative.trim()) return UI.expenseMissingNarrative;
   return null;
 }
