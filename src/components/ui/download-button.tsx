@@ -41,10 +41,6 @@ export function DownloadButton({
         return;
       }
 
-      // The server sends this when a packet exceeded DocuSign's limit even at the lowest
-      // image quality. The download still succeeded, so it is a warning, not an error.
-      const warning = response.headers.get("X-Packet-Warning");
-
       const blob = await response.blob();
       objectUrl = URL.createObjectURL(blob);
 
@@ -54,11 +50,7 @@ export function DownloadButton({
       document.body.append(anchor);
       anchor.click();
       anchor.remove();
-      if (warning) {
-        toast(decodeURIComponent(warning), { icon: "⚠️", duration: 12_000 });
-      } else {
-        toast.success("Download started.");
-      }
+      toast.success("Download started.");
     } catch {
       toast.error("Download failed — check your connection and try again.");
     } finally {
