@@ -82,15 +82,26 @@ describe.skipIf(!hasDatabase)("line item usage counts (integration)", async () =
   it("feeds the delete rule the right verdict for each case", async () => {
     const rows = await loadLineItemRows(orgId);
     const verdicts = Object.fromEntries(
-      rows.map((row) => [row.name, planLineItemDelete(row)]),
+      rows.map((row) => [
+        row.name,
+        planLineItemDelete({
+          ...row,
+          performanceTotalCents: row.performances.reduce((sum, p) => sum + p.amountCents, 0),
+        }),
+      ]),
     );
 
     expect(verdicts.Salary.allowed).toBe(false);
     expect(verdicts["Office Space"]).toEqual({
       allowed: true,
       cascadingRecurring: ["Monthly rent", "Parking"],
+      performanceTotalCents: 0,
     });
-    expect(verdicts.Unused).toEqual({ allowed: true, cascadingRecurring: [] });
+    expect(verdicts.Unused).toEqual({
+      allowed: true,
+      cascadingRecurring: [],
+      performanceTotalCents: 0,
+    });
   });
 
   it("refuses at the database too, if the count check were ever bypassed (R9.3)", async () => {

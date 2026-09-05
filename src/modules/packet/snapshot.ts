@@ -60,22 +60,28 @@ export async function captureMonthSnapshot(orgId: string, month: MonthKey): Prom
         );
       }
 
+      // `perfGrantScheduledCents`/`perfGrantBilledCents` stay on this table (they are the
+      // frozen record of what previously-submitted months' packets actually showed — R10.6 —
+      // and rewriting or dropping them would falsify already-delivered history) but no longer
+      // have a source: the Performance Grant is retired from Settings in favor of per-line-item
+      // performances (m08), which already flow through `scheduledValueCents` above. Every
+      // capture from here on records 0 for both, same as a month with nothing manually entered.
       await tx
         .insert(monthSnapshotTotals)
         .values({
           orgId,
           month,
           contractValueCents: settings.contractValueCents,
-          perfGrantScheduledCents: settings.perfGrantScheduledCents,
-          perfGrantBilledCents: settings.perfGrantBilledCents,
+          perfGrantScheduledCents: 0,
+          perfGrantBilledCents: 0,
           advancesReceivedCents: settings.advancesReceivedCents,
         })
         .onConflictDoUpdate({
           target: [monthSnapshotTotals.orgId, monthSnapshotTotals.month],
           set: {
             contractValueCents: settings.contractValueCents,
-            perfGrantScheduledCents: settings.perfGrantScheduledCents,
-            perfGrantBilledCents: settings.perfGrantBilledCents,
+            perfGrantScheduledCents: 0,
+            perfGrantBilledCents: 0,
             advancesReceivedCents: settings.advancesReceivedCents,
             capturedAt: sql`now()`,
           },

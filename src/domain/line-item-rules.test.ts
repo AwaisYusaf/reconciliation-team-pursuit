@@ -9,7 +9,12 @@ import {
 
 describe("planLineItemDelete (R9.3)", () => {
   it("refuses while expenses reference the line item, using the canonical message", () => {
-    const plan = planLineItemDelete({ name: "Salary", expenseCount: 9, recurringNames: [] });
+    const plan = planLineItemDelete({
+      name: "Salary",
+      expenseCount: 9,
+      recurringNames: [],
+      performanceTotalCents: 0,
+    });
     expect(plan.allowed).toBe(false);
     expect(plan.allowed === false && plan.reason).toBe(
       '"Salary" has expenses recorded against it and cannot be deleted.',
@@ -18,13 +23,23 @@ describe("planLineItemDelete (R9.3)", () => {
 
   it("blocks on a single expense in any month, not just the active one", () => {
     expect(
-      planLineItemDelete({ name: "Salary", expenseCount: 1, recurringNames: [] }).allowed,
+      planLineItemDelete({
+        name: "Salary",
+        expenseCount: 1,
+        recurringNames: [],
+        performanceTotalCents: 0,
+      }).allowed,
     ).toBe(false);
   });
 
   it("allows deletion when nothing references it", () => {
-    const plan = planLineItemDelete({ name: "Unused", expenseCount: 0, recurringNames: [] });
-    expect(plan).toEqual({ allowed: true, cascadingRecurring: [] });
+    const plan = planLineItemDelete({
+      name: "Unused",
+      expenseCount: 0,
+      recurringNames: [],
+      performanceTotalCents: 0,
+    });
+    expect(plan).toEqual({ allowed: true, cascadingRecurring: [], performanceTotalCents: 0 });
   });
 
   it("allows deletion with recurring items but reports the cascade for confirmation", () => {
@@ -32,8 +47,27 @@ describe("planLineItemDelete (R9.3)", () => {
       name: "Analytical Support",
       expenseCount: 0,
       recurringNames: ["Adobe", "Hiscox"],
+      performanceTotalCents: 0,
     });
-    expect(plan).toEqual({ allowed: true, cascadingRecurring: ["Adobe", "Hiscox"] });
+    expect(plan).toEqual({
+      allowed: true,
+      cascadingRecurring: ["Adobe", "Hiscox"],
+      performanceTotalCents: 0,
+    });
+  });
+
+  it("carries the performance total through alongside recurring items (m08)", () => {
+    const plan = planLineItemDelete({
+      name: "Performance Grant 1",
+      expenseCount: 0,
+      recurringNames: [],
+      performanceTotalCents: 17500000,
+    });
+    expect(plan).toEqual({
+      allowed: true,
+      cascadingRecurring: [],
+      performanceTotalCents: 17500000,
+    });
   });
 
   it("lets expenses win over recurring items — the refusal comes first", () => {
@@ -41,6 +75,7 @@ describe("planLineItemDelete (R9.3)", () => {
       name: "Salary",
       expenseCount: 2,
       recurringNames: ["Quincy Smith"],
+      performanceTotalCents: 0,
     });
     expect(plan.allowed).toBe(false);
   });
@@ -62,6 +97,18 @@ describe("cascadeConfirmation", () => {
     // no recurring items was deleted on the first click.
     expect(cascadeConfirmation([])).toBe(
       "Its name and budget figures are deleted. This cannot be undone.",
+    );
+  });
+
+  it("names the performance total alongside recurring items (m08)", () => {
+    expect(cascadeConfirmation(["Adobe"], 17500000)).toBe(
+      "Deleting also removes $175,000.00 of added performances and 1 recurring item: Adobe.",
+    );
+  });
+
+  it("names the performance total alone when nothing recurs", () => {
+    expect(cascadeConfirmation([], 5000)).toBe(
+      "Deleting also removes $50.00 of added performances.",
     );
   });
 });

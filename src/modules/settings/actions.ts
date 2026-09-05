@@ -97,33 +97,29 @@ export async function updateContractAction(input: {
   return ok();
 }
 
-/* -------------------------------------------- performance grant & advances */
+/* ------------------------------------------------------------- advances */
 
-export async function updateGrantSettingsAction(input: {
-  perfGrantScheduled: string;
-  perfGrantBilled: string;
+/**
+ * The Performance Grant figures this action used to update now live per line item as
+ * performances (m08) instead — see `addLineItemPerformanceAction` in
+ * `modules/line-items/actions.ts`. Only Advances Received is a settings-level figure.
+ */
+export async function updateAdvancesReceivedAction(input: {
   advancesReceived: string;
 }): Promise<ActionResult> {
   const current = await actionSession();
   if ("expired" in current) return current.expired;
 
-  const perfGrantScheduledCents = parseMoneyToCents(input.perfGrantScheduled) ?? 0;
-  const perfGrantBilledCents = parseMoneyToCents(input.perfGrantBilled) ?? 0;
   const advancesReceivedCents = parseMoneyToCents(input.advancesReceived) ?? 0;
-
-  if (perfGrantScheduledCents < 0 || perfGrantBilledCents < 0 || advancesReceivedCents < 0) {
-    return fail("These figures cannot be negative.");
-  }
-  if (perfGrantBilledCents > perfGrantScheduledCents && perfGrantScheduledCents > 0) {
-    return fail("Billed to date is more than the grant's scheduled value.");
-  }
-
-  const values = { perfGrantScheduledCents, perfGrantBilledCents, advancesReceivedCents };
+  if (advancesReceivedCents < 0) return fail("This figure cannot be negative.");
 
   await db
     .insert(contractSettings)
-    .values({ orgId: current.orgId, ...values })
-    .onConflictDoUpdate({ target: contractSettings.orgId, set: values });
+    .values({ orgId: current.orgId, advancesReceivedCents })
+    .onConflictDoUpdate({
+      target: contractSettings.orgId,
+      set: { advancesReceivedCents },
+    });
 
   revalidatePath("/", "layout");
   return ok();

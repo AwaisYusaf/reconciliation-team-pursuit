@@ -11,6 +11,7 @@ import "server-only";
 import { and, asc, eq, inArray, isNull, lt } from "drizzle-orm";
 
 import { db } from "@/src/db";
+import { loadLineItemBudgets } from "@/src/db/queries";
 import {
   contractSettings,
   expenseDocuments,
@@ -98,8 +99,6 @@ export type MonthSnapshot = {
 
 const EMPTY_SETTINGS = {
   contractValueCents: 0,
-  perfGrantScheduledCents: 0,
-  perfGrantBilledCents: 0,
   advancesReceivedCents: 0,
   projectName: "",
   contractNumber: "",
@@ -133,17 +132,10 @@ export async function loadMonthSnapshot(
         .where(eq(organizations.id, orgId))
         .limit(1);
 
-      const items = await tx
-        .select({
-          id: lineItems.id,
-          name: lineItems.name,
-          scheduledValueCents: lineItems.scheduledValueCents,
-          openingBilledCents: lineItems.openingBilledCents,
-          sortOrder: lineItems.sortOrder,
-        })
-        .from(lineItems)
-        .where(eq(lineItems.orgId, orgId))
-        .orderBy(asc(lineItems.sortOrder), asc(lineItems.name), asc(lineItems.id));
+      // Shared with the dashboard/Contract Summary/Excel: the one place that folds each line
+      // item's performances (m08) into `scheduledValueCents`, so a generator never has to
+      // know performances exist.
+      const items = await loadLineItemBudgets(orgId, tx);
 
       const monthExpenses = await tx
         .select({
@@ -281,8 +273,6 @@ export async function loadMonthSnapshot(
         settings: settings[0]
           ? {
               contractValueCents: settings[0].contractValueCents,
-              perfGrantScheduledCents: settings[0].perfGrantScheduledCents,
-              perfGrantBilledCents: settings[0].perfGrantBilledCents,
               advancesReceivedCents: settings[0].advancesReceivedCents,
               projectName: settings[0].projectName,
               contractNumber: settings[0].contractNumber,

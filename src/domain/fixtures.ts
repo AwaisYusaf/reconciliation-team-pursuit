@@ -12,7 +12,16 @@ export const FEB = "2026-02";
 export const JAN = "2026-01";
 export const MAR = "2026-03";
 
-/** Scheduled values and opening balances, in cents. */
+/**
+ * Scheduled values and opening balances, in cents.
+ *
+ * "Performance Grant 1" is here as an ordinary line item, not a separate section: the old
+ * Settings-based performance grant (once its own row, added onto `baseSubtotal` to make
+ * `totals`) is retired in favor of per-line-item performances (m08), which fold into
+ * `scheduledValueCents` before it ever reaches this fixture shape. Modeling it as a plain
+ * 7th line item — same $175,000.00 scheduled / $39,229.50 opening billed the approved packet
+ * published — is what keeps this fixture reproducing that packet's exact figures.
+ */
 export const LINE_ITEMS: LineItemBudget[] = [
   { id: "salary", name: "Salary", scheduledValueCents: 45869246, openingBilledCents: 35000000, sortOrder: 0 },
   { id: "analytical", name: "Analytical Support", scheduledValueCents: 6692914, openingBilledCents: 4000000, sortOrder: 1 },
@@ -20,6 +29,7 @@ export const LINE_ITEMS: LineItemBudget[] = [
   { id: "social", name: "Social Services & Support", scheduledValueCents: 4125000, openingBilledCents: 3000000, sortOrder: 3 },
   { id: "community", name: "Community Programs & Events", scheduledValueCents: 3983245, openingBilledCents: 1398596, sortOrder: 4 },
   { id: "profdev", name: "Professional Development", scheduledValueCents: 1500000, openingBilledCents: 174900, sortOrder: 5 },
+  { id: "perfgrant1", name: "Performance Grant 1", scheduledValueCents: 17500000, openingBilledCents: 3922950, sortOrder: 6 },
 ];
 
 /**
@@ -55,7 +65,5 @@ export const FEB_EXPENSES: ExpenseAmount[] = [
 
 export const SETTINGS: ContractSettingsInput = {
   contractValueCents: 94000000,
-  perfGrantScheduledCents: 17500000,
-  perfGrantBilledCents: 3922950,
   advancesReceivedCents: 66500000,
 };

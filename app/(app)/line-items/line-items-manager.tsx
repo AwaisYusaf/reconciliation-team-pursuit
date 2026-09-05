@@ -6,6 +6,7 @@ import { useState, useTransition } from "react";
 import { Button } from "@/src/components/ui/button";
 import { Dialog } from "@/src/components/ui/dialog";
 import { Input, Label, MoneyInput } from "@/src/components/ui/field";
+import { Modal } from "@/src/components/ui/modal";
 import { Card, DangerPanel } from "@/src/components/ui/surfaces";
 import { TableCard, Td, Th } from "@/src/components/ui/table";
 import { reportResult } from "@/src/components/ui/toast";
@@ -13,15 +14,23 @@ import type { ActionResult } from "@/src/lib/action-result";
 import { formatMoney } from "@/src/domain/format";
 import { cascadeConfirmation, moveInOrder } from "@/src/domain/line-item-rules";
 import {
+  addLineItemPerformanceAction,
   deleteLineItemAction,
+  deleteLineItemPerformanceAction,
   reorderLineItemsAction,
   saveLineItemAction,
+  type LineItemDeleteConfirmation,
 } from "@/src/modules/line-items/actions";
 import type { LineItemRow } from "@/src/modules/line-items/queries";
 
 /** Cents → the editable string form, so an edit round-trips without reformatting surprises. */
 function toInput(cents: number): string {
   return (cents / 100).toFixed(2);
+}
+
+/** Sum of a line item's performances (m08) — 0 for a line item with none. */
+function performanceTotal(row: LineItemRow): number {
+  return row.performances.reduce((sum, performance) => sum + performance.amountCents, 0);
 }
 
 export function LineItemsManager({ rows }: { rows: LineItemRow[] }) {
@@ -33,9 +42,11 @@ export function LineItemsManager({ rows }: { rows: LineItemRow[] }) {
   const [showAdd, setShowAdd] = useState(false);
   const [addDraft, setAddDraft] = useState({ name: "", scheduledValue: "", openingBilled: "" });
   const [error, setError] = useState<string | null>(null);
-  const [confirmDelete, setConfirmDelete] = useState<{ id: string; recurring: string[] } | null>(
-    null,
-  );
+  const [confirmDelete, setConfirmDelete] = useState<
+    ({ id: string } & LineItemDeleteConfirmation) | null
+  >(null);
+  const [performanceRowId, setPerformanceRowId] = useState<string | null>(null);
+  const [newPerformance, setNewPerformance] = useState("");
 
   function run(
     work: () => Promise<ActionResult<unknown>>,
@@ -83,11 +94,23 @@ export function LineItemsManager({ rows }: { rows: LineItemRow[] }) {
       // The server always asks first (R9.3); the list it returns may be empty, which is why
       // this tests for presence rather than length.
       if (result.data?.requiresConfirmation) {
-        setConfirmDelete({ id: row.id, recurring: result.data.requiresConfirmation });
+        setConfirmDelete({ id: row.id, ...result.data.requiresConfirmation });
         return;
       }
       router.refresh();
     });
+  }
+
+  function addPerformance(lineItemId: string) {
+    run(
+      () => addLineItemPerformanceAction(lineItemId, newPerformance),
+      () => setNewPerformance(""),
+      "Performance added",
+    );
+  }
+
+  function removePerformance(id: string) {
+    run(() => deleteLineItemPerformanceAction(id), undefined, "Performance removed");
   }
 
   return (
@@ -121,8 +144,63 @@ export function LineItemsManager({ rows }: { rows: LineItemRow[] }) {
           },
         }}
       >
-        {confirmDelete && cascadeConfirmation(confirmDelete.recurring)}
+        {confirmDelete &&
+          cascadeConfirmation(confirmDelete.recurringNames, confirmDelete.performanceTotalCents)}
       </Dialog>
+
+      {(() => {
+        const row = rows.find((r) => r.id === performanceRowId);
+        if (!row) return null;
+        return (
+          <Modal
+            open
+            title={`${row.name} — Performances`}
+            onClose={() => {
+              setPerformanceRowId(null);
+              setNewPerformance("");
+            }}
+          >
+            <div className="flex justify-between py-1.5 text-[15px]">
+              <span className="text-sub">Base value</span>
+              <span>{formatMoney(row.scheduledValueCents)}</span>
+            </div>
+            {row.performances.map((performance, index) => (
+              <div key={performance.id} className="flex justify-between items-center py-1.5 text-[15px]">
+                <span className="text-sub">Performance {index + 1}</span>
+                <div className="flex items-center gap-3">
+                  <span>{formatMoney(performance.amountCents)}</span>
+                  <Button
+                    variant="quiet"
+                    disabled={pending}
+                    onClick={() => removePerformance(performance.id)}
+                  >
+                    Delete
+                  </Button>
+                </div>
+              </div>
+            ))}
+            <div className="flex justify-between py-1.5 text-[15px] font-bold border-t border-line mt-1 pt-2.5">
+              <span>Total</span>
+              <span>{formatMoney(row.totalScheduledValueCents)}</span>
+            </div>
+
+            <div className="flex flex-wrap gap-3 items-end mt-[18px]">
+              <div className="flex-1 min-w-[160px]">
+                <Label htmlFor="new-performance">Add performance</Label>
+                <MoneyInput
+                  id="new-performance"
+                  value={newPerformance}
+                  placeholder="0.00"
+                  onChange={(event) => setNewPerformance(event.target.value)}
+                />
+              </div>
+              <Button disabled={pending} onClick={() => addPerformance(row.id)}>
+                Add performance
+              </Button>
+            </div>
+          </Modal>
+        );
+      })()}
 
       <TableCard minWidth={900}>
         <thead>
@@ -130,6 +208,7 @@ export function LineItemsManager({ rows }: { rows: LineItemRow[] }) {
             <Th className="w-10" aria-label="Reorder" />
             <Th>Line Item Name</Th>
             <Th align="right">Scheduled Value</Th>
+            <Th align="right">Performances</Th>
             <Th align="right">Opening Previously Billed</Th>
             <Th align="right" className="w-[210px]">
               Actions
@@ -182,6 +261,10 @@ export function LineItemsManager({ rows }: { rows: LineItemRow[] }) {
                         }
                       />
                     </Td>
+                    <Td align="right" className="py-3 text-sub" numeric>
+                      {/* Not editable here — performances are added/removed from the "Add" popup. */}
+                      {performanceTotal(row) > 0 ? formatMoney(performanceTotal(row)) : "—"}
+                    </Td>
                     <Td align="right" className="py-3">
                       <MoneyInput
                         value={draft.openingBilled}
@@ -217,7 +300,10 @@ export function LineItemsManager({ rows }: { rows: LineItemRow[] }) {
                   <>
                     <Td>{row.name}</Td>
                     <Td align="right" numeric>
-                      {formatMoney(row.scheduledValueCents)}
+                      {formatMoney(row.totalScheduledValueCents)}
+                    </Td>
+                    <Td align="right" numeric className="text-sub">
+                      {performanceTotal(row) > 0 ? formatMoney(performanceTotal(row)) : "—"}
                     </Td>
                     <Td align="right" numeric>
                       {formatMoney(row.openingBilledCents)}
@@ -226,6 +312,13 @@ export function LineItemsManager({ rows }: { rows: LineItemRow[] }) {
                       <div className="flex gap-4 justify-end">
                         <Button variant="quiet" onClick={() => startEdit(row)} disabled={pending}>
                           Edit
+                        </Button>
+                        <Button
+                          variant="quiet"
+                          onClick={() => setPerformanceRowId(row.id)}
+                          disabled={pending}
+                        >
+                          Add
                         </Button>
                         <Button variant="quiet" onClick={() => remove(row)} disabled={pending}>
                           Delete

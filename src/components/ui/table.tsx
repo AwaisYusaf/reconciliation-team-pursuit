@@ -120,7 +120,7 @@ export function Td({
   );
 }
 
-/** Full-width section divider row, e.g. BASE / PERFORMANCE GRANT 1 on the summary. */
+/** Full-width section divider row, e.g. BASE on the summary. */
 export function SectionRow({ colSpan, children }: { colSpan: number; children: React.ReactNode }) {
   return (
     <tr>

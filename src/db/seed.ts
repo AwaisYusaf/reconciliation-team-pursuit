@@ -32,7 +32,13 @@ const LINE_ITEMS = [
   { name: "Social Services & Support", scheduled: 4125000, opening: 3000000 },
   { name: "Community Programs & Events", scheduled: 3983245, opening: 1398596 },
   { name: "Professional Development", scheduled: 1500000, opening: 174900 },
+  // Retired as a hand-maintained Settings figure (R7.2) in favor of per-line-item
+  // performances (m08) — seeded here the same shape production data was migrated into: a
+  // real line item, its historical billed amount as the opening balance, and the grant
+  // itself as its first performance.
+  { name: "Performance Grant 1", scheduled: 0, opening: 3922950 },
 ];
+const PERFORMANCE_GRANT_1_PERFORMANCE_CENTS = 17500000;
 
 /** Seeded defaults for the configurable lists (R5.1, R11.1 / D-19). */
 const PAYMENT_SOURCES = [
@@ -115,8 +121,6 @@ async function main() {
         contractStart: "2025-07-01",
         contractEnd: "2026-06-30",
         fiduciaryName: "Detroit Crime Commission",
-        perfGrantScheduledCents: 17500000,
-        perfGrantBilledCents: 3922950,
         advancesReceivedCents: 66500000,
       })
       .onConflictDoNothing();
@@ -132,6 +136,29 @@ async function main() {
           sortOrder: index,
         })
         .onConflictDoNothing();
+    }
+
+    const [perfGrantLineItem] = await db
+      .select({ id: schema.lineItems.id })
+      .from(schema.lineItems)
+      .where(
+        sql`${schema.lineItems.orgId} = ${orgId} and lower(${schema.lineItems.name}) = lower('Performance Grant 1')`,
+      )
+      .limit(1);
+    if (perfGrantLineItem) {
+      const [existingPerformance] = await db
+        .select({ id: schema.lineItemPerformances.id })
+        .from(schema.lineItemPerformances)
+        .where(eq(schema.lineItemPerformances.lineItemId, perfGrantLineItem.id))
+        .limit(1);
+      if (!existingPerformance) {
+        await db.insert(schema.lineItemPerformances).values({
+          orgId,
+          lineItemId: perfGrantLineItem.id,
+          amountCents: PERFORMANCE_GRANT_1_PERFORMANCE_CENTS,
+          sortOrder: 0,
+        });
+      }
     }
 
     for (const [index, label] of PAYMENT_SOURCES.entries()) {

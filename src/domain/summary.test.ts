@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { FEB, FEB_EXPENSES, LINE_ITEMS, SETTINGS } from "./fixtures";
 import { formatMoney, formatPercent } from "./format";
-import { contractSummary, PERFORMANCE_GRANT_LABEL } from "./summary";
+import { contractSummary } from "./summary";
 
 const summary = contractSummary({
   lineItems: LINE_ITEMS,
@@ -30,27 +30,20 @@ describe("contract summary (R7.1–R7.3)", () => {
       ["Social Services & Support", "$41,250.00", "$30,000.00", "$10,231.08", "$40,231.08", "98%", "$1,018.92"],
       ["Community Programs & Events", "$39,832.45", "$13,985.96", "$4,251.28", "$18,237.24", "46%", "$21,595.21"],
       ["Professional Development", "$15,000.00", "$1,749.00", "$1,599.00", "$3,348.00", "22%", "$11,652.00"],
+      // No longer its own section (R7.2 retired) — a plain base row like any other line item,
+      // now that performances (m08) fold into `scheduledValueCents` before this ever runs.
+      ["Performance Grant 1", "$175,000.00", "$39,229.50", "$0.00", "$39,229.50", "22%", "$135,770.50"],
     ]);
   });
 
-  it("reproduces the base subtotal", () => {
+  it("reproduces the base subtotal — now the whole published total, since Performance Grant 1 is a base row", () => {
     const { baseSubtotal } = summary;
-    expect(formatMoney(baseSubtotal.scheduledCents)).toBe("$679,916.67");
-    expect(formatMoney(baseSubtotal.previouslyBilledCents)).toBe("$483,933.47");
+    expect(formatMoney(baseSubtotal.scheduledCents)).toBe("$854,916.67");
+    expect(formatMoney(baseSubtotal.previouslyBilledCents)).toBe("$523,162.97");
     expect(formatMoney(baseSubtotal.thisPeriodCents)).toBe("$93,464.96");
-    expect(formatMoney(baseSubtotal.totalBilledCents)).toBe("$577,398.43");
-    expect(formatPercent(baseSubtotal.percentComplete)).toBe("85%");
-    expect(formatMoney(baseSubtotal.balanceCents)).toBe("$102,518.24");
-  });
-
-  it("carries the performance grant from settings, never billing it in-system (R7.2)", () => {
-    const { performanceRow } = summary;
-    expect(performanceRow.name).toBe(PERFORMANCE_GRANT_LABEL);
-    expect(formatMoney(performanceRow.scheduledCents)).toBe("$175,000.00");
-    expect(formatMoney(performanceRow.previouslyBilledCents)).toBe("$39,229.50");
-    expect(performanceRow.thisPeriodCents).toBe(0);
-    expect(formatPercent(performanceRow.percentComplete)).toBe("22%");
-    expect(formatMoney(performanceRow.balanceCents)).toBe("$135,770.50");
+    expect(formatMoney(baseSubtotal.totalBilledCents)).toBe("$616,627.93");
+    expect(formatPercent(baseSubtotal.percentComplete)).toBe("72%");
+    expect(formatMoney(baseSubtotal.balanceCents)).toBe("$238,288.74");
   });
 
   it("reproduces the totals row", () => {
@@ -63,13 +56,9 @@ describe("contract summary (R7.1–R7.3)", () => {
     expect(formatMoney(totals.balanceCents)).toBe("$238,288.74");
   });
 
-  it("totals are base plus performance, to the cent", () => {
-    expect(summary.totals.scheduledCents).toBe(
-      summary.baseSubtotal.scheduledCents + summary.performanceRow.scheduledCents,
-    );
-    expect(summary.totals.totalBilledCents).toBe(
-      summary.baseSubtotal.totalBilledCents + summary.performanceRow.totalBilledCents,
-    );
+  it("totals equal the base subtotal — there is no longer a separate section added on top", () => {
+    expect(summary.totals.scheduledCents).toBe(summary.baseSubtotal.scheduledCents);
+    expect(summary.totals.totalBilledCents).toBe(summary.baseSubtotal.totalBilledCents);
   });
 });
 
@@ -120,7 +109,7 @@ describe("edge cases", () => {
     const empty = contractSummary({
       lineItems: [],
       expenses: [],
-      settings: { ...SETTINGS, perfGrantScheduledCents: 0, perfGrantBilledCents: 0 },
+      settings: SETTINGS,
       month: FEB,
     });
     expect(empty.baseRows).toEqual([]);

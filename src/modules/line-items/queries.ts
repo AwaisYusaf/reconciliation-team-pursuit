@@ -6,12 +6,18 @@ import "server-only";
 import { and, asc, count, eq } from "drizzle-orm";
 
 import { db } from "@/src/db";
-import { expenses, lineItems, recurringItems } from "@/src/db/schema";
+import { expenses, lineItemPerformances, lineItems, recurringItems } from "@/src/db/schema";
+
+export type LineItemPerformanceRow = { id: string; amountCents: number };
 
 export type LineItemRow = {
   id: string;
   name: string;
+  /** The base value — what the inline Edit form edits. */
   scheduledValueCents: number;
+  /** Base + every performance added on top (m08) — what the rest of the app now computes with. */
+  totalScheduledValueCents: number;
+  performances: LineItemPerformanceRow[];
   openingBilledCents: number;
   sortOrder: number;
   /** Expenses in any month; a non-zero count blocks deletion outright. */
@@ -21,7 +27,7 @@ export type LineItemRow = {
 };
 
 export async function loadLineItemRows(orgId: string): Promise<LineItemRow[]> {
-  const [items, expenseCounts, recurring] = await Promise.all([
+  const [items, expenseCounts, recurring, performances] = await Promise.all([
     db
       .select()
       .from(lineItems)
@@ -39,6 +45,15 @@ export async function loadLineItemRows(orgId: string): Promise<LineItemRow[]> {
       .from(recurringItems)
       .where(eq(recurringItems.orgId, orgId))
       .orderBy(asc(recurringItems.sortOrder)),
+    db
+      .select({
+        id: lineItemPerformances.id,
+        lineItemId: lineItemPerformances.lineItemId,
+        amountCents: lineItemPerformances.amountCents,
+      })
+      .from(lineItemPerformances)
+      .where(eq(lineItemPerformances.orgId, orgId))
+      .orderBy(asc(lineItemPerformances.sortOrder)),
   ]);
 
   const countByLineItem = new Map(expenseCounts.map((row) => [row.lineItemId, row.total]));
@@ -48,16 +63,28 @@ export async function loadLineItemRows(orgId: string): Promise<LineItemRow[]> {
     list.push(row.name);
     recurringByLineItem.set(row.lineItemId, list);
   }
+  const performancesByLineItem = new Map<string, LineItemPerformanceRow[]>();
+  for (const row of performances) {
+    const list = performancesByLineItem.get(row.lineItemId) ?? [];
+    list.push({ id: row.id, amountCents: row.amountCents });
+    performancesByLineItem.set(row.lineItemId, list);
+  }
 
-  return items.map((item) => ({
-    id: item.id,
-    name: item.name,
-    scheduledValueCents: item.scheduledValueCents,
-    openingBilledCents: item.openingBilledCents,
-    sortOrder: item.sortOrder,
-    expenseCount: countByLineItem.get(item.id) ?? 0,
-    recurringNames: recurringByLineItem.get(item.id) ?? [],
-  }));
+  return items.map((item) => {
+    const itemPerformances = performancesByLineItem.get(item.id) ?? [];
+    return {
+      id: item.id,
+      name: item.name,
+      scheduledValueCents: item.scheduledValueCents,
+      totalScheduledValueCents:
+        item.scheduledValueCents + itemPerformances.reduce((sum, p) => sum + p.amountCents, 0),
+      performances: itemPerformances,
+      openingBilledCents: item.openingBilledCents,
+      sortOrder: item.sortOrder,
+      expenseCount: countByLineItem.get(item.id) ?? 0,
+      recurringNames: recurringByLineItem.get(item.id) ?? [],
+    };
+  });
 }
 
 /** Single line item, org-scoped — used by actions before they mutate. */

@@ -87,9 +87,10 @@ describe("Contract Summary sheet", () => {
     expect((header.getCell(1).fill as ExcelJS.FillPattern).fgColor?.argb).toBe("FFFFFF00");
   });
 
-  it("borders the section divider rows, which sit inside the table", async () => {
+  it("borders the section divider row, which sits inside the table", async () => {
     const sheet = (await open()).getWorksheet("Contract Summary")!;
-    for (const rowNumber of [2, 10]) {
+    // Only "BASE" remains — the "PERFORMANCE GRANT 1" divider is gone with R7.2 (m08).
+    for (const rowNumber of [2]) {
       const row = sheet.getRow(rowNumber);
       expect(row.getCell(1).border?.top?.style).toBe("thin");
       // The border must run the full merged span, not just the first cell.
@@ -117,46 +118,45 @@ describe("Contract Summary sheet", () => {
     // 395641.12 / 458692.46 = 86.25% -> 86% (R1.5, half away from zero).
     expect(sheet.getRow(3).getCell(6).value).toBe(0.86);
     expect(sheet.getRow(3).getCell(6).numFmt).toBe("0%");
-    // Every percentage is a whole number of percent, never a longer fraction.
-    for (const rowNumber of [3, 4, 5, 6, 7, 8, 9, 11, 12]) {
+    // Every percentage is a whole number of percent, never a longer fraction. Rows 3-9 are the
+    // seven BASE line items (Performance Grant 1 among them — R7.2 retired, m08), row 10 the
+    // totals — the only bottom-line row now that there's no second section to subtotal against.
+    for (const rowNumber of [3, 4, 5, 6, 7, 8, 9, 10]) {
       const value = sheet.getRow(rowNumber).getCell(6).value as number;
       expect(Math.round(value * 100)).toBeCloseTo(value * 100, 9);
     }
   });
 
-  it("carries the subtotal, performance grant and totals", async () => {
+  it("carries Performance Grant 1 as an ordinary base row, then one totals row", async () => {
     const sheet = (await open()).getWorksheet("Contract Summary")!;
-    const subtotal = sheet.getRow(9);
-    expect(subtotal.getCell(1).value).toBe("Base subtotal");
-    expect(subtotal.getCell(2).value).toBe(679916.67);
-    expect(subtotal.getCell(4).value).toBe(93464.96);
-    expect(subtotal.getCell(5).value).toBe(577398.43);
-    expect(subtotal.getCell(1).font?.bold).toBe(true);
-
-    const perf = sheet.getRow(11);
+    // No longer a separate section (R7.2 retired) — it is base row 9, the 7th line item.
+    const perf = sheet.getRow(9);
     expect(perf.getCell(1).value).toBe("Performance Grant 1");
     expect(perf.getCell(2).value).toBe(175000);
     expect(perf.getCell(4).value).toBe(0);
 
-    const totals = sheet.getRow(12);
+    // No "Base subtotal" row: it would only ever repeat this Totals row now that every line
+    // item is a base row.
+    const totals = sheet.getRow(10);
     expect(totals.getCell(1).value).toBe("Totals");
     expect(totals.getCell(2).value).toBe(854916.67);
     expect(totals.getCell(5).value).toBe(616627.93);
     expect(totals.getCell(7).value).toBe(238288.74);
+    expect(totals.getCell(1).font?.bold).toBe(true);
   });
 
   it("writes the reconciliation block after a blank row", async () => {
     const sheet = (await open()).getWorksheet("Contract Summary")!;
-    expect(sheet.getRow(14).getCell(1).value).toBe("Total advances received");
-    expect(sheet.getRow(14).getCell(2).value).toBe(665000);
-    expect(sheet.getRow(15).getCell(2).value).toBe(616627.93);
-    expect(sheet.getRow(16).getCell(2).value).toBe(48372.07);
-    expect(sheet.getRow(17).getCell(1).value).toBe(
+    expect(sheet.getRow(12).getCell(1).value).toBe("Total advances received");
+    expect(sheet.getRow(12).getCell(2).value).toBe(665000);
+    expect(sheet.getRow(13).getCell(2).value).toBe(616627.93);
+    expect(sheet.getRow(14).getCell(2).value).toBe(48372.07);
+    expect(sheet.getRow(15).getCell(1).value).toBe(
       "Percentage of advance payments reconciled",
     );
     // 616627.93 / 665000 = 92.73% -> 93%.
-    expect(sheet.getRow(17).getCell(2).value).toBe(0.93);
-    expect(sheet.getRow(17).getCell(2).numFmt).toBe("0%");
+    expect(sheet.getRow(15).getCell(2).value).toBe(0.93);
+    expect(sheet.getRow(15).getCell(2).numFmt).toBe("0%");
   });
 
   it("uses the documented column widths", async () => {
@@ -212,7 +212,8 @@ describe("Detail sheet", () => {
     const summary = workbook.getWorksheet("Contract Summary")!;
     const detail = workbook.getWorksheet("Feb Detail")!;
 
-    const thisPeriod = summary.getRow(9).getCell(4).value as number;
+    // Row 10: Totals — the only bottom-line row now (no separate "Base subtotal").
+    const thisPeriod = summary.getRow(10).getCell(4).value as number;
     const reimbursable = detail
       .getRow(detail.rowCount)
       .getCell(columnOf(detail, "Reimbursable Amount")).value as number;

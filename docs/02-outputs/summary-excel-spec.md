@@ -10,18 +10,15 @@ Column widths (chars): 34, 16, 16, 14, 18, 12, 16.
 |---|---|
 | 1 | Header (bold, fill `FFFF00`, thin black borders): `Description of Work | Scheduled Value | Previously Billed | This Period | Total Billed to Date | % Complete | Balance to Finish` |
 | 2 | `BASE` — bold, merged A:G, fill `F1ECE2` |
-| 3…n | One row per line item in sort order, figures per R3 for the active month |
-| n+1 | `Base subtotal` — entire row bold |
-| n+2 | `PERFORMANCE GRANT 1` — bold, merged A:G, fill `F1ECE2` |
-| n+3 | `Performance Grant 1` row per R7.2 (scheduled = settings, prev = perf_grant_billed, this period 0) |
-| n+4 | `Totals` — entire row bold (base + performance) |
-| n+5 | blank |
-| n+6 | `Total advances received` (col A) · amount (col B, `[$$-409]#,##0.00`) — R7.4 |
-| n+7 | `Total reconciled to date` (A) · amount (B) |
-| n+8 | `Balance remaining to reconcile` (A) · amount (B) |
-| n+9 | `Percentage of advance payments reconciled` (A) · percent (B, `0%`) |
+| 3…n | One row per line item in sort order, figures per R3 for the active month — including one built from performances (R9.5) where applicable; there is no second section |
+| n+1 | `Totals` — entire row bold. No separate `Base subtotal` row: every line item is a base row now that the old Performance Grant section (R7.2, retired — D-80) is gone, so a subtotal would only ever repeat this row |
+| n+2 | blank |
+| n+3 | `Total advances received` (col A) · amount (col B, `[$$-409]#,##0.00`) — R7.4 |
+| n+4 | `Total reconciled to date` (A) · amount (B) |
+| n+5 | `Balance remaining to reconcile` (A) · amount (B) |
+| n+6 | `Percentage of advance payments reconciled` (A) · percent (B, `0%`) |
 
-Table cells (rows 1…n+4) thin black borders; reconciliation rows no borders/fill. Labels column A left, numbers right (Excel default numeric alignment). User-entered text (names, descriptions) is always written as **string cells, never formulas** (formula-injection guard; prefix-escape `=+-@` if a CSV export is ever added).
+Table cells (rows 1…n+1) thin black borders; reconciliation rows no borders/fill. Labels column A left, numbers right (Excel default numeric alignment). User-entered text (names, descriptions) is always written as **string cells, never formulas** (formula-injection guard; prefix-escape `=+-@` if a CSV export is ever added).
 
 ## Sheet 2 — `{Mon} Detail` (e.g. `Feb Detail`)
 

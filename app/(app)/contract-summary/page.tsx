@@ -88,8 +88,8 @@ export default async function ContractSummaryPage() {
     documents: expense.documents,
   }));
   // R4.3 is the only gate the specs put on a download. A month with no expenses still has
-  // a meaningful summary — opening balances, the performance grant and the advance
-  // reconciliation — and the packet route allows exactly that, so the workbook does too.
+  // a meaningful summary — opening balances and the advance reconciliation — and the packet
+  // route allows exactly that, so the workbook does too.
   const blockedCount = blockingRecords(gate).length;
   const refusal = blockedCount > 0 ? downloadBlockedReason(blockedCount) : null;
 
@@ -121,11 +121,9 @@ export default async function ContractSummaryPage() {
           {summary.baseRows.map((row) => (
             <SummaryTableRow key={row.name} row={row} />
           ))}
-          <SummaryTableRow row={summary.baseSubtotal} bold />
-
-          <SectionRow colSpan={COLUMNS}>Performance Grant 1</SectionRow>
-          <SummaryTableRow row={summary.performanceRow} />
-
+          {/* No separate "Base subtotal" row: every line item is a base row now that
+              performances (m08) replaced the old Performance Grant section, so it would only
+              ever repeat the Totals row directly beneath it. */}
           <SummaryTableRow row={summary.totals} bold />
         </tbody>
       </TableCard>

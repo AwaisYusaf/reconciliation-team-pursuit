@@ -297,13 +297,8 @@ export async function buildSummarySectionPdf(snapshot: MonthSnapshot): Promise<B
     y = drawRow(page, y, rowValues(row), fonts);
   }
 
-  ensureSpace(ROW_HEIGHT);
-  y = drawRow(page, y, rowValues(summary.baseSubtotal), fonts, { bold: true });
-
-  ensureSpace(ROW_HEIGHT * 2);
-  y = drawSectionRow(page, y, "PERFORMANCE GRANT 1", fonts);
-  y = drawRow(page, y, rowValues(summary.performanceRow), fonts);
-
+  // No separate "Base subtotal" row: every line item is a base row now that performances
+  // (m08) replaced the old Performance Grant section, so it would only ever repeat Totals.
   ensureSpace(ROW_HEIGHT);
   y = drawRow(page, y, rowValues(summary.totals), fonts, { bold: true });
 

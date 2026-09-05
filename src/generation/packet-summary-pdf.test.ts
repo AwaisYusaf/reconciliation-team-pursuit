@@ -120,18 +120,21 @@ describe.skipIf(!hasPdftotext())("packet summary text", () => {
     expect(text).toContain("$395,641.12");
     expect(text).toContain("$63,051.34");
 
-    // Base subtotal and totals.
-    expect(text).toContain("$679,916.67");
+    // Totals — the only bottom-line row now (no separate "Base subtotal" to also check).
     expect(text).toContain("$854,916.67");
     expect(text).toContain("$616,627.93");
     expect(text).toContain("$238,288.74");
   });
 
-  it("prints both section dividers and the totals row", async () => {
+  it("prints the section divider, the totals row, and Performance Grant 1 as an ordinary line item", async () => {
     const text = await extractText(await buildSummarySectionPdf(snapshot));
     expect(text).toContain("BASE");
-    expect(text).toContain("PERFORMANCE GRANT 1");
-    expect(text).toContain("Base subtotal");
+    // No longer its own divider section (R7.2 retired, m08) — just a base row's name now.
+    expect(text).toContain("Performance Grant 1");
+    expect(text).not.toContain("PERFORMANCE GRANT 1");
+    // No "Base subtotal" row either: it would only ever repeat Totals now that every line
+    // item is a base row.
+    expect(text).not.toContain("Base subtotal");
     expect(text).toContain("Totals");
   });
 

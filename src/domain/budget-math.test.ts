@@ -41,6 +41,9 @@ describe("lineItemStats (R3.1–R3.5)", () => {
       ["Social Services & Support", "$10,231.08", "$40,231.08", "$1,018.92"],
       ["Community Programs & Events", "$4,251.28", "$18,237.24", "$21,595.21"],
       ["Professional Development", "$1,599.00", "$3,348.00", "$11,652.00"],
+      // An ordinary line item now (R7.2 retired, m08) — no expenses against it in Feb, so
+      // "this period" is 0 and its balance is exactly its opening billed amount below zero.
+      ["Performance Grant 1", "$0.00", "$39,229.50", "$135,770.50"],
     ]);
   });
 

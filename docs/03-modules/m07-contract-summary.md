@@ -1,17 +1,17 @@
 # m07 — Contract Summary
 
 ## Purpose
-On-screen mirror of the Excel summary: contract-to-date position per line item + performance grant + advance reconciliation, for the active month.
+On-screen mirror of the Excel summary: contract-to-date position per line item + advance reconciliation, for the active month.
 
 ## Scope
 Route `/contract-summary`. Read-only table + reconciliation card + Excel download (same generator as m06).
 
 ## Data
-Calculation service (R3, R7); `contract_settings`. No writes.
+Calculation service (R3, R7); `contract_settings`, `line_items` + `line_item_performances` (R9.5). No writes.
 
 ## Behavior
-- Context strip: `Contract {number}` · `Contract total: {amount}` · `Base PO {n}` · `Performance PO {n}` · `Invoice period: {M/1/YYYY to M/lastday/YYYY}` (R7.3, R2.4). Items with empty settings are hidden.
-- Table per R7.1–R7.3: BASE section header row → line item rows → bold `Base subtotal` → `PERFORMANCE GRANT 1` section header → perf row → bold `Totals`. Columns exactly: `Description of Work | Scheduled Value | Previously Billed | This Period | Total Billed to Date | % Complete | Balance to Finish`.
+- Context strip: `Contract {number}` · `Contract total: {amount}` · `Base PO {n}` · `Performance PO {n}` · `Invoice period: {M/1/YYYY to M/lastday/YYYY}` (R7.3, R2.4). Items with empty settings are hidden. (The Performance PO field is metadata only — unrelated to R9.5's performances, which are amounts on individual line items.)
+- Table per R7.1/R7.3: BASE section header row → line item rows (every line item is BASE now; one may be built from performances, R9.5) → bold `Totals`. No separate subtotal or Performance Grant section (R7.2 retired, D-80) — `Totals` is the only bottom-line row. Columns exactly: `Description of Work | Scheduled Value | Previously Billed | This Period | Total Billed to Date | % Complete | Balance to Finish`.
 - Reconciliation card per R7.4 (4 rows).
 - Button: `Download Summary (Excel)` (reuses m06's `downloadSummary`) — gated like m06 (R4.3); when disabled, an inline line explains: `Blocked — {n} records are missing documents. See Month-End Packet.`
 
@@ -41,8 +41,6 @@ Promotional & Marketing     $58,212.62   $48,198.51   $11,851.65  $60,050.16   1
 Social Services & Support   $41,250.00   $30,000.00   $10,231.08  $40,231.08   98%  $1,018.92
 Community Programs & Events $39,832.45   $13,985.96   $4,251.28   $18,237.24   46%  $21,595.21
 Professional Development    $15,000.00   $1,749.00    $1,599.00   $3,348.00    22%  $11,652.00
-Bold row: "Base subtotal" $679,916.67 · $483,933.47 · $93,464.96 · $577,398.43 · 85% · $102,518.24
-Section header row "PERFORMANCE GRANT 1" (#F1ECE2, bold). Row:
 Performance Grant 1         $175,000.00  $39,229.50   $0.00       $39,229.50   22%  $135,770.50
 Bold row: "Totals" $854,916.67 · $523,162.97 · $93,464.96 · $616,627.93 · 72% · $238,288.74
 

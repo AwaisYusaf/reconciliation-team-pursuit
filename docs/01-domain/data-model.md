@@ -45,9 +45,11 @@ Logout deletes the row; password change deletes all the user's other sessions (r
 | contract_value_cents | bigint | 0 → derive from scheduled totals (R7.3) |
 | contract_start / contract_end | date null | |
 | fiduciary_name | text | "Detroit Crime Commission" |
-| perf_grant_scheduled_cents | bigint | R7.2 |
-| perf_grant_billed_cents | bigint | Manually maintained (R7.2) |
 | advances_received_cents | bigint | R7.4 |
+
+`perf_grant_scheduled_cents`/`perf_grant_billed_cents` (R7.2) are retired — dropped in
+`drizzle/0015_narrow_diamondback.sql`, which migrates any existing value into a real line item
+(see `line_items`/`line_item_performances` below) before dropping the columns (D-80).
 
 ### payment_sources (org-configurable list — R5.1, decision D-19)
 | Field | Type | Notes |
@@ -67,9 +69,22 @@ Same shape as payment_sources; seeded with the six defaults.
 | id | uuid PK | |
 | org_id | uuid FK | |
 | name | text | Unique per org, case-insensitive |
-| scheduled_value_cents | bigint | Budget |
+| scheduled_value_cents | bigint | **Base** budget, directly editable — the effective Scheduled Value everything else reads is this plus every row in `line_item_performances` (R9.5), summed in `loadLineItemBudgets` |
 | opening_billed_cents | bigint | Opening previously-billed (R3.1); default 0 |
 | sort_order | int | Cover sheet/section & packet order |
+
+### line_item_performances (R9.5)
+| Field | Type | Notes |
+|---|---|---|
+| id | uuid PK | |
+| org_id | uuid FK | |
+| line_item_id | uuid FK | cascade delete with its line item |
+| amount_cents | bigint | Check `> 0` |
+| sort_order | int | Order added — numbers the on-screen "Performance 1/2/3…" list |
+
+Replaces the retired `contract_settings.perf_grant_*` figures (R7.2, D-80): a performance is
+just an amount added to a line item from the Line Items screen, with no month dimension of its
+own — it changes the base figure a normal month's math (R3) already runs against.
 
 ### expenses
 | Field | Type | Notes |

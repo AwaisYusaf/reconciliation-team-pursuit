@@ -9,13 +9,8 @@ import { allLineItemStats, type ExpenseAmount, type LineItemBudget } from "./bud
 import type { MonthKey } from "./dates";
 import { sumBy } from "./money";
 
-/** Fixed label for the performance grant row (R7.2). */
-export const PERFORMANCE_GRANT_LABEL = "Performance Grant 1";
-
 export type ContractSettingsInput = {
   contractValueCents: number;
-  perfGrantScheduledCents: number;
-  perfGrantBilledCents: number;
   advancesReceivedCents: number;
 };
 
@@ -40,7 +35,6 @@ export type Reconciliation = {
 export type ContractSummary = {
   baseRows: SummaryRow[];
   baseSubtotal: SummaryRow;
-  performanceRow: SummaryRow;
   totals: SummaryRow;
   reconciliation: Reconciliation;
   /** Configured contract value, or the sum of scheduled values when unset (R7.3). */
@@ -90,20 +84,17 @@ export function contractSummary(input: {
     sumBy(baseRows, (r) => r.thisPeriodCents),
   );
 
-  // Performance grant billing happens outside this system, so "this period" is always
-  // zero and the billed-to-date figure is maintained by hand in Settings (R7.2).
-  const performanceRow = row(
-    PERFORMANCE_GRANT_LABEL,
-    input.settings.perfGrantScheduledCents,
-    input.settings.perfGrantBilledCents,
-    0,
-  );
-
+  // `totals` always equals `baseSubtotal` now — the performance grant section that used to be
+  // added on top is gone (m08 folds performances into each line item's own scheduled value
+  // instead, so every line item is already a base row). Kept as its own field anyway: it is
+  // the label every screen, the Excel sheet and the PDF render as the single bottom-line row
+  // ("Totals", not "Base subtotal" — the external-facing name the City already reads), and the
+  // reconciliation block below keys off it.
   const totals = row(
     "Totals",
-    baseSubtotal.scheduledCents + performanceRow.scheduledCents,
-    baseSubtotal.previouslyBilledCents + performanceRow.previouslyBilledCents,
-    baseSubtotal.thisPeriodCents + performanceRow.thisPeriodCents,
+    baseSubtotal.scheduledCents,
+    baseSubtotal.previouslyBilledCents,
+    baseSubtotal.thisPeriodCents,
   );
 
   const advancesCents = input.settings.advancesReceivedCents;
@@ -112,7 +103,6 @@ export function contractSummary(input: {
   return {
     baseRows,
     baseSubtotal,
-    performanceRow,
     totals,
     reconciliation: {
       advancesCents,

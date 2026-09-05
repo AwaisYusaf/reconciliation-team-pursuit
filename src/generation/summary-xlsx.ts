@@ -143,14 +143,8 @@ export async function buildSummaryWorkbook(snapshot: MonthSnapshot): Promise<Buf
     formatSummaryRow(added);
   }
 
-  const subtotal = sheet.addRow(summaryValues(summary.baseSubtotal));
-  formatSummaryRow(subtotal, true);
-
-  addSectionRow(sheet, "PERFORMANCE GRANT 1");
-
-  const perf = sheet.addRow(summaryValues(summary.performanceRow));
-  formatSummaryRow(perf);
-
+  // No separate "Base subtotal" row: every line item is a base row now that performances
+  // (m08) replaced the old Performance Grant section, so it would only ever repeat Totals.
   const totals = sheet.addRow(summaryValues(summary.totals));
   formatSummaryRow(totals, true);
 
