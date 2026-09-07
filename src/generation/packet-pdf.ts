@@ -215,7 +215,7 @@ export async function buildPacketPdf(
     if (expenses.length === 0) continue;
 
     try {
-      const composed = coverSheetRows(expenses);
+      const composed = coverSheetRows(expenses, snapshot.month);
       const docx = await buildCoverSheetDocx({
         title: coverSheetTitle(snapshot.docName, label, lineItem.name),
         rows: composed.rows,

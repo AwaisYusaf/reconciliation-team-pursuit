@@ -1,10 +1,15 @@
 import { describe, expect, it } from "vitest";
 
+import type { MonthKey } from "./dates";
+
 import { coverSheetRow, coverSheetRows, inlineNotes, type CoverSheetExpense } from "./cover-sheet";
+
+const MONTH = "2026-02" as MonthKey;
 import { TAX_NOTE } from "./strings";
 
 function expense(overrides: Partial<CoverSheetExpense> = {}): CoverSheetExpense {
   return {
+    referenceSeq: 14,
     name: "Kroger",
     description: "Groceries for participant families",
     subtotalCents: 42108,
@@ -79,13 +84,13 @@ describe("inline notes (R6.5, R6.7)", () => {
 
 describe("cover sheet rows (R6.2)", () => {
   it("uses the expense name and its description verbatim", () => {
-    const row = coverSheetRow(expense());
+    const row = coverSheetRow(expense(), MONTH);
     expect(row.name).toBe("Kroger");
     expect(row.role).toBe("Groceries for participant families");
   });
 
   it("amounts are reimbursable, so tax is excluded and fees are included (R1.3)", () => {
-    const row = coverSheetRow(expense({ subtotalCents: 19084, taxCents: 1500, feesCents: 250 , taxReimbursable: false, feesReimbursable: true}));
+    const row = coverSheetRow(expense({ subtotalCents: 19084, taxCents: 1500, feesCents: 250 , taxReimbursable: false, feesReimbursable: true}), MONTH);
     expect(row.amountCents).toBe(19334);
   });
 
@@ -94,7 +99,7 @@ describe("cover sheet rows (R6.2)", () => {
       expense({ subtotalCents: 42108, taxCents: 2526 }),
       expense({ subtotalCents: 19084, taxCents: 0, feesCents: 250 , taxReimbursable: false, feesReimbursable: true}),
       expense({ subtotalCents: 61000 }),
-    ]);
+    ], MONTH);
 
     expect(rows).toHaveLength(3);
     expect(totalCents).toBe(42108 + 19334 + 61000);
@@ -105,30 +110,31 @@ describe("cover sheet rows (R6.2)", () => {
       expense({ name: "Zebra" }),
       expense({ name: "Apple" }),
       expense({ name: "Mango" }),
-    ]);
+    ], MONTH);
     expect(rows.map((row) => row.name)).toEqual(["Zebra", "Apple", "Mango"]);
   });
 
   it("produces no rows and a zero total for an empty line item", () => {
-    expect(coverSheetRows([])).toEqual({ rows: [], totalCents: 0 });
+    expect(coverSheetRows([], MONTH)).toEqual({ rows: [], totalCents: 0 });
   });
 
   it("normalises an empty narrative to null so no blank paragraph is rendered", () => {
-    expect(coverSheetRow(expense({ narrative: "   " })).narrative).toBeNull();
-    expect(coverSheetRow(expense({ narrative: "Context here" })).narrative).toBe("Context here");
+    expect(coverSheetRow(expense({ narrative: "   " }), MONTH).narrative).toBeNull();
+    expect(coverSheetRow(expense({ narrative: "Context here" }), MONTH).narrative).toBe("Context here");
   });
 
   it("handles a refund without inventing a negative total (R3)", () => {
     const { totalCents } = coverSheetRows([
       expense({ subtotalCents: 10000 }),
       expense({ subtotalCents: -2500 }),
-    ]);
+    ], MONTH);
     expect(totalCents).toBe(7500);
   });
 });
 
 describe("the exclusion note tells the truth (R6.5, D-67)", () => {
   const base = {
+    referenceSeq: 14,
     name: "Canva",
     description: "Design tool",
     subtotalCents: 10_000,
@@ -186,7 +192,7 @@ describe("the exclusion note tells the truth (R6.5, D-67)", () => {
   it("puts the reimbursable amount on the row, not the receipt total", () => {
     const { rows } = coverSheetRows([
       { ...base, taxReimbursable: true, feesReimbursable: false },
-    ]);
+    ], MONTH);
     // subtotal + tax, fees excluded.
     expect(rows[0].amountCents).toBe(10_600);
   });

@@ -9,14 +9,19 @@ import JSZip from "jszip";
 import sharp from "sharp";
 import { describe, expect, it } from "vitest";
 
+import type { MonthKey } from "@/src/domain/dates";
+import { coverSheetHeading, expenseReference } from "@/src/domain/strings";
+
 import { coverSheetRows, type CoverSheetExpense } from "@/src/domain/cover-sheet";
 import { SEE_BELOW, TAX_NOTE } from "@/src/domain/strings";
 
 import { buildCoverSheetDocx, type CoverImage } from "./cover-sheet-docx";
 
+const MONTH = "2026-02" as MonthKey;
 const EXPENSES: CoverSheetExpense[] = [
   {
     name: "Kroger",
+    referenceSeq: 1,
     description: "Groceries for participant families",
     subtotalCents: 42108,
     taxCents: 2526,
@@ -28,6 +33,7 @@ const EXPENSES: CoverSheetExpense[] = [
   },
   {
     name: "Reimbursed Purchases",
+    referenceSeq: 2,
     description: "Out-of-pocket purchases reimbursed",
     subtotalCents: 19084,
     taxCents: 0,
@@ -39,6 +45,7 @@ const EXPENSES: CoverSheetExpense[] = [
   },
   {
     name: "Metro Transit Services",
+    referenceSeq: 3,
     description: "Transportation for programme participants",
     subtotalCents: 61000,
     taxCents: 0,
@@ -60,7 +67,7 @@ const IMAGES: CoverImage[][] = [
 const TITLE = "Team Pursuit February 2026 Social Services & Support Breakdown";
 
 async function documentXml(images: CoverImage[][] = IMAGES): Promise<string> {
-  const composed = coverSheetRows(EXPENSES);
+  const composed = coverSheetRows(EXPENSES, MONTH);
   const buffer = await buildCoverSheetDocx({
     title: TITLE,
     rows: composed.rows,
@@ -91,7 +98,7 @@ describe("cover sheet document", () => {
     //
     // It reproduces only against that LibreOffice: a newer one on a developer's machine
     // renders the same bytes correctly, so nothing but the emitted XML can catch it here.
-    const composed = coverSheetRows(EXPENSES);
+    const composed = coverSheetRows(EXPENSES, MONTH);
     const buffer = await buildCoverSheetDocx({
       title: TITLE,
       rows: composed.rows,
@@ -110,7 +117,7 @@ describe("cover sheet document", () => {
   });
 
   it("is a valid Office Open XML package", async () => {
-    const composed = coverSheetRows(EXPENSES);
+    const composed = coverSheetRows(EXPENSES, MONTH);
     const buffer = await buildCoverSheetDocx({
       title: TITLE,
       rows: composed.rows,
@@ -215,7 +222,9 @@ describe("notes below the table (R6.3 – R6.7)", () => {
   it("gives every expense a bold heading matching its table Name (R6.4)", async () => {
     const xml = await documentXml();
     for (const expense of EXPENSES) {
-      expect(xml).toContain(`${expense.name}:`);
+      expect(xml).toContain(
+        coverSheetHeading(expense.name, expenseReference(MONTH, expense.referenceSeq)),
+      );
     }
   });
 
@@ -256,7 +265,7 @@ describe("notes below the table (R6.3 – R6.7)", () => {
 
 describe("proof images (R6.4)", () => {
   it("embeds one image per proof, in order", async () => {
-    const composed = coverSheetRows(EXPENSES);
+    const composed = coverSheetRows(EXPENSES, MONTH);
     const buffer = await buildCoverSheetDocx({
       title: TITLE,
       rows: composed.rows,
@@ -320,8 +329,8 @@ describe("proof images (R6.4)", () => {
 
     const buffer = await buildCoverSheetDocx({
       title: TITLE,
-      rows: coverSheetRows(EXPENSES).rows,
-      totalCents: coverSheetRows(EXPENSES).totalCents,
+      rows: coverSheetRows(EXPENSES, MONTH).rows,
+      totalCents: coverSheetRows(EXPENSES, MONTH).totalCents,
       images: [
         [{ data: red, widthPx: 400, heightPx: 300 }],
         [{ data: blue, widthPx: 400, heightPx: 300 }],

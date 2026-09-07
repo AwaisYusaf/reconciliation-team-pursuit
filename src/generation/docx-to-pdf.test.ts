@@ -10,17 +10,22 @@ import { tmpdir } from "node:os";
 
 import { describe, expect, it } from "vitest";
 
+import type { MonthKey } from "@/src/domain/dates";
+
 import { coverSheetRows, type CoverSheetExpense } from "@/src/domain/cover-sheet";
 
 import { buildCoverSheetDocx } from "./cover-sheet-docx";
 import { conversionAvailable, convertDocxToPdf } from "./docx-to-pdf";
 import { pdfPageCount } from "./raster";
 
+const MONTH = "2026-02" as MonthKey;
+
 const available = await conversionAvailable();
 
 const EXPENSES: CoverSheetExpense[] = [
   {
     name: "Kroger",
+    referenceSeq: 1,
     description: "Groceries for participant families",
     subtotalCents: 42108,
     taxCents: 2526,
@@ -32,6 +37,7 @@ const EXPENSES: CoverSheetExpense[] = [
   },
   {
     name: "Metro Transit Services",
+    referenceSeq: 2,
     description: "Transportation for programme participants",
     subtotalCents: 61000,
     taxCents: 0,
@@ -44,7 +50,7 @@ const EXPENSES: CoverSheetExpense[] = [
 ];
 
 async function coverSheet(): Promise<Buffer> {
-  const composed = coverSheetRows(EXPENSES);
+  const composed = coverSheetRows(EXPENSES, MONTH);
   return buildCoverSheetDocx({
     title: "Team Pursuit February 2026 Social Services & Support Breakdown",
     rows: composed.rows,

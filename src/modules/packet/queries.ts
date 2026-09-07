@@ -81,6 +81,7 @@ export async function loadPacketReadiness(
         note: expenses.note,
         narrative: expenses.narrative,
         noReceipt: expenses.noReceipt,
+        referenceSeq: expenses.referenceSeq,
         noReceiptReason: expenses.noReceiptReason,
       })
       .from(expenses)
@@ -171,7 +172,7 @@ export async function loadPacketReadiness(
 
     // Cover sheet pages, plus one page per receipt/supporting page (R11.3: proofs are
     // inside the cover sheet and are not counted again).
-    const composed = coverSheetRows(own);
+    const composed = coverSheetRows(own, month);
     const coverPages =
       own.length === 0
         ? 0

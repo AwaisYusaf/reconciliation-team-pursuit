@@ -133,7 +133,7 @@ function CoverSheetSection({
   }));
   const blocking = blockingRecords(gate);
 
-  const composed = coverSheetRows(expenses);
+  const composed = coverSheetRows(expenses, month);
   const rows: PreviewRow[] = composed.rows.map((row, index) => {
     const expense = expenses[index];
     return {

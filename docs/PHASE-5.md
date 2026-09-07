@@ -146,7 +146,7 @@ implementation adversarially → test in a real viewer → commit.
 - **N2 — Link primitives.** `pdf-links.ts` with read-back helpers. Unit tests on synthetic
   documents reproduce the probes: survives the stamp cycle; breaks under `copyPages` (a test that
   *documents* the constraint, so nobody moves the pass upstream later).
-- **N3 — Anchors.** Reference printed per Q1; `locateOnPages(bytes, token)` over
+- **N3 — Anchors** *(done)*. Reference printed per Q1; `locateOnPages(bytes, token)` over
   `pdftotext -bbox-layout`, gated like the other poppler-dependent tests (dev machines on Xpdf
   may lack `-bbox-layout`; the production container has poppler). Tests: single token match with
   trailing punctuation; duplicate names resolve to different rows; heading on page 2 of a sheet.
@@ -206,9 +206,12 @@ sample.
 
 ## 6. Edge cases that must not be missed
 
-- **Names are not anchors** (§2.4). Any design that matches "the nth row" or "the name" is
-  rejected in review: it passes today and breaks the day a role contains a name, or two pay
-  periods share one.
+- **Names are not anchors** (§2.4). Headings are found by their reference token, which is unique
+  by construction. Table rows print no reference (Q1), so they *are* positional — the n-th money
+  token in the Amount column is the n-th row — but never by name, and never trusted: the n-th
+  token must print exactly the n-th expense's amount or `coverSheetAnchors` throws rather than
+  return a wrong link. The generator emits rows in expense order and LibreOffice reads a
+  fixed-layout table top to bottom; a mismatch is a regression in one of them.
 - **Rasterised pages carry no text.** Their only anchor is the footer, which exists only after
   stamping — which is why back-links belong in the finishing pass and nowhere else.
 - **Coordinate systems.** pdftotext measures y from the top; PDF rectangles from the bottom. One

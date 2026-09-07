@@ -11,12 +11,16 @@ import { execFileSync } from "node:child_process";
 
 import { describe, expect, it } from "vitest";
 
+import type { MonthKey } from "@/src/domain/dates";
+
 import { coverSheetRows, type CoverSheetExpense } from "@/src/domain/cover-sheet";
 
 import { buildCoverSheetDocx, type CoverImage } from "./cover-sheet-docx";
 import { conversionAvailable, convertDocxToPdf } from "./docx-to-pdf";
 import { estimateCoverSheetPages, estimateUploadPages, type EstimateRow } from "./page-estimate";
 import { pdfPageCount } from "./raster";
+
+const MONTH = "2026-02" as MonthKey;
 
 const available = await conversionAvailable();
 
@@ -31,6 +35,7 @@ function hasPoppler(): boolean {
 
 function expense(overrides: Partial<CoverSheetExpense> = {}): CoverSheetExpense {
   return {
+    referenceSeq: 14,
     name: "Vendor",
     description: "Contracted services in support of programme delivery",
     subtotalCents: 100_000,
@@ -51,7 +56,7 @@ function rowsFrom(
   expenses: CoverSheetExpense[],
   proofsPer: number,
 ): { estimate: EstimateRow[]; images: CoverImage[][] } {
-  const composed = coverSheetRows(expenses);
+  const composed = coverSheetRows(expenses, MONTH);
   return {
     estimate: composed.rows.map((row) => ({
       role: row.role,
@@ -97,7 +102,7 @@ describe("estimateCoverSheetPages", () => {
   });
 
   it("lets small proofs share a page instead of each taking one", () => {
-    const composed = coverSheetRows([expense()]);
+    const composed = coverSheetRows([expense()], MONTH);
     const small: EstimateRow[] = composed.rows.map((row) => ({
       role: row.role,
       notes: row.notes,
@@ -160,7 +165,7 @@ describe.skipIf(!available || !hasPoppler())("calibration against the real rende
   for (const testCase of cases) {
     it(`is within ±2 pages: ${testCase.name}`, async () => {
       const { estimate, images } = rowsFrom(testCase.expenses, testCase.proofs);
-      const composed = coverSheetRows(testCase.expenses);
+      const composed = coverSheetRows(testCase.expenses, MONTH);
 
       const docx = await buildCoverSheetDocx({
         title: "Team Pursuit February 2026 Analytical Support Breakdown",

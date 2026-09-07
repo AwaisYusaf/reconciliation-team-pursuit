@@ -53,6 +53,17 @@ export function expenseReference(month: string, seq: number): string {
   return `${month}-${String(seq).padStart(3, "0")}`;
 }
 
+/**
+ * The bold heading above an expense's proofs on the cover sheet (R6.4, D-83).
+ *
+ * The reference is here, and only here on the sheet: it is the one string unique to the
+ * expense — two pay periods for one person print identical table rows — and the packet's links
+ * anchor on it. The colon stays attached so `pdftotext` reports `2026-02-014:` as one token.
+ */
+export function coverSheetHeading(name: string, reference: string): string {
+  return `${name} — ${reference}:`;
+}
+
 /** Disclosure appended to a heading when the expense has no receipt (R6.7). */
 export function noReceiptNote(reason: string): string {
   return `(Note: No receipt available — ${reason.trim()})`;

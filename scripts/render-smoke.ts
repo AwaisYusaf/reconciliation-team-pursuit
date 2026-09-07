@@ -24,6 +24,7 @@ import { buildIndexSectionPdf } from "@/src/generation/packet-index-pdf";
 import { buildSummarySectionPdf } from "@/src/generation/packet-summary-pdf";
 import { buildCoverSheetDocx } from "@/src/generation/cover-sheet-docx";
 import { convertDocxToPdf } from "@/src/generation/docx-to-pdf";
+import { bboxLayoutSupported, coverSheetAnchors } from "@/src/generation/pdf-anchors";
 import { buildSummaryWorkbook } from "@/src/generation/summary-xlsx";
 import { stampFooters } from "@/src/generation/packet-footer";
 import type { MonthSnapshot, SnapshotExpense } from "@/src/generation/month-snapshot";
@@ -151,6 +152,7 @@ async function main(): Promise<void> {
     title: "Team Pursuit Global February 2026 Salary Breakdown",
     rows: [
       {
+        reference: "2026-02-014",
         name: "Marcus Wainwright-Delacroix",
         role: "Community Violence Intervention Outreach Specialist and Team Lead",
         amountCents: WIDEST,
@@ -161,7 +163,17 @@ async function main(): Promise<void> {
     totalCents: WIDEST,
     images: [[]],
   });
-  const coverText = await textOf(await convertDocxToPdf(coverDocx));
+  const coverPdf = await convertDocxToPdf(coverDocx);
+  const coverText = await textOf(coverPdf);
+  // The packet's links are measured with `pdftotext -bbox-layout` at assembly time, so this is a
+  // runtime dependency of the container, not only of the tests (D-83).
+  check("pdftotext supports -bbox-layout", bboxLayoutSupported());
+  try {
+    const [anchor] = coverSheetAnchors(coverPdf, [{ reference: "2026-02-014", amountCents: WIDEST }]);
+    check("locates the heading and the table row (D-83)", anchor.heading.rect.height > 0 && anchor.row.rect.height > 0);
+  } catch (error) {
+    check("locates the heading and the table row (D-83)", false, String(error));
+  }
   check(
     "the total prints on one line (D-76)",
     coverText.includes("-$12,345,678.90"),

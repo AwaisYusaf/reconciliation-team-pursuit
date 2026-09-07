@@ -3,6 +3,7 @@ import { formatMoney } from "@/src/domain/format";
 import { CoverSheetProofs } from "./cover-sheet-proofs";
 import { SEE_BELOW } from "@/src/domain/strings";
 import type { CoverSheetRow } from "@/src/domain/cover-sheet";
+import { coverSheetHeading } from "@/src/domain/strings";
 
 export type PreviewProof = {
   id: string;
@@ -91,7 +92,7 @@ export function CoverSheetPreview({
       {rows.map((row) => (
         <section key={row.expenseId} className="mt-6">
           <p className="text-[13px] font-bold">
-            {row.name}:
+            {coverSheetHeading(row.name, row.reference)}
             {row.notes.map((note) => (
               <span key={note} className="bg-[#FFFF00] font-bold">
                 {" "}

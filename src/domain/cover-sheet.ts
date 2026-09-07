@@ -5,10 +5,13 @@
  * PDF renderer and the on-screen preview all compose from here, so the three can never
  * disagree about which notes an expense carries or what its amount is.
  */
+import type { MonthKey } from "./dates";
 import { excludedParts, reimbursableCents, type ExpenseComposition } from "./money";
-import { exclusionNote, noReceiptNote } from "./strings";
+import { exclusionNote, expenseReference, noReceiptNote } from "./strings";
 
 export type CoverSheetExpense = ExpenseComposition & {
+  /** Formatted with the month into the reference the heading prints (R2.6, D-83). */
+  referenceSeq: number;
   name: string;
   description: string;
   note: string | null;
@@ -18,7 +21,9 @@ export type CoverSheetExpense = ExpenseComposition & {
 };
 
 export type CoverSheetRow = {
-  /** Table column 1, and the bold heading below the table — always the same string (R6.4). */
+  /** `2026-02-014`: printed in the heading, never in the table (R2.6, R6.4). */
+  reference: string;
+  /** Table column 1, and the start of the bold heading below the table (R6.4). */
   name: string;
   /** Table column 2: the description, verbatim (R6.2). */
   role: string;
@@ -60,8 +65,9 @@ export function inlineNotes(expense: CoverSheetExpense): string[] {
 }
 
 /** One table row plus everything printed beneath it (R6.2, R6.5, R6.6). */
-export function coverSheetRow(expense: CoverSheetExpense): CoverSheetRow {
+export function coverSheetRow(expense: CoverSheetExpense, month: MonthKey): CoverSheetRow {
   return {
+    reference: expenseReference(month, expense.referenceSeq),
     name: expense.name,
     role: expense.description,
     amountCents: reimbursableCents(expense),
@@ -71,11 +77,14 @@ export function coverSheetRow(expense: CoverSheetExpense): CoverSheetRow {
 }
 
 /** Every row for a line item, in entry order, with the total the sheet prints (R6.2). */
-export function coverSheetRows(expenses: readonly CoverSheetExpense[]): {
+export function coverSheetRows(
+  expenses: readonly CoverSheetExpense[],
+  month: MonthKey,
+): {
   rows: CoverSheetRow[];
   totalCents: number;
 } {
-  const rows = expenses.map(coverSheetRow);
+  const rows = expenses.map((expense) => coverSheetRow(expense, month));
   return {
     rows,
     totalCents: rows.reduce((sum, row) => sum + row.amountCents, 0),

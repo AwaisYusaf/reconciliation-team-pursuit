@@ -109,6 +109,7 @@ Let `opening` = line item's opening previously-billed balance (setup figure), `e
 |---|---|
 | tax-note | `(Note: Statement includes tax which was excluded from reimbursement amount)` |
 | see-below | `Please see below for additional information for some of the above items.` |
+| cover-heading | `{Name} — {reference}:` — the bold heading above each expense's proofs on the cover sheet (R6.4, D-83); the reference makes it the one string unique to the expense on the sheet |
 | no-receipt-note | `(Note: No receipt available — {reason})` |
 | reimburse-hint (UI) | `Sales tax is excluded. The funder does not reimburse it.` |
 | blocked-title (UI) | `This packet cannot be downloaded yet.` |

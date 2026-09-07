@@ -26,7 +26,9 @@ export const dynamic = "force-dynamic";
 // Bumped "cover-7": the converter now resolves Aptos to Carlito instead of falling back to
 // DejaVu Sans (D-78), so every rendered sheet changes metrics. The font lives in the image, not
 // in the snapshot, so without this bump pinned and cached artifacts keep serving the wide render.
-const GENERATOR_VERSION = "cover-7";
+// Bumped "cover-8": the heading now carries the expense reference (D-83). Without this, pinned and
+// cached sheets keep printing headings the packet's links cannot anchor on.
+const GENERATOR_VERSION = "cover-8";
 
 /**
  * Download one line item's cover sheet, as .docx or .pdf.
@@ -113,7 +115,7 @@ export async function GET(request: Request) {
         scope: `${lineItemId}:${format}`,
       }),
       build: async () => {
-        const composed = coverSheetRows(expenses);
+        const composed = coverSheetRows(expenses, month as MonthKey);
         const docx = await buildCoverSheetDocx({
           title,
           rows: composed.rows,

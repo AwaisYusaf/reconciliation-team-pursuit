@@ -30,7 +30,7 @@ import {
 
 import type { CoverSheetRow } from "@/src/domain/cover-sheet";
 import { formatMoney } from "@/src/domain/format";
-import { SEE_BELOW } from "@/src/domain/strings";
+import { coverSheetHeading, SEE_BELOW } from "@/src/domain/strings";
 
 import { COVER_IMAGE_BOX, COVER_MARGIN_IN, COVER_TEXT_WIDTH_IN, fitWithin } from "./layout-constants";
 
@@ -183,7 +183,12 @@ function buildTable(input: CoverSheetInput): Table {
  */
 function headingParagraph(row: CoverSheetRow): Paragraph {
   const children = [
-    new TextRun({ text: `${row.name}:`, bold: true, font: FONT, size: BODY_SIZE }),
+    new TextRun({
+      text: coverSheetHeading(row.name, row.reference),
+      bold: true,
+      font: FONT,
+      size: BODY_SIZE,
+    }),
   ];
 
   for (const note of row.notes) {

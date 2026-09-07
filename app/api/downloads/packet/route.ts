@@ -22,7 +22,9 @@ export const maxDuration = 600;
 // Bumped "packet-10": the packet embeds the cover sheet, whose font resolution changed (D-78).
 // Neither that nor D-77's reordering touches a snapshot field, so without a bump the cache key is
 // byte-identical and every existing month keeps serving the old packet.
-const GENERATOR_VERSION = "packet-10";
+// Bumped "packet-11": the packet embeds the cover sheet, whose heading now carries the
+// reference (D-83). Without this, pinned and cached packets keep serving the old sheets.
+const GENERATOR_VERSION = "packet-11";
 
 /**
  * Download the month-end packet.
