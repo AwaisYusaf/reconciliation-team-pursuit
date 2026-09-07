@@ -21,6 +21,8 @@ import { eq } from "drizzle-orm";
 import sharp from "sharp";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
+import type { PacketPage } from "./packet-pdf";
+
 import { conversionAvailable } from "./docx-to-pdf";
 import { hasPdftotext, pdftotext } from "./pdftotext.test-helper";
 
@@ -42,8 +44,10 @@ describe.skipIf(!canRun)("packet traceability (integration)", async () => {
   );
   const { loadMonthSnapshot } = await import("./month-snapshot");
   const { buildDeliverablePacket } = await import("./packet-build");
+  const { buildPacketPdf } = await import("./packet-pdf");
 
   let orgId: string;
+  let lineItemId: string;
   let pageText: string[];
   let pageCount: number;
 
@@ -62,6 +66,7 @@ describe.skipIf(!canRun)("packet traceability (integration)", async () => {
       .insert(lineItems)
       .values({ orgId, name: "Transportation", scheduledValueCents: 500_000, sortOrder: 0 })
       .returning({ id: lineItems.id });
+    lineItemId = item.id;
 
     const jpeg = await sharp({
       create: { width: 900, height: 1200, channels: 3, background: { r: 250, g: 250, b: 248 } },
@@ -197,5 +202,39 @@ describe.skipIf(!canRun)("packet traceability (integration)", async () => {
     // Moving one section must not disturb the two that introduce the packet.
     expect(pageText[0]).toContain("Contract Summary");
     expect(pageText[1]).toMatch(/Ref|Expense/);
+  });
+
+  it("records what every page is, in order, from a real assembly (D-83)", async () => {
+    // The map the footers and the links are both drawn from. Asserted for every page rather
+    // than sampled: a page recorded wrongly is a footer that lies and a link that lands on the
+    // wrong evidence, and neither announces itself.
+    const { pages, pageOwners, pageCount } = await buildPacketPdf(await loadMonthSnapshot(orgId, MONTH));
+    expect(pages).toHaveLength(pageCount);
+
+    const kinds = pages.map((page) => page.kind);
+    // Summary and index may each run to more than one page, but nothing else precedes them.
+    expect(kinds[0]).toBe("summary");
+    expect(kinds.indexOf("index")).toBe(kinds.lastIndexOf("summary") + 1);
+    expect(kinds.indexOf("cover")).toBe(kinds.lastIndexOf("index") + 1);
+    for (const page of pages) if (page.kind === "cover") expect(page.lineItemId).toBe(lineItemId);
+
+    // Three expenses, each with one single-page receipt; proofs live inside the cover sheet and
+    // contribute no pages of their own (R11.3).
+    const receipts = pages.filter(
+      (page): page is Extract<PacketPage, { kind: "receipt" }> => page.kind === "receipt",
+    );
+    expect(receipts.map((page) => page.reference)).toEqual([
+      `${MONTH}-001`, `${MONTH}-002`, `${MONTH}-003`,
+    ]);
+    expect(new Set(receipts.map((page) => page.expenseId)).size).toBe(3);
+    expect(new Set(receipts.map((page) => page.documentId)).size).toBe(3);
+    expect(kinds.filter((kind) => kind === "supporting")).toHaveLength(0);
+
+    // The single month document is the last page (D-77), and nothing follows it.
+    expect(kinds.at(-1)).toBe("month");
+    expect(kinds.filter((kind) => kind === "month")).toHaveLength(1);
+
+    // `pageOwners` is derived from the map, so the footer cannot disagree with the links.
+    expect(pageOwners).toEqual(pages.map((page) => ("reference" in page ? page.reference : null)));
   });
 });

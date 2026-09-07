@@ -51,10 +51,20 @@ export function orderedMonthDocuments(
  * manual packet repeated them as thirty standalone pages at the back; removing that
  * duplication is the single biggest improvement over the hand-assembled version.
  */
-export function packetDocumentsFor(expense: SnapshotExpense): SnapshotDocument[] {
+/** A document that gets its own packet pages: never a proof, which lives inside the cover sheet. */
+export type PacketDocument = SnapshotDocument & { kind: "receipt" | "supporting" };
+
+function ofKind<K extends PacketDocument["kind"]>(kind: K) {
+  return (document: SnapshotDocument): document is SnapshotDocument & { kind: K } =>
+    document.kind === kind;
+}
+
+export function packetDocumentsFor(expense: SnapshotExpense): PacketDocument[] {
+  // Typed as a guarantee rather than re-checked by every consumer: the page map records each
+  // page's kind from the document, and "proof" must not be representable there.
   return [
-    ...expense.documents.filter((document) => document.kind === "receipt").sort(byOrderThenId),
-    ...expense.documents.filter((document) => document.kind === "supporting").sort(byOrderThenId),
+    ...expense.documents.filter(ofKind("receipt")).sort(byOrderThenId),
+    ...expense.documents.filter(ofKind("supporting")).sort(byOrderThenId),
   ];
 }
 

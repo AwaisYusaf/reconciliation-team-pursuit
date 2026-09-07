@@ -158,7 +158,7 @@ describe("expense documents (sections 3..n)", () => {
     );
 
     expect(ordered.map((row) => row.id)).toEqual(["receipt-1"]);
-    expect(ordered.some((row) => row.kind === "proof")).toBe(false);
+    expect(ordered.some((row) => (row.kind as string) === "proof")).toBe(false);
   });
 
   it("ignores the supporting type when ordering", () => {
