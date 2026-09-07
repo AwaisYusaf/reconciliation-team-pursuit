@@ -16,6 +16,8 @@ import "server-only";
  */
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf-lib";
 
+import type { Rect } from "./pdf-links";
+
 import { formatDateUS, monthLabel } from "@/src/domain/dates";
 import { formatMoney } from "@/src/domain/format";
 import { reimbursableCents } from "@/src/domain/money";
@@ -131,7 +133,28 @@ function drawRow(
  * Build the index. Always at least one page, even for a month with no expenses — a packet
  * that silently skips a section it says it has is worse than one that says "none".
  */
+/**
+ * Where the index's clickable things are, in the index's own page numbering (D-83).
+ *
+ * Recorded while drawing, because that is when the cell rectangles exist; the packet
+ * translates the page numbers once it knows where the index landed.
+ */
+export type IndexAnchors = {
+  /** The `Ref` cell of every row, in row order. */
+  refCells: Array<{ reference: string; page: number; rect: Rect }>;
+  /** The first line of each no-receipt disclosure (D-74), the index's target for that expense. */
+  disclosures: Array<{ reference: string; page: number; rect: Rect; top: number }>;
+};
+
 export async function buildIndexSectionPdf(snapshot: MonthSnapshot): Promise<Buffer> {
+  return (await buildIndexSection(snapshot)).pdf;
+}
+
+export async function buildIndexSection(
+  snapshot: MonthSnapshot,
+): Promise<{ pdf: Buffer; anchors: IndexAnchors }> {
+  const anchors: IndexAnchors = { refCells: [], disclosures: [] };
+  let pageIndex = 0;
   const pdf = await PDFDocument.create();
   const fonts: Fonts = {
     regular: await pdf.embedFont(StandardFonts.Helvetica),
@@ -209,9 +232,15 @@ export async function buildIndexSectionPdf(snapshot: MonthSnapshot): Promise<Buf
     // column names is unreadable on its own, and packet pages get separated.
     if (y - ROW_HEIGHT < MARGIN) {
       page = pdf.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
+      pageIndex += 1;
       y = PAGE_HEIGHT - MARGIN;
       startPage(false);
     }
+    anchors.refCells.push({
+      reference: row[0],
+      page: pageIndex,
+      rect: { x: MARGIN, y: y - ROW_HEIGHT, width: INDEX_COLUMNS[0].width, height: ROW_HEIGHT },
+    });
     y = drawRow(page, y, row, fonts);
   }
 
@@ -224,6 +253,7 @@ export async function buildIndexSectionPdf(snapshot: MonthSnapshot): Promise<Buf
     const needed = wrapped.length * (NOTE_SIZE + 3) + (expense === undocumented[0] ? 26 : 0);
     if (y - needed < MARGIN) {
       page = pdf.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
+      pageIndex += 1;
       y = PAGE_HEIGHT - MARGIN;
     }
 
@@ -236,6 +266,14 @@ export async function buildIndexSectionPdf(snapshot: MonthSnapshot): Promise<Buf
       y -= 14;
     }
 
+    // The first line is the target: a glyph box around the baseline, and a `top` that puts
+    // the line at the top of the viewport.
+    anchors.disclosures.push({
+      reference: expenseReference(snapshot.month, expense.referenceSeq),
+      page: pageIndex,
+      rect: { x: MARGIN, y: y - 3, width: INDEX_CONTENT_WIDTH, height: NOTE_SIZE + 4 },
+      top: y + NOTE_SIZE + 6,
+    });
     for (const text of wrapped) {
       page.drawText(winAnsiSafe(text), {
         x: MARGIN,
@@ -248,5 +286,5 @@ export async function buildIndexSectionPdf(snapshot: MonthSnapshot): Promise<Buf
     }
   }
 
-  return Buffer.from(await pdf.save());
+  return { pdf: Buffer.from(await pdf.save()), anchors };
 }

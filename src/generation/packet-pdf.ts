@@ -26,7 +26,9 @@ import { convertDocxToPdf } from "./docx-to-pdf";
 import { PACKET_MARGIN_IN, inchesToPoints } from "./layout-constants";
 import { expensesForLineItem, type MonthSnapshot } from "./month-snapshot";
 import { orderedMonthDocuments, packetDocumentsFor } from "./packet-order";
-import { buildIndexSectionPdf } from "./packet-index-pdf";
+import { coverSheetAnchors } from "./pdf-anchors";
+import type { Rect } from "./pdf-links";
+import { buildIndexSection } from "./packet-index-pdf";
 import { buildSummarySectionPdf } from "./packet-summary-pdf";
 import { DEFAULT_QUALITY, normalizeImage, rasterizePdf, type RasterQuality } from "./raster";
 
@@ -151,11 +153,37 @@ export type PacketPage =
   | ({ kind: "supporting" } & Evidence)
   | { kind: "month"; documentId: string };
 
+/**
+ * Everything the finishing pass needs to draw the links and the outline (R10.5a, D-83), with
+ * every page number already translated into the packet's own numbering.
+ *
+ * Recorded during assembly because that is the only point at which both halves exist: the
+ * anchors are measured on a cover sheet before it is copied in, and the page it lands on is
+ * known only as it is appended.
+ */
+export type PacketNavigation = {
+  index: {
+    refCells: Array<{ reference: string; page: number; rect: Rect }>;
+    disclosures: Array<{ reference: string; page: number; rect: Rect; top: number }>;
+  };
+  lineItems: Array<{ lineItemId: string; name: string; firstCoverPage: number }>;
+  expenses: Array<{
+    reference: string;
+    expenseId: string;
+    name: string;
+    lineItemId: string;
+    noReceipt: boolean;
+    row: { page: number; rect: Rect };
+    heading: { page: number; rect: Rect; top: number };
+  }>;
+};
+
 export type PacketResult = {
   pdf: Buffer;
   pageCount: number;
   /** One entry per page index, in page order. */
   pages: PacketPage[];
+  navigation: PacketNavigation;
   /**
    * The expense reference each page belongs to, by page index — null for pages that belong to
    * no single expense. Derived from `pages`, never recorded separately, so it cannot drift from
@@ -179,6 +207,7 @@ export async function buildPacketPdf(
   const label = monthLabel(snapshot.month);
 
   const pages: PacketPage[] = [];
+  const navigation: PacketNavigation = { index: { refCells: [], disclosures: [] }, lineItems: [], expenses: [] };
   /** Record whatever pages `append` adds as `entry`. */
   async function owned(entry: PacketPage, append: () => Promise<void>): Promise<void> {
     const before = pdf.getPageCount();
@@ -201,9 +230,13 @@ export async function buildPacketPdf(
   // Directly after the summary, where a contents page belongs: a reviewer meets the totals,
   // then the list of what makes them up, then the evidence.
   try {
-    await owned({ kind: "index" }, async () =>
-      appendGenerated(pdf, await buildIndexSectionPdf(snapshot)),
-    );
+    const index = await buildIndexSection(snapshot);
+    const firstIndexPage = pdf.getPageCount();
+    await owned({ kind: "index" }, async () => appendGenerated(pdf, index.pdf));
+    navigation.index = {
+      refCells: index.anchors.refCells.map((cell) => ({ ...cell, page: firstIndexPage + cell.page })),
+      disclosures: index.anchors.disclosures.map((line) => ({ ...line, page: firstIndexPage + line.page })),
+    };
   } catch (error) {
     throw new PacketError("the expense index section", error);
   }
@@ -222,11 +255,31 @@ export async function buildPacketPdf(
         totalCents: composed.totalCents,
         images: await loadProofImages(snapshot.orgId, expenses, quality),
       });
+      // Anchors are measured on the converted sheet *before* it is copied in: the copy keeps
+      // the geometry but the links must be added to the packet's own pages (D-83).
+      const sheet = await convertDocxToPdf(docx);
+      const anchors = coverSheetAnchors(sheet, composed.rows);
+      const firstCoverPage = pdf.getPageCount();
       // The cover sheet covers the whole category, so it carries no single reference — it is
       // recorded against its line item, which is what the outline and the back-links need.
-      await owned({ kind: "cover", lineItemId: lineItem.id }, async () =>
-        appendGenerated(pdf, await convertDocxToPdf(docx)),
-      );
+      await owned({ kind: "cover", lineItemId: lineItem.id }, async () => appendGenerated(pdf, sheet));
+      navigation.lineItems.push({ lineItemId: lineItem.id, name: lineItem.name, firstCoverPage });
+      expenses.forEach((expense, position) => {
+        const anchor = anchors[position];
+        navigation.expenses.push({
+          reference: composed.rows[position].reference,
+          expenseId: expense.id,
+          name: expense.name,
+          lineItemId: lineItem.id,
+          noReceipt: expense.noReceipt,
+          row: { page: firstCoverPage + anchor.row.page, rect: anchor.row.rect },
+          heading: {
+            page: firstCoverPage + anchor.heading.page,
+            rect: anchor.heading.rect,
+            top: anchor.heading.top,
+          },
+        });
+      });
     } catch (error) {
       throw new PacketError(`the ${lineItem.name} cover sheet`, error);
     }
@@ -271,5 +324,5 @@ export async function buildPacketPdf(
   // packet again doubles peak memory at the worst possible moment.
   const saved = await pdf.save();
   const bytes = Buffer.from(saved.buffer, saved.byteOffset, saved.byteLength);
-  return { pdf: bytes, pageCount: pdf.getPageCount(), pages, pageOwners: pages.map(pageReference) };
+  return { pdf: bytes, pageCount: pdf.getPageCount(), pages, navigation, pageOwners: pages.map(pageReference) };
 }

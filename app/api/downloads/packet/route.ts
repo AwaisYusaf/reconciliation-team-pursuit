@@ -24,7 +24,9 @@ export const maxDuration = 600;
 // byte-identical and every existing month keeps serving the old packet.
 // Bumped "packet-11": the packet embeds the cover sheet, whose heading now carries the
 // reference (D-83). Without this, pinned and cached packets keep serving the old sheets.
-const GENERATOR_VERSION = "packet-11";
+// Bumped "packet-12": the packet now carries internal links and an outline (D-83). Links are
+// code, not snapshot data; without this every cached packet stays unlinked.
+const GENERATOR_VERSION = "packet-12";
 
 /**
  * Download the month-end packet.

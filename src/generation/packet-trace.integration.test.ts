@@ -22,6 +22,8 @@ import sharp from "sharp";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import type { PacketPage } from "./packet-pdf";
+import { toPdfRect, wordsOf } from "./pdf-anchors";
+import { readLinks, readOutline } from "./pdf-links";
 
 import { conversionAvailable } from "./docx-to-pdf";
 import { hasPdftotext, pdftotext } from "./pdftotext.test-helper";
@@ -48,6 +50,8 @@ describe.skipIf(!canRun)("packet traceability (integration)", async () => {
 
   let orgId: string;
   let lineItemId: string;
+  let delivered: Buffer;
+  let assembled: Awaited<ReturnType<typeof buildPacketPdf>>;
   let pageText: string[];
   let pageCount: number;
 
@@ -104,6 +108,35 @@ describe.skipIf(!canRun)("packet traceability (integration)", async () => {
       }
     }
 
+    // A fourth expense with no receipt (R4.4): a proof only. It has no evidence page, so its
+    // links must go to its own heading and the index must send readers to its D-74 line.
+    const [cash] = await db
+      .insert(expenses)
+      .values({
+        orgId,
+        lineItemId: item.id,
+        month: MONTH,
+        date: `${MONTH}-14`,
+        name: "Cash fare",
+        description: "Outreach travel",
+        paymentSource: "Paid by us, reimbursement requested",
+        subtotalCents: 1_500,
+        sortOrder: 4,
+        referenceSeq: 4,
+        taxReimbursable: false,
+        feesReimbursable: true,
+        noReceipt: true,
+        noReceiptReason: "Paid in cash, receipt lost",
+      })
+      .returning({ id: expenses.id });
+    const cashProof = await ingestExpenseDocument({
+      orgId,
+      expenseId: cash.id,
+      scope: "proof",
+      file: new File([new Uint8Array(jpeg)], "proof-4.jpg", { type: "image/jpeg" }),
+    });
+    if (!cashProof.ok) throw new Error(cashProof.error);
+
     // One month-level document, so the packet has a section that belongs to no expense. The
     // fixture had none, which is why nothing caught a bank statement sitting at the front.
     const monthDoc = await ingestMonthDocument({
@@ -115,8 +148,13 @@ describe.skipIf(!canRun)("packet traceability (integration)", async () => {
     });
     if (!monthDoc.ok) throw new Error(monthDoc.error);
 
-    const packet = await buildDeliverablePacket(await loadMonthSnapshot(orgId, MONTH));
+    const snapshot = await loadMonthSnapshot(orgId, MONTH);
+    const packet = await buildDeliverablePacket(snapshot);
     pageCount = packet.pageCount;
+    delivered = packet.pdf;
+    // The same snapshot assembled again exposes the page map the delivered bytes were built
+    // from; generation is deterministic (R10.1), which the map test below holds it to.
+    assembled = await buildPacketPdf(snapshot);
 
     const dir = await mkdtemp(path.join(tmpdir(), "ngo-trace-"));
     try {
@@ -208,8 +246,9 @@ describe.skipIf(!canRun)("packet traceability (integration)", async () => {
     // The map the footers and the links are both drawn from. Asserted for every page rather
     // than sampled: a page recorded wrongly is a footer that lies and a link that lands on the
     // wrong evidence, and neither announces itself.
-    const { pages, pageOwners, pageCount } = await buildPacketPdf(await loadMonthSnapshot(orgId, MONTH));
+    const { pages, pageOwners } = assembled;
     expect(pages).toHaveLength(pageCount);
+    expect(assembled.pageCount).toBe(pageCount);
 
     const kinds = pages.map((page) => page.kind);
     // Summary and index may each run to more than one page, but nothing else precedes them.
@@ -236,5 +275,94 @@ describe.skipIf(!canRun)("packet traceability (integration)", async () => {
 
     // `pageOwners` is derived from the map, so the footer cannot disagree with the links.
     expect(pageOwners).toEqual(pages.map((page) => ("reference" in page ? page.reference : null)));
+  });
+
+  describe("navigation on the delivered bytes (R10.5a, D-83)", () => {
+    // 0-based page index of the first page carrying a reference's footer.
+    const firstEvidence = (reference: string) => pagesCarrying(reference)[0] - 1;
+    // A cover sheet runs to several pages when each proof image fills one; only its first page
+    // carries the title, so cover pages are read from the page map, not from their text.
+    const isCover = (page: number) => assembled.pages[page]?.kind === "cover";
+
+    it("resolves every link to a page in this document", async () => {
+      const links = await readLinks(delivered);
+      expect(links.length).toBeGreaterThan(0);
+      for (const link of links) expect(link.toPage).toBeGreaterThanOrEqual(0);
+    });
+
+    it("sends each documented expense's row and heading to its first receipt page", async () => {
+      const links = await readLinks(delivered);
+      for (const seq of [1, 2, 3]) {
+        const target = firstEvidence(`${MONTH}-00${seq}`);
+        // Two links from a cover page land on this expense's evidence: the row and the heading.
+        const inbound = links.filter((l) => l.toPage === target && isCover(l.fromPage));
+        expect(inbound).toHaveLength(2);
+      }
+    });
+
+    it("sends each evidence page's footer back to the heading, over the reference text", async () => {
+      const links = await readLinks(delivered);
+      const words = wordsOf(delivered);
+      for (const seq of [1, 2, 3]) {
+        const reference = `${MONTH}-00${seq}`;
+        for (const page of pagesCarrying(reference).map((n) => n - 1)) {
+          const back = links.filter((l) => l.fromPage === page);
+          expect(back).toHaveLength(1);
+          expect(isCover(back[0].toPage)).toBe(true);
+          expect(back[0].top).not.toBeNull();
+          // The clickable box sits on the footer's own reference token.
+          const token = words.find((w) => w.page === page && w.text === reference)!;
+          const box = toPdfRect(token, token.pageHeight);
+          expect(back[0].rect.x).toBeLessThanOrEqual(box.x + 0.5);
+          expect(back[0].rect.x + back[0].rect.width).toBeGreaterThanOrEqual(box.x + box.width - 0.5);
+        }
+      }
+    });
+
+    it("puts each heading link over the heading's reference token", async () => {
+      const links = await readLinks(delivered);
+      const words = wordsOf(delivered);
+      for (const seq of [1, 2, 3, 4]) {
+        const token = words.find((w) => w.text === `${MONTH}-00${seq}:`)!;
+        expect(token).toBeDefined();
+        const box = toPdfRect(token, token.pageHeight);
+        const over = links.filter(
+          (l) => l.fromPage === token.page && l.rect.x <= box.x + 0.5 && l.rect.y <= box.y + 0.5 &&
+            l.rect.x + l.rect.width >= box.x + box.width - 0.5 && l.rect.y + l.rect.height >= box.y + box.height - 0.5,
+        );
+        expect(over.length).toBeGreaterThanOrEqual(1);
+      }
+    });
+
+    it("sends the no-receipt expense to its heading, and its index row to the D-74 line", async () => {
+      const links = await readLinks(delivered);
+      const words = wordsOf(delivered);
+      const heading = words.find((w) => w.text === `${MONTH}-004:`)!;
+      const toHeading = links.filter((l) => l.toPage === heading.page && l.top !== null && isCover(l.fromPage));
+      // Row and heading both land on the heading, scrolled to the top.
+      expect(toHeading.length).toBeGreaterThanOrEqual(2);
+      const indexPages = pageText.map((t, i) => (t.includes("Expense Index") ? i : -1)).filter((i) => i >= 0);
+      const fromIndex = links.filter((l) => indexPages.includes(l.fromPage));
+      // Four Ref cells; the no-receipt one stays inside the index, pointing at its disclosure.
+      expect(fromIndex).toHaveLength(4);
+      expect(fromIndex.filter((l) => indexPages.includes(l.toPage) && l.top !== null)).toHaveLength(1);
+      expect(pageText.some((t) => t.includes("no receipt available") && t.includes("Paid in cash"))).toBe(true);
+    });
+
+    it("lists the packet in the outline, expenses under their line item", async () => {
+      const outline = await readOutline(delivered);
+      expect(outline.map((o) => o.title)).toEqual([
+        "Contract summary",
+        "Expense index",
+        "Transportation",
+        `${MONTH}-001 — Rideshare 1`,
+        `${MONTH}-002 — Rideshare 2`,
+        `${MONTH}-003 — Rideshare 3`,
+        `${MONTH}-004 — Cash fare`,
+        "Month documents",
+      ]);
+      expect(outline.filter((o) => o.depth === 1)).toHaveLength(4);
+      for (const item of outline) expect(item.toPage).toBeGreaterThanOrEqual(0);
+    });
   });
 });

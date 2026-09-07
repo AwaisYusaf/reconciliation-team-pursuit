@@ -150,9 +150,9 @@ implementation adversarially → test in a real viewer → commit.
   `pdftotext -bbox-layout`, gated like the other poppler-dependent tests (dev machines on Xpdf
   may lack `-bbox-layout`; the production container has poppler). Tests: single token match with
   trailing punctuation; duplicate names resolve to different rows; heading on page 2 of a sheet.
-- **N4 — Links.** Cover row → first evidence page; heading → first evidence page; evidence footer
+- **N4 — Links** *(done)*. Cover row → first evidence page; heading → first evidence page; evidence footer
   reference → heading; index Ref → per Q3; no-receipt → per Q6. Bump `GENERATOR_VERSION`.
-- **N5 — Outline.** Per Q4.
+- **N5 — Outline** *(done, shipped with N4 — the finishing pass writes it from the same map)*.
 - **N6 — Verification and hand-off.** Real-viewer click-through (Chrome, Preview/Acrobat, and the
   city's viewer per Q5), docs, deploy, and *then* Misty records her video — the packet she films
   must be the one the city receives.

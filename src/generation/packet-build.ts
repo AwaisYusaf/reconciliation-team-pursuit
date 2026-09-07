@@ -6,11 +6,7 @@ import "server-only";
  */
 import { monthLabel } from "@/src/domain/dates";
 
-import {
-  MAX_PACKET_BYTES,
-  oversizeWarning,
-  stampFooters,
-} from "./packet-footer";
+import { MAX_PACKET_BYTES, finishPacket, oversizeWarning } from "./packet-footer";
 import type { MonthSnapshot } from "./month-snapshot";
 import { buildPacketPdf } from "./packet-pdf";
 import { RASTER_LADDER } from "./raster";
@@ -37,12 +33,10 @@ export async function buildDeliverablePacket(snapshot: MonthSnapshot): Promise<B
 
   for (const [step, quality] of RASTER_LADDER.entries()) {
     const assembled = await buildPacketPdf(snapshot, quality);
-    const pdf = await stampFooters(
-      assembled.pdf,
-      snapshot.docName,
-      label,
-      assembled.pageOwners,
-    );
+    const pdf = await finishPacket(assembled.pdf, snapshot.docName, label, {
+      pages: assembled.pages,
+      navigation: assembled.navigation,
+    });
 
     last = { pdf, pageCount: assembled.pageCount, step, warning: null };
     if (pdf.byteLength <= MAX_PACKET_BYTES) return last;
