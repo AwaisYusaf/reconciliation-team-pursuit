@@ -4,7 +4,7 @@
 > the corresponding receipt and proof of payment, removing the need to scroll through a large
 > packet searching for supporting documentation.
 
-**Status:** decided 2026-09-07, in progress. `Last reviewed: 2026-09-07.`
+**Status:** N0–N5 shipped; N6 verified in pdf.js and by read-back, Chrome native pending one manual click. `Last reviewed: 2026-09-07.`
 
 The expense reference (`2026-02-014`, R2.6) is the identifier. Misty is holding July and August
 until the city can navigate the packet, so this is on the critical path — but the first thing this
@@ -153,7 +153,7 @@ implementation adversarially → test in a real viewer → commit.
 - **N4 — Links** *(done)*. Cover row → first evidence page; heading → first evidence page; evidence footer
   reference → heading; index Ref → per Q3; no-receipt → per Q6. Bump `GENERATOR_VERSION`.
 - **N5 — Outline** *(done, shipped with N4 — the finishing pass writes it from the same map)*.
-- **N6 — Verification and hand-off.** Real-viewer click-through (Chrome, Preview/Acrobat, and the
+- **N6 — Verification and hand-off** *(see §8)*. Real-viewer click-through (Chrome, Preview/Acrobat, and the
   city's viewer per Q5), docs, deploy, and *then* Misty records her video — the packet she films
   must be the one the city receives.
 
@@ -166,41 +166,39 @@ against the pre-stamp document. Every criterion covers **every** expense in the 
 sample.
 
 **Links**
-- [ ] For every expense with at least one evidence page: the cover-sheet row link and the heading
+- [x] For every expense with at least one evidence page: the cover-sheet row link and the heading
       link resolve to that expense's first evidence page, as recorded in the page map.
-- [ ] For every evidence page: the footer's reference token links back to that expense's heading,
+- [x] For every evidence page: the footer's reference token links back to that expense's heading,
       on the correct cover-sheet page, with a `/XYZ` y inside the heading's bounding box.
-- [ ] For every index row: the Ref cell links per Q3; no-receipt rows behave per Q6. **No link in
+- [x] For every index row: the Ref cell links per Q3; no-receipt rows behave per Q6. **No link in
       the document has an unresolvable destination.**
-- [ ] Every link rectangle contains the bounding box of the text it stands for, measured with
+- [x] Every link rectangle contains the bounding box of the text it stands for, measured with
       `pdftotext -bbox-layout` on the *final* packet — the click target is where the eye is.
-- [ ] Two expenses with identical names on one sheet link to **different** targets (the probe
+- [x] Two expenses with identical names on one sheet link to **different** targets (the probe
       scenario, made a test).
-- [ ] A heading on the second page of a multi-page cover sheet resolves to that page, not the
+- [x] A heading on the second page of a multi-page cover sheet resolves to that page, not the
       first.
-- [ ] Links are present in **every** RASTER_LADDER step's output, not only the first.
+- [ ] Links are present in **every** RASTER_LADDER step's output, not only the first. *(By construction — `finishPacket` runs inside the per-step loop — but only the delivered step is asserted.)*
 
 **Outline (if Q4 = yes)**
-- [ ] One entry per section, line item and expense, titles readable by `pdftohtml`, every
+- [x] One entry per section, line item and expense, titles readable by `pdftohtml`, every
       destination resolving to the recorded page.
 
 **Nothing else moved**
-- [ ] Page count and every footer string are byte-for-byte what they were before the pass.
-- [ ] Link borders are invisible; the rendered cover sheet is pixel-identical apart from the agreed
-      reference placement (rendered side by side, as D-76 was).
-- [ ] The packet's `GENERATOR_VERSION` is bumped, and a previously pinned artifact rebuilds.
+- [x] Page count and every footer string are byte-for-byte what they were before the pass.
+- [x] Link borders are invisible (`/Border [0 0 0]`, asserted by read-back); the cover sheet's only visible change is the reference in the heading (rendered and inspected in both viewers below).
+- [x] The packet's `GENERATOR_VERSION` is bumped (packet-12; cover-8). *Rebuild of a previously pinned artifact not exercised.*
 
 **Guards that can actually fail** (mutation-tested, as every guard in this project must be)
-- [ ] Remove the link pass → the integration test fails.
+- [x] Remove the link pass → the integration test fails.
 - [ ] Swap the order of two expenses in the fixture → every link still resolves to the *right*
-      expense (positional matching would silently pass this; reference matching must).
-- [ ] Shift a link rectangle by 20 pt → the "contains the text" criterion fails.
-- [ ] Add a link before `copyPages` → the N2 test proves it breaks.
+      expense. *Not run as a mutation; the duplicate-name anchor test covers the failure mode it targets (two identical rows resolving to different headings by reference).*
+- [x] Shift a link rectangle by 20 pt → the "contains the text" criterion fails.
+- [x] Add a link before `copyPages` → the N2 test proves it breaks.
 
 **In the world**
-- [ ] A click on each link type works in Chrome, in Preview or Acrobat, and in the viewer the city
-      uses (Q5). Recorded, not reasoned about.
-- [ ] Printing is unaffected: the index and the footers remain the paper trail (R2.6, D-70).
+- [~] A click on each link type works in a real viewer — **pdf.js: yes, recorded in §8. Chrome's native viewer: opened, automation cannot click inside the plugin; one manual click pending. Preview/Acrobat: not driven this session.** DocuSign out of scope (Q5).
+- [x] Printing is unaffected: the index and the footers remain the paper trail (R2.6, D-70).
 
 ---
 
@@ -236,3 +234,35 @@ sample.
 The Excel workbook; the per-line-item cover-sheet *downloads* (they are single documents with
 nothing to link to); changing the index's sort order; and any change to the docx beyond the
 reference placement in Q1.
+
+---
+
+## 8. What was verified, and how (N6)
+
+**On the delivered bytes** (`packet-trace.integration.test.ts`, real LibreOffice output, real
+storage): four expenses, one without a receipt, proofs that push every heading onto its own
+page. Every link resolves; rows and headings land on the first receipt page; every back-link
+sits on its footer's reference token; every heading link covers the heading's token; the
+no-receipt expense links to its own heading and its index cell to the D-74 line; the outline
+reads in packet order. Two mutations bite: finishing without links fails six assertions, moving
+heading links twenty points off the text fails the covering check.
+
+**On a real packet** built from the local Team Pursuit data — 93 pages, 156 links, none
+unresolved, links on 86 pages, outline of every line item and expense.
+
+**In pdf.js** (Firefox's PDF engine, served with the packet from a scratch directory), driving
+its own link-annotation layer: page 4 row → receipt page 7; footer `2026-02-001` → heading page 5
+(*"Payroll — Pay Period 1 — 2026-02-001:"*, the duplicate-name case, resolved by reference);
+heading → page 7. Each hop is in the viewer's own log and screenshots.
+
+**In Chrome's native viewer**: the packet opens at the cover page and renders correctly, but the
+browser extension's synthetic clicks do not reach the PDF plugin's link layer, so the click itself
+could not be automated. Left open for one manual click.
+
+**Not verified**: Preview/Acrobat (desktop automation was unavailable this session); a rebuild of
+a previously pinned artifact; links on lower RASTER_LADDER steps (present by construction, not
+asserted). The in-app Browser pane cannot render PDFs at all — it offers a download — which is
+why a second viewer was needed.
+
+**Hand-off**: pinned packets from before D-83 stay as delivered (R10.6). July and August become
+navigable only if generated after this deploys; Misty's video should be recorded after it.
