@@ -4,7 +4,7 @@
 > the corresponding receipt and proof of payment, removing the need to scroll through a large
 > packet searching for supporting documentation.
 
-**Status:** N0–N5 shipped; N6 verified in pdf.js and by read-back, Chrome native pending one manual click. `Last reviewed: 2026-09-07.`
+**Status:** shipped and verified in pdf.js and in Chrome's native viewer. `Last reviewed: 2026-09-07.`
 
 The expense reference (`2026-02-014`, R2.6) is the identifier. Misty is holding July and August
 until the city can navigate the packet, so this is on the critical path — but the first thing this
@@ -197,7 +197,7 @@ sample.
 - [x] Add a link before `copyPages` → the N2 test proves it breaks.
 
 **In the world**
-- [~] A click on each link type works in a real viewer — **pdf.js: yes, recorded in §8. Chrome's native viewer: opened, automation cannot click inside the plugin; one manual click pending. Preview/Acrobat: not driven this session.** DocuSign out of scope (Q5).
+- [x] A click on each link type works in a real viewer — **pdf.js: every hop, recorded in §8. Chrome's native viewer: confirmed by a manual click after the `/Fit` finding below.** Preview/Acrobat not driven this session; DocuSign out of scope (Q5).
 - [x] Printing is unaffected: the index and the footers remain the paper trail (R2.6, D-70).
 
 ---
@@ -255,13 +255,19 @@ its own link-annotation layer: page 4 row → receipt page 7; footer `2026-02-00
 (*"Payroll — Pay Period 1 — 2026-02-001:"*, the duplicate-name case, resolved by reference);
 heading → page 7. Each hop is in the viewer's own log and screenshots.
 
-**In Chrome's native viewer**: the packet opens at the cover page and renders correctly, but the
-browser extension's synthetic clicks do not reach the PDF plugin's link layer, so the click itself
-could not be automated. Left open for one manual click.
+**In Chrome's native viewer** — and the one thing pdf.js did not catch. The first build wrote
+whole-page targets (row and heading → receipt) as `/Fit` and positioned targets as `/XYZ`. pdf.js
+followed both; Chrome followed only the `/XYZ` ones: the index cells worked, the rows did not.
+The raw objects showed no other difference between the two kinds of link. Every destination is
+now `/XYZ`, with the page height standing in for a whole-page jump (`a86ff9c`). Confirmed by a
+manual click in Chrome: the "Payroll — Pay Period 1" row lands on
+*"Team Pursuit — February 2026 — 2026-02-001 — Page 7 of 93"*. The extension's synthetic clicks
+never reach the PDF plugin, so this needed a human; automation could only stage it.
 
 **Not verified**: Preview/Acrobat (desktop automation was unavailable this session); a rebuild of
 a previously pinned artifact; links on lower RASTER_LADDER steps (present by construction, not
-asserted). The in-app Browser pane cannot render PDFs at all — it offers a download — which is
+asserted). Worth knowing for the next viewer question: a link a second viewer follows is not proof
+a first will — the `/Fit` case passed every automated check. The in-app Browser pane cannot render PDFs at all — it offers a download — which is
 why a second viewer was needed.
 
 **Hand-off**: pinned packets from before D-83 stay as delivered (R10.6). July and August become
