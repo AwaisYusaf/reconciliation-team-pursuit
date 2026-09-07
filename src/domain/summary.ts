@@ -17,6 +17,8 @@ export type ContractSettingsInput = {
 export type SummaryRow = {
   name: string;
   scheduledCents: number;
+  /** Just the performance slice of `scheduledCents` (m08) — 0 for a row with none. */
+  performanceCents: number;
   previouslyBilledCents: number;
   thisPeriodCents: number;
   totalBilledCents: number;
@@ -46,11 +48,13 @@ function row(
   scheduledCents: number,
   previouslyBilledCents: number,
   thisPeriodCents: number,
+  performanceCents = 0,
 ): SummaryRow {
   const totalBilledCents = previouslyBilledCents + thisPeriodCents;
   return {
     name,
     scheduledCents,
+    performanceCents,
     previouslyBilledCents,
     thisPeriodCents,
     totalBilledCents,
@@ -74,6 +78,7 @@ export function contractSummary(input: {
       stat.lineItem.scheduledValueCents,
       stat.previouslyBilledCents,
       stat.spentThisMonthCents,
+      stat.lineItem.performanceCents,
     ),
   );
 
@@ -82,6 +87,7 @@ export function contractSummary(input: {
     sumBy(baseRows, (r) => r.scheduledCents),
     sumBy(baseRows, (r) => r.previouslyBilledCents),
     sumBy(baseRows, (r) => r.thisPeriodCents),
+    sumBy(baseRows, (r) => r.performanceCents),
   );
 
   // `totals` always equals `baseSubtotal` now — the performance grant section that used to be
@@ -95,6 +101,7 @@ export function contractSummary(input: {
     baseSubtotal.scheduledCents,
     baseSubtotal.previouslyBilledCents,
     baseSubtotal.thisPeriodCents,
+    baseSubtotal.performanceCents,
   );
 
   const advancesCents = input.settings.advancesReceivedCents;
@@ -110,9 +117,14 @@ export function contractSummary(input: {
       balanceCents: advancesCents - reconciledCents,
       percentReconciled: advancesCents === 0 ? 0 : reconciledCents / advancesCents,
     },
+    // A configured contract value is a fixed figure from the signed SOW, independent of the
+    // line items' own scheduled totals (R7.3) — but a performance (m08) is real additional
+    // budget added after the fact, so it still has to be added on top here, the same way it
+    // is already folded into every line item's own `scheduledValueCents`. Unset falls back to
+    // `totals.scheduledCents`, which already includes every performance, so nothing to add.
     contractTotalCents:
       input.settings.contractValueCents > 0
-        ? input.settings.contractValueCents
+        ? input.settings.contractValueCents + totals.performanceCents
         : totals.scheduledCents,
   };
 }

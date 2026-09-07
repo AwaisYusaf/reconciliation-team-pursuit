@@ -30,7 +30,9 @@ export type Reader = Pick<typeof db, "select">;
  *
  * `scheduledValueCents` is the base value plus every performance added on top (m08) — the one
  * place that total is computed, so the dashboard, Contract Summary, the packet and the Excel
- * workbook all inherit a new performance automatically without their own changes.
+ * workbook all inherit a new performance automatically without their own changes. It still
+ * carries `performanceCents` — just the performance slice — alongside it, so a renderer that
+ * needs to show the split (Contract Summary, the packet, Excel) doesn't have to re-derive it.
  */
 export async function loadLineItemBudgets(
   orgId: string,
@@ -44,6 +46,7 @@ export async function loadLineItemBudgets(
       // Postgres returns `numeric` (from `sum`) as a string — coerced back to a number below,
       // the same way `claimReferenceSeq`/`saveLineItemAction` coerce their own raw aggregates.
       scheduledValueCents: sql<string>`${lineItems.scheduledValueCents} + coalesce(sum(${lineItemPerformances.amountCents}), 0)`,
+      performanceCents: sql<string>`coalesce(sum(${lineItemPerformances.amountCents}), 0)`,
       openingBilledCents: lineItems.openingBilledCents,
       sortOrder: lineItems.sortOrder,
     })
@@ -55,7 +58,11 @@ export async function loadLineItemBudgets(
     // its cache hash (canonicalJson treats array order as data).
     .orderBy(asc(lineItems.sortOrder), asc(lineItems.name), asc(lineItems.id));
 
-  return rows.map((row) => ({ ...row, scheduledValueCents: Number(row.scheduledValueCents) }));
+  return rows.map((row) => ({
+    ...row,
+    scheduledValueCents: Number(row.scheduledValueCents),
+    performanceCents: Number(row.performanceCents),
+  }));
 }
 
 /**

@@ -64,3 +64,15 @@ export function ratio(numerator: number, denominator: number): number {
 export function roundHalfAwayFromZero(value: number): number {
   return value < 0 ? -Math.round(-value) : Math.round(value);
 }
+
+/**
+ * A line item's (or the Totals row's) name, annotated with its performance amount when it has
+ * one (R7.1, m08) — shared by the Contract Summary screen, the packet PDF and the Excel
+ * workbook so the wording can't drift between the three (R10.2). The Scheduled Value cell next
+ * to it already carries the combined figure; this is what makes the split visible without
+ * opening the Line Items screen's "Add" popup.
+ */
+export function summaryRowLabel(name: string, performanceCents: number): string {
+  if (performanceCents <= 0) return name;
+  return `${name} (includes ${formatMoney(performanceCents)} performance)`;
+}

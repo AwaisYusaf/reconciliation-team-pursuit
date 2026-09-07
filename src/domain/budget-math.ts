@@ -26,7 +26,14 @@ export type ExpenseAmount = ExpenseComposition & {
 export type LineItemBudget = {
   id: string;
   name: string;
+  /** Base value plus every performance added on top (m08) — what all the R3 maths run against. */
   scheduledValueCents: number;
+  /**
+   * Just the performance slice of `scheduledValueCents` — 0 for a line item with none.
+   * Display-only: never subtracted from or otherwise fed into the R3 calculations below, which
+   * already treat a performance as ordinary budget once it's rolled into `scheduledValueCents`.
+   */
+  performanceCents: number;
   openingBilledCents: number;
   sortOrder: number;
 };

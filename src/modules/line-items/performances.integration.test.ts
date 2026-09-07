@@ -96,12 +96,16 @@ describe.skipIf(!hasDatabase)("line item performances (integration)", async () =
 
     const [budget] = await loadLineItemBudgets(orgId);
     expect(budget.scheduledValueCents).toBe(17500000);
+    // The performance-only slice (D-81) — what a renderer needs to show the split — read back
+    // from the database alongside the combined total, not just derived in a test fixture.
+    expect(budget.performanceCents).toBe(17500000);
 
     const second = await addLineItemPerformanceAction(lineItemId, "25000.00");
     expect(second.ok).toBe(true);
 
     const [afterSecond] = await loadLineItemBudgets(orgId);
     expect(afterSecond.scheduledValueCents).toBe(20000000);
+    expect(afterSecond.performanceCents).toBe(20000000);
   });
 
   it("deleting a performance removes exactly its amount from the total", async () => {

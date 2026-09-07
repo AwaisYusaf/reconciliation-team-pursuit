@@ -10,7 +10,7 @@ Column widths (chars): 34, 16, 16, 14, 18, 12, 16.
 |---|---|
 | 1 | Header (bold, fill `FFFF00`, thin black borders): `Description of Work | Scheduled Value | Previously Billed | This Period | Total Billed to Date | % Complete | Balance to Finish` |
 | 2 | `BASE` — bold, merged A:G, fill `F1ECE2` |
-| 3…n | One row per line item in sort order, figures per R3 for the active month — including one built from performances (R9.5) where applicable; there is no second section |
+| 3…n | One row per line item in sort order, figures per R3 for the active month — including one built from performances (R9.5) where applicable; there is no second section. A line item with a performance names it in column A: `{name} (includes {amount} performance)`, next to its combined Scheduled Value in column B |
 | n+1 | `Totals` — entire row bold. No separate `Base subtotal` row: every line item is a base row now that the old Performance Grant section (R7.2, retired — D-80) is gone, so a subtotal would only ever repeat this row |
 | n+2 | blank |
 | n+3 | `Total advances received` (col A) · amount (col B, `[$$-409]#,##0.00`) — R7.4 |
@@ -41,4 +41,4 @@ Header row: bold, fill `FFFF00`. Final row: `Totals` in D, sums in F–I, bold.
 
 ## Gate & acceptance
 
-Blocked while the month has documentation-incomplete expenses (R4.3). Acceptance: figures reconcile exactly with the dashboard and packet page 1 for the same data (R10.2); opens clean in Excel and Google Sheets; the February test reproduces the real packet's summary relationships (base subtotal + perf = totals; reconciliation math per R7.4).
+Blocked while the month has documentation-incomplete expenses (R4.3). Acceptance: figures reconcile exactly with the dashboard and packet page 1 for the same data (R10.2); opens clean in Excel and Google Sheets; the February test reproduces the real packet's summary relationships (Totals equals the base subtotal exactly — R7.2 retired, D-80 — and reconciliation math per R7.4).

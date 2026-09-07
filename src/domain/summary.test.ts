@@ -102,6 +102,58 @@ describe("contract total (R7.3)", () => {
     expect(formatMoney(derived.contractTotalCents)).toBe("$854,916.67");
     expect(derived.contractTotalCents).toBe(derived.totals.scheduledCents);
   });
+
+  it("adds every line item's performance total on top of a configured contract value (D-81)", () => {
+    // Before this fix, a configured contract value never moved as performances were added —
+    // `contractTotalCents` just returned `settings.contractValueCents` outright, the same bug
+    // the PR review found in `contract-context.ts`'s "Contract total" line.
+    const withPerformance = LINE_ITEMS.map((item, index) =>
+      index === 0 ? { ...item, scheduledValueCents: item.scheduledValueCents + 10_000_00, performanceCents: 10_000_00 } : item,
+    );
+    const derived = contractSummary({
+      lineItems: withPerformance,
+      expenses: FEB_EXPENSES,
+      settings: SETTINGS,
+      month: FEB,
+    });
+    expect(formatMoney(derived.contractTotalCents)).toBe("$950,000.00");
+  });
+
+  it("does not double-add performances when falling back to the scheduled total", () => {
+    // `totals.scheduledCents` already has every performance folded in (m08), so the fallback
+    // must not add `totals.performanceCents` again on top of it.
+    const withPerformance = LINE_ITEMS.map((item, index) =>
+      index === 0 ? { ...item, scheduledValueCents: item.scheduledValueCents + 10_000_00, performanceCents: 10_000_00 } : item,
+    );
+    const derived = contractSummary({
+      lineItems: withPerformance,
+      expenses: FEB_EXPENSES,
+      settings: { ...SETTINGS, contractValueCents: 0 },
+      month: FEB,
+    });
+    expect(derived.contractTotalCents).toBe(derived.totals.scheduledCents);
+  });
+});
+
+describe("performance split (R7.1, R9.5, D-81)", () => {
+  it("carries each row's performance slice separately from its combined scheduled value", () => {
+    const withPerformance = LINE_ITEMS.map((item, index) =>
+      index === 0 ? { ...item, scheduledValueCents: item.scheduledValueCents + 10_000_00, performanceCents: 10_000_00 } : item,
+    );
+    const derived = contractSummary({
+      lineItems: withPerformance,
+      expenses: FEB_EXPENSES,
+      settings: SETTINGS,
+      month: FEB,
+    });
+    const salaryRow = derived.baseRows.find((row) => row.name === "Salary")!;
+    expect(salaryRow.performanceCents).toBe(10_000_00);
+    expect(formatMoney(salaryRow.scheduledCents)).toBe("$468,692.46");
+
+    // The rest carry 0, and the subtotal/totals sum exactly the one row that has any.
+    expect(derived.baseSubtotal.performanceCents).toBe(10_000_00);
+    expect(derived.totals.performanceCents).toBe(10_000_00);
+  });
 });
 
 describe("edge cases", () => {

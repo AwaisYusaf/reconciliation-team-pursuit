@@ -11,7 +11,7 @@ import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf
 
 import { contractContextLine } from "@/src/domain/contract-context";
 import { monthLabel } from "@/src/domain/dates";
-import { formatMoney, formatPercent } from "@/src/domain/format";
+import { formatMoney, formatPercent, summaryRowLabel } from "@/src/domain/format";
 import { packetSummaryTitle } from "@/src/domain/strings";
 import { contractSummary, type SummaryRow } from "@/src/domain/summary";
 
@@ -213,7 +213,7 @@ function drawTableHeader(page: PDFPage, top: number, fonts: Fonts): number {
 
 function rowValues(row: SummaryRow): string[] {
   return [
-    row.name,
+    summaryRowLabel(row.name, row.performanceCents),
     formatMoney(row.scheduledCents),
     formatMoney(row.previouslyBilledCents),
     formatMoney(row.thisPeriodCents),
@@ -261,6 +261,7 @@ export async function buildSummarySectionPdf(snapshot: MonthSnapshot): Promise<B
       performancePoNumber: snapshot.settings.performancePoNumber,
       contractValueCents: snapshot.settings.contractValueCents,
       scheduledTotalCents: summary.totals.scheduledCents,
+      performanceCents: summary.totals.performanceCents,
     },
       snapshot.month,
     ),
@@ -300,7 +301,9 @@ export async function buildSummarySectionPdf(snapshot: MonthSnapshot): Promise<B
   // No separate "Base subtotal" row: every line item is a base row now that performances
   // (m08) replaced the old Performance Grant section, so it would only ever repeat Totals.
   ensureSpace(ROW_HEIGHT);
-  y = drawRow(page, y, rowValues(summary.totals), fonts, { bold: true });
+  // performanceCents zeroed for display only: the split annotation belongs to an individual
+  // line item, not this aggregate row (see the same note in contract-summary/page.tsx).
+  y = drawRow(page, y, rowValues({ ...summary.totals, performanceCents: 0 }), fonts, { bold: true });
 
   // Reconciliation: label left, value right, no grid — the same four lines as the screen.
   y -= 24;

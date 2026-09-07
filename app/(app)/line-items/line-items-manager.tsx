@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 
 import { Button } from "@/src/components/ui/button";
+import { ConfirmButton } from "@/src/components/ui/confirm-button";
 import { Dialog } from "@/src/components/ui/dialog";
 import { Input, Label, MoneyInput } from "@/src/components/ui/field";
 import { Modal } from "@/src/components/ui/modal";
@@ -169,13 +170,16 @@ export function LineItemsManager({ rows }: { rows: LineItemRow[] }) {
                 <span className="text-sub">Performance {index + 1}</span>
                 <div className="flex items-center gap-3">
                   <span>{formatMoney(performance.amountCents)}</span>
-                  <Button
+                  <ConfirmButton
                     variant="quiet"
                     disabled={pending}
-                    onClick={() => removePerformance(performance.id)}
+                    title={`Delete Performance ${index + 1}?`}
+                    body={`${formatMoney(performance.amountCents)} is removed from ${row.name}'s Scheduled Value. This cannot be undone.`}
+                    confirmLabel="Delete performance"
+                    onConfirm={() => removePerformance(performance.id)}
                   >
                     Delete
-                  </Button>
+                  </ConfirmButton>
                 </div>
               </div>
             ))}
@@ -255,11 +259,16 @@ export function LineItemsManager({ rows }: { rows: LineItemRow[] }) {
                     <Td align="right" className="py-3">
                       <MoneyInput
                         value={draft.scheduledValue}
-                        aria-label="Scheduled value"
+                        aria-label="Scheduled value (base only, excludes performances)"
                         onChange={(event) =>
                           setDraft({ ...draft, scheduledValue: event.target.value })
                         }
                       />
+                      {/* The column above reads base + every performance (R9.5); this field
+                          edits only the base, so it starts from 0.00 on a line item that is
+                          all performance — a visible label, not just the aria-label, so typing
+                          the column's own total back in here doesn't double it. */}
+                      <div className="text-xs text-sub mt-1">Base value only</div>
                     </Td>
                     <Td align="right" className="py-3 text-sub" numeric>
                       {/* Not editable here — performances are added/removed from the "Add" popup. */}

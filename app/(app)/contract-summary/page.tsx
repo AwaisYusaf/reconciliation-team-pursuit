@@ -9,7 +9,7 @@ import { db } from "@/src/db";
 import { contractSettings } from "@/src/db/schema";
 import { contractContextItems } from "@/src/domain/contract-context";
 import { monthLabel } from "@/src/domain/dates";
-import { formatMoney, formatPercent } from "@/src/domain/format";
+import { formatMoney, formatPercent, summaryRowLabel } from "@/src/domain/format";
 import { blockingRecords, type GateExpense } from "@/src/domain/gate";
 import { downloadBlockedReason } from "@/src/domain/strings";
 import { contractSummary, type SummaryRow } from "@/src/domain/summary";
@@ -73,6 +73,7 @@ export default async function ContractSummaryPage() {
       performancePoNumber: identifiers[0]?.performancePoNumber ?? "",
       contractValueCents: settings.contractValueCents,
       scheduledTotalCents: summary.totals.scheduledCents,
+      performanceCents: summary.totals.performanceCents,
     },
     month,
   );
@@ -124,7 +125,11 @@ export default async function ContractSummaryPage() {
           {/* No separate "Base subtotal" row: every line item is a base row now that
               performances (m08) replaced the old Performance Grant section, so it would only
               ever repeat the Totals row directly beneath it. */}
-          <SummaryTableRow row={summary.totals} bold />
+          {/* performanceCents zeroed here only for display: the split annotation belongs to
+              an individual line item ("Salary (includes $10,000.00 performance)"), not this
+              aggregate row — "Totals (includes ...)" would read as if Totals itself were a
+              performance-bearing line item, which it isn't. */}
+          <SummaryTableRow row={{ ...summary.totals, performanceCents: 0 }} bold />
         </tbody>
       </TableCard>
 
@@ -164,7 +169,7 @@ export default async function ContractSummaryPage() {
 function SummaryTableRow({ row, bold = false }: { row: SummaryRow; bold?: boolean }) {
   return (
     <tr>
-      <Td bold={bold} sticky>{row.name}</Td>
+      <Td bold={bold} sticky>{summaryRowLabel(row.name, row.performanceCents)}</Td>
       <Td align="right" numeric bold={bold}>
         {formatMoney(row.scheduledCents)}
       </Td>

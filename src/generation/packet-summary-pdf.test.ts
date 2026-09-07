@@ -138,6 +138,25 @@ describe.skipIf(!hasPdftotext())("packet summary text", () => {
     expect(text).toContain("Totals");
   });
 
+  it("shows a line item's base/performance split, not only the Line Items screen's popup (D-81)", async () => {
+    // Before this fix, `loadLineItemBudgets` had already folded base and performance into one
+    // `scheduledValueCents` by the time this ever ran, so there was nothing left to show a
+    // split from — the packet printed one merged figure per line item, same as the screen.
+    const salary = snapshot.lineItems[0];
+    const withPerformance = {
+      ...snapshot,
+      lineItems: [
+        { ...salary, scheduledValueCents: salary.scheduledValueCents + 10_000_00, performanceCents: 10_000_00 },
+        ...snapshot.lineItems.slice(1),
+      ],
+    };
+    const text = await extractText(await buildSummarySectionPdf(withPerformance));
+    expect(text).toContain("Salary (includes $10,000.00 performance)");
+    // The split annotation belongs to the line item that carries it, not the aggregate row —
+    // "Totals (includes ...)" would misread as if Totals itself were a performance.
+    expect(text).not.toContain("Totals (includes");
+  });
+
   it("prints the four reconciliation lines (R7.4)", async () => {
     const text = await extractText(await buildSummarySectionPdf(snapshot));
     expect(text).toContain("Total advances received");
@@ -166,6 +185,7 @@ describe.skipIf(!hasPdftotext())("packet summary text", () => {
       id: `item-${index}`,
       name: `Line Item Number ${index} With A Deliberately Long Name`,
       scheduledValueCents: 1_000_00,
+      performanceCents: 0,
       openingBilledCents: 100_00,
       sortOrder: index,
     }));

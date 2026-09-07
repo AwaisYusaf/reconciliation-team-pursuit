@@ -113,6 +113,33 @@ describe("Contract Summary sheet", () => {
     expect(salary.getCell(2).numFmt).toBe("[$$-409]#,##0.00");
   });
 
+  it("shows a line item's base/performance split, not only the Line Items screen's popup (D-81)", async () => {
+    // Before this fix, `loadLineItemBudgets` had already folded base and performance into one
+    // `scheduledValueCents` by the time this ever ran, so there was nothing left to show a
+    // split from — the workbook printed one merged figure per line item, same as the screen.
+    const salary = snapshot.lineItems[0];
+    const withPerformance: MonthSnapshot = {
+      ...snapshot,
+      lineItems: [
+        { ...salary, scheduledValueCents: salary.scheduledValueCents + 10_000_00, performanceCents: 10_000_00 },
+        ...snapshot.lineItems.slice(1),
+      ],
+    };
+    const buffer = await buildSummaryWorkbook(withPerformance);
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(buffer as unknown as ArrayBuffer);
+    const cell = workbook.getWorksheet("Contract Summary")!.getRow(3).getCell(1);
+    expect(cell.value).toBe("Salary (includes $10,000.00 performance)");
+    // Still written as text, never a formula — the same formula-injection guard as any other
+    // user-adjacent string cell in this sheet.
+    expect(typeof cell.value).toBe("string");
+    expect(cell.numFmt).toBe("@");
+
+    // The split annotation belongs to the line item that carries it, not the aggregate row
+    // (row 10: header + BASE divider + 7 line items, then Totals).
+    expect(workbook.getWorksheet("Contract Summary")!.getRow(10).getCell(1).value).toBe("Totals");
+  });
+
   it("writes percentages already rounded, so Excel cannot round them differently", async () => {
     const sheet = (await open()).getWorksheet("Contract Summary")!;
     // 395641.12 / 458692.46 = 86.25% -> 86% (R1.5, half away from zero).

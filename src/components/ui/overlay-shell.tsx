@@ -1,8 +1,16 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { useEffect, useRef } from "react";
+import { useEffect, useId, useRef } from "react";
 import { createPortal } from "react-dom";
+
+/**
+ * Which open overlays exist, oldest first — the last entry is whichever is stacked on top
+ * (a `ConfirmButton`'s Dialog opened from inside an already-open Modal, say). Module-level,
+ * not state: every overlay on the page shares one stack regardless of which component tree
+ * it portals from.
+ */
+const openStack: string[] = [];
 
 /**
  * The portal/focus/Escape/scroll-lock mechanics shared by every full-screen overlay
@@ -28,6 +36,7 @@ export function OverlayShell({
 }) {
   const rootRef = useRef<HTMLDivElement>(null);
   const returnFocusTo = useRef<HTMLElement | null>(null);
+  const id = useId();
 
   useEffect(() => {
     if (!open) return;
@@ -46,17 +55,31 @@ export function OverlayShell({
     };
   }, [open]);
 
+  // Tracks stacking order so a nested overlay (a ConfirmButton's Dialog opened from inside
+  // this Modal, say) knows whether it is the topmost one currently open.
+  useEffect(() => {
+    if (!open) return;
+    openStack.push(id);
+    return () => {
+      const index = openStack.indexOf(id);
+      if (index !== -1) openStack.splice(index, 1);
+    };
+  }, [open, id]);
+
   useEffect(() => {
     if (!open) return;
     function onKey(event: KeyboardEvent) {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        onDismiss();
-      }
+      if (event.key !== "Escape") return;
+      // Only the topmost overlay answers Escape — otherwise both this instance's listener
+      // and an overlay stacked underneath it would fire for the same keypress, dismissing
+      // the one behind it too.
+      if (openStack[openStack.length - 1] !== id) return;
+      event.preventDefault();
+      onDismiss();
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [open, onDismiss]);
+  }, [open, onDismiss, id]);
 
   // Focus containment: everything behind the overlay becomes `inert` (unreachable by Tab or
   // a screen reader) for as long as it's open. Only the elements this effect itself marked

@@ -18,8 +18,8 @@ import {
 } from "./budget-math";
 
 const ITEMS: LineItemBudget[] = [
-  { id: "promo", name: "Promotional", scheduledValueCents: 100_000, openingBilledCents: 10_000, sortOrder: 0 },
-  { id: "travel", name: "Travel", scheduledValueCents: 50_000, openingBilledCents: 0, sortOrder: 1 },
+  { id: "promo", name: "Promotional", scheduledValueCents: 100_000, performanceCents: 0, openingBilledCents: 10_000, sortOrder: 0 },
+  { id: "travel", name: "Travel", scheduledValueCents: 50_000, performanceCents: 0, openingBilledCents: 0, sortOrder: 1 },
 ];
 
 function spend(lineItemId: string, month: string, cents: number): ExpenseAmount {

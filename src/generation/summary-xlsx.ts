@@ -9,7 +9,7 @@
 import ExcelJS from "exceljs";
 
 import { monthLabel, monthShortLabel, formatDateUS, type MonthKey } from "@/src/domain/dates";
-import { percentValue } from "@/src/domain/format";
+import { percentValue, summaryRowLabel } from "@/src/domain/format";
 import { centsToDollars, receiptTotalCents, reimbursableCents, sumBy } from "@/src/domain/money";
 import { summaryFilename } from "@/src/domain/strings";
 import { contractSummary, type SummaryRow } from "@/src/domain/summary";
@@ -79,7 +79,7 @@ function addSectionRow(sheet: ExcelJS.Worksheet, label: string): void {
 
 function summaryValues(row: SummaryRow): [string, number, number, number, number, number, number] {
   return [
-    row.name,
+    summaryRowLabel(row.name, row.performanceCents),
     centsToDollars(row.scheduledCents),
     centsToDollars(row.previouslyBilledCents),
     centsToDollars(row.thisPeriodCents),
@@ -139,13 +139,15 @@ export async function buildSummaryWorkbook(snapshot: MonthSnapshot): Promise<Buf
 
   for (const row of summary.baseRows) {
     const added = sheet.addRow(summaryValues(row));
-    textCell(added.getCell(1), row.name);
+    textCell(added.getCell(1), summaryRowLabel(row.name, row.performanceCents));
     formatSummaryRow(added);
   }
 
   // No separate "Base subtotal" row: every line item is a base row now that performances
   // (m08) replaced the old Performance Grant section, so it would only ever repeat Totals.
-  const totals = sheet.addRow(summaryValues(summary.totals));
+  // performanceCents zeroed for display only: the split annotation belongs to an individual
+  // line item, not this aggregate row (see the same note in contract-summary/page.tsx).
+  const totals = sheet.addRow(summaryValues({ ...summary.totals, performanceCents: 0 }));
   formatSummaryRow(totals, true);
 
   sheet.addRow([]);

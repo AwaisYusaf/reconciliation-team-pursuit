@@ -14,6 +14,8 @@ export type ContractContextInput = {
   /** 0 → fall back to the sum of scheduled values (R7.3). */
   contractValueCents: number;
   scheduledTotalCents: number;
+  /** Every line item's performance total (m08) — added on top of `contractValueCents` when set. */
+  performanceCents: number;
 };
 
 export type ContextItem = {
@@ -52,8 +54,14 @@ export function contractContextItems(
   }
 
   // Falls back to the scheduled total so the strip is useful before the contract value is
-  // entered; suppressed entirely when there is no budget yet either.
-  const totalCents = input.contractValueCents || input.scheduledTotalCents;
+  // entered; suppressed entirely when there is no budget yet either. A configured contract
+  // value still needs every performance (m08) added on top — same read-side approach as
+  // `contractTotalCents` in summary.ts — since the fallback (`scheduledTotalCents`) already
+  // has them folded in and a configured value otherwise never would.
+  const totalCents =
+    input.contractValueCents > 0
+      ? input.contractValueCents + input.performanceCents
+      : input.scheduledTotalCents;
   if (totalCents > 0) {
     items.push(measure("Contract total", formatMoney(totalCents)));
   }
