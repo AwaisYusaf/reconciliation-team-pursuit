@@ -58,7 +58,8 @@ describe.skipIf(!hasPdftotext())("footer text", () => {
     expect(await pageText(stamped, 1)).toContain("Team Pursuit — February 2026 — Page 1 of 3");
     expect(await pageText(stamped, 2)).toContain("Team Pursuit — February 2026 — Page 2 of 3");
     expect(await pageText(stamped, 3)).toContain("Team Pursuit — February 2026 — Page 3 of 3");
-  });
+    // Three real `pdftotext` round trips — same headroom reasoning as D-70 below.
+  }, 20_000);
 
   it("stamps the first page too — the summary is not exempt", async () => {
     const stamped = await stampFooters(await makePdf(1), "Team Pursuit", "February 2026");
@@ -85,7 +86,11 @@ describe.skipIf(!hasPdftotext())("footer text", () => {
 
     // A bank statement documents the month, not one expense; claiming otherwise would be wrong.
     expect(await pageText(stamped, 4)).not.toContain("2026-02-014");
-  });
+    // Five real `pdftotext` round trips (one per assertion above) routinely land right at the
+    // 5000ms default — not hung, just genuinely that much real subprocess I/O, worse on a
+    // slower pdftotext build. Explicit headroom, same as the calibration tests elsewhere in
+    // this file's siblings that shell out to a real renderer.
+  }, 20_000);
 
   it("falls back to the footer it always had when no owners are given", async () => {
     // Every existing caller and every already-delivered packet keep the exact same footer.

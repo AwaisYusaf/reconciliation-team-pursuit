@@ -63,7 +63,12 @@ async function extractText(pdf: Buffer): Promise<string> {
   try {
     const file = path.join(dir, "index.pdf");
     await writeFile(file, pdf);
-    return pdftotext(["-layout", file, "-"]);
+    // -raw, not -layout: -layout's column-clustering heuristic differs between pdftotext
+    // builds (see packet-summary-pdf.test.ts, where it interleaved a wrapped label with the
+    // row's own numbers under Poppler 24.04 but not Xpdf 4.00). -raw walks the content stream
+    // in draw order instead of guessing a layout, so it can't disagree with itself this way —
+    // verified against both implementations here too, since this file draws rows the same way.
+    return pdftotext(["-raw", file, "-"]);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

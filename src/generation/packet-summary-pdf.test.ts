@@ -39,8 +39,18 @@ async function extractText(pdf: Buffer): Promise<string> {
   try {
     const file = path.join(dir, "summary.pdf");
     await writeFile(file, pdf);
-    // -layout keeps columns apart, so a number cannot be read out of the wrong column.
-    return pdftotext(["-layout", file, "-"]);
+    // -raw, not -layout: -layout reconstructs columns by clustering character positions, and
+    // that clustering heuristic differs between pdftotext builds. Poppler 24.04 (MiKTeX's
+    // bundled copy on Windows) clusters this page's wrapped label onto the same visual line as
+    // the row's numeric columns, then sorts by x — interleaving "Salary (includes $10,000.00"
+    // with every number in the row before "performance)". Xpdf 4.00 (the copy on PATH via Git
+    // for Windows) doesn't do this for the same PDF, which is why this only broke depending on
+    // which pdftotext a given shell resolved. -raw sidesteps the whole disagreement: it walks
+    // the content stream in draw order rather than guessing a layout, and this page draws each
+    // row's cells left to right, top to bottom, so plain draw order already reads correctly —
+    // still needs `flatten()` for a label that wraps across two drawing calls, but never
+    // reorders text the way `-layout`'s clustering can.
+    return pdftotext(["-raw", file, "-"]);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -52,7 +62,7 @@ async function extractText(pdf: Buffer): Promise<string> {
  * A long name cell wraps across lines in the real PDF — real text, correctly laid out, not a
  * bug — so a phrase spanning the wrap point (e.g. "Salary (includes $10,000.00 performance)",
  * which wraps between the amount and "performance)") never appears contiguous in the raw
- * `pdftotext -layout` output. Collapsing whitespace reconstructs it, since `wrap()` only ever
+ * `pdftotext -raw` output. Collapsing whitespace reconstructs it, since `wrap()` only ever
  * breaks on a space between two words in the first place.
  */
 function flatten(text: string): string {

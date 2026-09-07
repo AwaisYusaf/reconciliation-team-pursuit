@@ -12,6 +12,7 @@ import { spawn } from "node:child_process";
 import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 
 /** A long statement can take a while to lay out; a wedged process must not outlive this. */
 const CONVERT_TIMEOUT_MS = 180_000;
@@ -101,7 +102,14 @@ export async function convertDocxToPdf(docx: Buffer): Promise<Buffer> {
       "--norestore",
       "--invisible",
       "--nolockcheck",
-      `-env:UserInstallation=file://${profile}`,
+      // `pathToFileURL`, not string-concatenated `file://${profile}`: a Windows temp path is
+      // backslashed and drive-lettered (`C:\Users\...`), which concatenation turns into a
+      // malformed URI — LibreOffice reads the drive letter as a host and starts pointed at a
+      // nonsensical profile location, surfacing as "bootstrap.ini is corrupt" on launch. A
+      // POSIX temp path already starts with `/`, so the same concatenation happens to produce
+      // a valid `file:///...` URI there, which is why this went unnoticed until it ran on
+      // Windows for the first time.
+      `-env:UserInstallation=${pathToFileURL(profile).href}`,
       "--convert-to",
       "pdf:writer_pdf_Export",
       "--outdir",
