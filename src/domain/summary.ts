@@ -9,19 +9,18 @@ import { allLineItemStats, type ExpenseAmount, type LineItemBudget } from "./bud
 import type { MonthKey } from "./dates";
 import { sumBy } from "./money";
 
-/** Fixed label for the performance grant row (R7.2). */
-export const PERFORMANCE_GRANT_LABEL = "Performance Grant 1";
-
 export type ContractSettingsInput = {
   contractValueCents: number;
-  perfGrantScheduledCents: number;
-  perfGrantBilledCents: number;
   advancesReceivedCents: number;
 };
 
 export type SummaryRow = {
   name: string;
   scheduledCents: number;
+  /** Just the performance slice of `scheduledCents` (m08) — 0 for a row with none. */
+  performanceCents: number;
+  /** The narrower slice of `performanceCents` that counts toward the contract total (D-82). */
+  newPerformanceCents: number;
   previouslyBilledCents: number;
   thisPeriodCents: number;
   totalBilledCents: number;
@@ -40,7 +39,6 @@ export type Reconciliation = {
 export type ContractSummary = {
   baseRows: SummaryRow[];
   baseSubtotal: SummaryRow;
-  performanceRow: SummaryRow;
   totals: SummaryRow;
   reconciliation: Reconciliation;
   /** Configured contract value, or the sum of scheduled values when unset (R7.3). */
@@ -52,11 +50,15 @@ function row(
   scheduledCents: number,
   previouslyBilledCents: number,
   thisPeriodCents: number,
+  performanceCents = 0,
+  newPerformanceCents = 0,
 ): SummaryRow {
   const totalBilledCents = previouslyBilledCents + thisPeriodCents;
   return {
     name,
     scheduledCents,
+    performanceCents,
+    newPerformanceCents,
     previouslyBilledCents,
     thisPeriodCents,
     totalBilledCents,
@@ -80,6 +82,8 @@ export function contractSummary(input: {
       stat.lineItem.scheduledValueCents,
       stat.previouslyBilledCents,
       stat.spentThisMonthCents,
+      stat.lineItem.performanceCents,
+      stat.lineItem.newPerformanceCents,
     ),
   );
 
@@ -88,22 +92,23 @@ export function contractSummary(input: {
     sumBy(baseRows, (r) => r.scheduledCents),
     sumBy(baseRows, (r) => r.previouslyBilledCents),
     sumBy(baseRows, (r) => r.thisPeriodCents),
+    sumBy(baseRows, (r) => r.performanceCents),
+    sumBy(baseRows, (r) => r.newPerformanceCents),
   );
 
-  // Performance grant billing happens outside this system, so "this period" is always
-  // zero and the billed-to-date figure is maintained by hand in Settings (R7.2).
-  const performanceRow = row(
-    PERFORMANCE_GRANT_LABEL,
-    input.settings.perfGrantScheduledCents,
-    input.settings.perfGrantBilledCents,
-    0,
-  );
-
+  // `totals` always equals `baseSubtotal` now — the performance grant section that used to be
+  // added on top is gone (m08 folds performances into each line item's own scheduled value
+  // instead, so every line item is already a base row). Kept as its own field anyway: it is
+  // the label every screen, the Excel sheet and the PDF render as the single bottom-line row
+  // ("Totals", not "Base subtotal" — the external-facing name the City already reads), and the
+  // reconciliation block below keys off it.
   const totals = row(
     "Totals",
-    baseSubtotal.scheduledCents + performanceRow.scheduledCents,
-    baseSubtotal.previouslyBilledCents + performanceRow.previouslyBilledCents,
-    baseSubtotal.thisPeriodCents + performanceRow.thisPeriodCents,
+    baseSubtotal.scheduledCents,
+    baseSubtotal.previouslyBilledCents,
+    baseSubtotal.thisPeriodCents,
+    baseSubtotal.performanceCents,
+    baseSubtotal.newPerformanceCents,
   );
 
   const advancesCents = input.settings.advancesReceivedCents;
@@ -112,7 +117,6 @@ export function contractSummary(input: {
   return {
     baseRows,
     baseSubtotal,
-    performanceRow,
     totals,
     reconciliation: {
       advancesCents,
@@ -120,9 +124,19 @@ export function contractSummary(input: {
       balanceCents: advancesCents - reconciledCents,
       percentReconciled: advancesCents === 0 ? 0 : reconciledCents / advancesCents,
     },
+    // A configured contract value is a fixed figure from the signed SOW, independent of the
+    // line items' own scheduled totals (R7.3) — but a performance added since m08 shipped is
+    // real additional budget the org hasn't caught up to in Settings yet, so it still has to be
+    // added on top here (D-82). A *migrated* Performance Grant (or anything else that predates
+    // `counts_toward_contract_total`) is excluded: that money was already inside whatever the
+    // org typed into `contract_value_cents` long before it had a line item of its own, so
+    // adding it again would double it — confirmed against the client's real migrated org, where
+    // this doubled $175,000 before `newPerformanceCents` existed. Unset falls back to
+    // `totals.scheduledCents`, which already includes every performance (migrated or new), so
+    // nothing to add.
     contractTotalCents:
       input.settings.contractValueCents > 0
-        ? input.settings.contractValueCents
+        ? input.settings.contractValueCents + totals.newPerformanceCents
         : totals.scheduledCents,
   };
 }

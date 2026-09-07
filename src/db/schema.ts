@@ -151,9 +151,6 @@ export const contractSettings = pgTable("contract_settings", {
   contractStart: date("contract_start"),
   contractEnd: date("contract_end"),
   fiduciaryName: text("fiduciary_name").notNull().default(""),
-  perfGrantScheduledCents: cents("perf_grant_scheduled_cents"),
-  /** Maintained manually — performance billing happens outside this system (R7.2). */
-  perfGrantBilledCents: cents("perf_grant_billed_cents"),
   advancesReceivedCents: cents("advances_received_cents"),
   createdAt: createdAt(),
   updatedAt: updatedAt(),
@@ -226,6 +223,46 @@ export const lineItems = pgTable(
   (t) => [
     uniqueIndex("line_items_org_name_uq").on(t.orgId, sql`lower(${t.name})`),
     index("line_items_org_sort_idx").on(t.orgId, t.sortOrder),
+  ],
+);
+
+/**
+ * Performances (m08): additive amounts on top of a line item's base `scheduledValueCents`.
+ *
+ * Replaces the old hand-maintained `contract_settings.perf_grant_*` figure — instead of one
+ * contract-wide number nobody could bill real expenses against, each performance lives on a
+ * real line item and rolls into the same Scheduled Value everything else already reads
+ * (`loadLineItemBudgets`), so it bills down through the ordinary expense flow like any other
+ * budget dollar.
+ */
+export const lineItemPerformances = pgTable(
+  "line_item_performances",
+  {
+    id: id(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    lineItemId: uuid("line_item_id")
+      .notNull()
+      .references(() => lineItems.id, { onDelete: "cascade" }),
+    amountCents: cents("amount_cents"),
+    /** Numbers the on-screen "Performance 1 / 2 / 3" list in the order each was added. */
+    sortOrder: integer("sort_order").notNull().default(0),
+    /**
+     * Whether this performance is money the org's `contract_value_cents` doesn't already
+     * reflect (D-82). Defaults false, which is what every pre-existing row means: the
+     * migration-created performance (and anything else that predates this column) is money
+     * that was already part of the whole-contract figure someone typed into Settings, long
+     * before it had a line item of its own — adding it again on top of `contract_value_cents`
+     * would double it. `addLineItemPerformanceAction` sets this true explicitly, since a
+     * performance added from here on really is new money the org hasn't caught up to yet.
+     */
+    countsTowardContractTotal: boolean("counts_toward_contract_total").notNull().default(false),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    index("line_item_performances_line_item_idx").on(t.lineItemId),
+    check("line_item_performances_amount_ck", sql`${t.amountCents} > 0`),
   ],
 );
 

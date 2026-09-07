@@ -1,10 +1,10 @@
 "use client";
 
 import type { ReactNode, Ref } from "react";
-import { useEffect, useId, useRef } from "react";
-import { createPortal } from "react-dom";
+import { useId, useRef } from "react";
 
 import { Button } from "@/src/components/ui/button";
+import { OverlayShell } from "@/src/components/ui/overlay-shell";
 
 /**
  * A blocking confirm/cancel modal: a destructive action (delete, remove) the user must
@@ -90,70 +90,12 @@ function DialogOverlay({
   dismissLabel: string;
   onDismiss: () => void;
 }) {
-  // The root of the portalled tree — the element `createPortal` actually appends to
-  // `document.body`. Recorded so the `inert` pass below can recognise (and skip) it.
-  const rootRef = useRef<HTMLDivElement>(null);
+  // Always the dismiss button (Cancel/OK), never the destructive confirm — a stray Enter
+  // must not fire the confirm action the instant the dialog opens.
   const dismissRef = useRef<HTMLButtonElement>(null);
-  // Focus is taken by the dialog, so it has to go back where it came from on close —
-  // otherwise a keyboard user is returned to the top of the document.
-  const returnFocusTo = useRef<HTMLElement | null>(null);
-
-  useEffect(() => {
-    returnFocusTo.current = document.activeElement as HTMLElement | null;
-    // Always the dismiss button (Cancel/OK), never the destructive confirm — a stray
-    // Enter must not fire the confirm action the instant the dialog opens.
-    dismissRef.current?.focus();
-    return () => returnFocusTo.current?.focus?.();
-  }, []);
-
-  // The page behind must not scroll while the dialog is up, on touch as well as wheel.
-  useEffect(() => {
-    const previous = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = previous;
-    };
-  }, []);
-
-  useEffect(() => {
-    function onKey(event: KeyboardEvent) {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        onDismiss();
-      }
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onDismiss]);
-
-  // Focus containment: everything behind the dialog becomes `inert` (unreachable by Tab or
-  // a screen reader) for as long as it's open. Only the elements this effect itself marked
-  // are recorded and cleared on cleanup — clearing `inert` everywhere would break a second,
-  // already-open dialog if one ever stacks on top of another.
-  useEffect(() => {
-    const root = rootRef.current;
-    const marked: HTMLElement[] = [];
-    for (const child of Array.from(document.body.children)) {
-      if (!(child instanceof HTMLElement)) continue;
-      if (child === root || child.hasAttribute("inert")) continue;
-      child.setAttribute("inert", "");
-      marked.push(child);
-    }
-    return () => {
-      for (const element of marked) element.removeAttribute("inert");
-    };
-  }, []);
 
   return (
-    <div
-      ref={rootRef}
-      className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4 overflow-y-auto"
-      onClick={(event) => {
-        // Only the backdrop itself dismisses; a click that started on the panel must not.
-        // Backdrop click is a dismissal, never a confirm.
-        if (event.target === event.currentTarget) onDismiss();
-      }}
-    >
+    <OverlayShell open onDismiss={onDismiss} initialFocusRef={dismissRef}>
       <div className="w-full max-w-[480px] max-h-[calc(100dvh-2rem)] overflow-y-auto">
         <DialogPanel
           title={title}
@@ -165,14 +107,10 @@ function DialogOverlay({
           {children}
         </DialogPanel>
       </div>
-    </div>
+    </OverlayShell>
   );
 }
 
-/**
- * Owns the portal. A portal because the dialog must escape whatever card, table cell or
- * stacking context it is opened from.
- */
 export function Dialog({
   open,
   title = "Something went wrong",
@@ -188,12 +126,12 @@ export function Dialog({
   dismissLabel?: string;
   onDismiss: () => void;
 }) {
-  if (!open || typeof document === "undefined") return null;
+  // `OverlayShell` (inside `DialogOverlay`) owns the portal and the open/SSR gating.
+  if (!open) return null;
 
-  return createPortal(
+  return (
     <DialogOverlay title={title} confirm={confirm} dismissLabel={dismissLabel} onDismiss={onDismiss}>
       {children}
-    </DialogOverlay>,
-    document.body,
+    </DialogOverlay>
   );
 }

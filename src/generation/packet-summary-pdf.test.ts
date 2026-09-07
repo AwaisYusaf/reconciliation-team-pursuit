@@ -3,7 +3,6 @@
  * text actually extractable from the rendered PDF — proof the figures reached the page and
  * that it is real text rather than an image.
  */
-import { execFileSync } from "node:child_process";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -15,6 +14,7 @@ import { FEB, FEB_EXPENSES, LINE_ITEMS, SETTINGS } from "@/src/domain/fixtures";
 
 import type { MonthSnapshot } from "./month-snapshot";
 import { buildSummarySectionPdf } from "./packet-summary-pdf";
+import { hasPdftotext, pdftotext } from "./pdftotext.test-helper";
 
 const snapshot: MonthSnapshot = {
   orgId: "org",
@@ -34,25 +34,39 @@ const snapshot: MonthSnapshot = {
   },
 };
 
-function hasPdftotext(): boolean {
-  try {
-    execFileSync("pdftotext", ["-v"], { stdio: "ignore" });
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 async function extractText(pdf: Buffer): Promise<string> {
   const dir = await mkdtemp(path.join(tmpdir(), "ngo-summary-pdf-"));
   try {
     const file = path.join(dir, "summary.pdf");
     await writeFile(file, pdf);
-    // -layout keeps columns apart, so a number cannot be read out of the wrong column.
-    return execFileSync("pdftotext", ["-layout", file, "-"], { encoding: "utf8" });
+    // -raw, not -layout: -layout reconstructs columns by clustering character positions, and
+    // that clustering heuristic differs between pdftotext builds. Poppler 24.04 (MiKTeX's
+    // bundled copy on Windows) clusters this page's wrapped label onto the same visual line as
+    // the row's numeric columns, then sorts by x — interleaving "Salary (includes $10,000.00"
+    // with every number in the row before "performance)". Xpdf 4.00 (the copy on PATH via Git
+    // for Windows) doesn't do this for the same PDF, which is why this only broke depending on
+    // which pdftotext a given shell resolved. -raw sidesteps the whole disagreement: it walks
+    // the content stream in draw order rather than guessing a layout, and this page draws each
+    // row's cells left to right, top to bottom, so plain draw order already reads correctly —
+    // still needs `flatten()` for a label that wraps across two drawing calls, but never
+    // reorders text the way `-layout`'s clustering can.
+    return pdftotext(["-raw", file, "-"]);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
+}
+
+/**
+ * `extractText`, collapsed to single spaces.
+ *
+ * A long name cell wraps across lines in the real PDF — real text, correctly laid out, not a
+ * bug — so a phrase spanning the wrap point (e.g. "Salary (includes $10,000.00 performance)",
+ * which wraps between the amount and "performance)") never appears contiguous in the raw
+ * `pdftotext -raw` output. Collapsing whitespace reconstructs it, since `wrap()` only ever
+ * breaks on a space between two words in the first place.
+ */
+function flatten(text: string): string {
+  return text.replace(/\s+/g, " ");
 }
 
 describe("packet summary section", () => {
@@ -120,19 +134,41 @@ describe.skipIf(!hasPdftotext())("packet summary text", () => {
     expect(text).toContain("$395,641.12");
     expect(text).toContain("$63,051.34");
 
-    // Base subtotal and totals.
-    expect(text).toContain("$679,916.67");
+    // Totals — the only bottom-line row now (no separate "Base subtotal" to also check).
     expect(text).toContain("$854,916.67");
     expect(text).toContain("$616,627.93");
     expect(text).toContain("$238,288.74");
   });
 
-  it("prints both section dividers and the totals row", async () => {
+  it("prints the section divider, the totals row, and Performance Grant 1 as an ordinary line item", async () => {
     const text = await extractText(await buildSummarySectionPdf(snapshot));
     expect(text).toContain("BASE");
-    expect(text).toContain("PERFORMANCE GRANT 1");
-    expect(text).toContain("Base subtotal");
+    // No longer its own divider section (R7.2 retired, m08) — just a base row's name now.
+    expect(text).toContain("Performance Grant 1");
+    expect(text).not.toContain("PERFORMANCE GRANT 1");
+    // No "Base subtotal" row either: it would only ever repeat Totals now that every line
+    // item is a base row.
+    expect(text).not.toContain("Base subtotal");
     expect(text).toContain("Totals");
+  });
+
+  it("shows a line item's base/performance split, not only the Line Items screen's popup (D-81)", async () => {
+    // Before this fix, `loadLineItemBudgets` had already folded base and performance into one
+    // `scheduledValueCents` by the time this ever ran, so there was nothing left to show a
+    // split from — the packet printed one merged figure per line item, same as the screen.
+    const salary = snapshot.lineItems[0];
+    const withPerformance = {
+      ...snapshot,
+      lineItems: [
+        { ...salary, scheduledValueCents: salary.scheduledValueCents + 10_000_00, performanceCents: 10_000_00 },
+        ...snapshot.lineItems.slice(1),
+      ],
+    };
+    const text = flatten(await extractText(await buildSummarySectionPdf(withPerformance)));
+    expect(text).toContain("Salary (includes $10,000.00 performance)");
+    // The split annotation belongs to the line item that carries it, not the aggregate row —
+    // "Totals (includes ...)" would misread as if Totals itself were a performance.
+    expect(text).not.toContain("Totals (includes");
   });
 
   it("prints the four reconciliation lines (R7.4)", async () => {
@@ -148,8 +184,15 @@ describe.skipIf(!hasPdftotext())("packet summary text", () => {
 
   it("agrees with the workbook and the screen on percentages", async () => {
     const text = await extractText(await buildSummarySectionPdf(snapshot));
-    // The same ten values the Contract Summary screen shows.
-    for (const percent of ["86%", "89%", "103%", "98%", "46%", "22%", "85%", "72%", "93%"]) {
+    // The same values the Contract Summary screen shows: seven line items, then Totals, then
+    // the R7.4 reconciliation. Professional Development and Performance Grant 1 both round to
+    // 22%, so this list is one shorter than the rows it covers.
+    //
+    // It used to expect 85% as well — the separate BASE subtotal from R7.2, back when
+    // Performance Grant 1 was its own section ($577,398.43 of $679,916.67). Retiring R7.2 (m08)
+    // made it an ordinary base row, so the base subtotal *is* Totals now (72%) and 85% is no
+    // longer printed anywhere. The assertion outlived the section it was checking.
+    for (const percent of ["86%", "89%", "103%", "98%", "46%", "22%", "72%", "93%"]) {
       expect(text).toContain(percent);
     }
   });
@@ -163,6 +206,8 @@ describe.skipIf(!hasPdftotext())("packet summary text", () => {
       id: `item-${index}`,
       name: `Line Item Number ${index} With A Deliberately Long Name`,
       scheduledValueCents: 1_000_00,
+      performanceCents: 0,
+      newPerformanceCents: 0,
       openingBilledCents: 100_00,
       sortOrder: index,
     }));

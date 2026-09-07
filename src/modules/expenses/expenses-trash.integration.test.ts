@@ -510,7 +510,7 @@ describe.skipIf(!hasDatabase)("expense trash (integration)", async () => {
       const rows = await loadLineItemRows(orgId);
       const row = rows.find((r) => r.id === item.id)!;
       expect(row.expenseCount).toBe(1);
-      expect(planLineItemDelete(row).allowed).toBe(false);
+      expect(planLineItemDelete({ ...row, performanceTotalCents: 0 }).allowed).toBe(false);
 
       // And the database itself refuses the delete via the restrict FK — deleting the trash
       // is not enough to bypass it without going through permanent delete first.

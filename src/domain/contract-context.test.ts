@@ -10,6 +10,7 @@ const FULL = {
   performancePoNumber: "3089749",
   contractValueCents: 94_000_000,
   scheduledTotalCents: 85_491_667,
+  newPerformanceCents: 0,
 };
 
 describe("contract context strip (R7.3)", () => {
@@ -41,6 +42,23 @@ describe("contract context strip (R7.3)", () => {
     expect(items.find((item) => item.label === "Contract total")?.value).toBe("$854,916.67");
   });
 
+  it("adds a new performance's total on top of a configured contract value (D-81)", () => {
+    // Before D-81, a configured contract value never moved as performances were added — it
+    // just returned `contractValueCents` outright, ignoring performances entirely.
+    const items = contractContextItems({ ...FULL, newPerformanceCents: 10_000_00 }, FEB);
+    expect(items.find((item) => item.label === "Contract total")?.value).toBe("$950,000.00");
+  });
+
+  it("does not double-add performances when falling back to the scheduled total", () => {
+    // `scheduledTotalCents` already has every performance folded in (m08), so the fallback
+    // must not add `newPerformanceCents` again on top of it.
+    const items = contractContextItems(
+      { ...FULL, contractValueCents: 0, newPerformanceCents: 10_000_00 },
+      FEB,
+    );
+    expect(items.find((item) => item.label === "Contract total")?.value).toBe("$854,916.67");
+  });
+
   it("drops the total entirely when there is no budget either", () => {
     const items = contractContextItems(
       { ...FULL, contractValueCents: 0, scheduledTotalCents: 0 },
@@ -57,6 +75,7 @@ describe("contract context strip (R7.3)", () => {
         performancePoNumber: "",
         contractValueCents: 0,
         scheduledTotalCents: 0,
+        newPerformanceCents: 0,
       },
       FEB,
     );

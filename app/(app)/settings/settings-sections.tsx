@@ -13,8 +13,8 @@ import {
   changePasswordAction,
   saveLabelAction,
   setLabelActiveAction,
+  updateAdvancesReceivedAction,
   updateContractAction,
-  updateGrantSettingsAction,
   updateOrganisationAction,
   updateReimbursementRulesAction,
 } from "@/src/modules/settings/actions";
@@ -170,33 +170,10 @@ export function SettingsSections({
         </div>
       </Card>
 
-      {/* ------------------------------------------ performance grant & advances */}
+      {/* ------------------------------------------------------------ advances */}
       <Card className={CARD_PADDING}>
-        <SectionTitle className="mb-5">Performance grant &amp; advances</SectionTitle>
+        <SectionTitle className="mb-5">Advances</SectionTitle>
         <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-          <div>
-            <Label htmlFor="perfScheduled">Performance Grant 1 scheduled value</Label>
-            <MoneyInput
-              id="perfScheduled"
-              value={grantDraft.perfGrantScheduled ?? ""}
-              onChange={(event) =>
-                setGrantDraft({ ...grantDraft, perfGrantScheduled: event.target.value })
-              }
-            />
-          </div>
-          <div>
-            <Label htmlFor="perfBilled">Performance grant billed to date</Label>
-            <MoneyInput
-              id="perfBilled"
-              value={grantDraft.perfGrantBilled ?? ""}
-              onChange={(event) =>
-                setGrantDraft({ ...grantDraft, perfGrantBilled: event.target.value })
-              }
-            />
-            <Helper>
-              Maintained manually — performance billing happens outside this system.
-            </Helper>
-          </div>
           <div>
             <Label htmlFor="advances">Total advances received</Label>
             <MoneyInput
@@ -215,12 +192,10 @@ export function SettingsSections({
             onClick={() =>
               run(
                 () =>
-                  updateGrantSettingsAction({
-                    perfGrantScheduled: grantDraft.perfGrantScheduled ?? "",
-                    perfGrantBilled: grantDraft.perfGrantBilled ?? "",
+                  updateAdvancesReceivedAction({
                     advancesReceived: grantDraft.advancesReceived ?? "",
                   }),
-                "Grant settings saved",
+                "Advances saved",
               )
             }
           >

@@ -35,8 +35,6 @@ export default async function SettingsPage() {
           fiduciaryName: data.settings?.fiduciaryName ?? "",
         }}
         grant={{
-          perfGrantScheduled: money(data.settings?.perfGrantScheduledCents ?? 0),
-          perfGrantBilled: money(data.settings?.perfGrantBilledCents ?? 0),
           advancesReceived: money(data.settings?.advancesReceivedCents ?? 0),
         }}
         paymentSources={data.sources.map((row) => ({

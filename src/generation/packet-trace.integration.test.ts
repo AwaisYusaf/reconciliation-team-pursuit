@@ -7,9 +7,8 @@
  * real storage driver, then read back with `pdftotext` — the reference has to be text a
  * reviewer can search, not a picture of text.
  *
- * Skipped when DATABASE_URL or poppler is absent.
+ * Skipped when DATABASE_URL, a `pdftotext` (Poppler or Xpdf), or LibreOffice is absent.
  */
-import { execFileSync } from "node:child_process";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -22,16 +21,15 @@ import { eq } from "drizzle-orm";
 import sharp from "sharp";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-function hasPdftotext(): boolean {
-  try {
-    execFileSync("pdftotext", ["-v"], { stdio: "ignore" });
-    return true;
-  } catch {
-    return false;
-  }
-}
+import { conversionAvailable } from "./docx-to-pdf";
+import { hasPdftotext, pdftotext } from "./pdftotext.test-helper";
 
-const canRun = Boolean(process.env.DATABASE_URL) && hasPdftotext();
+// A real packet embeds real cover sheets, so LibreOffice has to be here too — not just the
+// database and `pdftotext`. It was never checked, which only stayed invisible while the
+// `pdftotext` probe was itself wrong: fix that, and this suite *failed* on a machine holding
+// the first two but not LibreOffice, instead of skipping the way the header promises.
+const canRun =
+  Boolean(process.env.DATABASE_URL) && hasPdftotext() && (await conversionAvailable());
 const MONTH = "2099-02";
 
 describe.skipIf(!canRun)("packet traceability (integration)", async () => {
@@ -120,9 +118,7 @@ describe.skipIf(!canRun)("packet traceability (integration)", async () => {
       const file = path.join(dir, "packet.pdf");
       await writeFile(file, packet.pdf);
       pageText = Array.from({ length: pageCount }, (_, index) =>
-        execFileSync("pdftotext", ["-f", String(index + 1), "-l", String(index + 1), file, "-"], {
-          encoding: "utf8",
-        }),
+        pdftotext(["-f", String(index + 1), "-l", String(index + 1), file, "-"]),
       );
     } finally {
       await rm(dir, { recursive: true, force: true });

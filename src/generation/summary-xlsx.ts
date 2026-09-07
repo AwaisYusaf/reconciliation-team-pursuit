@@ -9,7 +9,7 @@
 import ExcelJS from "exceljs";
 
 import { monthLabel, monthShortLabel, formatDateUS, type MonthKey } from "@/src/domain/dates";
-import { percentValue } from "@/src/domain/format";
+import { percentValue, summaryRowLabel } from "@/src/domain/format";
 import { centsToDollars, receiptTotalCents, reimbursableCents, sumBy } from "@/src/domain/money";
 import { summaryFilename } from "@/src/domain/strings";
 import { contractSummary, type SummaryRow } from "@/src/domain/summary";
@@ -79,7 +79,7 @@ function addSectionRow(sheet: ExcelJS.Worksheet, label: string): void {
 
 function summaryValues(row: SummaryRow): [string, number, number, number, number, number, number] {
   return [
-    row.name,
+    summaryRowLabel(row.name, row.performanceCents),
     centsToDollars(row.scheduledCents),
     centsToDollars(row.previouslyBilledCents),
     centsToDollars(row.thisPeriodCents),
@@ -93,6 +93,10 @@ function formatSummaryRow(row: ExcelJS.Row, bold = false): void {
   row.eachCell((cell, column) => {
     cell.border = THIN_BORDER;
     if (bold) cell.font = { bold: true };
+    // Column A's 34-character width is fixed by the spec, but the split annotation (D-82,
+    // e.g. "Development Desiging (includes $63,000.00 performance)") routinely runs past it —
+    // wrapped rather than clipped, the way Excel and LibreOffice both size the row for on open.
+    if (column === 1) cell.alignment = { wrapText: true };
     if (column >= 2 && column <= 5) cell.numFmt = MONEY_FORMAT;
     if (column === 6) cell.numFmt = PERCENT_FORMAT;
     if (column === 7) cell.numFmt = MONEY_FORMAT;
@@ -139,19 +143,15 @@ export async function buildSummaryWorkbook(snapshot: MonthSnapshot): Promise<Buf
 
   for (const row of summary.baseRows) {
     const added = sheet.addRow(summaryValues(row));
-    textCell(added.getCell(1), row.name);
+    textCell(added.getCell(1), summaryRowLabel(row.name, row.performanceCents));
     formatSummaryRow(added);
   }
 
-  const subtotal = sheet.addRow(summaryValues(summary.baseSubtotal));
-  formatSummaryRow(subtotal, true);
-
-  addSectionRow(sheet, "PERFORMANCE GRANT 1");
-
-  const perf = sheet.addRow(summaryValues(summary.performanceRow));
-  formatSummaryRow(perf);
-
-  const totals = sheet.addRow(summaryValues(summary.totals));
+  // No separate "Base subtotal" row: every line item is a base row now that performances
+  // (m08) replaced the old Performance Grant section, so it would only ever repeat Totals.
+  // performanceCents zeroed for display only: the split annotation belongs to an individual
+  // line item, not this aggregate row (see the same note in contract-summary/page.tsx).
+  const totals = sheet.addRow(summaryValues({ ...summary.totals, performanceCents: 0 }));
   formatSummaryRow(totals, true);
 
   sheet.addRow([]);
