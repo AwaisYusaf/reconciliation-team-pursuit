@@ -47,6 +47,34 @@ This is what makes the packet self-navigating in both directions — index → e
 reviews the packet, they should be able to follow the financial trail without needing someone to
 manually explain where the documentation is located."*
 
+## Navigation (R10.5a, D-83)
+
+The packet is self-navigating on screen as well as on paper. Links are **added to the finished
+document** — after every section has been copied in and before the footers are stamped — because
+`copyPages` re-homes a page but not the destinations its annotations point at (probed, Phase 5 §2.4):
+a link baked into a cover sheet or the index before merge would point into a document that no longer
+exists. Assembly therefore only *records* where things are; the finishing pass draws footers, links
+and the outline in the one load/save it already performs.
+
+| Source | Target |
+|---|---|
+| Cover-sheet table row (invisible rectangle over the row) | The expense's first evidence page — receipt, else supporting |
+| Cover-sheet heading `{Name} — {reference}:` | Same |
+| Evidence page footer, the `{reference}` token | Back to that heading (the proof of payment sits under it) |
+| Index `Ref` cell | The heading; for a no-receipt expense, its D-74 disclosure line |
+| Outline (bookmark sidebar) | Summary · Index · each line item · each expense (`{reference} — {name}`) · Month documents |
+
+Anchors are located by text, never by position: the reference is the only string unique to an
+expense on a sheet (two salary rows for one person are otherwise identical). Cover-sheet anchors are
+measured with `pdftotext -bbox-layout` on the converted sheet before it is copied in; index cell
+rectangles are recorded while the index is drawn; evidence-page back-links come from the same
+measurement that centres the footer. Every link is an invisible `/Link` with an `/XYZ` destination,
+so a heading lands at the top of the viewport. Page count and footer text are unchanged by the pass.
+
+Verified against the delivered bytes (Phase 5 §5): every link resolves, every rectangle contains the
+text it stands for, and an outline a second reader can list. Pinned artifacts from before D-83 stay
+as delivered (R10.6).
+
 ## Size & compatibility
 
 - Target ≤ **25 MB** (DocuSign envelope ceiling). If a build exceeds it: rebuild at 120 DPI / JPEG 70; still over → one final step at 100 DPI / JPEG 60, then **deliver anyway** with a warning stating the final size and that DocuSign may reject it — never block the download on size. February's manual equivalent was 25 MB at 133 pages — we expect to land well under with JPEG.
