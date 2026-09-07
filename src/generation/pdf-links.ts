@@ -33,18 +33,19 @@ import {
 export type Rect = { x: number; y: number; width: number; height: number };
 
 /**
- * Where a link lands: a page, and optionally the y (from the bottom) to scroll to the top of
- * the viewport, so a heading arrives at the top of the window rather than the page merely
- * opening.
+ * Where a link lands: a page, and the y (from the bottom) to scroll to the top of the
+ * viewport, so a heading arrives at the top of the window rather than the page merely
+ * opening. Omit `top` to land at the top of the page.
  */
 export type Target = { page: PDFPage; top?: number };
 
 function destination(doc: PDFDocument, target: Target): PDFArray {
-  // `/XYZ left top zoom` with nulls keeps the viewer's current horizontal position and zoom.
-  // Without a `top`, `/Fit` shows the whole page.
-  return target.top === undefined
-    ? doc.context.obj([target.page.ref, PDFName.of("Fit")])
-    : doc.context.obj([target.page.ref, PDFName.of("XYZ"), null, target.top, null]);
+  // Always `/XYZ left top zoom`, with nulls keeping the viewer's horizontal position and zoom.
+  // The first version used `/Fit` when no `top` was given; in Chrome's viewer those links did
+  // not respond while the `/XYZ` ones on the same document did, so every destination is now
+  // written the same way — a whole-page target is simply the page from its top edge.
+  const top = target.top ?? target.page.getHeight();
+  return doc.context.obj([target.page.ref, PDFName.of("XYZ"), null, top, null]);
 }
 
 /**
