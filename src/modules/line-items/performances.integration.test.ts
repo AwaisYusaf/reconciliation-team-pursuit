@@ -108,6 +108,41 @@ describe.skipIf(!hasDatabase)("line item performances (integration)", async () =
     expect(afterSecond.performanceCents).toBe(20000000);
   });
 
+  it("a migrated performance doesn't count toward the contract total, but a new one does (D-82)", async () => {
+    // The client's real migrated org: `contract_value_cents` already meant the whole contract,
+    // performance grant included, before that money had a line item of its own. Simulated here
+    // by inserting a performance directly, the way `drizzle/0015_narrow_diamondback.sql` did,
+    // bypassing the action entirely — `counts_toward_contract_total` must default false, not
+    // true, or `loadLineItemBudgets` would report it as money the org's contract value hasn't
+    // caught up to yet, and `contractTotalCents` would double it (confirmed against real client
+    // data: $940,000 read $1,115,000.00 before this column existed).
+    const [item] = await db
+      .insert(lineItems)
+      .values({ orgId, name: "D-82 migrated-style line item", scheduledValueCents: 0, sortOrder: 1 })
+      .returning({ id: lineItems.id });
+
+    await db.insert(lineItemPerformances).values({
+      orgId,
+      lineItemId: item.id,
+      amountCents: 17500000,
+      sortOrder: 0,
+      // No `countsTowardContractTotal` — proving the column's default, not overriding it.
+    });
+
+    const [migratedBudget] = (await loadLineItemBudgets(orgId)).filter((row) => row.id === item.id);
+    expect(migratedBudget.performanceCents).toBe(17500000);
+    expect(migratedBudget.newPerformanceCents).toBe(0);
+
+    asOrg(orgId);
+    const added = await addLineItemPerformanceAction(item.id, "1000.00");
+    expect(added.ok).toBe(true);
+
+    const [afterAdd] = (await loadLineItemBudgets(orgId)).filter((row) => row.id === item.id);
+    // The migrated $175,000 still doesn't count; the new $1,000 does.
+    expect(afterAdd.performanceCents).toBe(17500000 + 100000);
+    expect(afterAdd.newPerformanceCents).toBe(100000);
+  });
+
   it("deleting a performance removes exactly its amount from the total", async () => {
     asOrg(orgId);
     const rows = await db

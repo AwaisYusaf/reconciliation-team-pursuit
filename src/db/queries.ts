@@ -33,6 +33,12 @@ export type Reader = Pick<typeof db, "select">;
  * workbook all inherit a new performance automatically without their own changes. It still
  * carries `performanceCents` — just the performance slice — alongside it, so a renderer that
  * needs to show the split (Contract Summary, the packet, Excel) doesn't have to re-derive it.
+ *
+ * `newPerformanceCents` (D-82) is the narrower slice of `performanceCents` that actually counts
+ * toward the org's contract total: performances added since `counts_toward_contract_total`
+ * started existing, never the migrated Performance Grant or anything else that predates it,
+ * since that money was already folded into `contract_value_cents` long before it had a line
+ * item of its own.
  */
 export async function loadLineItemBudgets(
   orgId: string,
@@ -47,6 +53,7 @@ export async function loadLineItemBudgets(
       // the same way `claimReferenceSeq`/`saveLineItemAction` coerce their own raw aggregates.
       scheduledValueCents: sql<string>`${lineItems.scheduledValueCents} + coalesce(sum(${lineItemPerformances.amountCents}), 0)`,
       performanceCents: sql<string>`coalesce(sum(${lineItemPerformances.amountCents}), 0)`,
+      newPerformanceCents: sql<string>`coalesce(sum(${lineItemPerformances.amountCents}) filter (where ${lineItemPerformances.countsTowardContractTotal}), 0)`,
       openingBilledCents: lineItems.openingBilledCents,
       sortOrder: lineItems.sortOrder,
     })
@@ -62,6 +69,7 @@ export async function loadLineItemBudgets(
     ...row,
     scheduledValueCents: Number(row.scheduledValueCents),
     performanceCents: Number(row.performanceCents),
+    newPerformanceCents: Number(row.newPerformanceCents),
   }));
 }
 

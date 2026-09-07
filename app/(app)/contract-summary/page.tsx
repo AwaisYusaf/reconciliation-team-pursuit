@@ -73,7 +73,7 @@ export default async function ContractSummaryPage() {
       performancePoNumber: identifiers[0]?.performancePoNumber ?? "",
       contractValueCents: settings.contractValueCents,
       scheduledTotalCents: summary.totals.scheduledCents,
-      performanceCents: summary.totals.performanceCents,
+      newPerformanceCents: summary.totals.newPerformanceCents,
     },
     month,
   );

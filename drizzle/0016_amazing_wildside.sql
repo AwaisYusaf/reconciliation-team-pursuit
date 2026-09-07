@@ -1,0 +1,1 @@
+ALTER TABLE "line_item_performances" ADD COLUMN "counts_toward_contract_total" boolean DEFAULT false NOT NULL;

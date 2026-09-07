@@ -3,7 +3,6 @@
  * extractable from the rendered PDF — that the references reached the page as real text a
  * reviewer can search, not an image of them.
  */
-import { execFileSync } from "node:child_process";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -14,6 +13,7 @@ import { describe, expect, it } from "vitest";
 import { FEB, FEB_EXPENSES, LINE_ITEMS, SETTINGS } from "@/src/domain/fixtures";
 
 import { INDEX_COLUMNS, INDEX_CONTENT_WIDTH, buildIndexSectionPdf } from "./packet-index-pdf";
+import { hasPdftotext, pdftotext } from "./pdftotext.test-helper";
 import type { MonthSnapshot, SnapshotExpense } from "./month-snapshot";
 
 function expense(overrides: Partial<SnapshotExpense> & { referenceSeq: number }): SnapshotExpense {
@@ -58,21 +58,12 @@ function snapshotWith(expenses: SnapshotExpense[]): MonthSnapshot {
   };
 }
 
-function hasPdftotext(): boolean {
-  try {
-    execFileSync("pdftotext", ["-v"], { stdio: "ignore" });
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 async function extractText(pdf: Buffer): Promise<string> {
   const dir = await mkdtemp(path.join(tmpdir(), "ngo-index-pdf-"));
   try {
     const file = path.join(dir, "index.pdf");
     await writeFile(file, pdf);
-    return execFileSync("pdftotext", ["-layout", file, "-"], { encoding: "utf8" });
+    return pdftotext(["-layout", file, "-"]);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

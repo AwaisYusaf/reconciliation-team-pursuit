@@ -3,7 +3,6 @@
  * text actually extractable from the rendered PDF — proof the figures reached the page and
  * that it is real text rather than an image.
  */
-import { execFileSync } from "node:child_process";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -15,6 +14,7 @@ import { FEB, FEB_EXPENSES, LINE_ITEMS, SETTINGS } from "@/src/domain/fixtures";
 
 import type { MonthSnapshot } from "./month-snapshot";
 import { buildSummarySectionPdf } from "./packet-summary-pdf";
+import { hasPdftotext, pdftotext } from "./pdftotext.test-helper";
 
 const snapshot: MonthSnapshot = {
   orgId: "org",
@@ -34,25 +34,29 @@ const snapshot: MonthSnapshot = {
   },
 };
 
-function hasPdftotext(): boolean {
-  try {
-    execFileSync("pdftotext", ["-v"], { stdio: "ignore" });
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 async function extractText(pdf: Buffer): Promise<string> {
   const dir = await mkdtemp(path.join(tmpdir(), "ngo-summary-pdf-"));
   try {
     const file = path.join(dir, "summary.pdf");
     await writeFile(file, pdf);
     // -layout keeps columns apart, so a number cannot be read out of the wrong column.
-    return execFileSync("pdftotext", ["-layout", file, "-"], { encoding: "utf8" });
+    return pdftotext(["-layout", file, "-"]);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
+}
+
+/**
+ * `extractText`, collapsed to single spaces.
+ *
+ * A long name cell wraps across lines in the real PDF — real text, correctly laid out, not a
+ * bug — so a phrase spanning the wrap point (e.g. "Salary (includes $10,000.00 performance)",
+ * which wraps between the amount and "performance)") never appears contiguous in the raw
+ * `pdftotext -layout` output. Collapsing whitespace reconstructs it, since `wrap()` only ever
+ * breaks on a space between two words in the first place.
+ */
+function flatten(text: string): string {
+  return text.replace(/\s+/g, " ");
 }
 
 describe("packet summary section", () => {
@@ -150,7 +154,7 @@ describe.skipIf(!hasPdftotext())("packet summary text", () => {
         ...snapshot.lineItems.slice(1),
       ],
     };
-    const text = await extractText(await buildSummarySectionPdf(withPerformance));
+    const text = flatten(await extractText(await buildSummarySectionPdf(withPerformance)));
     expect(text).toContain("Salary (includes $10,000.00 performance)");
     // The split annotation belongs to the line item that carries it, not the aggregate row —
     // "Totals (includes ...)" would misread as if Totals itself were a performance.
@@ -170,8 +174,15 @@ describe.skipIf(!hasPdftotext())("packet summary text", () => {
 
   it("agrees with the workbook and the screen on percentages", async () => {
     const text = await extractText(await buildSummarySectionPdf(snapshot));
-    // The same ten values the Contract Summary screen shows.
-    for (const percent of ["86%", "89%", "103%", "98%", "46%", "22%", "85%", "72%", "93%"]) {
+    // The same values the Contract Summary screen shows: seven line items, then Totals, then
+    // the R7.4 reconciliation. Professional Development and Performance Grant 1 both round to
+    // 22%, so this list is one shorter than the rows it covers.
+    //
+    // It used to expect 85% as well — the separate BASE subtotal from R7.2, back when
+    // Performance Grant 1 was its own section ($577,398.43 of $679,916.67). Retiring R7.2 (m08)
+    // made it an ordinary base row, so the base subtotal *is* Totals now (72%) and 85% is no
+    // longer printed anywhere. The assertion outlived the section it was checking.
+    for (const percent of ["86%", "89%", "103%", "98%", "46%", "22%", "72%", "93%"]) {
       expect(text).toContain(percent);
     }
   });
@@ -186,6 +197,7 @@ describe.skipIf(!hasPdftotext())("packet summary text", () => {
       name: `Line Item Number ${index} With A Deliberately Long Name`,
       scheduledValueCents: 1_000_00,
       performanceCents: 0,
+      newPerformanceCents: 0,
       openingBilledCents: 100_00,
       sortOrder: index,
     }));

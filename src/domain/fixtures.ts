@@ -21,17 +21,25 @@ export const MAR = "2026-03";
  * `scheduledValueCents` before it ever reaches this fixture shape. Modeling it as a plain
  * 7th line item — same $175,000.00 scheduled / $39,229.50 opening billed the approved packet
  * published — is what keeps this fixture reproducing that packet's exact figures.
+ *
+ * Its base/performance split matters too (D-82): the real migration writes base $0.00 /
+ * performance $175,000.00 for this line item, not the other way around — modeling it inverted
+ * (as an earlier version of this fixture did) hid the contract-total double-count the PR #8
+ * review caught against the client's actual migrated data, since a fixture with
+ * `performanceCents: 0` never exercises the "add a performance on top of a configured contract
+ * value" path at all. `newPerformanceCents: 0` throughout: none of these are money added since
+ * m08 shipped, migrated or otherwise, so none of them count a second time toward the contract
+ * total (`contractTotalCents`/`contractContextItems`) the way a freshly `Add`ed performance would.
  */
-// `performanceCents: 0` throughout — this fixture is the published packet's golden reference,
-// which predates the base/performance split (m08) and never had one to show.
 export const LINE_ITEMS: LineItemBudget[] = [
-  { id: "salary", name: "Salary", scheduledValueCents: 45869246, performanceCents: 0, openingBilledCents: 35000000, sortOrder: 0 },
-  { id: "analytical", name: "Analytical Support", scheduledValueCents: 6692914, performanceCents: 0, openingBilledCents: 4000000, sortOrder: 1 },
-  { id: "promo", name: "Promotional & Marketing", scheduledValueCents: 5821262, performanceCents: 0, openingBilledCents: 4819851, sortOrder: 2 },
-  { id: "social", name: "Social Services & Support", scheduledValueCents: 4125000, performanceCents: 0, openingBilledCents: 3000000, sortOrder: 3 },
-  { id: "community", name: "Community Programs & Events", scheduledValueCents: 3983245, performanceCents: 0, openingBilledCents: 1398596, sortOrder: 4 },
-  { id: "profdev", name: "Professional Development", scheduledValueCents: 1500000, performanceCents: 0, openingBilledCents: 174900, sortOrder: 5 },
-  { id: "perfgrant1", name: "Performance Grant 1", scheduledValueCents: 17500000, performanceCents: 0, openingBilledCents: 3922950, sortOrder: 6 },
+  { id: "salary", name: "Salary", scheduledValueCents: 45869246, performanceCents: 0, newPerformanceCents: 0, openingBilledCents: 35000000, sortOrder: 0 },
+  { id: "analytical", name: "Analytical Support", scheduledValueCents: 6692914, performanceCents: 0, newPerformanceCents: 0, openingBilledCents: 4000000, sortOrder: 1 },
+  { id: "promo", name: "Promotional & Marketing", scheduledValueCents: 5821262, performanceCents: 0, newPerformanceCents: 0, openingBilledCents: 4819851, sortOrder: 2 },
+  { id: "social", name: "Social Services & Support", scheduledValueCents: 4125000, performanceCents: 0, newPerformanceCents: 0, openingBilledCents: 3000000, sortOrder: 3 },
+  { id: "community", name: "Community Programs & Events", scheduledValueCents: 3983245, performanceCents: 0, newPerformanceCents: 0, openingBilledCents: 1398596, sortOrder: 4 },
+  { id: "profdev", name: "Professional Development", scheduledValueCents: 1500000, performanceCents: 0, newPerformanceCents: 0, openingBilledCents: 174900, sortOrder: 5 },
+  // Base $0.00, all $175,000.00 as a migrated performance — matches drizzle/0015_narrow_diamondback.sql exactly.
+  { id: "perfgrant1", name: "Performance Grant 1", scheduledValueCents: 17500000, performanceCents: 17500000, newPerformanceCents: 0, openingBilledCents: 3922950, sortOrder: 6 },
 ];
 
 /**

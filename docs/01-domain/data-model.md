@@ -81,6 +81,7 @@ Same shape as payment_sources; seeded with the six defaults.
 | line_item_id | uuid FK | cascade delete with its line item |
 | amount_cents | bigint | Check `> 0` |
 | sort_order | int | Order added — numbers the on-screen "Performance 1/2/3…" list |
+| counts_toward_contract_total | boolean | Default `false` (R7.3, D-82). `addLineItemPerformanceAction` sets it `true` — new money the org's `contract_value_cents` hasn't caught up to. Every pre-existing row, the migrated Performance Grant included, defaults `false`: that money was already inside whatever the org typed into `contract_value_cents` before it had a line item of its own |
 
 Replaces the retired `contract_settings.perf_grant_*` figures (R7.2, D-80): a performance is
 just an amount added to a line item from the Line Items screen, with no month dimension of its

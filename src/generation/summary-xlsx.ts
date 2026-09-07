@@ -93,6 +93,10 @@ function formatSummaryRow(row: ExcelJS.Row, bold = false): void {
   row.eachCell((cell, column) => {
     cell.border = THIN_BORDER;
     if (bold) cell.font = { bold: true };
+    // Column A's 34-character width is fixed by the spec, but the split annotation (D-82,
+    // e.g. "Development Desiging (includes $63,000.00 performance)") routinely runs past it —
+    // wrapped rather than clipped, the way Excel and LibreOffice both size the row for on open.
+    if (column === 1) cell.alignment = { wrapText: true };
     if (column >= 2 && column <= 5) cell.numFmt = MONEY_FORMAT;
     if (column === 6) cell.numFmt = PERCENT_FORMAT;
     if (column === 7) cell.numFmt = MONEY_FORMAT;

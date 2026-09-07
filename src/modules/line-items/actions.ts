@@ -224,6 +224,9 @@ export async function addLineItemPerformanceAction(
     lineItemId,
     amountCents,
     sortOrder: Number(maxSort) + 1,
+    // Real new money the org's contract value hasn't caught up to yet (D-82) — unlike the
+    // default `false` every pre-existing row (the migrated Performance Grant included) means.
+    countsTowardContractTotal: true,
   });
 
   revalidateAll();

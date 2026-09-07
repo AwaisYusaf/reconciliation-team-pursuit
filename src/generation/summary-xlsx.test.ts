@@ -134,6 +134,9 @@ describe("Contract Summary sheet", () => {
     // user-adjacent string cell in this sheet.
     expect(typeof cell.value).toBe("string");
     expect(cell.numFmt).toBe("@");
+    // Column A's 34-character width doesn't grow for a long annotation (e.g. "Development
+    // Desiging (includes $63,000.00 performance)" at 45 characters) — wrapped, not clipped.
+    expect(cell.alignment?.wrapText).toBe(true);
 
     // The split annotation belongs to the line item that carries it, not the aggregate row
     // (row 10: header + BASE divider + 7 line items, then Totals).
@@ -157,8 +160,11 @@ describe("Contract Summary sheet", () => {
   it("carries Performance Grant 1 as an ordinary base row, then one totals row", async () => {
     const sheet = (await open()).getWorksheet("Contract Summary")!;
     // No longer a separate section (R7.2 retired) — it is base row 9, the 7th line item.
+    // Its name carries the split annotation too: the fixture models it as the real migration
+    // writes it (base $0, all $175,000 as a performance), so this line item's own name shows
+    // it, same as the Contract Summary screen and the packet PDF do live.
     const perf = sheet.getRow(9);
-    expect(perf.getCell(1).value).toBe("Performance Grant 1");
+    expect(perf.getCell(1).value).toBe("Performance Grant 1 (includes $175,000.00 performance)");
     expect(perf.getCell(2).value).toBe(175000);
     expect(perf.getCell(4).value).toBe(0);
 

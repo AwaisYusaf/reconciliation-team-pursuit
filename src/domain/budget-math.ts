@@ -34,6 +34,13 @@ export type LineItemBudget = {
    * already treat a performance as ordinary budget once it's rolled into `scheduledValueCents`.
    */
   performanceCents: number;
+  /**
+   * The narrower slice of `performanceCents` that counts toward the org's contract total
+   * (D-82) — money added since m08 shipped, never a migrated Performance Grant or anything
+   * else that predates `counts_toward_contract_total`, since that was already folded into
+   * `contract_value_cents` before it had a line item of its own. Always `<= performanceCents`.
+   */
+  newPerformanceCents: number;
   openingBilledCents: number;
   sortOrder: number;
 };

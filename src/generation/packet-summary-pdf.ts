@@ -261,7 +261,7 @@ export async function buildSummarySectionPdf(snapshot: MonthSnapshot): Promise<B
       performancePoNumber: snapshot.settings.performancePoNumber,
       contractValueCents: snapshot.settings.contractValueCents,
       scheduledTotalCents: summary.totals.scheduledCents,
-      performanceCents: summary.totals.performanceCents,
+      newPerformanceCents: summary.totals.newPerformanceCents,
     },
       snapshot.month,
     ),

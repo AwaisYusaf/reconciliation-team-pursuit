@@ -1,4 +1,3 @@
-import { execFileSync } from "node:child_process";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -12,15 +11,7 @@ import {
   oversizeWarning,
   stampFooters,
 } from "./packet-footer";
-
-function hasPdftotext(): boolean {
-  try {
-    execFileSync("pdftotext", ["-v"], { stdio: "ignore" });
-    return true;
-  } catch {
-    return false;
-  }
-}
+import { hasPdftotext, pdftotext } from "./pdftotext.test-helper";
 
 /** A document with mixed page sizes, so centring is actually exercised. */
 async function makePdf(pages: number): Promise<Buffer> {
@@ -38,9 +29,7 @@ async function pageText(pdf: Buffer, page: number): Promise<string> {
   try {
     const file = path.join(dir, "doc.pdf");
     await writeFile(file, pdf);
-    return execFileSync("pdftotext", ["-f", String(page), "-l", String(page), file, "-"], {
-      encoding: "utf8",
-    });
+    return pdftotext(["-f", String(page), "-l", String(page), file, "-"]);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

@@ -103,12 +103,21 @@ describe("contract total (R7.3)", () => {
     expect(derived.contractTotalCents).toBe(derived.totals.scheduledCents);
   });
 
-  it("adds every line item's performance total on top of a configured contract value (D-81)", () => {
-    // Before this fix, a configured contract value never moved as performances were added —
+  it("adds a new performance's total on top of a configured contract value (D-81)", () => {
+    // Before D-81, a configured contract value never moved as performances were added —
     // `contractTotalCents` just returned `settings.contractValueCents` outright, the same bug
-    // the PR review found in `contract-context.ts`'s "Contract total" line.
+    // the PR review found in `contract-context.ts`'s "Contract total" line. `newPerformanceCents`
+    // is what marks this $10,000 as genuinely new money, unlike the fixture's own Performance
+    // Grant 1 (a migrated performance — D-82, see the test below).
     const withPerformance = LINE_ITEMS.map((item, index) =>
-      index === 0 ? { ...item, scheduledValueCents: item.scheduledValueCents + 10_000_00, performanceCents: 10_000_00 } : item,
+      index === 0
+        ? {
+            ...item,
+            scheduledValueCents: item.scheduledValueCents + 10_000_00,
+            performanceCents: 10_000_00,
+            newPerformanceCents: 10_000_00,
+          }
+        : item,
     );
     const derived = contractSummary({
       lineItems: withPerformance,
@@ -119,11 +128,27 @@ describe("contract total (R7.3)", () => {
     expect(formatMoney(derived.contractTotalCents)).toBe("$950,000.00");
   });
 
+  it("does not add the fixture's own migrated Performance Grant a second time (D-82)", () => {
+    // The fixture's Performance Grant 1 is a *migrated* performance (`newPerformanceCents: 0`):
+    // $940,000 already meant the whole contract, performance grant included, before that money
+    // had a line item of its own. Before this fix, `contractTotalCents` added every
+    // performance regardless of origin and read $1,115,000.00 against the client's real
+    // migrated org — $940,000 + the $175,000 it already contained.
+    expect(formatMoney(summary.contractTotalCents)).toBe("$940,000.00");
+  });
+
   it("does not double-add performances when falling back to the scheduled total", () => {
     // `totals.scheduledCents` already has every performance folded in (m08), so the fallback
-    // must not add `totals.performanceCents` again on top of it.
+    // must not add `totals.newPerformanceCents` again on top of it.
     const withPerformance = LINE_ITEMS.map((item, index) =>
-      index === 0 ? { ...item, scheduledValueCents: item.scheduledValueCents + 10_000_00, performanceCents: 10_000_00 } : item,
+      index === 0
+        ? {
+            ...item,
+            scheduledValueCents: item.scheduledValueCents + 10_000_00,
+            performanceCents: 10_000_00,
+            newPerformanceCents: 10_000_00,
+          }
+        : item,
     );
     const derived = contractSummary({
       lineItems: withPerformance,
@@ -138,7 +163,14 @@ describe("contract total (R7.3)", () => {
 describe("performance split (R7.1, R9.5, D-81)", () => {
   it("carries each row's performance slice separately from its combined scheduled value", () => {
     const withPerformance = LINE_ITEMS.map((item, index) =>
-      index === 0 ? { ...item, scheduledValueCents: item.scheduledValueCents + 10_000_00, performanceCents: 10_000_00 } : item,
+      index === 0
+        ? {
+            ...item,
+            scheduledValueCents: item.scheduledValueCents + 10_000_00,
+            performanceCents: 10_000_00,
+            newPerformanceCents: 10_000_00,
+          }
+        : item,
     );
     const derived = contractSummary({
       lineItems: withPerformance,
@@ -150,9 +182,14 @@ describe("performance split (R7.1, R9.5, D-81)", () => {
     expect(salaryRow.performanceCents).toBe(10_000_00);
     expect(formatMoney(salaryRow.scheduledCents)).toBe("$468,692.46");
 
-    // The rest carry 0, and the subtotal/totals sum exactly the one row that has any.
-    expect(derived.baseSubtotal.performanceCents).toBe(10_000_00);
-    expect(derived.totals.performanceCents).toBe(10_000_00);
+    // The subtotal/totals also carry the fixture's own Performance Grant 1 ($175,000.00,
+    // migrated) — Salary's new $10,000 on top of it.
+    const migratedPerformanceCents = 175_000_00;
+    expect(derived.baseSubtotal.performanceCents).toBe(10_000_00 + migratedPerformanceCents);
+    expect(derived.totals.performanceCents).toBe(10_000_00 + migratedPerformanceCents);
+    // But only Salary's is "new" (D-82) — Performance Grant 1's is migrated, so it must not
+    // count a second time toward the contract total.
+    expect(derived.totals.newPerformanceCents).toBe(10_000_00);
   });
 });
 

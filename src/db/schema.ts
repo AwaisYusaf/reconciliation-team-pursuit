@@ -248,6 +248,16 @@ export const lineItemPerformances = pgTable(
     amountCents: cents("amount_cents"),
     /** Numbers the on-screen "Performance 1 / 2 / 3" list in the order each was added. */
     sortOrder: integer("sort_order").notNull().default(0),
+    /**
+     * Whether this performance is money the org's `contract_value_cents` doesn't already
+     * reflect (D-82). Defaults false, which is what every pre-existing row means: the
+     * migration-created performance (and anything else that predates this column) is money
+     * that was already part of the whole-contract figure someone typed into Settings, long
+     * before it had a line item of its own — adding it again on top of `contract_value_cents`
+     * would double it. `addLineItemPerformanceAction` sets this true explicitly, since a
+     * performance added from here on really is new money the org hasn't caught up to yet.
+     */
+    countsTowardContractTotal: boolean("counts_toward_contract_total").notNull().default(false),
     createdAt: createdAt(),
   },
   (t) => [
