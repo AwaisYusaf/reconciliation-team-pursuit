@@ -4,7 +4,7 @@
 On-screen preview of each line item's Breakdown document exactly as it will print, plus Word/PDF downloads. The preview *is* the trust-builder: what Misty sees here is byte-for-byte what the City receives inside the packet.
 
 ## Scope
-Route `/cover-sheets`. Line item selector (each + All), faithful preview per `02-outputs/cover-sheet-spec.md`, `Download Word` / `Download PDF` buttons, gate handling.
+Route `/r/cover-sheets`. Line item selector (each + All), faithful preview per `02-outputs/cover-sheet-spec.md`, `Download Word` / `Download PDF` buttons, gate handling.
 
 ## Data
 Reads expenses + documents per (month, line item); calls the cover-sheet generator for downloads. Rules R6.*, R4.3.

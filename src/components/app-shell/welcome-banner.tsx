@@ -19,7 +19,7 @@ export function WelcomeBanner() {
         Your budget is set up. Add your first expense to get started.
       </div>
       <div className="flex items-center gap-5">
-        <Link href="/expenses/new" className={buttonClassName("primary", "px-5")}>
+        <Link href="/r/expenses/new" className={buttonClassName("primary", "px-5")}>
           Add Expense
         </Link>
         <button

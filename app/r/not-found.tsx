@@ -10,7 +10,7 @@ export default function AppNotFound() {
       <PageTitle className="mb-2">Not found</PageTitle>
       <Subtext className="mb-6">That page or record does not exist, or has been deleted.</Subtext>
       <EmptyState>
-        <Link href="/" className={buttonClassName("secondary")}>
+        <Link href="/r" className={buttonClassName("secondary")}>
           Back to the dashboard
         </Link>
       </EmptyState>

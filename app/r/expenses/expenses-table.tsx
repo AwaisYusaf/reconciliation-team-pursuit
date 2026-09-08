@@ -188,7 +188,7 @@ export function ExpensesTable({
             </button>
           )}{" "}
           or{" "}
-          <Link href="/packet" className="underline">
+          <Link href="/r/packet" className="underline">
             view Month-End Packet
           </Link>
         </DangerPanel>
@@ -377,7 +377,7 @@ export function ExpensesTable({
               <Td align="right" stickyEnd className="whitespace-nowrap">
                 <div className="flex gap-4 justify-end">
                   <Link
-                    href={`/expenses/${row.id}/edit`}
+                    href={`/r/expenses/${row.id}/edit`}
                     className="py-2.5 text-[15px] text-accent underline hover:text-accent-dark"
                   >
                     Edit

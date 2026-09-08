@@ -4,7 +4,7 @@
 The month's finish line: readiness per line item, the blocking list, month-level document uploads, and the two big downloads (packet PDF, summary Excel).
 
 ## Scope
-Route `/packet`. Readiness table · blocking panel · month documents manager · packet contents preview with live page counts · downloads.
+Route `/r/packet`. Readiness table · blocking panel · month documents manager · packet contents preview with live page counts · downloads.
 
 ## Data
 Reads everything for the month; writes `month_documents`. Calls packet + Excel generators (`02-outputs/packet-pdf-spec.md`, `summary-excel-spec.md`). Rules R4.3–R4.4, R11.2–R11.3.

@@ -77,7 +77,7 @@ export default async function PacketPage() {
               <li key={record.expenseId} className="flex flex-wrap items-baseline gap-2">
                 <span>{record.label}</span>
                 <Link
-                  href={`/expenses/${record.expenseId}/edit`}
+                  href={`/r/expenses/${record.expenseId}/edit`}
                   className="underline text-danger font-medium"
                 >
                   Open expense
@@ -95,7 +95,7 @@ export default async function PacketPage() {
       {readiness.rows.length === 0 ? (
         <EmptyState>
           No line items yet — set up your budget in{" "}
-          <Link href="/line-items" className="text-accent underline">
+          <Link href="/r/line-items" className="text-accent underline">
             Line Items
           </Link>
           .

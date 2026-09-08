@@ -33,6 +33,75 @@
   --font-sans: Arial, Helvetica, sans-serif;
   /* Cover sheet previews match the generated Word document's theme font. */
   --font-document: Aptos, Calibri, "Segoe UI", Arial, sans-serif;
+
+  /* --- Landing page (grant-ledger) tokens below --- */
+  /* `surface*` renamed to `lp-surface*` because this destination's own tokens above
+     already own the bare `surface` name; `on-surface*`/`outline*` don't collide and keep
+     their original names. */
+  --color-primary: #5b3a29;
+  --color-primary-container: #422415;
+  --color-on-primary: #ffffff;
+  --color-primary-fixed: #ffdbcb;
+  --color-primary-fixed-dim: #edbca5;
+  --color-on-primary-container: #d3a48e;
+
+  --color-secondary: #456553;
+  --color-secondary-container: #c4e8d1;
+  --color-on-secondary: #ffffff;
+
+  --color-tertiary: #7c2019;
+  --color-tertiary-container: #ffdad5;
+  --color-on-tertiary: #ffffff;
+
+  --color-lp-surface: #fff8f5;
+  --color-lp-surface-dim: #e4d8cf;
+  --color-lp-surface-bright: #fff8f5;
+  --color-lp-surface-container-lowest: #ffffff;
+  --color-lp-surface-container-low: #fef1e9;
+  --color-lp-surface-container: #f8ebe3;
+  --color-lp-surface-container-high: #f3e6dd;
+  --color-lp-surface-container-highest: #ede0d8;
+
+  --color-on-surface: #201a15;
+  --color-on-surface-variant: #50443f;
+  --color-outline: #82746e;
+  --color-outline-variant: #d4c3bc;
+
+  --color-brand-50: #fdf7f3;
+  --color-brand-100: #faeee6;
+  --color-brand-200: #f4dcce;
+  --color-brand-300: #ecc5b0;
+  --color-brand-400: #de9b7b;
+  --color-brand-500: #ba6e4a;
+  --color-brand-600: #8c4826;
+  --color-brand-700: #72381c;
+  --color-brand-800: #5b3a29;
+  --color-brand-900: #38231a;
+  --color-brand-950: #201a15;
+
+  --color-terracotta-50: #fff5f2;
+  --color-terracotta-100: #ffe8e2;
+  --color-terracotta-200: #ffd2c6;
+  --color-terracotta-500: #ba4d33;
+  --color-terracotta-600: #9d3923;
+  --color-terracotta-700: #7c2a17;
+
+  --color-bronze-50: #faf6f0;
+  --color-bronze-100: #f4ede1;
+  --color-bronze-500: #9e7339;
+  --color-bronze-600: #835c27;
+  --color-bronze-700: #67461c;
+
+  --font-lp-serif: var(--font-domine), Georgia, serif;
+  --font-lp-sans: var(--font-public-sans), Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  /* Overrides Tailwind's built-in --font-mono default, but the dashboard uses the
+     `font-mono` utility zero times (grep-verified), so this is inert outside /. */
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+
+  --shadow-warm-card: 0 10px 30px -5px rgba(56, 35, 26, 0.05), 0 0 0 1px rgba(91, 58, 41, 0.08);
+  --shadow-warm-card-hover: 0 20px 35px -5px rgba(91, 58, 41, 0.12), 0 0 0 1px rgba(186, 110, 74, 0.3);
+  --shadow-warm-glow: 0 25px 60px -15px rgba(91, 58, 41, 0.22);
+  --shadow-warm-lg: 0 18px 40px -10px rgba(56, 35, 26, 0.12);
 }
 
 html,
@@ -56,4 +125,176 @@ body {
   .no-print {
     display: none !important;
   }
+}
+
+/* Landing page only (app/page.tsx wraps it in .lp). The dashboard keeps Georgia headings
+   and must not inherit the marketing type scale or the horizontal clip. */
+html:has(.lp) { scroll-behavior: smooth; }
+html:has(.lp), body:has(.lp) { overflow-x: hidden; }
+
+.lp :is(h1, h2, h3, h4),
+.lp .font-serif-heading { font-family: var(--font-lp-serif); }
+
+/* Scroll-reveal and the FAQ accordion animate opacity/transform only (compositor-only
+   properties — no layout or paint work per frame), so they stay smooth without needing this
+   guard for performance. This guard is for the person who asked their OS for less motion:
+   collapsing straight to the end state is both the accessible choice and, for them, the
+   cheapest one — no animation to skip means no work to skip. */
+@media (prefers-reduced-motion: reduce) {
+  .lp *, .lp *::before, .lp *::after {
+    transition-duration: 0.001ms !important;
+    animation-duration: 0.001ms !important;
+  }
+}
+
+/* Landing page only — grant-ledger's glassy CTA buttons/tiles. Class names are globally
+   unique (destination has none of them), so no `.lp` scoping is needed on the selectors
+   themselves. */
+
+/* Glassy CTA buttons: blur, shine sweep, lift on hover. Colors reuse our theme tokens. */
+.glass-btn {
+  position: relative;
+  overflow: hidden;
+  border: 1.5px solid;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  transition:
+    transform 0.6s cubic-bezier(0.16, 1, 0.3, 1),
+    box-shadow 0.6s cubic-bezier(0.16, 1, 0.3, 1),
+    background 0.6s cubic-bezier(0.16, 1, 0.3, 1),
+    border-color 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.glass-btn::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  left: -100%;
+  width: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.25), transparent);
+  transition: left 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+  pointer-events: none;
+}
+
+.glass-btn:hover::before {
+  left: 100%;
+}
+
+.glass-btn:active {
+  transform: translateY(-1px) scale(0.99);
+  transition-duration: 0.15s;
+}
+
+.glass-btn-arrow {
+  display: inline-block;
+  transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.glass-btn:hover .glass-btn-arrow {
+  transform: translateX(4px);
+}
+
+/* Solid brand-brown glass (primary CTAs) */
+.glass-btn-primary {
+  background: color-mix(in srgb, var(--color-primary) 85%, transparent);
+  border-color: color-mix(in srgb, var(--color-brand-900) 40%, transparent);
+  color: white;
+  box-shadow:
+    0 8px 32px rgba(91, 58, 41, 0.25),
+    0 2px 8px rgba(91, 58, 41, 0.15),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+
+.glass-btn-primary:hover {
+  background: color-mix(in srgb, var(--color-brand-900) 90%, transparent);
+  border-color: color-mix(in srgb, var(--color-brand-900) 55%, transparent);
+  transform: translateY(-4px) scale(1.02);
+  box-shadow:
+    0 15px 50px rgba(91, 58, 41, 0.35),
+    0 5px 20px rgba(91, 58, 41, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.18);
+}
+
+/* Near-white glass (light/outline CTAs on light backgrounds) */
+.glass-btn-light {
+  background: color-mix(in srgb, var(--color-lp-surface-container-lowest) 80%, transparent);
+  border-color: color-mix(in srgb, var(--color-outline-variant) 65%, transparent);
+  color: var(--color-on-surface);
+  box-shadow:
+    0 8px 32px rgba(56, 35, 26, 0.08),
+    0 2px 8px rgba(56, 35, 26, 0.05),
+    inset 0 1px 0 rgba(255, 255, 255, 0.5);
+}
+
+.glass-btn-light:hover {
+  background: color-mix(in srgb, var(--color-lp-surface-container) 85%, transparent);
+  border-color: var(--color-outline);
+  transform: translateY(-4px) scale(1.02);
+  box-shadow:
+    0 15px 50px rgba(56, 35, 26, 0.14),
+    0 5px 20px rgba(56, 35, 26, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.6);
+}
+
+/* On a dark pill (e.g. the sticky header), the default shadow's blur bleeds past the
+   thin bar onto the lighter page background below and reads as a second ghost shape. */
+.glass-btn-light.on-dark {
+  box-shadow:
+    0 2px 6px rgba(0, 0, 0, 0.25),
+    inset 0 1px 0 rgba(255, 255, 255, 0.5);
+}
+
+.glass-btn-light.on-dark:hover {
+  box-shadow:
+    0 4px 10px rgba(0, 0, 0, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.6);
+}
+
+/* Glassy tiles/cards: same shine-sweep + lift language as the buttons, for non-button surfaces. */
+.glass-tile {
+  position: relative;
+  overflow: hidden;
+  transition:
+    transform 0.5s cubic-bezier(0.16, 1, 0.3, 1),
+    box-shadow 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.glass-tile::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  left: -100%;
+  width: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.35), transparent);
+  transition: left 0.7s cubic-bezier(0.16, 1, 0.3, 1);
+  pointer-events: none;
+  z-index: 1;
+}
+
+.glass-tile:hover::before {
+  left: 100%;
+}
+
+.glass-tile:hover {
+  transform: translateY(-4px);
+}
+
+/* Translucent dark glass (outline CTAs on dark backgrounds) */
+.glass-btn-dark {
+  background: color-mix(in srgb, var(--color-brand-900) 70%, transparent);
+  border-color: color-mix(in srgb, var(--color-primary) 45%, transparent);
+  color: var(--color-primary-fixed-dim);
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.glass-btn-dark:hover {
+  background: color-mix(in srgb, var(--color-primary-container) 80%, transparent);
+  border-color: color-mix(in srgb, var(--color-primary) 65%, transparent);
+  color: white;
+  transform: translateY(-4px) scale(1.02);
+  box-shadow:
+    0 15px 50px rgba(0, 0, 0, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12);
 }

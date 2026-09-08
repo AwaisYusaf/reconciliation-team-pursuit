@@ -4,7 +4,7 @@
 Month-at-a-glance budget health per line item; the screen staff live on between entries.
 
 ## Scope
-Route `/` (authenticated). Table of line items with derived figures for the active month; low-budget emphasis; primary actions to Add Expense and Month-End Packet.
+Route `/r` (authenticated). Table of line items with derived figures for the active month; low-budget emphasis; primary actions to Add Expense and Month-End Packet.
 
 ## Data
 Reads `line_items` + calculation service (R3.1–R3.6). No writes.

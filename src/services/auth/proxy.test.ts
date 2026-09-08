@@ -24,9 +24,9 @@ function redirectTarget(response: Response): string | null {
 
 describe("unauthenticated routing", () => {
   it("sends a visitor with no cookie to the login page", () => {
-    expect(redirectTarget(proxy(request("/")))).toBe("/login");
-    expect(redirectTarget(proxy(request("/expenses")))).toBe("/login");
-    expect(redirectTarget(proxy(request("/packet")))).toBe("/login");
+    expect(redirectTarget(proxy(request("/")))).toBeNull();
+    expect(redirectTarget(proxy(request("/r/expenses")))).toBe("/login");
+    expect(redirectTarget(proxy(request("/r/packet")))).toBe("/login");
   });
 
   it("lets the auth routes through so a visitor can actually sign in", () => {
@@ -44,9 +44,9 @@ describe("a cookie that is present but not valid", () => {
   });
 
   it("lets them through to the app, where the real session check redirects them once", () => {
-    // No redirect here; app/(app)/layout.tsx calls getSession() and sends them to /login,
+    // No redirect here; app/r/layout.tsx calls getSession() and sends them to /login,
     // which the rule above then renders instead of bouncing back.
-    expect(redirectTarget(proxy(request("/", { cookie: "expired-or-revoked" })))).toBeNull();
+    expect(redirectTarget(proxy(request("/r", { cookie: "expired-or-revoked" })))).toBeNull();
   });
 });
 
@@ -66,7 +66,7 @@ describe("matcher scope", () => {
 
   it("covers the application routes", () => {
     expect(matcher.test("/")).toBe(true);
-    expect(matcher.test("/expenses")).toBe(true);
+    expect(matcher.test("/r/expenses")).toBe(true);
     expect(matcher.test("/login")).toBe(true);
   });
 });

@@ -4,7 +4,7 @@
 Everything outside the eight feature screens: sign in, sign up, onboarding, and the authenticated chrome (header, month selector, nav, log out) every other module renders inside.
 
 ## Scope
-- Routes: `/login`, `/signup`, `/onboarding/line-items`, `/onboarding/contract`, authenticated layout wrapping all app routes.
+- Routes: `/login`, `/signup`, `/onboarding/line-items`, `/onboarding/contract` (stay unprefixed — outside the `/r` group), authenticated layout wrapping all app routes at `/r`.
 - Session: email + password → custom DB-backed session (architecture §Auth, D-06: cookie token hashed at rest, 30-day sliding TTL, password change invalidates other sessions). No demo credentials anywhere in UI. Login throttled per email+IP (10 attempts / 15 min).
 - Sign-up (`SIGNUP_ENABLED`, default false → login-page link hidden and `/signup` renders "Sign-ups are closed.") creates org + user; `organizations.onboarded_at` is null until onboarding completes — login redirects into onboarding while null, straight to Dashboard after.
 - Onboarding step 1 **persists line items immediately** (rather than holding them in client state) so a refresh or an abandoned signup never loses the typed budget; `onboarded_at` stays null until step 2, which is what makes the flow resumable. Step 2 (Finish **and** Skip both) writes contract_settings (row always created, zero/null defaults), seeds payment sources + supporting doc types (D-19), and sets `onboarded_at`. `active_month` is initialised to the current month (America/Detroit, R2.5) at signup.

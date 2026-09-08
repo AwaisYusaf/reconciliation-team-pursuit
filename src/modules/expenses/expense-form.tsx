@@ -438,7 +438,7 @@ export function ExpenseForm({
         // The expense's own month, not wherever the org's shared active month happens to be
         // (R2.2 lets them differ) — otherwise landing on the active month's list after saving
         // into a different one made the just-saved record look like it had vanished.
-        router.push(`/expenses?month=${values.month}`);
+        router.push(`/r/expenses?month=${values.month}`);
         router.refresh();
         return;
       }
@@ -456,12 +456,12 @@ export function ExpenseForm({
         setError(
           `${uploadError} — the expense was saved; add the file again from Edit.`,
         );
-        router.push(`/expenses/${created.data.id}/edit`);
+        router.push(`/r/expenses/${created.data.id}/edit`);
         router.refresh();
         return;
       }
       toast.success(savedMessage());
-      router.push(`/expenses?month=${values.month}`);
+      router.push(`/r/expenses?month=${values.month}`);
       router.refresh();
     });
   }
@@ -894,7 +894,7 @@ export function ExpenseForm({
             </Button>
             <Button
               variant="quiet"
-              onClick={() => router.push("/expenses")}
+              onClick={() => router.push("/r/expenses")}
               disabled={pending}
             >
               Cancel
@@ -952,7 +952,7 @@ export function ExpenseForm({
                         setError(result.error);
                         return;
                       }
-                      router.push("/expenses");
+                      router.push("/r/expenses");
                       router.refresh();
                     });
                   },

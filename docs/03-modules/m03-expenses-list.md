@@ -4,7 +4,7 @@
 Everything recorded for the active month: totals by payment source, filters, documentation status at a glance, entry point to fix/edit/delete.
 
 ## Scope
-Route `/expenses`. Read view + row actions (edit navigates to m02; delete with confirm).
+Route `/r/expenses`. Read view + row actions (edit navigates to m02; delete with confirm).
 
 ## Data
 Reads `expenses` + `expense_documents` (status), calculation service for card totals. Deletes via m02's `deleteExpense`.

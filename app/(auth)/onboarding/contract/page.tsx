@@ -10,7 +10,7 @@ export const metadata = { title: "Your contract — Grant Expense Reconciliation
 export default async function OnboardingContractPage() {
   const session = await getSession();
   if (!session) redirect("/login");
-  if (session.onboarded) redirect("/");
+  if (session.onboarded) redirect("/r");
 
   return (
     <div className="w-full max-w-[720px] bg-surface border border-line rounded-[4px] p-5 sm:p-8">

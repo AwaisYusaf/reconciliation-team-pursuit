@@ -454,7 +454,7 @@ function VendorLibrary({
 
       {vendorCount > vendors.length && (
         <div className="mt-4">
-          <Link href="/settings/vendors" className={buttonClassName("secondary")}>
+          <Link href="/r/settings/vendors" className={buttonClassName("secondary")}>
             Show all {vendorCount} vendors
           </Link>
         </div>

@@ -13,7 +13,7 @@ export const metadata = { title: "Sign in — Grant Expense Reconciliation" };
 export default async function LoginPage() {
   // Real check, independent of proxy.ts.
   const session = await getSession();
-  if (session) redirect(session.onboarded ? "/" : "/onboarding/line-items");
+  if (session) redirect(session.onboarded ? "/r" : "/onboarding/line-items");
 
   return (
     <div className="w-full max-w-[440px] bg-surface border border-line rounded-[4px] px-8 pt-9 pb-8">

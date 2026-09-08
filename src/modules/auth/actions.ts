@@ -179,7 +179,7 @@ export async function signInAction(
   await startSession(user.id);
 
   // Onboarding is resumable: an abandoned signup lands back here until it completes.
-  redirect(user.onboardedAt ? "/" : "/onboarding/line-items");
+  redirect(user.onboardedAt ? "/r" : "/onboarding/line-items");
 }
 
 function tooManyAttempts(retryAfterSeconds: number): string {
@@ -398,7 +398,7 @@ export async function completeOnboardingAction(
       .where(eq(organizations.id, session.orgId));
   });
 
-  redirect("/");
+  redirect("/r");
 }
 
 /* ------------------------------------------------------------- shell state */

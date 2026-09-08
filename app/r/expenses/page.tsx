@@ -115,7 +115,7 @@ export default async function ExpensesPage({
             <DangerPanel tone="notice" className="mt-3 max-w-[560px]">
               This is where your last save landed — not your active month (
               {monthLabel(session.activeMonth)}).{" "}
-              <Link href="/expenses" className="underline">
+              <Link href="/r/expenses" className="underline">
                 Go to your active month
               </Link>
               .
@@ -123,7 +123,7 @@ export default async function ExpensesPage({
           )}
         </div>
         <Link
-          href="/expenses/trash"
+          href="/r/expenses/trash"
           className={buttonClassName("secondary", "min-h-11 px-4 text-[15px] gap-2")}
         >
           <svg viewBox="0 0 20 20" className="w-4 h-4 flex-none" aria-hidden="true">

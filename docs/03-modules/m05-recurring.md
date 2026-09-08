@@ -4,7 +4,7 @@
 The fixed monthly set — software subscriptions and salaries — added to a month in clicks instead of re-typed. Nothing is ever automatic (R8.3).
 
 ## Scope
-Route `/recurring`. Managed list (CRUD) + per-row "Add to {month}" with added-state and undo.
+Route `/r/recurring`. Managed list (CRUD) + per-row "Add to {month}" with added-state and undo.
 
 ## Data
 Reads/writes `recurring_items`; creates `expenses` (no documents — R4.5). Added detection: an expense exists in the active month with the same name (case-insensitive) + line item.
