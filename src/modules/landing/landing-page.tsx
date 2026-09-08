@@ -94,7 +94,7 @@ export function LandingPage() {
 </svg>
 </div>
 <div className="flex flex-col">
-<span className="text-base font-bold tracking-tight text-white font-lp-serif leading-none">GrantLedger</span>
+<span className="text-base font-semibold tracking-tight text-white font-lp-serif leading-none">GrantLedger</span>
 </div>
 </Link>
 
@@ -107,7 +107,7 @@ export function LandingPage() {
 </nav>
 
 <div className="flex items-center space-x-3 sm:space-x-4">
-<a className="glass-btn glass-btn-light on-dark inline-flex items-center justify-center px-4 sm:px-5 py-1.5 rounded-full text-xs font-bold" href="#schedule-walkthrough">
+<a className="glass-btn glass-btn-light on-dark inline-flex items-center justify-center px-4 sm:px-5 py-1.5 rounded-full text-xs font-semibold" href="#schedule-walkthrough">
         Schedule Walkthrough
       </a>
 </div>
@@ -126,7 +126,7 @@ export function LandingPage() {
 <span className="w-2 h-2 rounded-full bg-brand-700 animate-pulse"></span> Built for grant-funded nonprofit reconciliation
         </div>
 
-<h1 className="text-3xl sm:text-4xl lg:text-4xl xl:text-5xl font-bold tracking-tight text-on-surface font-lp-serif leading-[1.15] mb-5">
+<h1 className="text-3xl sm:text-4xl lg:text-4xl xl:text-5xl font-semibold tracking-tight text-on-surface font-lp-serif leading-[1.15] mb-5">
           Take control of <span className="text-primary italic font-lp-serif">your</span>{" "}<br /><span className="text-primary italic font-lp-serif">monthly reconciliation.</span>
 </h1>
 
@@ -156,7 +156,7 @@ export function LandingPage() {
 
   <div className="border-b border-outline-variant/50 pb-1 sm:pb-1.5 mb-1.5 sm:mb-2">
     <nav className="flex items-center gap-1.5 sm:gap-2.5 overflow-hidden text-[6px] sm:text-[8px] font-medium text-on-surface-variant">
-      <a className="pb-2 -mb-2 border-b-2 border-primary text-on-surface font-bold whitespace-nowrap" href="#">Dashboard</a>
+      <a className="pb-2 -mb-2 border-b-2 border-primary text-on-surface font-semibold whitespace-nowrap" href="#">Dashboard</a>
       <a className="pb-2 -mb-2 border-b-2 border-transparent hover:text-on-surface whitespace-nowrap" href="#">Add Expense</a>
       <a className="pb-2 -mb-2 border-b-2 border-transparent hover:text-on-surface whitespace-nowrap" href="#">Expenses</a>
       <a className="pb-2 -mb-2 border-b-2 border-transparent hover:text-on-surface whitespace-nowrap" href="#">Cover Sheets</a>
@@ -169,35 +169,35 @@ export function LandingPage() {
   </div>
 
   <div className="mb-1.5 sm:mb-2">
-    <h2 className="text-[10px] sm:text-xs lg:text-sm font-bold text-on-surface font-lp-serif tracking-tight leading-none">Dashboard</h2>
+    <h2 className="text-[10px] sm:text-xs lg:text-sm font-semibold text-on-surface font-lp-serif tracking-tight leading-none">Dashboard</h2>
     <p className="text-[7px] sm:text-[8px] text-on-surface-variant font-normal leading-tight mt-0.5">Budget status for August 2026.</p>
   </div>
 
   <div className="grid grid-cols-3 gap-1 sm:gap-1.5 mb-1.5 sm:mb-2">
     <div className="bg-lp-surface-container-lowest/70 backdrop-blur-md border border-outline-variant/50 rounded-lg p-1 sm:p-1.5 flex flex-col gap-0.5 justify-between ring-1 ring-inset ring-white/40">
       <span className="text-[6px] sm:text-[7px] font-semibold uppercase tracking-wider text-on-surface-variant truncate">Original Approved Budget</span>
-      <div className="text-[9px] sm:text-xs lg:text-sm font-bold text-on-surface font-lp-serif tracking-tight whitespace-nowrap">$598,692.00</div>
+      <div className="text-[9px] sm:text-xs lg:text-sm font-semibold text-on-surface font-lp-serif tracking-tight whitespace-nowrap">$598,692.00</div>
     </div>
     <div className="bg-lp-surface-container-lowest/70 backdrop-blur-md border border-outline-variant/50 rounded-lg p-1 sm:p-1.5 flex flex-col gap-0.5 justify-between ring-1 ring-inset ring-white/40">
       <span className="text-[6px] sm:text-[7px] font-semibold uppercase tracking-wider text-on-surface-variant truncate">Total Spent To Date</span>
-      <div className="text-[9px] sm:text-xs lg:text-sm font-bold text-on-surface font-lp-serif tracking-tight whitespace-nowrap">$22,220.00</div>
+      <div className="text-[9px] sm:text-xs lg:text-sm font-semibold text-on-surface font-lp-serif tracking-tight whitespace-nowrap">$22,220.00</div>
     </div>
     <div className="bg-lp-surface-container-lowest/70 backdrop-blur-md border border-outline-variant/50 rounded-lg p-1 sm:p-1.5 flex flex-col gap-0.5 justify-between ring-1 ring-inset ring-white/40">
       <span className="text-[6px] sm:text-[7px] font-semibold uppercase tracking-wider text-on-surface-variant truncate">Total Remaining</span>
-      <div className="text-[9px] sm:text-xs lg:text-sm font-bold text-on-surface font-lp-serif tracking-tight whitespace-nowrap">$576,472.00</div>
+      <div className="text-[9px] sm:text-xs lg:text-sm font-semibold text-on-surface font-lp-serif tracking-tight whitespace-nowrap">$576,472.00</div>
     </div>
   </div>
   <p className="text-[6px] sm:text-[8px] text-on-surface-variant/80 italic mb-1.5 sm:mb-2 leading-snug">The whole grant to date, across every month - 4% of the approved budget committed.</p>
 
   <div className="mb-1 sm:mb-1.5">
-    <h3 className="text-[9px] sm:text-[11px] lg:text-xs font-bold text-on-surface font-lp-serif tracking-tight leading-tight">August 2026 on its own</h3>
+    <h3 className="text-[9px] sm:text-[11px] lg:text-xs font-semibold text-on-surface font-lp-serif tracking-tight leading-tight">August 2026 on its own</h3>
     <p className="text-[6px] sm:text-[8px] text-on-surface-variant leading-snug mt-0.5">Opening balance, what this month spent, and what is left at the end of it. Each month starts where the last one closed.</p>
   </div>
 
   <div className="bg-lp-surface-container-lowest/70 backdrop-blur-md rounded-lg border border-outline-variant/50 overflow-hidden flex-1 ring-1 ring-inset ring-white/40">
     <table className="w-full text-left text-[6px] sm:text-[8px] lg:text-[9px]">
       <thead>
-        <tr className="border-b-2 border-on-surface/70 font-bold uppercase tracking-wider text-on-surface-variant">
+        <tr className="border-b-2 border-on-surface/70 font-semibold uppercase tracking-wider text-on-surface-variant">
           <th className="py-1 sm:py-1.5 px-1.5 sm:px-2 font-semibold text-left">Line Item</th>
           <th className="py-1 sm:py-1.5 px-1.5 sm:px-2 font-semibold text-right">Opening Balance</th>
           <th className="py-1 sm:py-1.5 px-1.5 sm:px-2 font-semibold text-right">Spent In Aug</th>
@@ -209,25 +209,25 @@ export function LandingPage() {
           <td className="py-1 sm:py-1.5 px-1.5 sm:px-2 font-medium text-on-surface">Salary</td>
           <td className="py-1 sm:py-1.5 px-1.5 sm:px-2 text-right font-mono text-on-surface-variant">$444,692.00</td>
           <td className="py-1 sm:py-1.5 px-1.5 sm:px-2 text-right font-mono text-tertiary font-semibold">$5,032.00</td>
-          <td className="py-1 sm:py-1.5 px-1.5 sm:px-2 text-right font-mono font-bold text-on-surface">$439,660.00</td>
+          <td className="py-1 sm:py-1.5 px-1.5 sm:px-2 text-right font-mono font-semibold text-on-surface">$439,660.00</td>
         </tr>
         <tr className="hover:bg-lp-surface-container-low/50 transition-colors">
           <td className="py-1 sm:py-1.5 px-1.5 sm:px-2 font-medium text-on-surface">Analytical Support</td>
           <td className="py-1 sm:py-1.5 px-1.5 sm:px-2 text-right font-mono text-on-surface-variant">$79,412.00</td>
           <td className="py-1 sm:py-1.5 px-1.5 sm:px-2 text-right font-mono text-tertiary font-semibold">$600.00</td>
-          <td className="py-1 sm:py-1.5 px-1.5 sm:px-2 text-right font-mono font-bold text-on-surface">$78,812.00</td>
+          <td className="py-1 sm:py-1.5 px-1.5 sm:px-2 text-right font-mono font-semibold text-on-surface">$78,812.00</td>
         </tr>
         <tr className="hover:bg-lp-surface-container-low/50 transition-colors">
           <td className="py-1 sm:py-1.5 px-1.5 sm:px-2 font-medium text-on-surface">Field Operations &amp; Supplies</td>
           <td className="py-1 sm:py-1.5 px-1.5 sm:px-2 text-right font-mono text-on-surface-variant">$48,588.00</td>
           <td className="py-1 sm:py-1.5 px-1.5 sm:px-2 text-right font-mono text-tertiary font-semibold">$1,240.00</td>
-          <td className="py-1 sm:py-1.5 px-1.5 sm:px-2 text-right font-mono font-bold text-on-surface">$47,348.00</td>
+          <td className="py-1 sm:py-1.5 px-1.5 sm:px-2 text-right font-mono font-semibold text-on-surface">$47,348.00</td>
         </tr>
         <tr className="hover:bg-lp-surface-container-low/50 transition-colors">
           <td className="py-1 sm:py-1.5 px-1.5 sm:px-2 font-medium text-on-surface">Participant Support &amp; Travel</td>
           <td className="py-1 sm:py-1.5 px-1.5 sm:px-2 text-right font-mono text-on-surface-variant">$26,000.00</td>
           <td className="py-1 sm:py-1.5 px-1.5 sm:px-2 text-right font-mono text-tertiary font-semibold">$1,548.00</td>
-          <td className="py-1 sm:py-1.5 px-1.5 sm:px-2 text-right font-mono font-bold text-on-surface">$24,452.00</td>
+          <td className="py-1 sm:py-1.5 px-1.5 sm:px-2 text-right font-mono font-semibold text-on-surface">$24,452.00</td>
         </tr>
       </tbody>
     </table>
@@ -261,7 +261,7 @@ export function LandingPage() {
 <div className="inline-flex items-center px-3.5 py-1 rounded-full bg-lp-surface-container-high border border-outline-variant text-xs font-semibold text-brand-800 mb-4">
         The Cost of Manual Reconciliation
       </div>
-<h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight text-on-surface font-lp-serif mb-4 max-w-3xl mx-auto">
+<h2 className="text-3xl sm:text-4xl lg:text-5xl font-semibold tracking-tight text-on-surface font-lp-serif mb-4 max-w-3xl mx-auto">
         Manual reconciliation shouldn&apos;t take three days every month, or cost weeks of delayed reimbursement.
       </h2>
 <p className="text-base sm:text-lg text-on-surface-variant max-w-2xl mx-auto mb-16">
@@ -273,12 +273,12 @@ export function LandingPage() {
 <div className="glass-tile bg-lp-surface-container-lowest/60 backdrop-blur-xl rounded-3xl p-8 border-2 border-primary/45 shadow-warm-card flex flex-col justify-between ring-1 ring-inset ring-white/30">
 <div>
 <div className="flex items-center justify-between mb-4">
-<div className="w-10 h-10 rounded-xl bg-terracotta-100/75 backdrop-blur-md text-terracotta-700 ring-1 ring-inset ring-white/40 border-2 border-primary/15 flex items-center justify-center font-bold">
+<div className="w-10 h-10 rounded-xl bg-terracotta-100/75 backdrop-blur-md text-terracotta-700 ring-1 ring-inset ring-white/40 border-2 border-primary/15 flex items-center justify-center font-semibold">
 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
 </div>
-<span className="text-xs font-bold font-mono text-tertiary bg-tertiary-container/60 px-2.5 py-1 rounded-full">24+ Staff Hours Lost</span>
+<span className="text-xs font-semibold font-mono text-tertiary bg-tertiary-container/60 px-2.5 py-1 rounded-full">24+ Staff Hours Lost</span>
 </div>
-<h3 className="text-xl font-bold text-on-surface font-lp-serif mb-2">Scattered Receipts &amp; Lost Hours</h3>
+<h3 className="text-xl font-semibold text-on-surface font-lp-serif mb-2">Scattered Receipts &amp; Lost Hours</h3>
 <p className="text-xs sm:text-sm text-on-surface-variant mb-6 leading-relaxed">
               Staff spend 2 to 3 full working days every month tracking down lost vendor slips from bank statements, WhatsApp chats, and inbox clutter instead of serving community youth and families.
             </p>
@@ -289,7 +289,7 @@ export function LandingPage() {
 <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
                 Staples Office Pack
               </span>
-<span className="font-bold text-[10px] bg-tertiary-container text-tertiary px-2 py-0.5 rounded">Missing Proof of Pay</span>
+<span className="font-semibold text-[10px] bg-tertiary-container text-tertiary px-2 py-0.5 rounded">Missing Proof of Pay</span>
 </div>
 <div className="flex items-center justify-between text-xs p-2.5 rounded-lg bg-lp-surface-container-lowest/70 backdrop-blur-md border border-outline-variant/50 text-on-surface-variant">
 <span className="">Youth Workshop Refreshments</span>
@@ -301,12 +301,12 @@ export function LandingPage() {
 <div className="glass-tile bg-lp-surface-container-lowest/60 backdrop-blur-xl rounded-3xl p-8 border-2 border-primary/45 shadow-warm-card flex flex-col justify-between ring-1 ring-inset ring-white/30">
 <div>
 <div className="flex items-center justify-between mb-4">
-<div className="w-10 h-10 rounded-xl bg-amber-100/75 backdrop-blur-md text-amber-800 ring-1 ring-inset ring-white/40 border-2 border-primary/15 flex items-center justify-center font-bold">
+<div className="w-10 h-10 rounded-xl bg-amber-100/75 backdrop-blur-md text-amber-800 ring-1 ring-inset ring-white/40 border-2 border-primary/15 flex items-center justify-center font-semibold">
 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
 </div>
-<span className="text-xs font-bold font-mono text-amber-800 bg-amber-100 px-2.5 py-1 rounded-full">Budget Drift Risk</span>
+<span className="text-xs font-semibold font-mono text-amber-800 bg-amber-100 px-2.5 py-1 rounded-full">Budget Drift Risk</span>
 </div>
-<h3 className="text-xl font-bold text-on-surface font-lp-serif mb-2">Zero Early Warning on Drift</h3>
+<h3 className="text-xl font-semibold text-on-surface font-lp-serif mb-2">Zero Early Warning on Drift</h3>
 <p className="text-xs sm:text-sm text-on-surface-variant mb-6 leading-relaxed">
               Without continuous real-time ledger tracking, directors only discover an overspent budget line when month-end books close, putting grant compliance and reimbursement guarantees at immediate risk.
             </p>
@@ -314,7 +314,7 @@ export function LandingPage() {
 <div className="glass-tile w-full bg-lp-surface-container/60 backdrop-blur-lg rounded-2xl p-4 border-2 border-primary/18 ring-1 ring-inset ring-white/25">
 <div className="flex justify-between items-center text-xs mb-2">
 <span className="font-semibold text-on-surface">Participant Support Line</span>
-<span className="font-bold text-tertiary text-[11px]">104% Overcommitted</span>
+<span className="font-semibold text-tertiary text-[11px]">104% Overcommitted</span>
 </div>
 <div className="w-full bg-lp-surface-container-highest rounded-full h-2.5 overflow-hidden mb-2">
 <div className="bg-tertiary h-2.5 rounded-full" style={{ width: "100%" }}></div>
@@ -326,12 +326,12 @@ export function LandingPage() {
 <div className="glass-tile bg-lp-surface-container-lowest/60 backdrop-blur-xl rounded-3xl p-8 border-2 border-primary/45 shadow-warm-card flex flex-col justify-between ring-1 ring-inset ring-white/30">
 <div>
 <div className="flex items-center justify-between mb-4">
-<div className="w-10 h-10 rounded-xl bg-brand-100/75 backdrop-blur-md text-brand-800 ring-1 ring-inset ring-white/40 border-2 border-primary/15 flex items-center justify-center font-bold">
+<div className="w-10 h-10 rounded-xl bg-brand-100/75 backdrop-blur-md text-brand-800 ring-1 ring-inset ring-white/40 border-2 border-primary/15 flex items-center justify-center font-semibold">
 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
 </div>
-<span className="text-xs font-bold font-mono text-tertiary bg-tertiary-container/60 px-2.5 py-1 rounded-full">4–6 Wk Payment Holds</span>
+<span className="text-xs font-semibold font-mono text-tertiary bg-tertiary-container/60 px-2.5 py-1 rounded-full">4–6 Wk Payment Holds</span>
 </div>
-<h3 className="text-xl font-bold text-on-surface font-lp-serif mb-2">Rejected Filing Packets</h3>
+<h3 className="text-xl font-semibold text-on-surface font-lp-serif mb-2">Rejected Filing Packets</h3>
 <p className="text-xs sm:text-sm text-on-surface-variant mb-6 leading-relaxed">
               Mismatched formula totals between cover sheet tables and Excel summaries trigger instant audit kicks. The review clock resets to day one, trapping non-profit payroll in limbo.
             </p>
@@ -339,11 +339,11 @@ export function LandingPage() {
 <div className="glass-tile w-full bg-lp-surface-container/60 backdrop-blur-lg rounded-2xl p-4 flex flex-col gap-2 border-2 border-primary/18 ring-1 ring-inset ring-white/25">
 <div className="flex items-center justify-between text-xs">
 <span className="text-on-surface-variant">Municipal Reviewer Portal</span>
-<span className="font-bold text-tertiary">Status: REJECTED</span>
+<span className="font-semibold text-tertiary">Status: REJECTED</span>
 </div>
 <div className="flex items-center justify-between text-xs">
 <span className="text-on-surface-variant">Cover Sheet vs Ledger</span>
-<span className="font-bold text-tertiary text-[11px]">Variance $180.00</span>
+<span className="font-semibold text-tertiary text-[11px]">Variance $180.00</span>
 </div>
 <div className="text-[11px] text-brand-900 bg-brand-100/75 backdrop-blur-md p-2 rounded-lg border border-brand-200/60 mt-1">
               &quot;Filing returned. Contract reimbursement held pending resubmission.&quot;
@@ -404,7 +404,7 @@ export function LandingPage() {
 <div className="inline-flex items-center px-3.5 py-1 rounded-full bg-lp-surface-container-high border border-outline-variant text-xs font-semibold text-brand-800 mb-4">
           From Expense to Evidence
         </div>
-<h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight text-on-surface font-lp-serif mb-4">
+<h2 className="text-3xl sm:text-4xl lg:text-5xl font-semibold tracking-tight text-on-surface font-lp-serif mb-4">
           The 5-Step Evidence Flow
         </h2>
 <p className="text-base sm:text-lg text-on-surface-variant">
@@ -417,11 +417,11 @@ export function LandingPage() {
 <FlowStep>
 <div className="flex gap-5">
 <div className="flex flex-col items-center flex-shrink-0">
-<div className="w-9 h-9 rounded-full bg-primary text-white font-bold text-xs flex items-center justify-center flex-shrink-0">1</div>
+<div className="w-9 h-9 rounded-full bg-primary text-white font-semibold text-xs flex items-center justify-center flex-shrink-0">1</div>
 <div className="w-0.5 flex-1 bg-primary/25 mt-2"></div>
 </div>
 <div className="flex-1 pb-8">
-<h3 className="text-sm font-bold text-on-surface font-lp-serif mb-1.5">Capture at Event</h3>
+<h3 className="text-sm font-semibold text-on-surface font-lp-serif mb-1.5">Capture at Event</h3>
 <p className="text-xs text-on-surface-variant leading-relaxed mb-2">
               Log payee, amount, date, and card/check source at the exact moment of payment.
             </p>
@@ -433,11 +433,11 @@ export function LandingPage() {
 <FlowStep>
 <div className="flex gap-5">
 <div className="flex flex-col items-center flex-shrink-0">
-<div className="w-9 h-9 rounded-full bg-primary text-white font-bold text-xs flex items-center justify-center flex-shrink-0">2</div>
+<div className="w-9 h-9 rounded-full bg-primary text-white font-semibold text-xs flex items-center justify-center flex-shrink-0">2</div>
 <div className="w-0.5 flex-1 bg-primary/25 mt-2"></div>
 </div>
 <div className="flex-1 pb-8">
-<h3 className="text-sm font-bold text-on-surface font-lp-serif mb-1.5">Proof &amp; Receipt Gate</h3>
+<h3 className="text-sm font-semibold text-on-surface font-lp-serif mb-1.5">Proof &amp; Receipt Gate</h3>
 <p className="text-xs text-on-surface-variant leading-relaxed mb-2">
               Attach itemized receipt and bank proof. Gate prevents locking incomplete expenses.
             </p>
@@ -449,11 +449,11 @@ export function LandingPage() {
 <FlowStep>
 <div className="flex gap-5">
 <div className="flex flex-col items-center flex-shrink-0">
-<div className="w-9 h-9 rounded-full bg-primary text-white font-bold text-xs flex items-center justify-center flex-shrink-0">3</div>
+<div className="w-9 h-9 rounded-full bg-primary text-white font-semibold text-xs flex items-center justify-center flex-shrink-0">3</div>
 <div className="w-0.5 flex-1 bg-primary/25 mt-2"></div>
 </div>
 <div className="flex-1 pb-8">
-<h3 className="text-sm font-bold text-on-surface font-lp-serif mb-1.5">Line-Item Mapping</h3>
+<h3 className="text-sm font-semibold text-on-surface font-lp-serif mb-1.5">Line-Item Mapping</h3>
 <p className="text-xs text-on-surface-variant leading-relaxed mb-2">
               Directly assign against approved contract budget lines or split between multiple codes.
             </p>
@@ -465,11 +465,11 @@ export function LandingPage() {
 <FlowStep>
 <div className="flex gap-5">
 <div className="flex flex-col items-center flex-shrink-0">
-<div className="w-9 h-9 rounded-full bg-primary text-white font-bold text-xs flex items-center justify-center flex-shrink-0">4</div>
+<div className="w-9 h-9 rounded-full bg-primary text-white font-semibold text-xs flex items-center justify-center flex-shrink-0">4</div>
 <div className="w-0.5 flex-1 bg-primary/25 mt-2"></div>
 </div>
 <div className="flex-1 pb-8">
-<h3 className="text-sm font-bold text-on-surface font-lp-serif mb-1.5">Variance Check</h3>
+<h3 className="text-sm font-semibold text-on-surface font-lp-serif mb-1.5">Variance Check</h3>
 <p className="text-xs text-on-surface-variant leading-relaxed mb-2">
               Continuous live depletion check. Prevents inadvertent category overspends in real time.
             </p>
@@ -481,10 +481,10 @@ export function LandingPage() {
 <FlowStep>
 <div className="flex gap-5">
 <div className="flex flex-col items-center flex-shrink-0">
-<div className="w-9 h-9 rounded-full bg-secondary text-white font-bold text-xs flex items-center justify-center flex-shrink-0">5</div>
+<div className="w-9 h-9 rounded-full bg-secondary text-white font-semibold text-xs flex items-center justify-center flex-shrink-0">5</div>
 </div>
 <div className="flex-1">
-<h3 className="text-sm font-bold text-on-surface font-lp-serif mb-1.5">1-Click Compilation</h3>
+<h3 className="text-sm font-semibold text-on-surface font-lp-serif mb-1.5">1-Click Compilation</h3>
 <p className="text-xs text-on-surface-variant leading-relaxed mb-2">
               Generates official Word cover sheet, Excel sub-ledger, and &lt;25MB merged filing PDF.
             </p>
@@ -525,7 +525,7 @@ export function LandingPage() {
 <div className="inline-flex items-center px-3.5 py-1 rounded-full bg-lp-surface-container-high border border-outline-variant text-xs font-semibold text-brand-800 mb-4">
           Data Integrity Architecture
         </div>
-<h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight text-on-surface font-lp-serif mb-4">
+<h2 className="text-3xl sm:text-4xl lg:text-5xl font-semibold tracking-tight text-on-surface font-lp-serif mb-4">
           What Each Transaction Record Holds
         </h2>
 <p className="text-base sm:text-lg text-on-surface-variant">
@@ -538,9 +538,9 @@ export function LandingPage() {
 <div className="flex items-center justify-between border-b border-outline-variant/40 pb-5 mb-2">
 <div>
 <span className="text-[10px] font-mono uppercase tracking-widest text-on-surface-variant">Record #EXP-2026-084</span>
-<h3 className="text-lg sm:text-xl font-bold text-on-surface font-lp-serif mt-0.5">Youth Mentorship Safe Passage Transit</h3>
+<h3 className="text-lg sm:text-xl font-semibold text-on-surface font-lp-serif mt-0.5">Youth Mentorship Safe Passage Transit</h3>
 </div>
-<span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-secondary-container text-[#002113] text-xs font-bold border border-secondary/30 flex-shrink-0">
+<span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-secondary-container text-[#002113] text-xs font-semibold border border-secondary/30 flex-shrink-0">
 <span className="w-2 h-2 rounded-full bg-secondary"></span> Validated
             </span>
 </div>
@@ -612,7 +612,7 @@ Receipt + Bank Proof
 <div className="inline-flex items-center px-3.5 py-1 rounded-full bg-lp-surface-container-high border border-outline-variant text-xs font-semibold text-brand-800 mb-4">
           Core Engine
         </div>
-<h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight text-on-surface font-lp-serif mb-4">
+<h2 className="text-3xl sm:text-4xl lg:text-5xl font-semibold tracking-tight text-on-surface font-lp-serif mb-4">
           Live Category Tracking &amp; Packet Generation
         </h2>
 <p className="text-base sm:text-lg text-on-surface-variant">
@@ -626,7 +626,7 @@ Receipt + Bank Proof
 <div className="w-12 h-12 rounded-2xl bg-primary/75 backdrop-blur-md text-white flex items-center justify-center shadow-lg shadow-primary/30 ring-1 ring-inset ring-white/40 border-2 border-primary/15">
 <svg className="w-6 h-6 text-primary-fixed" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
 </div>
-<h3 className="text-2xl sm:text-3xl font-bold text-on-surface font-lp-serif">Proactive Category Depletion Tracking</h3>
+<h3 className="text-2xl sm:text-3xl font-semibold text-on-surface font-lp-serif">Proactive Category Depletion Tracking</h3>
 <p className="text-on-surface-variant leading-relaxed text-xs sm:text-sm">
               Know the exact balance remaining across each line item before approving purchase orders. Automatic thresholds warn you at 80% and 95% depletion to prevent accidental unallowable cost overruns.
             </p>
@@ -646,7 +646,7 @@ Receipt + Bank Proof
 <div className="flex items-center justify-between pb-4 border-b border-outline-variant/40">
 <div>
 <span className="text-xs text-on-surface-variant font-medium">Current Grant Fiscal Year (Month 2 of 12)</span>
-<div className="text-2xl font-bold text-on-surface font-lp-serif mt-0.5">$25,000.00 <span className="text-xs font-normal text-on-surface-variant font-lp-sans">spent of $500,000.00</span></div>
+<div className="text-2xl font-semibold text-on-surface font-lp-serif mt-0.5">$25,000.00 <span className="text-xs font-normal text-on-surface-variant font-lp-sans">spent of $500,000.00</span></div>
 </div>
 <span className="px-3 py-1 rounded-full bg-secondary-container text-[#002113] font-semibold text-xs">All 5 Lines In Good Standing</span>
 </div>
@@ -682,39 +682,39 @@ Receipt + Bank Proof
 <div className="w-10 h-10 rounded-xl bg-primary-fixed/75 backdrop-blur-md text-primary flex items-center justify-center mb-4 ring-1 ring-inset ring-white/30 border border-primary/12">
 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
 </div>
-<h4 className="text-lg font-bold text-on-surface font-lp-serif mb-1">Official Word Cover Sheets</h4>
+<h4 className="text-lg font-semibold text-on-surface font-lp-serif mb-1">Official Word Cover Sheets</h4>
 <p className="text-xs text-on-surface-variant mb-4 leading-relaxed">
             Exports directly to Microsoft Word (.docx) with formatted signature lines, funder contract headers, and category tables ready for officer sign-off.
           </p>
 <div className="bg-lp-surface-container/60 backdrop-blur-md rounded-xl p-3 border border-primary/15 text-[11px] font-mono text-on-surface-variant flex items-center justify-between">
 <span className="">DocuSign Signature Ready</span>
-<span className="text-secondary font-bold">Word .docx</span>
+<span className="text-secondary font-semibold">Word .docx</span>
 </div>
 </div>
 <div className="glass-tile bg-lp-surface-container-lowest/60 backdrop-blur-xl rounded-3xl p-6 border-2 border-primary/45 shadow-warm-card hover:shadow-warm-card-hover ring-1 ring-inset ring-white/30">
 <div className="w-10 h-10 rounded-xl bg-secondary-container/75 backdrop-blur-md text-secondary flex items-center justify-center mb-4 ring-1 ring-inset ring-white/30 border border-primary/12">
 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M3 10h18M3 14h18m-9-4v8m-7 4h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
 </div>
-<h4 className="text-lg font-bold text-on-surface font-lp-serif mb-1">Formula-Verified Excel Summaries</h4>
+<h4 className="text-lg font-semibold text-on-surface font-lp-serif mb-1">Formula-Verified Excel Summaries</h4>
 <p className="text-xs text-on-surface-variant mb-4 leading-relaxed">
             Live formula links protect contract totals. Eliminates formula copy-paste errors that trigger immediate desk rejection from city grant reviewers.
           </p>
 <div className="bg-lp-surface-container/60 backdrop-blur-md rounded-xl p-3 border border-primary/15 text-[11px] font-mono text-on-surface-variant flex items-center justify-between">
 <span className="">Formula-Verified Totals</span>
-<span className="text-secondary font-bold">Excel .xlsx</span>
+<span className="text-secondary font-semibold">Excel .xlsx</span>
 </div>
 </div>
 <div className="glass-tile bg-lp-surface-container-lowest/60 backdrop-blur-xl rounded-3xl p-6 border-2 border-primary/45 shadow-warm-card hover:shadow-warm-card-hover ring-1 ring-inset ring-white/30">
 <div className="w-10 h-10 rounded-xl bg-brand-100/75 backdrop-blur-md text-brand-800 flex items-center justify-center mb-4 ring-1 ring-inset ring-white/30 border border-primary/12">
 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
 </div>
-<h4 className="text-lg font-bold text-on-surface font-lp-serif mb-1">Merged &lt;25MB Filing PDF</h4>
+<h4 className="text-lg font-semibold text-on-surface font-lp-serif mb-1">Merged &lt;25MB Filing PDF</h4>
 <p className="text-xs text-on-surface-variant mb-4 leading-relaxed">
             Merges cover sheets, contract summaries, and receipt attachments into one paginated PDF file with automated ladder compression to stay under upload limits.
           </p>
 <div className="bg-lp-surface-container/60 backdrop-blur-md rounded-xl p-3 border border-primary/15 text-[11px] font-mono text-on-surface-variant flex items-center justify-between">
 <span className="">Merged_Packet_Safe.pdf</span>
-<span className="text-secondary font-bold">&lt; 25MB Enforced</span>
+<span className="text-secondary font-semibold">&lt; 25MB Enforced</span>
 </div>
 </div>
 </div>
@@ -724,10 +724,10 @@ Receipt + Bank Proof
 <section className="py-24 bg-gradient-to-b from-lp-surface-container-low to-lp-surface border-y border-outline-variant/40" data-purpose="ai-feature-section" id="ai-narratives">
 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
 <div className="max-w-4xl mx-auto text-center mb-16">
-<div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-primary text-white text-xs font-bold uppercase tracking-wider mb-4 shadow-sm">
+<div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-primary text-white text-xs font-semibold uppercase tracking-wider mb-4 shadow-sm">
 <span className="w-2 h-2 rounded-full bg-primary-fixed animate-ping"></span> Tier 2 Enhancement
         </div>
-<h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight text-on-surface font-lp-serif mb-4">
+<h2 className="text-3xl sm:text-4xl lg:text-5xl font-semibold tracking-tight text-on-surface font-lp-serif mb-4">
           Automated AI Monthly Executive &amp; Funder Summaries
         </h2>
 <p className="text-base sm:text-lg text-on-surface-variant leading-relaxed">
@@ -738,18 +738,18 @@ Receipt + Bank Proof
 <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
 
 <div className="lg:col-span-5 space-y-4">
-<h3 className="text-2xl font-bold text-on-surface font-lp-serif">What AI Summaries Deliver:</h3>
+<h3 className="text-2xl font-semibold text-on-surface font-lp-serif">What AI Summaries Deliver:</h3>
 <ul className="space-y-3.5 text-xs sm:text-sm text-on-surface-variant">
 <li className="flex items-start gap-3">
-<div className="w-5 h-5 rounded-full bg-secondary-container text-secondary flex items-center justify-center font-bold text-xs mt-0.5 flex-shrink-0">✓</div>
+<div className="w-5 h-5 rounded-full bg-secondary-container text-secondary flex items-center justify-center font-semibold text-xs mt-0.5 flex-shrink-0">✓</div>
 <span className=""><strong>Programmatic Milestone Synthesis</strong>: Translates line-item charges (van rentals, catering, training stipends) into cohesive impact statements for city monitors.</span>
 </li>
 <li className="flex items-start gap-3">
-<div className="w-5 h-5 rounded-full bg-secondary-container text-secondary flex items-center justify-center font-bold text-xs mt-0.5 flex-shrink-0">✓</div>
+<div className="w-5 h-5 rounded-full bg-secondary-container text-secondary flex items-center justify-center font-semibold text-xs mt-0.5 flex-shrink-0">✓</div>
 <span className=""><strong>Variance &amp; Anomaly Justification</strong>: Automatically generates professional rationale notes when a category fluctuates compared to prior months.</span>
 </li>
 <li className="flex items-start gap-3">
-<div className="w-5 h-5 rounded-full bg-secondary-container text-secondary flex items-center justify-center font-bold text-xs mt-0.5 flex-shrink-0">✓</div>
+<div className="w-5 h-5 rounded-full bg-secondary-container text-secondary flex items-center justify-center font-semibold text-xs mt-0.5 flex-shrink-0">✓</div>
 <span className=""><strong>Board &amp; Donor Ready</strong>: Exports one-page executive briefings tailored for Board of Directors and philanthropic funders with zero rewrite needed.</span>
 </li>
 </ul>
@@ -762,9 +762,9 @@ Receipt + Bank Proof
 <div className="flex items-center justify-between pb-3 border-b border-outline-variant/30 mb-4">
 <div className="flex items-center gap-2">
 <span className="w-2.5 h-2.5 rounded-full bg-secondary"></span>
-<span className="text-xs font-bold text-on-surface uppercase tracking-wider font-mono">Generated Funder Narrative Memo</span>
+<span className="text-xs font-semibold text-on-surface uppercase tracking-wider font-mono">Generated Funder Narrative Memo</span>
 </div>
-<span className="text-[11px] font-mono text-primary font-bold bg-primary-fixed/40 px-2.5 py-0.5 rounded-full">AI Output • Ready to Insert</span>
+<span className="text-[11px] font-mono text-primary font-semibold bg-primary-fixed/40 px-2.5 py-0.5 rounded-full">AI Output • Ready to Insert</span>
 </div>
 <div className="glass-tile bg-lp-surface-container-lowest/70 backdrop-blur-md rounded-xl p-4 sm:p-5 border-2 border-primary/15 ring-1 ring-inset ring-white/25 space-y-3 text-xs leading-relaxed text-on-surface">
 <p className="font-lp-serif italic text-primary-container text-sm">
@@ -792,7 +792,7 @@ Receipt + Bank Proof
 <div className="inline-flex items-center px-3.5 py-1 rounded-full bg-lp-surface-container-high border border-outline-variant text-xs font-semibold text-brand-800 mb-4">
           Audit Defensibility
         </div>
-<h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight text-on-surface font-lp-serif mb-4">
+<h2 className="text-3xl sm:text-4xl lg:text-5xl font-semibold tracking-tight text-on-surface font-lp-serif mb-4">
           Built for the Day the Auditor Knocks
         </h2>
 <p className="text-base sm:text-lg text-on-surface-variant">
@@ -801,29 +801,29 @@ Receipt + Bank Proof
 </div>
 <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
 <div className="glass-tile bg-lp-surface-container-lowest/60 backdrop-blur-xl p-6 rounded-2xl border-2 border-primary/45 shadow-warm-card ring-1 ring-inset ring-white/30">
-<div className="w-9 h-9 rounded-xl bg-brand-100/75 backdrop-blur-md text-primary ring-1 ring-inset ring-white/40 border-2 border-primary/15 flex items-center justify-center font-bold text-sm mb-3">Ø</div>
-<h3 className="text-base font-bold text-on-surface font-lp-serif mb-2">Zero Reconstructed Receipts</h3>
+<div className="w-9 h-9 rounded-xl bg-brand-100/75 backdrop-blur-md text-primary ring-1 ring-inset ring-white/40 border-2 border-primary/15 flex items-center justify-center font-semibold text-sm mb-3">Ø</div>
+<h3 className="text-base font-semibold text-on-surface font-lp-serif mb-2">Zero Reconstructed Receipts</h3>
 <p className="text-xs text-on-surface-variant leading-relaxed">
             Eliminates guesswork 9 months later. Every document was sealed at transaction time, not recreated before an audit.
           </p>
 </div>
 <div className="glass-tile bg-lp-surface-container-lowest/60 backdrop-blur-xl p-6 rounded-2xl border-2 border-primary/45 shadow-warm-card ring-1 ring-inset ring-white/30">
-<div className="w-9 h-9 rounded-xl bg-secondary-container/75 backdrop-blur-md text-secondary ring-1 ring-inset ring-white/40 border-2 border-primary/15 flex items-center justify-center font-bold text-sm mb-3">√</div>
-<h3 className="text-base font-bold text-on-surface font-lp-serif mb-2">Deterministic Gates</h3>
+<div className="w-9 h-9 rounded-xl bg-secondary-container/75 backdrop-blur-md text-secondary ring-1 ring-inset ring-white/40 border-2 border-primary/15 flex items-center justify-center font-semibold text-sm mb-3">√</div>
+<h3 className="text-base font-semibold text-on-surface font-lp-serif mb-2">Deterministic Gates</h3>
 <p className="text-xs text-on-surface-variant leading-relaxed">
             The software physically prevents staff from generating monthly packets until every single expense has dual proof attached.
           </p>
 </div>
 <div className="glass-tile bg-lp-surface-container-lowest/60 backdrop-blur-xl p-6 rounded-2xl border-2 border-primary/45 shadow-warm-card ring-1 ring-inset ring-white/30">
-<div className="w-9 h-9 rounded-xl bg-primary-fixed/75 backdrop-blur-md text-primary ring-1 ring-inset ring-white/40 border-2 border-primary/15 flex items-center justify-center font-bold text-sm mb-3">∞</div>
-<h3 className="text-base font-bold text-on-surface font-lp-serif mb-2">Permanent Audit Trail</h3>
+<div className="w-9 h-9 rounded-xl bg-primary-fixed/75 backdrop-blur-md text-primary ring-1 ring-inset ring-white/40 border-2 border-primary/15 flex items-center justify-center font-semibold text-sm mb-3">∞</div>
+<h3 className="text-base font-semibold text-on-surface font-lp-serif mb-2">Permanent Audit Trail</h3>
 <p className="text-xs text-on-surface-variant leading-relaxed">
             Every change, category assignment, and upload is timestamped and cryptographically logged for 7-year record retention.
           </p>
 </div>
 <div className="glass-tile bg-lp-surface-container-lowest/60 backdrop-blur-xl p-6 rounded-2xl border-2 border-primary/45 shadow-warm-card ring-1 ring-inset ring-white/30">
-<div className="w-9 h-9 rounded-xl bg-terracotta-100/75 backdrop-blur-md text-terracotta-700 ring-1 ring-inset ring-white/40 border-2 border-primary/15 flex items-center justify-center font-bold text-sm mb-3">§</div>
-<h3 className="text-base font-bold text-on-surface font-lp-serif mb-2">Filed Against Your Own Budget</h3>
+<div className="w-9 h-9 rounded-xl bg-terracotta-100/75 backdrop-blur-md text-terracotta-700 ring-1 ring-inset ring-white/40 border-2 border-primary/15 flex items-center justify-center font-semibold text-sm mb-3">§</div>
+<h3 className="text-base font-semibold text-on-surface font-lp-serif mb-2">Filed Against Your Own Budget</h3>
 <p className="text-xs text-on-surface-variant leading-relaxed">
             Every expense is categorized against your organization&apos;s own approved contract line items, not a generic bucket a reviewer has to reinterpret.
           </p>
@@ -838,7 +838,7 @@ Receipt + Bank Proof
 <div className="inline-flex items-center px-3.5 py-1 rounded-full bg-lp-surface-container-high border border-outline-variant text-xs font-semibold text-brand-800 mb-3">
           Our Origin
         </div>
-<h2 className="text-3xl sm:text-4xl font-bold tracking-tight text-on-surface font-lp-serif mb-4">
+<h2 className="text-3xl sm:text-4xl font-semibold tracking-tight text-on-surface font-lp-serif mb-4">
           Born in Detroit with Team Pursuit Global
         </h2>
 <p className="text-sm sm:text-base text-on-surface-variant max-w-xl mx-auto">
@@ -868,7 +868,7 @@ Receipt + Bank Proof
 <div className="inline-flex items-center px-3.5 py-1 rounded-full bg-lp-surface-container-high border border-outline-variant text-xs font-semibold text-brand-800 mb-4">
           Target Audience
         </div>
-<h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight text-on-surface font-lp-serif mb-4">
+<h2 className="text-3xl sm:text-4xl lg:text-5xl font-semibold tracking-tight text-on-surface font-lp-serif mb-4">
           Designed for Grant Subrecipients
         </h2>
 <p className="text-base text-on-surface-variant">
@@ -877,29 +877,29 @@ Receipt + Bank Proof
 </div>
 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
 <div className="glass-tile bg-lp-surface-container-lowest/60 backdrop-blur-xl p-6 rounded-2xl border-2 border-primary/45 shadow-warm-card ring-1 ring-inset ring-white/30">
-<div className="w-10 h-10 rounded-xl bg-primary-fixed/75 backdrop-blur-md text-primary ring-1 ring-inset ring-white/40 border-2 border-primary/15 flex items-center justify-center font-bold text-sm mb-4">01</div>
-<h3 className="text-base font-bold text-on-surface font-lp-serif mb-2">CVI &amp; Frontline Nonprofits</h3>
+<div className="w-10 h-10 rounded-xl bg-primary-fixed/75 backdrop-blur-md text-primary ring-1 ring-inset ring-white/40 border-2 border-primary/15 flex items-center justify-center font-semibold text-sm mb-4">01</div>
+<h3 className="text-base font-semibold text-on-surface font-lp-serif mb-2">CVI &amp; Frontline Nonprofits</h3>
 <p className="text-xs text-on-surface-variant leading-relaxed">
             Community Violence Intervention teams, youth programs, and grassroots groups with intense field spending.
           </p>
 </div>
 <div className="glass-tile bg-lp-surface-container-lowest/60 backdrop-blur-xl p-6 rounded-2xl border-2 border-primary/45 shadow-warm-card ring-1 ring-inset ring-white/30">
-<div className="w-10 h-10 rounded-xl bg-secondary-container/75 backdrop-blur-md text-secondary ring-1 ring-inset ring-white/40 border-2 border-primary/15 flex items-center justify-center font-bold text-sm mb-4">02</div>
-<h3 className="text-base font-bold text-on-surface font-lp-serif mb-2">Executive Directors</h3>
+<div className="w-10 h-10 rounded-xl bg-secondary-container/75 backdrop-blur-md text-secondary ring-1 ring-inset ring-white/40 border-2 border-primary/15 flex items-center justify-center font-semibold text-sm mb-4">02</div>
+<h3 className="text-base font-semibold text-on-surface font-lp-serif mb-2">Executive Directors</h3>
 <p className="text-xs text-on-surface-variant leading-relaxed">
             Leaders who need absolute peace of mind before signing monthly funder certifications and cover sheets.
           </p>
 </div>
 <div className="glass-tile bg-lp-surface-container-lowest/60 backdrop-blur-xl p-6 rounded-2xl border-2 border-primary/45 shadow-warm-card ring-1 ring-inset ring-white/30">
-<div className="w-10 h-10 rounded-xl bg-brand-100/75 backdrop-blur-md text-brand-800 ring-1 ring-inset ring-white/40 border-2 border-primary/15 flex items-center justify-center font-bold text-sm mb-4">03</div>
-<h3 className="text-base font-bold text-on-surface font-lp-serif mb-2">Finance &amp; Grant Managers</h3>
+<div className="w-10 h-10 rounded-xl bg-brand-100/75 backdrop-blur-md text-brand-800 ring-1 ring-inset ring-white/40 border-2 border-primary/15 flex items-center justify-center font-semibold text-sm mb-4">03</div>
+<h3 className="text-base font-semibold text-on-surface font-lp-serif mb-2">Finance &amp; Grant Managers</h3>
 <p className="text-xs text-on-surface-variant leading-relaxed">
             Operations teams responsible for keeping budgets balanced and filing packages submitted before deadline.
           </p>
 </div>
 <div className="glass-tile bg-lp-surface-container-lowest/60 backdrop-blur-xl p-6 rounded-2xl border-2 border-primary/45 shadow-warm-card ring-1 ring-inset ring-white/30">
-<div className="w-10 h-10 rounded-xl bg-terracotta-100/75 backdrop-blur-md text-terracotta-700 ring-1 ring-inset ring-white/40 border-2 border-primary/15 flex items-center justify-center font-bold text-sm mb-4">04</div>
-<h3 className="text-base font-bold text-on-surface font-lp-serif mb-2">Fiscal Sponsors &amp; Fiduciaries</h3>
+<div className="w-10 h-10 rounded-xl bg-terracotta-100/75 backdrop-blur-md text-terracotta-700 ring-1 ring-inset ring-white/40 border-2 border-primary/15 flex items-center justify-center font-semibold text-sm mb-4">04</div>
+<h3 className="text-base font-semibold text-on-surface font-lp-serif mb-2">Fiscal Sponsors &amp; Fiduciaries</h3>
 <p className="text-xs text-on-surface-variant leading-relaxed">
             Fiduciary sponsors managing multiple subgrantees who need uniform compliance without endless back-and-forth.
           </p>
@@ -915,7 +915,7 @@ Receipt + Bank Proof
 <div className="inline-flex items-center px-3.5 py-1 rounded-full bg-lp-surface-container-high border border-outline-variant text-xs font-semibold text-brand-800 mb-3">
           Transparent Pricing
         </div>
-<h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight text-on-surface font-lp-serif mb-4">
+<h2 className="text-3xl sm:text-4xl lg:text-5xl font-semibold tracking-tight text-on-surface font-lp-serif mb-4">
           Predictable Licensing for Grant-Funded Teams
         </h2>
 <p className="text-base text-on-surface-variant">
@@ -927,14 +927,14 @@ Receipt + Bank Proof
 <div className="glass-tile bg-lp-surface-container-lowest/60 backdrop-blur-xl rounded-3xl p-8 border-2 border-primary/45 shadow-warm-card hover:shadow-warm-card-hover flex flex-col justify-between ring-1 ring-inset ring-white/30">
 <div>
 <div className="flex justify-between items-center mb-4">
-<h3 className="text-2xl font-bold text-on-surface font-lp-serif">Reconciliation</h3>
+<h3 className="text-2xl font-semibold text-on-surface font-lp-serif">Reconciliation</h3>
 <span className="text-xs font-semibold px-3 py-1 rounded-full bg-lp-surface-container text-on-surface-variant border border-outline-variant/40">
                 Single Contract
               </span>
 </div>
 <div className="mb-6">
 <div className="flex items-baseline gap-2">
-<span className="text-4xl sm:text-5xl font-bold text-on-surface font-lp-serif">$297</span>
+<span className="text-4xl sm:text-5xl font-semibold text-on-surface font-lp-serif">$297</span>
 <span className="text-sm font-medium text-on-surface-variant">/ month</span>
 </div>
 <span className="text-xs text-on-surface-variant font-medium mt-1 block">Full core ledger &amp; packet generation</span>
@@ -969,7 +969,7 @@ Receipt + Bank Proof
               </li>
 </ul>
 </div>
-<a className="glass-btn glass-btn-light w-full py-3.5 rounded-xl text-center text-xs sm:text-sm font-bold" href="#schedule-walkthrough">
+<a className="glass-btn glass-btn-light w-full py-3.5 rounded-xl text-center text-xs sm:text-sm font-semibold" href="#schedule-walkthrough">
             Get Started with Reconciliation
           </a>
 </div>
@@ -980,17 +980,17 @@ Receipt + Bank Proof
           </div>
 <div>
 <div className="flex justify-between items-center mb-4">
-<h3 className="text-2xl font-bold text-on-surface font-lp-serif">Reconciliation + AI</h3>
+<h3 className="text-2xl font-semibold text-on-surface font-lp-serif">Reconciliation + AI</h3>
 <span className="text-xs font-semibold px-3 py-1 rounded-full bg-brand-100 text-brand-900 border border-brand-200">
                 All Features + AI
               </span>
 </div>
 <div className="mb-6">
 <div className="flex items-baseline gap-2">
-<span className="text-4xl sm:text-5xl font-bold text-on-surface font-lp-serif">$497</span>
+<span className="text-4xl sm:text-5xl font-semibold text-on-surface font-lp-serif">$497</span>
 <span className="text-sm font-medium text-on-surface-variant">/ month</span>
 </div>
-<span className="text-xs text-primary font-bold mt-1 block">Full Suite + Executive AI Narrative Generator</span>
+<span className="text-xs text-primary font-semibold mt-1 block">Full Suite + Executive AI Narrative Generator</span>
 </div>
 <p className="text-xs text-on-surface-variant mb-6 leading-relaxed">
               For teams requiring fast executive reporting, donor narratives, multi-category insights, and AI programmatic drafts.
@@ -1022,7 +1022,7 @@ Receipt + Bank Proof
               </li>
 </ul>
 </div>
-<a className="glass-btn glass-btn-primary inline-flex w-full items-center justify-center gap-2 py-3.5 rounded-xl text-center text-xs sm:text-sm font-bold" href="#schedule-walkthrough">
+<a className="glass-btn glass-btn-primary inline-flex w-full items-center justify-center gap-2 py-3.5 rounded-xl text-center text-xs sm:text-sm font-semibold" href="#schedule-walkthrough">
             <span>Start with Reconciliation + AI</span>
             <span className="glass-btn-arrow">
               <svg className="w-3.5 h-3.5 -rotate-90" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6" strokeLinecap="round" strokeLinejoin="round" strokeWidth="3"></path></svg>
@@ -1091,7 +1091,7 @@ Receipt + Bank Proof
 <div className="inline-flex items-center px-3.5 py-1 rounded-full bg-lp-surface-container-high border border-outline-variant text-xs font-semibold text-brand-800 mb-4">
           Common Questions
         </div>
-<h2 className="text-6xl sm:text-7xl font-bold tracking-tight text-on-surface font-lp-serif leading-none mb-4">
+<h2 className="text-6xl sm:text-7xl font-semibold tracking-tight text-on-surface font-lp-serif leading-none mb-4">
           FAQs
         </h2>
 <p className="text-base text-on-surface-variant max-w-xs">
@@ -1119,7 +1119,7 @@ Receipt + Bank Proof
         <span
           className={
             isOpen
-              ? "text-base sm:text-lg font-bold text-on-surface font-lp-serif transition-colors duration-300"
+              ? "text-base sm:text-lg font-semibold text-on-surface font-lp-serif transition-colors duration-300"
               : "text-sm sm:text-base font-medium text-on-surface-variant font-lp-serif transition-colors duration-300"
           }
         >
@@ -1158,7 +1158,7 @@ Receipt + Bank Proof
 <div className="absolute -top-24 -left-24 w-96 h-96 bg-brand-600/30 rounded-full blur-3xl pointer-events-none"></div>
 <div className="absolute -bottom-24 -right-24 w-96 h-96 bg-terracotta-500/25 rounded-full blur-3xl pointer-events-none"></div>
 <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 text-center relative z-10">
-<h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight font-lp-serif mb-4 text-white">
+<h2 className="text-3xl sm:text-4xl lg:text-5xl font-semibold tracking-tight font-lp-serif mb-4 text-white">
         Turn month-end from a scramble into a formality.
       </h2>
 <p className="text-primary-fixed-dim text-sm sm:text-base max-w-2xl mx-auto mb-8 leading-relaxed">
@@ -1181,8 +1181,8 @@ Receipt + Bank Proof
 <footer className="bg-[#201a15] py-12 text-[#edbca5]/80 text-xs">
 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col md:flex-row items-center justify-between gap-4">
 <div className="flex items-center gap-3 flex-shrink-0">
-<div className="w-7 h-7 rounded-lg bg-primary/80 backdrop-blur-md text-white flex items-center justify-center font-lp-serif font-bold text-xs ring-1 ring-inset ring-white/20 border border-brand-400/20 flex-shrink-0">GL</div>
-<span className="font-bold text-white text-sm font-lp-serif whitespace-nowrap">Grant Ledger</span>
+<div className="w-7 h-7 rounded-lg bg-primary/80 backdrop-blur-md text-white flex items-center justify-center font-lp-serif font-semibold text-xs ring-1 ring-inset ring-white/20 border border-brand-400/20 flex-shrink-0">GL</div>
+<span className="font-semibold text-white text-sm font-lp-serif whitespace-nowrap">Grant Ledger</span>
 <span className="hidden lg:inline text-[#edbca5]/80 whitespace-nowrap">• Nonprofit &amp; CVI Grant Reconciliation Engine</span>
 </div>
 <div className="flex flex-wrap items-center justify-center gap-5">
