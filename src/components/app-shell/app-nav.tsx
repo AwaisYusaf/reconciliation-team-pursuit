@@ -15,15 +15,15 @@ import { cn } from "@/src/lib/cn";
  * tab is scrolled into view on load so the user can see where they are.
  */
 export const NAV_ITEMS = [
-  { label: "Dashboard", href: "/" },
-  { label: "Add Expense", href: "/expenses/new" },
-  { label: "Expenses", href: "/expenses" },
-  { label: "Cover Sheets", href: "/cover-sheets" },
-  { label: "Recurring", href: "/recurring" },
-  { label: "Month-End Packet", href: "/packet" },
-  { label: "Contract Summary", href: "/contract-summary" },
-  { label: "Line Items", href: "/line-items" },
-  { label: "Settings", href: "/settings" },
+  { label: "Dashboard", href: "/r" },
+  { label: "Add Expense", href: "/r/expenses/new" },
+  { label: "Expenses", href: "/r/expenses" },
+  { label: "Cover Sheets", href: "/r/cover-sheets" },
+  { label: "Recurring", href: "/r/recurring" },
+  { label: "Month-End Packet", href: "/r/packet" },
+  { label: "Contract Summary", href: "/r/contract-summary" },
+  { label: "Line Items", href: "/r/line-items" },
+  { label: "Settings", href: "/r/settings" },
 ] as const;
 
 /**
@@ -37,7 +37,7 @@ function scrollActiveIntoView(node: HTMLAnchorElement | null): void {
 }
 
 function matches(pathname: string, href: string): boolean {
-  if (href === "/") return pathname === "/";
+  if (href === "/r") return pathname === "/r";
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 

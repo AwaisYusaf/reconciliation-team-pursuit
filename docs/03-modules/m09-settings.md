@@ -4,7 +4,7 @@
 Everything the prototype hardcoded: org identity, contract/PO figures that print on documents, advances, the configurable label lists (D-19), vendor library management, account password.
 
 ## Scope
-Route `/settings`, sectioned single page (anchor nav or stacked cards). No month scoping.
+Route `/r/settings`, sectioned single page (anchor nav or stacked cards). No month scoping.
 
 ## Data
 `organizations` (name, doc_name), `contract_settings` (all fields), `payment_sources` + `supporting_doc_types` CRUD (R5.1/R11.1), `vendor_defaults` CRUD, `users` (password change). Rules R7.3–R7.4 consume the figures. (The Performance Grant, R7.2, is retired — D-80 — replaced by per-line-item performances, m08.)

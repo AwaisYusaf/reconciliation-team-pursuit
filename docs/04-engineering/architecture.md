@@ -15,11 +15,14 @@
 
 ```
 app/                     # routes only — thin; each feature screen imports from src/modules
+  page.tsx               # public marketing landing
+  robots.ts, sitemap.ts
   (auth)/login, signup, onboarding/…
-  (app)/                 # authenticated layout: shell, nav, month selector
+  r/                      # authenticated layout: shell, nav, month selector
     page.tsx             # dashboard
     expenses/, expenses/new, expenses/[id]/edit
     cover-sheets/, recurring/, packet/, contract-summary/, line-items/, settings/
+  a/                      # admin scaffold (session-gated only; no role check yet)
   api/files/…            # presign + attach + download routes (Node runtime)
   api/generate/…         # document generation routes (Node runtime, streaming)
   api/healthz            # DB ping for uptime monitoring

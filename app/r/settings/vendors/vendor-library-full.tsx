@@ -46,7 +46,7 @@ export function VendorLibraryFull({
     searchTimer.current = setTimeout(() => {
       const params = new URLSearchParams();
       if (search.trim()) params.set("q", search.trim());
-      router.push(`/settings/vendors?${params.toString()}`);
+      router.push(`/r/settings/vendors?${params.toString()}`);
     }, 300);
     return () => {
       if (searchTimer.current) clearTimeout(searchTimer.current);
@@ -60,7 +60,7 @@ export function VendorLibraryFull({
     const params = new URLSearchParams();
     if (query) params.set("q", query);
     params.set("page", String(next));
-    router.push(`/settings/vendors?${params.toString()}`);
+    router.push(`/r/settings/vendors?${params.toString()}`);
   }
 
   function run(work: () => Promise<ActionResult<unknown>>, successMessage: string) {

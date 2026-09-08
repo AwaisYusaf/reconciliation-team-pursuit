@@ -13,16 +13,18 @@ import { SESSION_COOKIE } from "@/src/services/auth/tokens";
  *
  * Renamed from `middleware.ts` — Next.js 16 replaced that convention with `proxy`.
  */
+// Public: the marketing landing page, the auth entry points, and the SEO files.
+const PUBLIC_PATHS = new Set(["/", "/login", "/signup", "/robots.txt", "/sitemap.xml"]);
+
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const hasSessionCookie = request.cookies.has(SESSION_COOKIE);
 
-  const isAuthRoute =
-    pathname === "/login" || pathname === "/signup" || pathname.startsWith("/onboarding");
+  const isPublicRoute = PUBLIC_PATHS.has(pathname) || pathname.startsWith("/onboarding");
 
   // The absence of a cookie definitively means "not signed in", so this redirect is safe
   // and saves a render.
-  if (!hasSessionCookie && !isAuthRoute) {
+  if (!hasSessionCookie && !isPublicRoute) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     url.search = "";

@@ -4,7 +4,7 @@
 On-screen mirror of the Excel summary: contract-to-date position per line item + advance reconciliation, for the active month.
 
 ## Scope
-Route `/contract-summary`. Read-only table + reconciliation card + Excel download (same generator as m06).
+Route `/r/contract-summary`. Read-only table + reconciliation card + Excel download (same generator as m06).
 
 ## Data
 Calculation service (R3, R7); `contract_settings`, `line_items` + `line_item_performances` (R9.5). No writes.

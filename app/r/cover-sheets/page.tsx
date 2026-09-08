@@ -58,7 +58,7 @@ export default async function CoverSheetsPage({
         <PageHeader title="Cover Sheets" subtext={`Breakdown documents for ${label}.`} />
         <EmptyState>
           No line items yet — set up your budget in{" "}
-          <Link href="/line-items" className="text-accent underline">
+          <Link href="/r/line-items" className="text-accent underline">
             Line Items
           </Link>
           .
@@ -167,7 +167,7 @@ function CoverSheetSection({
                 {/* R4.4: each record links straight to the expense that needs fixing. This
                     screen is where the gap is most often discovered. */}
                 <Link
-                  href={`/expenses/${record.expenseId}/edit`}
+                  href={`/r/expenses/${record.expenseId}/edit`}
                   className="underline text-danger font-medium"
                 >
                   Open expense

@@ -55,7 +55,7 @@ export default async function ContractSummaryPage() {
         <Subtext className="mb-[26px]">Contract position for {monthLabel(month)}.</Subtext>
         <EmptyState>
           No line items yet — set up your budget in{" "}
-          <Link href="/line-items" className="text-accent underline">
+          <Link href="/r/line-items" className="text-accent underline">
             Line Items
           </Link>
           .

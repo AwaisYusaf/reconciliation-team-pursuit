@@ -4,7 +4,7 @@
 Manage the funder-approved budget categories that everything hangs off.
 
 ## Scope
-Route `/line-items`. List + inline edit (name, scheduled value, opening previously-billed) + add + delete + reorder.
+Route `/r/line-items`. List + inline edit (name, scheduled value, opening previously-billed) + add + delete + reorder.
 
 ## Data
 `line_items` CRUD + `line_item_performances` (R9.5). Rules R9.1–R9.5 (rename cascade, delete block, performances), R3.1 (opening balance).

@@ -138,7 +138,7 @@ export default async function DashboardPage() {
       {lineItems.length === 0 ? (
         <EmptyState>
           No line items yet — set up your budget in{" "}
-          <Link href="/line-items" className="text-accent underline">
+          <Link href="/r/line-items" className="text-accent underline">
             Line Items
           </Link>
           .
@@ -188,10 +188,10 @@ export default async function DashboardPage() {
           </TableCard>
 
           <div className="flex flex-wrap gap-4 mt-6">
-            <Link href="/expenses/new" className={buttonClassName("primary")}>
+            <Link href="/r/expenses/new" className={buttonClassName("primary")}>
               Add Expense
             </Link>
-            <Link href="/packet" className={buttonClassName("secondary")}>
+            <Link href="/r/packet" className={buttonClassName("secondary")}>
               View Month-End Packet
             </Link>
           </div>

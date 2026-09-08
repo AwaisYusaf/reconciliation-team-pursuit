@@ -36,7 +36,7 @@ export function LineItemSelect({
         disabled={pending}
         onValueChange={(value) => {
           startTransition(() => {
-            router.push(`/cover-sheets?lineItem=${encodeURIComponent(value)}`);
+            router.push(`/r/cover-sheets?lineItem=${encodeURIComponent(value)}`);
           });
         }}
         className="min-w-[220px]"

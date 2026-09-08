@@ -34,7 +34,7 @@ export default async function VendorsPage({
     const params = new URLSearchParams();
     if (query) params.set("q", query);
     params.set("page", String(lastPage));
-    redirect(`/settings/vendors?${params.toString()}`);
+    redirect(`/r/settings/vendors?${params.toString()}`);
   }
   const page = requestedPage;
 
@@ -44,7 +44,7 @@ export default async function VendorsPage({
         title="Vendor library"
         subtext="Every vendor the library has learned from a saved expense."
         actions={
-          <Link href="/settings" className="text-[15px] text-accent underline hover:text-accent-dark">
+          <Link href="/r/settings" className="text-[15px] text-accent underline hover:text-accent-dark">
             Back to Settings
           </Link>
         }

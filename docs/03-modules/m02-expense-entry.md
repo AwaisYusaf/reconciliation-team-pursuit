@@ -4,7 +4,7 @@
 The single capture point. One well-designed form used for both add and edit; everything downstream (cover sheets, packet, summary) derives from what's saved here.
 
 ## Scope
-Routes `/expenses/new`, `/expenses/{id}/edit`. Full field set incl. documents; vendor autofill; live math; no-receipt flow.
+Routes `/r/expenses/new`, `/r/expenses/{id}/edit`. Full field set incl. documents; vendor autofill; live math; no-receipt flow.
 
 ## Data
 Writes `expenses`, `expense_documents`, upserts `vendor_defaults` (R8.2). Reads `line_items`, `vendor_defaults`. Rules: R1 (money), R2.2 (date/month), R3.7 (projection), R4 (gate), R5.1 (sources), R6.5–R6.7 (notes), R8.1 (autofill).

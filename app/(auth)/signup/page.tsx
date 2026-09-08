@@ -13,7 +13,7 @@ export const metadata = { title: "Create your organization — Grant Expense Rec
 
 export default async function SignupPage() {
   const session = await getSession();
-  if (session) redirect(session.onboarded ? "/" : "/onboarding/line-items");
+  if (session) redirect(session.onboarded ? "/r" : "/onboarding/line-items");
 
   if (!signupEnabled()) {
     return (

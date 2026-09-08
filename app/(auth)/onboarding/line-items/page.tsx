@@ -23,7 +23,7 @@ const STARTER_NAMES = [
 export default async function OnboardingLineItemsPage() {
   const session = await getSession();
   if (!session) redirect("/login");
-  if (session.onboarded) redirect("/");
+  if (session.onboarded) redirect("/r");
 
   // Step 1 saves immediately, so a returning user resumes with what they already typed.
   const existing = await db
