@@ -11,6 +11,7 @@ import { and, eq, lt, ne } from "drizzle-orm";
 
 import { db } from "@/src/db";
 import { organizations, sessions, users } from "@/src/db/schema";
+import type { UserRole } from "@/src/db/schema";
 
 import {
   exceedsMaxAge,
@@ -25,6 +26,7 @@ export type SessionContext = {
   userId: string;
   orgId: string;
   email: string;
+  role: UserRole;
   orgName: string;
   docName: string;
   activeMonth: string;
@@ -68,6 +70,7 @@ export async function resolveSession(
       createdAt: sessions.createdAt,
       userId: users.id,
       email: users.email,
+      role: users.role,
       orgId: organizations.id,
       orgName: organizations.name,
       docName: organizations.docName,
@@ -103,6 +106,7 @@ export async function resolveSession(
       userId: row.userId,
       orgId: row.orgId,
       email: row.email,
+      role: row.role,
       orgName: row.orgName,
       docName: row.docName,
       activeMonth: row.activeMonth,

@@ -27,3 +27,24 @@ export async function actionSession(): Promise<ActionSession> {
     throw error;
   }
 }
+
+export const FORBIDDEN = "You do not have permission to do that.";
+
+export type AdminSession = SessionContext | { denied: ActionResult<never> };
+
+/**
+ * Admin-only variant of `actionSession()`.
+ *
+ * A manager reaching a user-management action is answered with a typed failure, not a thrown
+ * error: server actions are directly invocable, so this is the real enforcement point and it
+ * has to behave like every other refusal the forms already render.
+ *
+ * A distinct `denied` key rather than reusing `expired`, so a forbidden result is never
+ * mistaken for a signed-out one by a caller that only checks `"expired" in x`.
+ */
+export async function requireAdmin(): Promise<AdminSession> {
+  const session = await actionSession();
+  if ("expired" in session) return { denied: session.expired };
+  if (session.role !== "admin") return { denied: fail(FORBIDDEN) };
+  return session;
+}

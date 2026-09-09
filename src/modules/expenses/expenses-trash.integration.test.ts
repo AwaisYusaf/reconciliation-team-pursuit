@@ -57,6 +57,7 @@ describe.skipIf(!hasDatabase)("expense trash (integration)", async () => {
       orgId: id,
       userId: "u",
       email: "e@example.com",
+      role: "admin",
       orgName: "Org",
       docName: "Doc",
       activeMonth: MONTH,

@@ -48,6 +48,7 @@ describe.skipIf(!hasDatabase)("removeRecurringFromMonthAction (integration)", as
       orgId: id,
       userId: "u",
       email: "e@example.com",
+      role: "admin",
       orgName: "Org",
       docName: "Doc",
       activeMonth: MONTH,

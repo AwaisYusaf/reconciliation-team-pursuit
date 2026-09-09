@@ -19,8 +19,6 @@ import { config } from "dotenv";
 
 config({ path: ".env.local", quiet: true });
 
-import { randomBytes } from "node:crypto";
-
 import { eq, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
@@ -30,11 +28,6 @@ import * as schema from "./schema";
 function argument(name: string): string | undefined {
   const index = process.argv.indexOf(`--${name}`);
   return index === -1 ? undefined : process.argv[index + 1];
-}
-
-/** Readable but strong: 32 base64url characters, well past the 12-character policy. */
-function generatePassword(): string {
-  return randomBytes(24).toString("base64url");
 }
 
 async function main() {
@@ -48,7 +41,9 @@ async function main() {
 
   // Imported here so the module's production guard is not triggered merely by loading this
   // file, and so the argon2 parameters stay the ones the application itself uses.
-  const { hashPassword, validatePasswordPolicy } = await import("@/src/services/auth/passwords");
+  const { generatePassword, hashPassword, validatePasswordPolicy } = await import(
+    "@/src/services/auth/passwords"
+  );
 
   const password = argument("password") ?? generatePassword();
   const policyError = validatePasswordPolicy(password);

@@ -76,6 +76,9 @@ export const artifactType = pgEnum("artifact_type", [
   "cover_pdf",
 ]);
 
+/** users.role — admin = the org-creating account and anyone it promotes; manager = expenses/grants only. */
+export const userRole = pgEnum("user_role", ["admin", "manager"]);
+
 /* ----------------------------------------------------------- organizations */
 
 export const organizations = pgTable("organizations", {
@@ -106,6 +109,10 @@ export const users = pgTable(
     email: text().notNull(),
     /** argon2id; password minimum 12 chars (D-06/D-24). */
     passwordHash: text("password_hash").notNull(),
+    /** admin = the org-creating account and anyone it promotes; manager = expenses/grants only.
+     *  No column default on purpose, same reason as expenses.referenceSeq: a default makes this
+     *  optional on insert, and a forgotten role would silently mint an admin. */
+    role: userRole().notNull(),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
@@ -710,3 +717,4 @@ export type DocumentKind = (typeof documentKind.enumValues)[number];
 export type DocumentStatus = (typeof documentStatus.enumValues)[number];
 export type MonthDocumentCategory = (typeof monthDocumentCategory.enumValues)[number];
 export type ArtifactType = (typeof artifactType.enumValues)[number];
+export type UserRole = (typeof userRole.enumValues)[number];

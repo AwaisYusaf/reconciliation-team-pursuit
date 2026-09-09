@@ -41,6 +41,7 @@ describe.skipIf(!hasDatabase)("settings (integration)", async () => {
         orgId,
         email: `settings-${Date.now()}@example.test`,
         passwordHash: await hashPassword("original-password-here"),
+        role: "admin",
       })
       .returning({ id: users.id });
     userId = user.id;

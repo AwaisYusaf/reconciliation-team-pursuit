@@ -263,7 +263,7 @@ export async function signUpAction(
 
     const [user] = await tx
       .insert(users)
-      .values({ orgId: org.id, email, passwordHash })
+      .values({ orgId: org.id, email, passwordHash, role: "admin" })
       .returning({ id: users.id });
 
     return user.id;

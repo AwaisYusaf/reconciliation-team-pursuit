@@ -7,6 +7,8 @@
  * bounded by the login rate limiter rather than by lockout, since a single shared
  * account per organisation means lockout is a denial of service against the client.
  */
+import { randomBytes } from "node:crypto";
+
 import { hash, verify } from "@node-rs/argon2";
 
 /** Minimum password length (D-24, raised from the prototype's 8). */
@@ -35,6 +37,11 @@ export async function verifyPassword(storedHash: string, plain: string): Promise
   } catch {
     return false;
   }
+}
+
+/** Readable but strong: 32 base64url characters, well past the 12-character policy. */
+export function generatePassword(): string {
+  return randomBytes(24).toString("base64url");
 }
 
 /** Returns an error message when the password fails policy, or null when it passes. */

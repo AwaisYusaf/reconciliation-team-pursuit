@@ -30,6 +30,7 @@ export function SettingsSections({
   vendors,
   vendorCount,
   lineItems,
+  isAdmin,
 }: {
   email: string;
   organisation: { name: string; docName: string };
@@ -41,6 +42,7 @@ export function SettingsSections({
   vendors: Vendor[];
   vendorCount: number;
   lineItems: Array<{ id: string; name: string }>;
+  isAdmin: boolean;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -301,7 +303,14 @@ export function SettingsSections({
 
       {/* -------------------------------------------------------------- account */}
       <Card className={CARD_PADDING}>
-        <SectionTitle className="mb-5">Account</SectionTitle>
+        <div className="flex items-center justify-between mb-5">
+          <SectionTitle>Account</SectionTitle>
+          {isAdmin && (
+            <Link href="/r/settings/users" className={buttonClassName("secondary")}>
+              Manage users
+            </Link>
+          )}
+        </div>
         <AccountSection email={email} pending={pending} startTransition={startTransition} />
       </Card>
     </div>

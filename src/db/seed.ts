@@ -105,6 +105,7 @@ async function main() {
         orgId,
         email: SEED_EMAIL,
         passwordHash: await hash(SEED_PASSWORD),
+        role: "admin",
       });
       console.log(`Created organisation ${orgId} for ${SEED_EMAIL}`);
     }

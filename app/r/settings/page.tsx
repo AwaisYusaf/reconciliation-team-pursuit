@@ -52,6 +52,7 @@ export default async function SettingsPage() {
         vendors={data.vendors}
         vendorCount={data.vendorCount}
         lineItems={data.lineItems}
+        isAdmin={session.role === "admin"}
       />
     </div>
   );

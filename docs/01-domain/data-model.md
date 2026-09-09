@@ -17,13 +17,14 @@ Postgres, single database, org-scoped rows (single-tenant-per-org from day one; 
 | welcome_dismissed_at | timestamptz null | First-run banner dismissal |
 
 ### users
-One per org in MVP; table exists for future multi-user.
+Multi-user per org (D-85). Org creation provisions one `admin`; admins create `manager` accounts. User management (add user, reset password) is admin-only, enforced server-side in the action.
 | Field | Type | Notes |
 |---|---|---|
 | id | uuid PK | |
 | org_id | uuid FK | |
 | email | citext unique | Login identity |
 | password_hash | text | argon2id; password minimum 12 chars |
+| role | user_role enum | `admin` \| `manager`. No column default — a forgotten role is a type error, not a silent admin (D-85) |
 
 ### sessions (custom auth — D-06, architecture §Auth)
 | Field | Type | Notes |
