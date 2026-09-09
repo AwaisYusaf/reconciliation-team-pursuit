@@ -77,18 +77,25 @@ export function DialogPanel({
   );
 }
 
+/** `sm` (default) fits a confirm/cancel prompt. `lg` is for content with real width to it —
+ *  a multi-column table, for instance — that `sm` would otherwise squeeze into a few narrow
+ *  characters per line. */
+const PANEL_WIDTH = { sm: "max-w-[480px]", lg: "max-w-[880px]" } as const;
+
 function DialogOverlay({
   title,
   children,
   confirm,
   dismissLabel,
   onDismiss,
+  size = "sm",
 }: {
   title: string;
   children: ReactNode;
   confirm?: DialogConfirm;
   dismissLabel: string;
   onDismiss: () => void;
+  size?: keyof typeof PANEL_WIDTH;
 }) {
   // Always the dismiss button (Cancel/OK), never the destructive confirm — a stray Enter
   // must not fire the confirm action the instant the dialog opens.
@@ -96,7 +103,7 @@ function DialogOverlay({
 
   return (
     <OverlayShell open onDismiss={onDismiss} initialFocusRef={dismissRef}>
-      <div className="w-full max-w-[480px] max-h-[calc(100dvh-2rem)] overflow-y-auto">
+      <div className={`w-full ${PANEL_WIDTH[size]} max-h-[calc(100dvh-2rem)] overflow-y-auto`}>
         <DialogPanel
           title={title}
           confirm={confirm}
@@ -118,6 +125,7 @@ export function Dialog({
   confirm,
   dismissLabel = "OK",
   onDismiss,
+  size,
 }: {
   open: boolean;
   title?: string;
@@ -125,12 +133,19 @@ export function Dialog({
   confirm?: DialogConfirm;
   dismissLabel?: string;
   onDismiss: () => void;
+  size?: keyof typeof PANEL_WIDTH;
 }) {
   // `OverlayShell` (inside `DialogOverlay`) owns the portal and the open/SSR gating.
   if (!open) return null;
 
   return (
-    <DialogOverlay title={title} confirm={confirm} dismissLabel={dismissLabel} onDismiss={onDismiss}>
+    <DialogOverlay
+      title={title}
+      confirm={confirm}
+      dismissLabel={dismissLabel}
+      onDismiss={onDismiss}
+      size={size}
+    >
       {children}
     </DialogOverlay>
   );

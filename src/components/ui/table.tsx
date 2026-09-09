@@ -85,7 +85,7 @@ export function Th({
 }
 
 const CELL_BASE =
-  "px-3 sm:px-4 py-3 sm:py-3.5 border-b border-line text-[15px] sm:text-base text-ink";
+  "px-3 sm:px-4 py-3 sm:py-3.5 border-b border-line text-[15px] sm:text-base text-ink break-words";
 
 export function Td({
   align = "left",
