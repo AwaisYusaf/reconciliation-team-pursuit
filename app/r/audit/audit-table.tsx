@@ -214,59 +214,67 @@ export function AuditTable({
       </div>
 
       {events.length === 0 ? (
-        <EmptyState>No audit events recorded yet.</EmptyState>
+        <EmptyState>
+          {/* "recorded yet" is only true of an unfiltered first page — on a filter or a later
+              page an empty result means this view is empty, not that the log is. */}
+          {actionType || page > 1
+            ? "No audit events match this view."
+            : "No audit events recorded yet."}
+        </EmptyState>
       ) : (
-        <>
-          <TableCard minWidth={860}>
-            <thead>
-              <tr>
-                <Th>Date/Time</Th>
-                <Th>Actor</Th>
-                <Th>Action</Th>
-                <Th>Expense</Th>
-                <Th align="right" />
+        <TableCard minWidth={860}>
+          <thead>
+            <tr>
+              <Th>Date/Time</Th>
+              <Th>Actor</Th>
+              <Th>Action</Th>
+              <Th>Expense</Th>
+              <Th align="right" />
+            </tr>
+          </thead>
+          <tbody>
+            {events.map((event) => (
+              <tr key={event.id}>
+                <Td className="whitespace-nowrap tabular-nums">{formatDateTimeUS(event.at)}</Td>
+                <Td>{event.actorEmail}</Td>
+                <Td>{ACTION_LABELS[event.action]}</Td>
+                <Td>
+                  {event.reference ? `${event.reference} — ${event.expenseName}` : event.expenseName}
+                </Td>
+                <Td align="right">
+                  {(event.beforeData || event.afterData) && (
+                    <button
+                      type="button"
+                      onClick={() => setViewing(event)}
+                      className="text-[15px] text-accent underline hover:text-accent-dark"
+                    >
+                      View changes
+                    </button>
+                  )}
+                </Td>
               </tr>
-            </thead>
-            <tbody>
-              {events.map((event) => (
-                <tr key={event.id}>
-                  <Td className="whitespace-nowrap tabular-nums">{formatDateTimeUS(event.at)}</Td>
-                  <Td>{event.actorEmail}</Td>
-                  <Td>{ACTION_LABELS[event.action]}</Td>
-                  <Td>
-                    {event.reference ? `${event.reference} — ${event.expenseName}` : event.expenseName}
-                  </Td>
-                  <Td align="right">
-                    {(event.beforeData || event.afterData) && (
-                      <button
-                        type="button"
-                        onClick={() => setViewing(event)}
-                        className="text-[15px] text-accent underline hover:text-accent-dark"
-                      >
-                        View changes
-                      </button>
-                    )}
-                  </Td>
-                </tr>
-              ))}
-            </tbody>
-          </TableCard>
+            ))}
+          </tbody>
+        </TableCard>
+      )}
 
-          <div className="flex justify-between mt-5">
-            {page > 1 ? (
-              <Link href={hrefFor(page - 1, actionType ?? ALL_ACTIONS)} className={buttonClassName("secondary")}>
-                Previous
-              </Link>
-            ) : (
-              <span />
-            )}
-            {hasNextPage && (
-              <Link href={hrefFor(page + 1, actionType ?? ALL_ACTIONS)} className={buttonClassName("secondary")}>
-                Next
-              </Link>
-            )}
-          </div>
-        </>
+      {/* Outside the empty branch on purpose: a page past the end renders no rows, and with
+          the controls nested in the table branch there was no "Previous" left to get back. */}
+      {(page > 1 || hasNextPage) && (
+        <div className="flex justify-between mt-5">
+          {page > 1 ? (
+            <Link href={hrefFor(page - 1, actionType ?? ALL_ACTIONS)} className={buttonClassName("secondary")}>
+              Previous
+            </Link>
+          ) : (
+            <span />
+          )}
+          {hasNextPage && (
+            <Link href={hrefFor(page + 1, actionType ?? ALL_ACTIONS)} className={buttonClassName("secondary")}>
+              Next
+            </Link>
+          )}
+        </div>
       )}
 
       <DiffDialog event={viewing} onDismiss={() => setViewing(null)} />

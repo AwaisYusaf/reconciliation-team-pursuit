@@ -129,6 +129,16 @@ async function documentsFor(orgId: string, expenseIds: string[]): Promise<Map<st
 /** Page size for the org-wide audit log (D-87). */
 const AUDIT_PAGE_SIZE = 50;
 
+/**
+ * Ceiling on the page number, so `page` reaches SQL as an OFFSET Postgres can hold.
+ *
+ * `page` comes off a query string, where `?page=99999999999999999999` parses to a finite
+ * 1e20 and multiplies into an OFFSET past `bigint`, which Postgres rejects — a crafted URL
+ * would otherwise be an unhandled 500 rather than an empty page. 100k pages is 5M events,
+ * far past anything this log reaches, and beyond it there is nothing to show anyway.
+ */
+const MAX_AUDIT_PAGE = 100_000;
+
 /** One row of the org-wide audit log, admin-only. */
 export type OrgAuditEvent = {
   id: string;
@@ -160,7 +170,10 @@ export async function loadOrgAuditHistory(
   const validAction =
     actionType && expenseAuditAction.enumValues.includes(actionType) ? actionType : undefined;
 
-  const offset = Math.max(0, page - 1) * AUDIT_PAGE_SIZE;
+  // Clamped here rather than at the page: this is the shared entry point, so a caller that
+  // forgets to sanitise its own search param still cannot reach SQL with a bad OFFSET.
+  const safePage = Math.min(MAX_AUDIT_PAGE, Math.max(1, Math.trunc(page) || 1));
+  const offset = (safePage - 1) * AUDIT_PAGE_SIZE;
 
   const rows = await db
     .select({

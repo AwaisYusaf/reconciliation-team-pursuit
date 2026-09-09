@@ -222,7 +222,9 @@ export async function createExpenseAction(
         orgId: current.orgId,
         ...row,
         sortOrder: Number(next),
-        referenceSeq: await claimReferenceSeq(current.orgId, row.month),
+        // `tx`, not the pooled handle: this runs inside the transaction above, and a second
+        // pool checkout from in here deadlocks under concurrency (see claimReferenceSeq).
+        referenceSeq: await claimReferenceSeq(current.orgId, row.month, tx),
       })
       .returning({ id: expenses.id });
 

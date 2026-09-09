@@ -227,6 +227,45 @@ describe.skipIf(!hasDatabase)("expense references (integration)", async () => {
     expect(await claimReferenceSeq(orgId, from)).toBeGreaterThan(seq);
   });
 
+  /**
+   * The regression: `createExpenseAction` wraps its insert in `db.transaction()` and claimed
+   * the reference from inside it. On the pooled handle that checks out a *second* connection
+   * while the transaction still holds the first, so with `max: 10` in the pool, ten
+   * concurrent saves each hold one slot and wait forever for another — the pool deadlocks
+   * and every save hangs. Passing `tx` keeps it on the one connection already held.
+   */
+  it("claims on the caller's transaction without a second pool connection", async () => {
+    const MONTH_TX = "2099-12";
+    // More concurrent transactions than the pool has slots (max: 10, src/db/index.ts). On the
+    // pooled handle this never resolves; the timeout is what turns that hang into a failure.
+    const claimed = await Promise.all(
+      Array.from({ length: 14 }, () =>
+        db.transaction((tx) => claimReferenceSeq(orgId, MONTH_TX, tx)),
+      ),
+    );
+
+    expect(new Set(claimed).size).toBe(14);
+    expect(Math.min(...claimed)).toBe(1);
+    expect(Math.max(...claimed)).toBe(14);
+  }, 20_000);
+
+  it("rolls the claim back when the caller's transaction fails", async () => {
+    // The second half of passing `tx`: a claim that is not committed is not spent, so a
+    // failed insert no longer burns a reference number the expense never used.
+    const MONTH_RB = "2099-07";
+    const before = await claimReferenceSeq(orgId, MONTH_RB);
+
+    await expect(
+      db.transaction(async (tx) => {
+        await claimReferenceSeq(orgId, MONTH_RB, tx);
+        throw new Error("insert failed after the claim");
+      }),
+    ).rejects.toThrow("insert failed after the claim");
+
+    // Straight after `before`, with the rolled-back claim in between leaving no gap.
+    expect(await claimReferenceSeq(orgId, MONTH_RB)).toBe(before + 1);
+  });
+
   it("rejects reference 0 outright", async () => {
     // Defence in depth for anything reaching the table outside Drizzle.
     expect(await violatedConstraint(() => expense("Zero", 0, "2099-09"))).toBe(
