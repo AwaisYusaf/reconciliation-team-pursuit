@@ -129,8 +129,9 @@ body {
 
 /* Landing page only (app/page.tsx wraps it in .lp). The dashboard keeps Georgia headings
    and must not inherit the marketing type scale or the horizontal clip. */
-html:has(.lp) { scroll-behavior: smooth; }
-html:has(.lp), body:has(.lp) { overflow-x: hidden; }
+/* overflow-x only on html, not body — giving body a non-visible overflow breaks
+   position: sticky for its descendants in Chromium. */
+html:has(.lp) { scroll-behavior: smooth; overflow-x: hidden; }
 
 .lp :is(h1, h2, h3, h4),
 .lp .font-serif-heading { font-family: var(--font-lp-serif); }
