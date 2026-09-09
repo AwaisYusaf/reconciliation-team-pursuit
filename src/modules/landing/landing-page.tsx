@@ -52,6 +52,45 @@ function Reveal({ children, delayMs = 0 }: { children: React.ReactNode; delayMs?
 /** Kept as the name the 5-step flow section already reads. */
 const FlowStep = Reveal;
 
+const NAV_LINKS = [
+  { id: "problem", label: "The Problem" },
+  { id: "system-features", label: "Features" },
+  { id: "ai-narratives", label: "AI Summaries" },
+  { id: "pricing", label: "Pricing" },
+  { id: "faq", label: "FAQ" },
+];
+const NAV_SECTION_IDS = NAV_LINKS.map((link) => link.id);
+
+/**
+ * Scroll-spy for the header nav: tracks which section is under a thin band near the top
+ * of the viewport (below the sticky header) so the matching link can be highlighted.
+ */
+function useActiveSection(ids: string[]) {
+  const [activeId, setActiveId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const elements = ids
+      .map((id) => document.getElementById(id))
+      .filter((el): el is HTMLElement => el !== null);
+    if (elements.length === 0) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const visible = entries.filter((entry) => entry.isIntersecting);
+        if (visible.length > 0) {
+          setActiveId(visible[0].target.id);
+        }
+      },
+      { rootMargin: "-96px 0px -60% 0px", threshold: 0 }
+    );
+
+    elements.forEach((el) => observer.observe(el));
+    return () => observer.disconnect();
+  }, [ids]);
+
+  return activeId;
+}
+
 const FAQS = [
   {
     question: "Does Grant Ledger replace our existing Excel spreadsheets?",
@@ -82,6 +121,7 @@ const FAQS = [
 
 export function LandingPage() {
   const [openFaq, setOpenFaq] = useState(0);
+  const activeSection = useActiveSection(NAV_SECTION_IDS);
   return (
     <>
 <header className="sticky top-0 z-50 transition-all duration-200 px-4 sm:px-6 py-3">
@@ -99,16 +139,23 @@ export function LandingPage() {
 </Link>
 
 <nav className="hidden lg:flex items-center space-x-6 text-xs font-medium text-[#edbca5]/85">
-<a className="hover:text-white transition-colors" href="#problem">The Problem</a>
-<a className="hover:text-white transition-colors" href="#system-features">Features</a>
-<a className="hover:text-white transition-colors" href="#ai-narratives">AI Summaries</a>
-<a className="hover:text-white transition-colors" href="#pricing">Pricing</a>
-<a className="hover:text-white transition-colors" href="#faq">FAQ</a>
+{NAV_LINKS.map((link) => (
+<a
+  key={link.id}
+  href={`#${link.id}`}
+  className={`transition-colors ${activeSection === link.id ? "text-white font-semibold" : "hover:text-white"}`}
+>
+  {link.label}
+</a>
+))}
 </nav>
 
 <div className="flex items-center space-x-3 sm:space-x-4">
-<a className="glass-btn glass-btn-light on-dark inline-flex items-center justify-center px-4 sm:px-5 py-1.5 rounded-full text-xs font-semibold" href="#schedule-walkthrough">
-        Schedule Walkthrough
+<a
+  className="bg-lp-surface-container-lowest/80 backdrop-blur-md border border-outline-variant/65 text-on-surface inline-flex items-center justify-center px-4 sm:px-5 py-1.5 rounded-full text-xs font-semibold shadow-[0_2px_6px_rgba(0,0,0,0.25),inset_0_1px_0_rgba(255,255,255,0.5)]"
+  href="/login"
+>
+        Get Started
       </a>
 </div>
 </div>
@@ -135,13 +182,17 @@ export function LandingPage() {
         </p>
 
 <div className="flex flex-wrap items-center gap-4">
-<a className="glass-btn glass-btn-primary group inline-flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-semibold" href="#pricing">
+<a
+  className="glass-btn glass-btn-primary group inline-flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-semibold"
+  href="/login"
+  style={{ background: "color-mix(in srgb, var(--color-brand-900) 90%, transparent)" }}
+>
             <span>Get Started</span>
             <span className="glass-btn-arrow">
               <svg className="w-3.5 h-3.5 -rotate-90" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6" strokeLinecap="round" strokeLinejoin="round" strokeWidth="3"></path></svg>
             </span>
           </a>
-<a className="glass-btn glass-btn-light px-5 py-2.5 rounded-full text-sm font-semibold" href="#how-it-works">
+<a className="glass-btn glass-btn-light px-5 py-2.5 rounded-full text-sm font-semibold" href="#pricing">
             See How It Works
           </a>
 </div>
@@ -421,8 +472,8 @@ export function LandingPage() {
 <div className="w-0.5 flex-1 bg-primary/25 mt-2"></div>
 </div>
 <div className="flex-1 pb-8">
-<h3 className="text-sm font-semibold text-on-surface font-lp-serif mb-1.5">Capture at Event</h3>
-<p className="text-xs text-on-surface-variant leading-relaxed mb-2">
+<h3 className="text-lg sm:text-xl font-semibold text-on-surface font-lp-serif mb-1.5">Capture at Event</h3>
+<p className="text-sm sm:text-base text-on-surface-variant leading-relaxed mb-2">
               Log payee, amount, date, and card/check source at the exact moment of payment.
             </p>
 <span className="text-[10px] font-mono text-secondary font-semibold uppercase tracking-wide">No Backtracking</span>
@@ -437,8 +488,8 @@ export function LandingPage() {
 <div className="w-0.5 flex-1 bg-primary/25 mt-2"></div>
 </div>
 <div className="flex-1 pb-8">
-<h3 className="text-sm font-semibold text-on-surface font-lp-serif mb-1.5">Proof &amp; Receipt Gate</h3>
-<p className="text-xs text-on-surface-variant leading-relaxed mb-2">
+<h3 className="text-lg sm:text-xl font-semibold text-on-surface font-lp-serif mb-1.5">Proof &amp; Receipt Gate</h3>
+<p className="text-sm sm:text-base text-on-surface-variant leading-relaxed mb-2">
               Attach itemized receipt and bank proof. Gate prevents locking incomplete expenses.
             </p>
 <span className="text-[10px] font-mono text-terracotta-700 font-semibold uppercase tracking-wide">Dual Verification</span>
@@ -453,8 +504,8 @@ export function LandingPage() {
 <div className="w-0.5 flex-1 bg-primary/25 mt-2"></div>
 </div>
 <div className="flex-1 pb-8">
-<h3 className="text-sm font-semibold text-on-surface font-lp-serif mb-1.5">Line-Item Mapping</h3>
-<p className="text-xs text-on-surface-variant leading-relaxed mb-2">
+<h3 className="text-lg sm:text-xl font-semibold text-on-surface font-lp-serif mb-1.5">Line-Item Mapping</h3>
+<p className="text-sm sm:text-base text-on-surface-variant leading-relaxed mb-2">
               Directly assign against approved contract budget lines or split between multiple codes.
             </p>
 <span className="text-[10px] font-mono text-brand-800 font-semibold uppercase tracking-wide">Approved Budget Lines Only</span>
@@ -469,8 +520,8 @@ export function LandingPage() {
 <div className="w-0.5 flex-1 bg-primary/25 mt-2"></div>
 </div>
 <div className="flex-1 pb-8">
-<h3 className="text-sm font-semibold text-on-surface font-lp-serif mb-1.5">Variance Check</h3>
-<p className="text-xs text-on-surface-variant leading-relaxed mb-2">
+<h3 className="text-lg sm:text-xl font-semibold text-on-surface font-lp-serif mb-1.5">Variance Check</h3>
+<p className="text-sm sm:text-base text-on-surface-variant leading-relaxed mb-2">
               Continuous live depletion check. Prevents inadvertent category overspends in real time.
             </p>
 <span className="text-[10px] font-mono text-secondary font-semibold uppercase tracking-wide">Live Depletion</span>
@@ -484,8 +535,8 @@ export function LandingPage() {
 <div className="w-9 h-9 rounded-full bg-secondary text-white font-semibold text-xs flex items-center justify-center flex-shrink-0">5</div>
 </div>
 <div className="flex-1">
-<h3 className="text-sm font-semibold text-on-surface font-lp-serif mb-1.5">1-Click Compilation</h3>
-<p className="text-xs text-on-surface-variant leading-relaxed mb-2">
+<h3 className="text-lg sm:text-xl font-semibold text-on-surface font-lp-serif mb-1.5">1-Click Compilation</h3>
+<p className="text-sm sm:text-base text-on-surface-variant leading-relaxed mb-2">
               Generates official Word cover sheet, Excel sub-ledger, and &lt;25MB merged filing PDF.
             </p>
 <span className="text-[10px] font-mono text-secondary font-semibold uppercase tracking-wide">Funder-Ready</span>
@@ -1022,7 +1073,11 @@ Receipt + Bank Proof
               </li>
 </ul>
 </div>
-<a className="glass-btn glass-btn-primary inline-flex w-full items-center justify-center gap-2 py-3.5 rounded-xl text-center text-xs sm:text-sm font-semibold" href="#schedule-walkthrough">
+<a
+  className="glass-btn glass-btn-primary inline-flex w-full items-center justify-center gap-2 py-3.5 rounded-xl text-center text-xs sm:text-sm font-semibold"
+  href="#schedule-walkthrough"
+  style={{ background: "color-mix(in srgb, var(--color-brand-900) 90%, transparent)" }}
+>
             <span>Start with Reconciliation + AI</span>
             <span className="glass-btn-arrow">
               <svg className="w-3.5 h-3.5 -rotate-90" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6" strokeLinecap="round" strokeLinejoin="round" strokeWidth="3"></path></svg>
