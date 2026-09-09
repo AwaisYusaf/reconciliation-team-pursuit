@@ -4,6 +4,7 @@ import {
   compareMonthKeys,
   currentMonthKey,
   daysInMonthKey,
+  formatDateTimeUS,
   formatDateUS,
   invoicePeriod,
   isValidIsoDate,
@@ -116,6 +117,12 @@ describe("date-only formatting", () => {
     expect(formatDateUS("2026-12-31")).toBe("12/31/2026");
     // The classic UTC bug: new Date("2026-01-01") in a negative-offset zone yields Dec 31.
     expect(formatDateUS("2026-01-01")).toBe("1/1/2026");
+  });
+
+  it("formats an instant in the org timezone, including the Detroit-vs-UTC evening case", () => {
+    expect(formatDateTimeUS(new Date("2026-02-14T20:04:00Z"))).toBe("02/14/2026, 3:04 PM");
+    // 2026-03-03 01:30 UTC is still 2026-03-02, evening, in Detroit — same case as R2.5 above.
+    expect(formatDateTimeUS(new Date("2026-03-03T01:30:00Z"))).toBe("03/02/2026, 8:30 PM");
   });
 
   it("validates ISO dates including month lengths", () => {

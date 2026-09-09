@@ -1,0 +1,1 @@
+CREATE INDEX "expense_audit_events_org_idx" ON "expense_audit_events" USING btree ("org_id","created_at");

@@ -8,14 +8,18 @@ import { and, asc, desc, eq, isNotNull, isNull } from "drizzle-orm";
 import { db } from "@/src/db";
 import { isUuid } from "@/src/lib/ids";
 import {
+  expenseAuditAction,
+  expenseAuditEvents,
   expenseDocuments,
   expenses,
   lineItems,
   paymentSources,
   supportingDocTypes,
+  users,
 } from "@/src/db/schema";
-import type { DocumentKind } from "@/src/db/schema";
+import type { DocumentKind, ExpenseAuditActionType, ExpenseAuditSnapshot } from "@/src/db/schema";
 import { formatMoney } from "@/src/domain/format";
+import { expenseReference } from "@/src/domain/strings";
 import { reimbursableCents } from "@/src/domain/money";
 
 export type AttachedDocument = {
@@ -120,6 +124,95 @@ async function documentsFor(orgId: string, expenseIds: string[]): Promise<Map<st
     byExpense.set(row.expenseId, list);
   }
   return byExpense;
+}
+
+/** Page size for the org-wide audit log (D-87). */
+const AUDIT_PAGE_SIZE = 50;
+
+/** One row of the org-wide audit log, admin-only. */
+export type OrgAuditEvent = {
+  id: string;
+  action: ExpenseAuditActionType;
+  actorEmail: string;
+  at: Date;
+  expenseId: string | null;
+  /** `{month}-{seq}` when the expense (still or once) has a month/reference to print — null
+   *  once it's gone for good (permanent delete), where there is nothing left to point at. */
+  reference: string | null;
+  /** Always available: every event's own snapshot carries the name, so there is never a bare
+   *  "deleted" placeholder even once the expense itself is gone. */
+  expenseName: string;
+  beforeData: ExpenseAuditSnapshot | null;
+  afterData: ExpenseAuditSnapshot | null;
+};
+
+/**
+ * Org-wide audit log (D-87), global — not scoped to the header's selected month. Paginated at
+ * 50/page; a page fetches 51 rows to know whether a next page exists rather than a separate
+ * COUNT query, since nothing here needs a total, only prev/next.
+ */
+export async function loadOrgAuditHistory(
+  orgId: string,
+  { page = 1, actionType }: { page?: number; actionType?: ExpenseAuditActionType } = {},
+): Promise<{ events: OrgAuditEvent[]; hasNextPage: boolean }> {
+  // Validated server-side rather than trusted from the caller — this is the query a client
+  // component's filter reaches through a server action / search param, not a hardcoded value.
+  const validAction =
+    actionType && expenseAuditAction.enumValues.includes(actionType) ? actionType : undefined;
+
+  const offset = Math.max(0, page - 1) * AUDIT_PAGE_SIZE;
+
+  const rows = await db
+    .select({
+      id: expenseAuditEvents.id,
+      action: expenseAuditEvents.action,
+      actorEmail: users.email,
+      at: expenseAuditEvents.createdAt,
+      expenseId: expenseAuditEvents.expenseId,
+      month: expenses.month,
+      referenceSeq: expenses.referenceSeq,
+      beforeData: expenseAuditEvents.beforeData,
+      afterData: expenseAuditEvents.afterData,
+    })
+    .from(expenseAuditEvents)
+    .innerJoin(users, eq(users.id, expenseAuditEvents.actorUserId))
+    // Left, not inner: a permanently-deleted expense has expenseId set null (D-86) and must
+    // still appear in the log with whatever the join can't supply falling back to the snapshot.
+    .leftJoin(expenses, eq(expenses.id, expenseAuditEvents.expenseId))
+    .where(
+      and(
+        eq(expenseAuditEvents.orgId, orgId),
+        validAction ? eq(expenseAuditEvents.action, validAction) : undefined,
+      ),
+    )
+    // Id breaks a timestamp tie, the same reasoning as the per-expense history this replaces:
+    // uuid v7 ids sort in write order.
+    .orderBy(desc(expenseAuditEvents.createdAt), desc(expenseAuditEvents.id))
+    .limit(AUDIT_PAGE_SIZE + 1)
+    .offset(offset);
+
+  const hasNextPage = rows.length > AUDIT_PAGE_SIZE;
+  const page_ = rows.slice(0, AUDIT_PAGE_SIZE);
+
+  const events: OrgAuditEvent[] = page_.map((row) => {
+    // Typed at the column (schema.ts: `.$type<ExpenseAuditSnapshot>()`), so this is already
+    // `ExpenseAuditSnapshot | null` with no cast needed.
+    const after = row.afterData;
+    const before = row.beforeData;
+    return {
+      id: row.id,
+      action: row.action,
+      actorEmail: row.actorEmail,
+      at: row.at,
+      expenseId: row.expenseId,
+      reference: row.month && row.referenceSeq ? expenseReference(row.month, row.referenceSeq) : null,
+      expenseName: after?.name ?? before?.name ?? "",
+      beforeData: before,
+      afterData: after,
+    };
+  });
+
+  return { events, hasNextPage };
 }
 
 /** One expense with its documents, org-scoped. */

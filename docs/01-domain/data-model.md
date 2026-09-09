@@ -110,6 +110,35 @@ own — it changes the base figure a normal month's math (R3) already runs again
 
 Stored: `tax_reimbursable`, `fees_reimbursable` — what this funder pays for, defaulted from the payment source at entry and fixed on the row thereafter (R1.3). Derived (never stored): `reimbursable` per R1.3 and `receipt total` per R1.3a; documentation status from documents (R4).
 
+### expense_audit_events (D-86, D-87)
+Admin-only org-wide audit trail, covering the five expense mutations only (create/edit/soft-delete/restore/permanent-delete). Recurring's own expense writes are out of scope for now. Read via `loadOrgAuditHistory` (`src/modules/expenses/queries.ts`), rendered at `/r/audit`.
+| Field | Type | Notes |
+|---|---|---|
+| id | uuid PK | |
+| org_id | uuid FK | cascade delete with organization |
+| expense_id | uuid FK null | **set null**, not cascade, on expense delete — see below |
+| actor_user_id | uuid FK → users | who performed the mutation; NOT NULL |
+| action | enum | `created` \| `edited` \| `deleted` \| `restored` \| `permanently_deleted` |
+| before_data | jsonb null | field snapshot before the mutation; null on create/restore |
+| after_data | jsonb null | field snapshot after the mutation; null on delete/permanent-delete |
+| created_at | timestamptz | when it happened; the trail is read newest-first |
+
+`expense_id` is nulled rather than cascaded on purpose: a log that disappears the moment the row
+it describes is hard-deleted defeats its own purpose. `permanentlyDeleteExpenseAction` writes the
+`permanently_deleted` event before deleting the expense, so actor/action/timestamp outlive the row.
+Indexed `(expense_id, created_at)` for the per-expense batched lookup, and `(org_id, created_at)`
+(D-88) for `loadOrgAuditHistory`'s org-wide, paginated read — the first index doesn't help a
+query with no `expense_id` filter.
+
+`before_data`/`after_data` (D-87) hold the same field set `toRow()` builds in `actions.ts` —
+name, lineItemId, paymentSource, month, date, description, subtotalCents, taxCents, feesCents,
+taxReimbursable, feesReimbursable, note, narrative, noReceipt, noReceiptReason — plus
+`lineItemName`, the line item's name resolved at write time so a later rename doesn't rewrite
+what was actually claimed. Money stays raw integer cents; the UI formats at render, never at
+write. `created`/`restored` populate only `afterData`; `deleted`/`permanently_deleted` populate
+only `beforeData`; `edited` populates both, and the audit page's diff dialog lists only the
+fields that actually differ between them.
+
 ### expense_documents
 | Field | Type | Notes |
 |---|---|---|

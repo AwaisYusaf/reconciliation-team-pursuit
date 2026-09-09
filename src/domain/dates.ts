@@ -128,6 +128,25 @@ export function formatDateUS(date: IsoDate): string {
   return `${month}/${day}/${year}`;
 }
 
+const DATE_TIME_PARTS = new Intl.DateTimeFormat("en-US", {
+  timeZone: ORG_TIME_ZONE,
+  month: "2-digit",
+  day: "2-digit",
+  year: "numeric",
+  hour: "numeric",
+  minute: "2-digit",
+  hour12: true,
+});
+
+/**
+ * US display form of a timestamp, in the organisation's timezone: `02/14/2026, 3:04 PM`.
+ * Unlike `formatDateUS`, this takes a real instant (a `created_at`), not a date-only string,
+ * so it goes through `Intl` with an explicit timeZone rather than parsing parts by hand.
+ */
+export function formatDateTimeUS(at: Date): string {
+  return DATE_TIME_PARTS.format(at);
+}
+
 /** First and last calendar dates of a month, as ISO strings. */
 export function monthBounds(key: MonthKey): { start: IsoDate; end: IsoDate } {
   const { year, month } = splitMonthKey(key);

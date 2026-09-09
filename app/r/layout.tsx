@@ -48,7 +48,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         <div className="bg-surface border-b border-line px-4 sm:px-6 pt-3 sm:pt-4">
           <div className="max-w-[1220px] mx-auto">
             <MonthSelector months={months} activeMonth={activeMonth} />
-            <AppNav />
+            <AppNav isAdmin={session.role === "admin"} />
           </div>
         </div>
       </header>
