@@ -53,7 +53,10 @@ export function AppNav() {
     <nav
       // The negative margin lets the scrolled row bleed to the screen edges, so a partially
       // visible tab reads as "there is more this way" rather than as a clipped mistake.
-      className="-mx-4 sm:mx-0 px-4 sm:px-0 flex gap-5 sm:gap-6 mt-4 sm:mt-[18px] overflow-x-auto lg:flex-wrap lg:overflow-visible [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+      // Top spacing is the wrapper's own padding-top in layout.tsx, not a margin here: a
+      // margin on this nav's box doesn't get painted with its sticky wrapper's background,
+      // which showed as a gap of bare page background between the header above and this bar.
+      className="-mx-4 sm:mx-0 px-4 sm:px-0 flex gap-5 sm:gap-6 overflow-x-auto lg:flex-wrap lg:overflow-visible [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       aria-label="Primary"
     >
       {NAV_ITEMS.map((item) => {

@@ -45,13 +45,30 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           </form>
         </div>
 
-        <div className="bg-surface border-b border-line px-4 sm:px-6 pt-3 sm:pt-4">
+        {/* No border-b here — this row and the sticky tab row right below it are both
+            bg-surface, and a line between them made two white boxes read as separate bars
+            stacked on top of each other instead of one continuous header surface. */}
+        <div className="bg-surface px-4 sm:px-6 pt-3 sm:pt-4">
           <div className="max-w-[1220px] mx-auto">
             <MonthSelector months={months} activeMonth={activeMonth} />
-            <AppNav />
           </div>
         </div>
       </header>
+
+      {/* Only the tab row sticks — the org name/log-out row and month selector scroll away
+          normally, so this doesn't eat vertical space on a long screen, just stays reachable
+          without scrolling back up. A sibling of `header`/`main`, not nested inside `header`:
+          `position: sticky` can't hold an element past the bottom edge of its own immediate
+          parent, and `header` is exactly as tall as its own rows — nesting the sticky nav as
+          header's last child gave it nowhere to stick once header itself scrolled past the
+          top of the viewport (confirmed live: after scrolling, the nav's top was -696px,
+          dragged away with header instead of pinned at 0). Its parent here is this page's
+          outermost wrapper, which spans the full page, so it has real room to stick in. */}
+      <div className="no-print sticky top-0 z-30 bg-surface border-b border-line px-4 sm:px-6 pt-4 sm:pt-[18px]">
+        <div className="max-w-[1220px] mx-auto">
+          <AppNav />
+        </div>
+      </div>
 
       <main className="max-w-[1220px] mx-auto px-4 sm:px-6 pt-6 sm:pt-8 pb-12 sm:pb-16">
         {children}
