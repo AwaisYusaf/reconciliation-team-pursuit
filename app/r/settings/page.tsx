@@ -3,6 +3,8 @@ import { redirect } from "next/navigation";
 import { PageTitle } from "@/src/components/ui/surfaces";
 import { loadSettings } from "@/src/modules/settings/queries";
 import { getSession } from "@/src/services/auth/session";
+import { listOrgUsersAction } from "@/src/modules/users/actions";
+import type { OrgUser } from "./users/users-manager";
 
 import { SettingsSections } from "./settings-sections";
 
@@ -12,8 +14,17 @@ export default async function SettingsPage() {
   const session = await getSession();
   if (!session) redirect("/login");
 
+  const isAdmin = session.role === "admin";
+
   // The organisation always comes from the session, never from the request.
   const data = await loadSettings(session.orgId);
+
+  // The action itself re-checks the role — this is only what decides whether the Users tab
+  // has anything to show, not the security boundary. Skipped entirely for a manager, so
+  // there's never a moment where their RSC payload could carry another user's data.
+  const users: OrgUser[] = isAdmin
+    ? await listOrgUsersAction().then((result) => (result.ok ? result.data : []))
+    : [];
 
   const money = (cents: number) => (cents / 100).toFixed(2);
 
@@ -52,7 +63,8 @@ export default async function SettingsPage() {
         vendors={data.vendors}
         vendorCount={data.vendorCount}
         lineItems={data.lineItems}
-        isAdmin={session.role === "admin"}
+        isAdmin={isAdmin}
+        users={users}
       />
     </div>
   );

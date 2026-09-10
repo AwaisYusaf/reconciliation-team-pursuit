@@ -286,7 +286,9 @@ export function Select({
           role="listbox"
           aria-label={ariaLabel}
           className={cn(
-            "absolute z-20 left-0 right-0 max-h-[min(320px,60vh)] overflow-y-auto",
+            // Above the app shell's sticky nav bar (z-30, app/r/layout.tsx) — a Select opened
+            // near it, like the header's month picker, must not render underneath.
+            "absolute z-40 left-0 right-0 max-h-[min(320px,60vh)] overflow-y-auto",
             "bg-surface border border-line rounded-[3px]",
             openUpward ? "bottom-full mb-1" : "top-full mt-1",
           )}
