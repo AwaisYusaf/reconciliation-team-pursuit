@@ -19,6 +19,13 @@
   --color-caution: #8a5a12;
   --color-success: #2f4f3e;
   --color-success-bg: #eaf3ec;
+  /* Inline diff highlights (the audit trail's before/after text). Deliberately stronger than
+     `success-bg`/`danger-bg`: those tint a whole panel, where a faint wash is right, while
+     these mark a few words inside a sentence and have to be spottable at a glance — the wash
+     weight was too dim to find a changed word in a paragraph. Both clear AA against
+     `success`/`danger` text (6.7:1 and 5.7:1). */
+  --color-diff-added: #bfe6cd;
+  --color-diff-removed: #f3c8c2;
   --color-section: #f1ece2;
   --color-autofill: #f3e9dd;
   --color-disabled: #c9c2b4;

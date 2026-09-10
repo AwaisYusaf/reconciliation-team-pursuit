@@ -73,6 +73,15 @@ export const LIMITS = {
    * the client's organisation.
    */
   signUp: { limit: 5, windowMs: 60 * 60 * 1000 },
+  /**
+   * Creating a user or setting someone's password, per admin (D-85).
+   *
+   * Same argon2 threadpool as login and for the same reason as `passwordChange`: these are
+   * the only authenticated paths that hash, so a stolen admin cookie would otherwise be an
+   * unbounded way to starve sign-in for everyone else. An admin provisioning real people
+   * never approaches this in an hour.
+   */
+  userProvisioning: { limit: 20, windowMs: 60 * 60 * 1000 },
 } as const;
 
 export type LimitName = keyof typeof LIMITS;

@@ -45,6 +45,7 @@ export default async function ExpensesPage({
   const { month: requestedMonth } = await searchParams;
   const viewingRequestedMonth = Boolean(requestedMonth && isValidMonthKey(requestedMonth));
   const month = viewingRequestedMonth ? requestedMonth! : session.activeMonth;
+  const isAdmin = session.role === "admin";
 
   const [expenses, sources] = await Promise.all([
     loadMonthExpenses(session.orgId, month),
@@ -145,6 +146,7 @@ export default async function ExpensesPage({
         paymentSourceLabels={labels}
         lineItemNames={[...new Set(rows.map((row) => row.lineItemName))].sort()}
         month={monthLabel(month)}
+        isAdmin={isAdmin}
       />
     </div>
   );

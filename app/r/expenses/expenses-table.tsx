@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useMemo, useState, useTransition } from "react";
 
+import { ACTION_LABELS, AuditDiffContent } from "@/src/components/audit/audit-diff";
 import { Button } from "@/src/components/ui/button";
 import { Dialog } from "@/src/components/ui/dialog";
 import {
@@ -14,11 +15,13 @@ import {
   useDocumentViewer,
 } from "@/src/components/ui/document-viewer";
 import { Input, Label } from "@/src/components/ui/field";
+import { Menu, MenuItem, MenuLink } from "@/src/components/ui/menu";
+import { Modal } from "@/src/components/ui/modal";
 import { Select } from "@/src/components/ui/select";
 import { Card, DangerPanel, EmptyState } from "@/src/components/ui/surfaces";
 import { TableCard, Td, Th } from "@/src/components/ui/table";
 import { reportResult } from "@/src/components/ui/toast";
-import { formatDateUS } from "@/src/domain/dates";
+import { formatDateTimeUS, formatDateUS } from "@/src/domain/dates";
 import { formatMoney } from "@/src/domain/format";
 import {
   ALL_DOCUMENTATION,
@@ -27,7 +30,11 @@ import {
   type DocumentationFilter,
   type MissingKind,
 } from "@/src/domain/gate";
-import { deleteExpenseAction } from "@/src/modules/expenses/actions";
+import { userDisplay } from "@/src/domain/user-display";
+import { deleteExpenseAction, loadExpenseHistoryAction } from "@/src/modules/expenses/actions";
+// Type-only: `queries.ts` is `server-only`, so importing a runtime value from it into this
+// client component would fail the build.
+import type { OrgAuditEvent } from "@/src/modules/expenses/queries";
 
 /** One attached document, as much of it as a row needs to preview it. */
 export type RowDocument = {
@@ -79,16 +86,111 @@ export type ExpenseRow = {
 const ALL_LINE_ITEMS = "All line items";
 const ALL_SOURCES = "All payment sources";
 
+/**
+ * This expense's audit trail (D-89), opened from the "History" item in the row's ⋮ menu
+ * (`RowMenu` below) and from there to the D-87 diff view. Admin-only content — the menu
+ * never offers "History" to a manager, so this never opens for one.
+ *
+ * Presentational — the fetch is kicked off by the "History" click in `ExpensesTable`, so
+ * opening this and loading what's behind it are one user action and nothing here needs an
+ * effect.
+ */
+function HistoryModal({
+  row,
+  history,
+  pending,
+  error,
+  onClose,
+}: {
+  row: ExpenseRow | null;
+  history: { events: OrgAuditEvent[]; truncated: boolean } | null;
+  pending: boolean;
+  error: string | null;
+  onClose: () => void;
+}) {
+  const [diffEvent, setDiffEvent] = useState<OrgAuditEvent | null>(null);
+
+  if (!row) return null;
+
+  return (
+    <Modal open title={`${row.reference} — ${row.name}`} onClose={onClose} size="lg">
+      {diffEvent ? (
+        <div>
+          <AuditDiffContent key={diffEvent.id} event={diffEvent} />
+          <Button variant="quiet" className="mt-4" onClick={() => setDiffEvent(null)}>
+            Back
+          </Button>
+        </div>
+      ) : (
+        <div>
+          {error ? (
+            <p className="text-[15px] text-danger">{error}</p>
+          ) : pending || !history ? (
+            <p className="text-[15px] text-sub">Loading…</p>
+          ) : history.events.length === 0 ? (
+            <p className="text-[15px] text-sub">No history recorded for this expense.</p>
+          ) : (
+            <>
+              {/* Said out loud rather than silently dropped: an audit trail that shows a
+                  partial list without admitting it is worse than one showing fewer rows. */}
+              {history.truncated && (
+                <p className="text-[15px] text-sub mb-3">
+                  Showing the most recent changes only — this expense has more history than
+                  fits here.
+                </p>
+              )}
+              <TableCard minWidth={640}>
+                <thead>
+                  <tr>
+                    <Th>Date/Time</Th>
+                    <Th>Actor</Th>
+                    <Th>Action</Th>
+                    <Th align="right" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {history.events.map((event) => (
+                    <tr key={event.id}>
+                      <Td className="whitespace-nowrap tabular-nums">
+                        {formatDateTimeUS(event.at)}
+                      </Td>
+                      <Td>{userDisplay(event.actorName, event.actorEmail)}</Td>
+                      <Td>{ACTION_LABELS[event.action]}</Td>
+                      <Td align="right">
+                        {(event.beforeData || event.afterData) && (
+                          <button
+                            type="button"
+                            onClick={() => setDiffEvent(event)}
+                            className="text-[15px] text-accent underline hover:text-accent-dark"
+                          >
+                            View changes
+                          </button>
+                        )}
+                      </Td>
+                    </tr>
+                  ))}
+                </tbody>
+              </TableCard>
+            </>
+          )}
+        </div>
+      )}
+    </Modal>
+  );
+}
+
 export function ExpensesTable({
   rows,
   paymentSourceLabels,
   lineItemNames,
   month,
+  isAdmin,
 }: {
   rows: ExpenseRow[];
   paymentSourceLabels: string[];
   lineItemNames: string[];
   month: string;
+  isAdmin: boolean;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -99,7 +201,30 @@ export function ExpensesTable({
   const [sort, setSort] = useState<SortKey>(DEFAULT_SORT);
   const [confirming, setConfirming] = useState<ExpenseRow | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [viewingHistory, setViewingHistory] = useState<ExpenseRow | null>(null);
+  const [history, setHistory] = useState<{
+    events: OrgAuditEvent[];
+    truncated: boolean;
+  } | null>(null);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+  // Its own transition, not the delete/`pending` one: loading a history must not disable
+  // every row's Delete button while it runs.
+  const [historyPending, startHistory] = useTransition();
   const { open, viewer } = useDocumentViewer();
+
+  /** Opens this row's history modal and starts fetching what's behind it — so landing on it
+   *  shows loaded content instead of a spinner (D-89). Only reachable for an admin: the row
+   *  menu never offers "History" to a manager. */
+  const openHistory = (row: ExpenseRow) => {
+    setViewingHistory(row);
+    setHistory(null);
+    setHistoryError(null);
+    startHistory(async () => {
+      const result = await loadExpenseHistoryAction(row.id);
+      if (result.ok) setHistory(result.data);
+      else setHistoryError(result.error);
+    });
+  };
 
   const openDocuments = useCallback(
     (documents: RowDocument[], index: number) => {
@@ -375,16 +500,20 @@ export function ExpensesTable({
                 )}
               </Td>
               <Td align="right" stickyEnd className="whitespace-nowrap">
-                <div className="flex gap-4 justify-end">
-                  <Link
-                    href={`/r/expenses/${row.id}/edit`}
-                    className="py-2.5 text-[15px] text-accent underline hover:text-accent-dark"
+                {/* Edit, Delete and (for an admin) History all live in this one menu.
+                    Rendered for every role: only History is admin-only, the expense actions
+                    never were. */}
+                <div className="flex justify-end items-center">
+                  <Menu
+                    label={`Actions for ${row.reference}`}
+                    triggerClassName="px-2 py-2.5 text-lg leading-none text-sub hover:text-ink rounded-[2px] focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
                   >
-                    Edit
-                  </Link>
-                  <Button variant="quiet" onClick={() => setConfirming(row)} disabled={pending}>
-                    Delete
-                  </Button>
+                    <MenuLink href={`/r/expenses/${row.id}/edit`}>Edit</MenuLink>
+                    <MenuItem disabled={pending} onClick={() => setConfirming(row)}>
+                      Delete
+                    </MenuItem>
+                    {isAdmin && <MenuItem onClick={() => openHistory(row)}>History</MenuItem>}
+                  </Menu>
                 </div>
               </Td>
             </tr>
@@ -399,6 +528,18 @@ export function ExpensesTable({
       )}
 
       {viewer}
+
+      {/* Keyed on the row id so switching rows without an intervening close remounts fresh —
+          otherwise the previous row's diff-view step would carry over as stale state. Only
+          ever opened for an admin (the row menu never offers "History" otherwise). */}
+      <HistoryModal
+        key={viewingHistory?.id ?? "none"}
+        row={viewingHistory}
+        history={history}
+        pending={historyPending}
+        error={historyError}
+        onClose={() => setViewingHistory(null)}
+      />
     </div>
   );
 }

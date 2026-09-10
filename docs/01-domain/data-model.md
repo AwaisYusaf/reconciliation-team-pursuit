@@ -17,13 +17,15 @@ Postgres, single database, org-scoped rows (single-tenant-per-org from day one; 
 | welcome_dismissed_at | timestamptz null | First-run banner dismissal |
 
 ### users
-One per org in MVP; table exists for future multi-user.
+Multi-user per org (D-85). Org creation provisions one `admin`; admins create `manager` accounts. User management (add user, reset password) is admin-only, enforced server-side in the action.
 | Field | Type | Notes |
 |---|---|---|
 | id | uuid PK | |
 | org_id | uuid FK | |
+| name | text null | Display name for "who did this" (D-89). Null for an account that predates this column; falls back to email at render (`userDisplay`) rather than a guess |
 | email | citext unique | Login identity |
 | password_hash | text | argon2id; password minimum 12 chars |
+| role | user_role enum | `admin` \| `manager`. No column default — a forgotten role is a type error, not a silent admin (D-85) |
 
 ### sessions (custom auth — D-06, architecture §Auth)
 | Field | Type | Notes |
@@ -108,6 +110,37 @@ own — it changes the base figure a normal month's math (R3) already runs again
 | recurring_item_id | uuid null | Set when the row was created by a recurring item's one-click add (R8.3). Deliberately **not** a foreign key: the link records provenance, and deleting the recurring item must not alter an expense that is already part of a submitted month. Indexed. |
 
 Stored: `tax_reimbursable`, `fees_reimbursable` — what this funder pays for, defaulted from the payment source at entry and fixed on the row thereafter (R1.3). Derived (never stored): `reimbursable` per R1.3 and `receipt total` per R1.3a; documentation status from documents (R4).
+
+### expense_audit_events (D-86, D-87)
+Admin-only audit trail, covering the five expense mutations only (create/edit/soft-delete/restore/permanent-delete). Recurring's own expense writes are out of scope for now, so a one-click recurring add appears nowhere in this table — its actor is simply not recorded (D-90 dropped the `expenses.created_by_user_id`/`updated_by_user_id` columns that had covered that case).
+
+Read via `loadOrgAuditHistory` (`src/modules/expenses/queries.ts`) through its optional `expenseId` filter, which is what the Expenses table's three-dot "View history" uses (D-89) — there is no longer a separate org-wide page (D-91 removed `/r/audit`), so the per-expense view is the only reader. The unfiltered, paginated form of that query is kept for the same reason the `(org_id, created_at)` index is: it is the shape an org-wide view needs if one returns.
+| Field | Type | Notes |
+|---|---|---|
+| id | uuid PK | |
+| org_id | uuid FK | cascade delete with organization |
+| expense_id | uuid FK null | **set null**, not cascade, on expense delete — see below |
+| actor_user_id | uuid FK → users | who performed the mutation; NOT NULL |
+| action | enum | `created` \| `edited` \| `deleted` \| `restored` \| `permanently_deleted` |
+| before_data | jsonb null | field snapshot before the mutation; null on create/restore |
+| after_data | jsonb null | field snapshot after the mutation; null on delete/permanent-delete |
+| created_at | timestamptz | when it happened; the trail is read newest-first |
+
+`expense_id` is nulled rather than cascaded on purpose: a log that disappears the moment the row
+it describes is hard-deleted defeats its own purpose. `permanentlyDeleteExpenseAction` writes the
+`permanently_deleted` event before deleting the expense, so actor/action/timestamp outlive the row.
+Indexed `(expense_id, created_at)` for the per-expense batched lookup, and `(org_id, created_at)`
+(D-88) for `loadOrgAuditHistory`'s org-wide, paginated read — the first index doesn't help a
+query with no `expense_id` filter.
+
+`before_data`/`after_data` (D-87) hold the same field set `toRow()` builds in `actions.ts` —
+name, lineItemId, paymentSource, month, date, description, subtotalCents, taxCents, feesCents,
+taxReimbursable, feesReimbursable, note, narrative, noReceipt, noReceiptReason — plus
+`lineItemName`, the line item's name resolved at write time so a later rename doesn't rewrite
+what was actually claimed. Money stays raw integer cents; the UI formats at render, never at
+write. `created`/`restored` populate only `afterData`; `deleted`/`permanently_deleted` populate
+only `beforeData`; `edited` populates both, and the audit page's diff dialog lists only the
+fields that actually differ between them.
 
 ### expense_documents
 | Field | Type | Notes |

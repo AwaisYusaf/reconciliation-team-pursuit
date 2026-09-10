@@ -41,6 +41,7 @@ describe.skipIf(!hasDatabase)("line item performances (integration)", async () =
       orgId: id,
       userId: "u",
       email: "e@example.com",
+      role: "admin",
       orgName: "Org",
       docName: "Doc",
       activeMonth: "2026-02",

@@ -7,12 +7,20 @@ import { and, eq, isNotNull, isNull, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
 import { db } from "@/src/db";
-import { expenseDocuments, expenses, lineItems, vendorDefaults } from "@/src/db/schema";
+import {
+  expenseAuditEvents,
+  expenseDocuments,
+  expenses,
+  lineItems,
+  vendorDefaults,
+  type ExpenseAuditSnapshot,
+} from "@/src/db/schema";
 import { parseMoneyToCentsOrZero } from "@/src/domain/money";
 import { fail, ok, type ActionResult } from "@/src/lib/action-result";
-import { actionSession } from "@/src/lib/action-session";
+import { actionSession, requireAdmin } from "@/src/lib/action-session";
 import { carryNarrativeToTemplate } from "@/src/modules/recurring/narrative";
 import { claimReferenceSeq } from "./references";
+import { loadOrgAuditHistory, type OrgAuditEvent } from "./queries";
 import {
   deleteExpenseDocument as removeStoredDocument,
   deleteStoredObjects,
@@ -61,6 +69,62 @@ function toRow(input: ExpenseInput) {
     noReceiptReason: input.noReceipt ? input.noReceiptReason.trim() : null,
   };
 }
+
+function snapshotOf(row: ReturnType<typeof toRow>, lineItemName: string): ExpenseAuditSnapshot {
+  return { ...row, lineItemName };
+}
+
+/** Reads just the snapshot's own fields off a superset object — used where the caller
+ *  already fetched extra, unrelated columns alongside them (see `updateExpenseAction`). */
+function pickSnapshot(row: ExpenseAuditSnapshot): ExpenseAuditSnapshot {
+  return {
+    name: row.name,
+    lineItemId: row.lineItemId,
+    lineItemName: row.lineItemName,
+    paymentSource: row.paymentSource,
+    month: row.month,
+    date: row.date,
+    description: row.description,
+    subtotalCents: row.subtotalCents,
+    taxCents: row.taxCents,
+    feesCents: row.feesCents,
+    taxReimbursable: row.taxReimbursable,
+    feesReimbursable: row.feesReimbursable,
+    note: row.note,
+    narrative: row.narrative,
+    noReceipt: row.noReceipt,
+    noReceiptReason: row.noReceiptReason,
+  };
+}
+
+/**
+ * The audit snapshot's field set, minus `lineItemName` — one shared column list for the three
+ * actions (delete/restore/permanent-delete) that read it straight off `expenses` rather than
+ * building it from `toRow()`, so there's one place to update if a field is ever added instead
+ * of three near-identical `.select()` calls drifting apart.
+ */
+const EXPENSE_SNAPSHOT_COLUMNS = {
+  name: expenses.name,
+  lineItemId: expenses.lineItemId,
+  paymentSource: expenses.paymentSource,
+  month: expenses.month,
+  date: expenses.date,
+  description: expenses.description,
+  subtotalCents: expenses.subtotalCents,
+  taxCents: expenses.taxCents,
+  feesCents: expenses.feesCents,
+  taxReimbursable: expenses.taxReimbursable,
+  feesReimbursable: expenses.feesReimbursable,
+  note: expenses.note,
+  narrative: expenses.narrative,
+  noReceipt: expenses.noReceipt,
+  noReceiptReason: expenses.noReceiptReason,
+} as const;
+
+/** Signals a row that existed at the read inside a transaction but was gone by the write — a
+ *  concurrent delete raced this one. Caught at the call site and turned into the normal
+ *  "no longer exists" failure; never leaks past the action that throws it. */
+class ExpenseRaceLost extends Error {}
 
 /**
  * The library learns from every save (R8.2): next time this payee is typed, its line item,
@@ -125,7 +189,7 @@ export async function createExpenseAction(
   if (invalid) return fail(invalid);
 
   const owned = await db
-    .select({ id: lineItems.id })
+    .select({ id: lineItems.id, name: lineItems.name })
     .from(lineItems)
     .where(and(eq(lineItems.id, input.lineItemId), eq(lineItems.orgId, current.orgId)))
     .limit(1);
@@ -149,15 +213,33 @@ export async function createExpenseAction(
     .from(expenses)
     .where(and(eq(expenses.orgId, current.orgId), eq(expenses.month, row.month)));
 
-  const [created] = await db
-    .insert(expenses)
-    .values({
+  // The insert and its audit event must land together: if the second write failed after the
+  // first committed, the expense would exist with no record of who created it, defeating the
+  // audit trail's whole purpose.
+  const created = await db.transaction(async (tx) => {
+    const [row_] = await tx
+      .insert(expenses)
+      .values({
+        orgId: current.orgId,
+        ...row,
+        sortOrder: Number(next),
+        // `tx`, not the pooled handle: this runs inside the transaction above, and a second
+        // pool checkout from in here deadlocks under concurrency (see claimReferenceSeq).
+        referenceSeq: await claimReferenceSeq(current.orgId, row.month, tx),
+      })
+      .returning({ id: expenses.id });
+
+    await tx.insert(expenseAuditEvents).values({
       orgId: current.orgId,
-      ...row,
-      sortOrder: Number(next),
-      referenceSeq: await claimReferenceSeq(current.orgId, row.month),
-    })
-    .returning({ id: expenses.id });
+      expenseId: row_.id,
+      actorUserId: current.userId,
+      action: "created",
+      beforeData: null,
+      afterData: snapshotOf(row, owned[0].name),
+    });
+
+    return row_;
+  });
 
   await learnVendor(current.orgId, row);
   revalidatePath("/", "layout");
@@ -177,7 +259,7 @@ export async function updateExpenseAction(input: ExpenseInput): Promise<ActionRe
   // rebind an expense to another organisation's line item — a cross-tenant reference that
   // would then render that organisation's line item name on this one's screens.
   const ownsLineItem = await db
-    .select({ id: lineItems.id })
+    .select({ id: lineItems.id, name: lineItems.name })
     .from(lineItems)
     .where(and(eq(lineItems.id, input.lineItemId), eq(lineItems.orgId, current.orgId)))
     .limit(1);
@@ -188,15 +270,34 @@ export async function updateExpenseAction(input: ExpenseInput): Promise<ActionRe
   // uneditable the moment its payment source is deactivated — and the only way out would be
   // to overwrite the snapshot that already printed on a submitted cover sheet. Only a
   // *changed* label has to be one the organisation currently offers.
+  // Joined to lineItems for the OLD line item's name: the snapshot has to name whatever this
+  // expense belonged to before the update, which is not necessarily `input.lineItemId` — an
+  // edit can move it to a different one, and the before snapshot must describe what was true
+  // a moment ago, not what the form is about to save.
   const [existing] = await db
     .select({
       month: expenses.month,
       recurringItemId: expenses.recurringItemId,
       sortOrder: expenses.sortOrder,
       referenceSeq: expenses.referenceSeq,
+      name: expenses.name,
+      lineItemId: expenses.lineItemId,
+      lineItemName: lineItems.name,
       paymentSource: expenses.paymentSource,
+      date: expenses.date,
+      description: expenses.description,
+      subtotalCents: expenses.subtotalCents,
+      taxCents: expenses.taxCents,
+      feesCents: expenses.feesCents,
+      taxReimbursable: expenses.taxReimbursable,
+      feesReimbursable: expenses.feesReimbursable,
+      note: expenses.note,
+      narrative: expenses.narrative,
+      noReceipt: expenses.noReceipt,
+      noReceiptReason: expenses.noReceiptReason,
     })
     .from(expenses)
+    .innerJoin(lineItems, eq(lineItems.id, expenses.lineItemId))
     .where(
       and(
         eq(expenses.id, input.id),
@@ -236,17 +337,42 @@ export async function updateExpenseAction(input: ExpenseInput): Promise<ActionRe
   const movedMonth = existing.month !== row.month;
   // Captured so the narrowing from the guard above survives into the retry callback.
   const expenseId = input.id;
-  const updated = await db
-    .update(expenses)
-    .set({
-      ...row,
-      sortOrder,
-      ...(movedMonth ? { referenceSeq: await claimReferenceSeq(current.orgId, row.month) } : {}),
-    })
-    .where(
-      and(eq(expenses.id, expenseId), eq(expenses.orgId, current.orgId), isNull(expenses.deletedAt)),
-    )
-    .returning({ id: expenses.id });
+  // `existing` was already fetched with exactly the snapshot's fields (plus three unrelated
+  // ones this update logic also needs) — `pickSnapshot` reads off it directly rather than a
+  // second hand-maintained field list next to `EXPENSE_SNAPSHOT_COLUMNS`.
+  const beforeSnapshot = pickSnapshot(existing);
+
+  const nextReferenceSeq = movedMonth ? await claimReferenceSeq(current.orgId, row.month) : undefined;
+
+  // The update and its audit event must land together — see the same reasoning in
+  // createExpenseAction. A failure between them would otherwise leave an edit applied with no
+  // record of what it changed from.
+  const updated = await db.transaction(async (tx) => {
+    const updated_ = await tx
+      .update(expenses)
+      .set({
+        ...row,
+        sortOrder,
+        ...(nextReferenceSeq !== undefined ? { referenceSeq: nextReferenceSeq } : {}),
+      })
+      .where(
+        and(eq(expenses.id, expenseId), eq(expenses.orgId, current.orgId), isNull(expenses.deletedAt)),
+      )
+      .returning({ id: expenses.id });
+
+    if (updated_.length > 0) {
+      await tx.insert(expenseAuditEvents).values({
+        orgId: current.orgId,
+        expenseId,
+        actorUserId: current.userId,
+        action: "edited",
+        beforeData: beforeSnapshot,
+        afterData: snapshotOf(row, ownsLineItem[0].name),
+      });
+    }
+
+    return updated_;
+  });
   if (updated.length === 0) return fail("That expense no longer exists.");
 
   // Carry a corrected narrative back to the template it came from, so next month's one-click
@@ -292,13 +418,39 @@ export async function deleteExpenseAction(id: string): Promise<ActionResult> {
   if ("expired" in current) return current.expired;
   if (!isUuid(id)) return fail("That expense no longer exists.");
 
-  const trashed = await db
-    .update(expenses)
-    .set({ deletedAt: new Date() })
-    .where(
-      and(eq(expenses.id, id), eq(expenses.orgId, current.orgId), isNull(expenses.deletedAt)),
-    )
-    .returning({ id: expenses.id });
+  // The trash-update and its audit event must land together — see the same reasoning in
+  // createExpenseAction. A failure between them would trash an expense with no record of it.
+  const trashed = await db.transaction(async (tx) => {
+    const trashed_ = await tx
+      .update(expenses)
+      .set({ deletedAt: new Date() })
+      .where(
+        and(eq(expenses.id, id), eq(expenses.orgId, current.orgId), isNull(expenses.deletedAt)),
+      )
+      .returning(EXPENSE_SNAPSHOT_COLUMNS);
+    if (trashed_.length === 0) return trashed_;
+    const [row] = trashed_;
+
+    // RETURNING cannot reach a joined table, so the line item's name — the one field the
+    // snapshot needs that isn't a column on `expenses` — costs one extra select. The FK is
+    // `onDelete: "restrict"` (schema.ts), so the row this points at can never be gone.
+    const [lineItem] = await tx
+      .select({ name: lineItems.name })
+      .from(lineItems)
+      .where(eq(lineItems.id, row.lineItemId))
+      .limit(1);
+
+    await tx.insert(expenseAuditEvents).values({
+      orgId: current.orgId,
+      expenseId: id,
+      actorUserId: current.userId,
+      action: "deleted",
+      beforeData: snapshotOf(row, lineItem?.name ?? ""),
+      afterData: null,
+    });
+
+    return trashed_;
+  });
   if (trashed.length === 0) return fail("That expense no longer exists.");
 
   revalidatePath("/", "layout");
@@ -311,13 +463,37 @@ export async function restoreExpenseAction(id: string): Promise<ActionResult> {
   if ("expired" in current) return current.expired;
   if (!isUuid(id)) return fail("That expense no longer exists.");
 
-  const restored = await db
-    .update(expenses)
-    .set({ deletedAt: null })
-    .where(
-      and(eq(expenses.id, id), eq(expenses.orgId, current.orgId), isNotNull(expenses.deletedAt)),
-    )
-    .returning({ id: expenses.id });
+  // Same reasoning as deleteExpenseAction: the restore and its audit event must land together.
+  const restored = await db.transaction(async (tx) => {
+    const restored_ = await tx
+      .update(expenses)
+      .set({ deletedAt: null })
+      .where(
+        and(eq(expenses.id, id), eq(expenses.orgId, current.orgId), isNotNull(expenses.deletedAt)),
+      )
+      .returning(EXPENSE_SNAPSHOT_COLUMNS);
+    if (restored_.length === 0) return restored_;
+    const [row] = restored_;
+
+    // RETURNING cannot reach a joined table, so the line item's name costs one extra select,
+    // the same cost as `deleteExpenseAction`.
+    const [lineItem] = await tx
+      .select({ name: lineItems.name })
+      .from(lineItems)
+      .where(eq(lineItems.id, row.lineItemId))
+      .limit(1);
+
+    await tx.insert(expenseAuditEvents).values({
+      orgId: current.orgId,
+      expenseId: id,
+      actorUserId: current.userId,
+      action: "restored",
+      beforeData: null,
+      afterData: snapshotOf(row, lineItem?.name ?? ""),
+    });
+
+    return restored_;
+  });
   if (restored.length === 0) return fail("That expense no longer exists.");
 
   revalidatePath("/", "layout");
@@ -341,13 +517,52 @@ export async function permanentlyDeleteExpenseAction(id: string): Promise<Action
     .from(expenseDocuments)
     .where(and(eq(expenseDocuments.expenseId, id), eq(expenseDocuments.orgId, current.orgId)));
 
-  const deleted = await db
-    .delete(expenses)
+  // Confirmed to exist before the audit event is written: the event's `expense_id` FK
+  // requires a real row to point at, so a nonexistent or already-gone id must fail here
+  // rather than at the insert below. Extended to the full field set + a lineItems join so
+  // this snapshot — the last chance to record what this expense was, since the row is about
+  // to be gone for good — costs no extra query.
+  const exists = await db
+    .select({ ...EXPENSE_SNAPSHOT_COLUMNS, lineItemName: lineItems.name })
+    .from(expenses)
+    .innerJoin(lineItems, eq(lineItems.id, expenses.lineItemId))
     .where(
       and(eq(expenses.id, id), eq(expenses.orgId, current.orgId), isNotNull(expenses.deletedAt)),
     )
-    .returning({ id: expenses.id });
-  if (deleted.length === 0) return fail("That expense no longer exists.");
+    .limit(1);
+  if (exists.length === 0) return fail("That expense no longer exists.");
+  const { lineItemName, ...existsRow } = exists[0];
+
+  // The audit event and the delete must land together, in this order and inside one real
+  // transaction: the event is written first, while the row it points at (still required by
+  // the FK) exists, then the delete removes it, which the FK's `onDelete: "set null"`
+  // (schema.ts) turns into nulling the just-inserted event's `expense_id` — all before commit.
+  // If the delete finds nothing (a concurrent delete raced this one), `ExpenseRaceLost`
+  // rolls the whole transaction back, undoing the audit insert with it — no separate
+  // compensating delete needed, and no window where a failed delete leaves a stray event.
+  try {
+    await db.transaction(async (tx) => {
+      await tx.insert(expenseAuditEvents).values({
+        orgId: current.orgId,
+        expenseId: id,
+        actorUserId: current.userId,
+        action: "permanently_deleted",
+        beforeData: snapshotOf(existsRow, lineItemName),
+        afterData: null,
+      });
+
+      const deleted = await tx
+        .delete(expenses)
+        .where(
+          and(eq(expenses.id, id), eq(expenses.orgId, current.orgId), isNotNull(expenses.deletedAt)),
+        )
+        .returning({ id: expenses.id });
+      if (deleted.length === 0) throw new ExpenseRaceLost();
+    });
+  } catch (error) {
+    if (error instanceof ExpenseRaceLost) return fail("That expense no longer exists.");
+    throw error;
+  }
 
   // The rows are already gone (cascaded above); only the stored objects are left to clean
   // up, best-effort — swept later if any deletion fails (data-model §Cleanup).
@@ -384,6 +599,26 @@ export type VendorSuggestion = {
   taxCents: number | null;
   feesCents: number | null;
 };
+
+/**
+ * One expense's audit history, admin-only (D-89) — backs the three-dot menu's "View history".
+ * The real security boundary: the client-side `isAdmin` prop that shows the menu is UI hiding
+ * only, this is what actually enforces it, and it reads `current.orgId` from the session
+ * rather than ever trusting an org id from the client.
+ */
+export async function loadExpenseHistoryAction(
+  expenseId: string,
+): Promise<ActionResult<{ events: OrgAuditEvent[]; truncated: boolean }>> {
+  const current = await requireAdmin();
+  if ("denied" in current) return current.denied;
+  if (!isUuid(expenseId)) return fail("That expense no longer exists.");
+
+  // One page is all this view shows — an expense with more events than that is far past what
+  // anyone reads in a modal. `truncated` is carried through so the UI can say so: silently
+  // dropping the rest would make an audit trail lie about being complete.
+  const { events, hasNextPage } = await loadOrgAuditHistory(current.orgId, { expenseId });
+  return ok({ events, truncated: hasNextPage });
+}
 
 /** Vendor autofill lookup (R8.1): exact match fills the form, partials are suggestions. */
 export async function searchVendorsAction(

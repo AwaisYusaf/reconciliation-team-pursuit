@@ -30,8 +30,16 @@ const hasDatabase = Boolean(process.env.DATABASE_URL);
 
 describe.skipIf(!hasDatabase)("removeRecurringFromMonthAction (integration)", async () => {
   const { db } = await import("@/src/db");
-  const { expenseDocuments, expenses, lineItems, organizations, paymentSources, recurringItems } =
-    await import("@/src/db/schema");
+  const {
+    expenseDocuments,
+    expenses,
+    lineItems,
+    organizations,
+    paymentSources,
+    recurringItems,
+    users,
+  } = await import("@/src/db/schema");
+  const { hashPassword } = await import("@/src/services/auth/passwords");
   const { claimReferenceSeq } = await import("@/src/modules/expenses/references");
   const { actionSession } = await import("@/src/lib/action-session");
   const { saveRecurringItemAction, removeRecurringFromMonthAction } = await import("./actions");
@@ -41,13 +49,15 @@ describe.skipIf(!hasDatabase)("removeRecurringFromMonthAction (integration)", as
 
   let orgId: string;
   let lineItemId: string;
+  let userId: string;
   const MONTH = "2099-08";
 
   function asOrg(id: string) {
     session.mockResolvedValue({
       orgId: id,
-      userId: "u",
+      userId,
       email: "e@example.com",
+      role: "admin",
       orgName: "Org",
       docName: "Doc",
       activeMonth: MONTH,
@@ -70,6 +80,19 @@ describe.skipIf(!hasDatabase)("removeRecurringFromMonthAction (integration)", as
     lineItemId = item.id;
 
     await db.insert(paymentSources).values({ orgId, label: "Cash", sortOrder: 0 });
+
+    // A real users row — expenses.created_by_user_id/updated_by_user_id (D-89) are a real
+    // FK, so the mocked session's userId has to point at one.
+    const [user] = await db
+      .insert(users)
+      .values({
+        orgId,
+        email: `admin-${Date.now()}@example.test`,
+        passwordHash: await hashPassword("original-password-here"),
+        role: "admin",
+      })
+      .returning({ id: users.id });
+    userId = user.id;
   });
 
   afterAll(async () => {

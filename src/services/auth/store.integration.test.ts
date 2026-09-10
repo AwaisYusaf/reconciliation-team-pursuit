@@ -41,6 +41,7 @@ describe.skipIf(!hasDatabase)("session store (integration)", async () => {
         orgId,
         email: `integration-${Date.now()}@example.test`,
         passwordHash: "unused-for-these-tests",
+        role: "admin",
       })
       .returning({ id: users.id });
     userId = user.id;
@@ -168,7 +169,12 @@ describe.skipIf(!hasDatabase)("session store (integration)", async () => {
       .returning({ id: organizations.id });
     const [user] = await db
       .insert(users)
-      .values({ orgId: org.id, email: `cascade-${Date.now()}@example.test`, passwordHash: "x" })
+      .values({
+        orgId: org.id,
+        email: `cascade-${Date.now()}@example.test`,
+        passwordHash: "x",
+        role: "admin",
+      })
       .returning({ id: users.id });
 
     const token = await createSession(user.id);

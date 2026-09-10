@@ -18,6 +18,7 @@ import {
   date,
   index,
   integer,
+  jsonb,
   pgEnum,
   pgTable,
   primaryKey,
@@ -76,6 +77,18 @@ export const artifactType = pgEnum("artifact_type", [
   "cover_pdf",
 ]);
 
+/** users.role — admin = the org-creating account and anyone it promotes; manager = expenses/grants only. */
+export const userRole = pgEnum("user_role", ["admin", "manager"]);
+
+/** expense_audit_events.action — the five expense mutations this audit trail covers. */
+export const expenseAuditAction = pgEnum("expense_audit_action", [
+  "created",
+  "edited",
+  "deleted",
+  "restored",
+  "permanently_deleted",
+]);
+
 /* ----------------------------------------------------------- organizations */
 
 export const organizations = pgTable("organizations", {
@@ -104,8 +117,18 @@ export const users = pgTable(
       .notNull()
       .references(() => organizations.id, { onDelete: "cascade" }),
     email: text().notNull(),
+    /**
+     * Display name for "who did this" (created-by/updated-by, audit actor). Nullable: an
+     * account that predates this column has no name on file, and falls back to email at
+     * render (`userDisplay`) rather than a guessed value.
+     */
+    name: text(),
     /** argon2id; password minimum 12 chars (D-06/D-24). */
     passwordHash: text("password_hash").notNull(),
+    /** admin = the org-creating account and anyone it promotes; manager = expenses/grants only.
+     *  No column default on purpose, same reason as expenses.referenceSeq: a default makes this
+     *  optional on insert, and a forgotten role would silently mint an admin. */
+    role: userRole().notNull(),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
@@ -366,6 +389,72 @@ export const expenses = pgTable(
       "expenses_no_receipt_reason_ck",
       sql`not ${t.noReceipt} or (${t.noReceiptReason} is not null and btrim(${t.noReceiptReason}) <> '')`,
     ),
+  ],
+);
+
+/* ----------------------------------------------------- expense audit events */
+
+/**
+ * The audit trail's before/after field snapshot (D-87) — the same field set `toRow()` builds
+ * in `src/modules/expenses/actions.ts`, plus `lineItemName` resolved at write time. Declared
+ * here (not derived from `toRow()`'s return type) so the jsonb columns below can be typed
+ * without a modules → db import, and so both the write and read side share one enforced shape
+ * instead of one side trusting an unchecked cast.
+ */
+export type ExpenseAuditSnapshot = {
+  name: string;
+  lineItemId: string;
+  lineItemName: string;
+  paymentSource: string;
+  month: string;
+  date: string;
+  description: string;
+  subtotalCents: number;
+  taxCents: number;
+  feesCents: number;
+  taxReimbursable: boolean;
+  feesReimbursable: boolean;
+  note: string | null;
+  narrative: string | null;
+  noReceipt: boolean;
+  noReceiptReason: string | null;
+};
+
+export const expenseAuditEvents = pgTable(
+  "expense_audit_events",
+  {
+    id: id(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    /**
+     * Nullable and NOT cascaded from expenses on purpose: an audit log that disappears when
+     * the row it describes is hard-deleted defeats its own purpose. `permanentlyDeleteExpenseAction`
+     * writes this event before deleting the expense; the FK then nulls this column out instead
+     * of removing the row, so actor/action/timestamp survive the expense itself.
+     */
+    expenseId: uuid("expense_id").references(() => expenses.id, { onDelete: "set null" }),
+    actorUserId: uuid("actor_user_id")
+      .notNull()
+      .references(() => users.id),
+    action: expenseAuditAction().notNull(),
+    /**
+     * Field-level before/after snapshots (D-87), so the audit page can show what actually
+     * changed rather than only that a change happened. Both null on create; only `afterData`
+     * set on create/restore; only `beforeData` set on delete/permanent delete; both set on
+     * edit. Same field set `toRow()` builds, plus `lineItemName` resolved at write time —
+     * money stays raw integer cents, formatted only at render.
+     */
+    beforeData: jsonb("before_data").$type<ExpenseAuditSnapshot>(),
+    afterData: jsonb("after_data").$type<ExpenseAuditSnapshot>(),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    index("expense_audit_events_expense_idx").on(t.expenseId, t.createdAt),
+    // The org-wide audit page (loadOrgAuditHistory) filters and paginates by org_id alone —
+    // without this, that query has no usable index and falls back to a full table scan as
+    // the log grows, since the per-expense index above doesn't help it.
+    index("expense_audit_events_org_idx").on(t.orgId, t.createdAt),
   ],
 );
 
@@ -697,6 +786,7 @@ export type PaymentSource = typeof paymentSources.$inferSelect;
 export type SupportingDocType = typeof supportingDocTypes.$inferSelect;
 export type LineItem = typeof lineItems.$inferSelect;
 export type Expense = typeof expenses.$inferSelect;
+export type ExpenseAuditEventRow = typeof expenseAuditEvents.$inferSelect;
 export type ExpenseDocument = typeof expenseDocuments.$inferSelect;
 export type MonthDocument = typeof monthDocuments.$inferSelect;
 export type MonthStatus = typeof monthStatuses.$inferSelect;
@@ -710,3 +800,5 @@ export type DocumentKind = (typeof documentKind.enumValues)[number];
 export type DocumentStatus = (typeof documentStatus.enumValues)[number];
 export type MonthDocumentCategory = (typeof monthDocumentCategory.enumValues)[number];
 export type ArtifactType = (typeof artifactType.enumValues)[number];
+export type UserRole = (typeof userRole.enumValues)[number];
+export type ExpenseAuditActionType = (typeof expenseAuditAction.enumValues)[number];

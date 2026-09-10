@@ -12,6 +12,11 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Agent worktrees (`.claude/worktrees/<id>/`) are whole checkouts of this repo, build
+    // output included. The patterns above are anchored at the root, so they miss a nested
+    // `.next/` and `npm run lint` reported 622 errors from generated bundles that are not
+    // ours to fix. Nothing under `.claude/` is source.
+    ".claude/**",
   ]),
 ]);
 

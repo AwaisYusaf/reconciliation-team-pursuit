@@ -120,6 +120,41 @@
       "when": 1788764129342,
       "tag": "0016_amazing_wildside",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1788937200141,
+      "tag": "0017_absurd_colossus",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1788954006518,
+      "tag": "0018_minor_gabe_jones",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1788955818975,
+      "tag": "0019_square_marvex",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1788970714220,
+      "tag": "0020_violet_firestar",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1789030259804,
+      "tag": "0021_tricky_namora",
+      "breakpoints": true
     }
   ]
 }

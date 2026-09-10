@@ -28,7 +28,9 @@ describe.skipIf(!hasDatabase)("expense trash (integration)", async () => {
     lineItems,
     organizations,
     paymentSources,
+    users,
   } = await import("@/src/db/schema");
+  const { hashPassword } = await import("@/src/services/auth/passwords");
   const { claimReferenceSeq } = await import("./references");
   const { actionSession } = await import("@/src/lib/action-session");
   const {
@@ -49,14 +51,31 @@ describe.skipIf(!hasDatabase)("expense trash (integration)", async () => {
   let lineItemId: string;
   let otherOrgId: string;
   let otherLineItemId: string;
+  let userId: string;
+  let otherUserId: string;
 
   const MONTH = "2099-01";
+
+  /** A real users row per org — actor_user_id now carries a NOT NULL FK to it. */
+  async function insertUser(orgId: string, role: "admin" | "manager" = "admin") {
+    const [row] = await db
+      .insert(users)
+      .values({
+        orgId,
+        email: `${role}-${Date.now()}-${Math.random().toString(36).slice(2)}@example.test`,
+        passwordHash: await hashPassword("original-password-here"),
+        role,
+      })
+      .returning({ id: users.id });
+    return row.id;
+  }
 
   function asOrg(id: string) {
     session.mockResolvedValue({
       orgId: id,
-      userId: "u",
+      userId: id === otherOrgId ? otherUserId : userId,
       email: "e@example.com",
+      role: "admin",
       orgName: "Org",
       docName: "Doc",
       activeMonth: MONTH,
@@ -124,6 +143,9 @@ describe.skipIf(!hasDatabase)("expense trash (integration)", async () => {
       .values({ orgId: otherOrgId, name: "Other Travel", scheduledValueCents: 500_000, sortOrder: 0 })
       .returning({ id: lineItems.id });
     otherLineItemId = otherItem.id;
+
+    userId = await insertUser(orgId);
+    otherUserId = await insertUser(otherOrgId);
   });
 
   afterAll(async () => {

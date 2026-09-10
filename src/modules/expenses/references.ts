@@ -7,9 +7,17 @@
  */
 import { sql } from "drizzle-orm";
 
-import { db } from "@/src/db";
+import { db, type Database } from "@/src/db";
 import { monthStatuses } from "@/src/db/schema";
 import type { MonthKey } from "@/src/domain/dates";
+
+/**
+ * Either the pooled handle or an open transaction's handle.
+ *
+ * Derived from `Database["transaction"]`'s own callback parameter rather than naming a
+ * Drizzle internal, so it cannot drift from whatever `db.transaction()` actually hands out.
+ */
+type Executor = Database | Parameters<Parameters<Database["transaction"]>[0]>[0];
 
 /**
  * Claim the next reference number for a month (R2.6).
@@ -26,9 +34,19 @@ import type { MonthKey } from "@/src/domain/dates";
  * default precisely so that forgetting is a compile error rather than two rows colliding on
  * `expenses_org_month_reference_uq` at run time — which is what shipped when the recurring
  * one-click add was written without it.
+ *
+ * **A caller inside `db.transaction()` must pass its `tx`.** Left on the default, this would
+ * check a *second* connection out of the same 10-slot pool while the caller's transaction
+ * still holds the first — ten concurrent saves would then each hold one and wait forever for
+ * another, deadlocking the pool. Passing `tx` also makes the claim roll back with the
+ * transaction instead of spending a number the failed insert never used.
  */
-export async function claimReferenceSeq(orgId: string, month: MonthKey): Promise<number> {
-  const [claimed] = await db
+export async function claimReferenceSeq(
+  orgId: string,
+  month: MonthKey,
+  executor: Executor = db,
+): Promise<number> {
+  const [claimed] = await executor
     .insert(monthStatuses)
     .values({ orgId, month, nextReferenceSeq: 2 })
     .onConflictDoUpdate({

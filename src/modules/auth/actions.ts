@@ -33,6 +33,7 @@ import {
 } from "@/src/services/auth/session";
 import { hashPassword, validatePasswordPolicy, verifyPassword } from "@/src/services/auth/passwords";
 import { consume, reset } from "@/src/services/rate-limit";
+import { nameSchema } from "@/src/domain/name";
 
 import { signupEnabled } from "./config";
 
@@ -198,6 +199,7 @@ export async function signOutAction(): Promise<void> {
 
 const signUpSchema = z.object({
   orgName: z.string().trim().min(1, "Enter your organisation's name."),
+  name: nameSchema,
   email: z.string().trim().email("Enter a valid email address."),
   password: z.string(),
   confirmPassword: z.string(),
@@ -225,6 +227,7 @@ export async function signUpAction(
 
   const parsed = signUpSchema.safeParse({
     orgName: formData.get("orgName") ?? "",
+    name: formData.get("name") ?? "",
     email: formData.get("email") ?? "",
     password: formData.get("password") ?? "",
     confirmPassword: formData.get("confirmPassword") ?? "",
@@ -234,7 +237,7 @@ export async function signUpAction(
     return fail("Check the highlighted fields.", fieldErrorsFrom(parsed.error));
   }
 
-  const { orgName, email, password, confirmPassword } = parsed.data;
+  const { orgName, name, email, password, confirmPassword } = parsed.data;
 
   const policyError = validatePasswordPolicy(password);
   if (policyError) return fail("Check the highlighted fields.", { password: policyError });
@@ -263,7 +266,7 @@ export async function signUpAction(
 
     const [user] = await tx
       .insert(users)
-      .values({ orgId: org.id, email, passwordHash })
+      .values({ orgId: org.id, name, email, passwordHash, role: "admin" })
       .returning({ id: users.id });
 
     return user.id;
