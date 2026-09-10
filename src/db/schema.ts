@@ -117,6 +117,12 @@ export const users = pgTable(
       .notNull()
       .references(() => organizations.id, { onDelete: "cascade" }),
     email: text().notNull(),
+    /**
+     * Display name for "who did this" (created-by/updated-by, audit actor). Nullable: an
+     * account that predates this column has no name on file, and falls back to email at
+     * render (`userDisplay`) rather than a guessed value.
+     */
+    name: text(),
     /** argon2id; password minimum 12 chars (D-06/D-24). */
     passwordHash: text("password_hash").notNull(),
     /** admin = the org-creating account and anyone it promotes; manager = expenses/grants only.

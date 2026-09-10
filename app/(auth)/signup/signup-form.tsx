@@ -40,6 +40,12 @@ export function SignupForm() {
       </div>
 
       <div className="mb-[18px]">
+        <Label htmlFor="name">Your name</Label>
+        <Input id="name" name="name" autoComplete="name" required />
+        {fieldErrors.name && <FieldError>{fieldErrors.name}</FieldError>}
+      </div>
+
+      <div className="mb-[18px]">
         <Label htmlFor="email">Email</Label>
         <Input
           id="email"

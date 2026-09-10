@@ -16,16 +16,22 @@ import { OverlayShell } from "@/src/components/ui/overlay-shell";
  * has free-form `children` rather than a fixed confirm/dismiss button pair, since a form popup's
  * footer isn't one shape.
  */
+/** `md` (default) matches a form or a short list. `lg` is for content with real width to it —
+ *  a multi-column table, for instance — mirroring `Dialog`'s own `size` prop. */
+const MODAL_WIDTH = { md: "max-w-[480px]", lg: "max-w-[880px]" } as const;
+
 export function Modal({
   open,
   title,
   onClose,
   children,
+  size = "md",
 }: {
   open: boolean;
   title: string;
   onClose: () => void;
   children: ReactNode;
+  size?: keyof typeof MODAL_WIDTH;
 }) {
   const titleId = useId();
   const closeRef = useRef<HTMLButtonElement>(null);
@@ -34,7 +40,7 @@ export function Modal({
 
   return (
     <OverlayShell open onDismiss={onClose} initialFocusRef={closeRef}>
-      <div className="w-full max-w-[480px] max-h-[calc(100dvh-2rem)] overflow-y-auto">
+      <div className={`w-full ${MODAL_WIDTH[size]} max-h-[calc(100dvh-2rem)] overflow-y-auto`}>
         <div
           role="dialog"
           aria-modal="true"

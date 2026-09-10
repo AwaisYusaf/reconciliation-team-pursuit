@@ -26,10 +26,6 @@ export const NAV_ITEMS = [
   { label: "Settings", href: "/r/settings" },
 ] as const;
 
-/** Admin-only, appended when `isAdmin` (D-87) — not part of `NAV_ITEMS` itself since that
- *  const is exported and consumed with no session awareness. */
-const AUDIT_ITEM = { label: "Audit", href: "/r/audit" } as const;
-
 /**
  * Bring the active tab into view in the scrolled row.
  *
@@ -45,12 +41,11 @@ function matches(pathname: string, href: string): boolean {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
-export function AppNav({ isAdmin = false }: { isAdmin?: boolean }) {
+export function AppNav() {
   const pathname = usePathname();
-  const items = isAdmin ? [...NAV_ITEMS, AUDIT_ITEM] : NAV_ITEMS;
   // Longest matching href wins, so /expenses/new lights up "Add Expense" rather than
   // also matching "Expenses".
-  const activeHref = items.filter((item) => matches(pathname, item.href)).sort(
+  const activeHref = NAV_ITEMS.filter((item) => matches(pathname, item.href)).sort(
     (a, b) => b.href.length - a.href.length,
   )[0]?.href;
 
@@ -61,7 +56,7 @@ export function AppNav({ isAdmin = false }: { isAdmin?: boolean }) {
       className="-mx-4 sm:mx-0 px-4 sm:px-0 flex gap-5 sm:gap-6 mt-4 sm:mt-[18px] overflow-x-auto lg:flex-wrap lg:overflow-visible [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       aria-label="Primary"
     >
-      {items.map((item) => {
+      {NAV_ITEMS.map((item) => {
         const active = item.href === activeHref;
         return (
           <Link

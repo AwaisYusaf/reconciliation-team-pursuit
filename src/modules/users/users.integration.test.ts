@@ -42,9 +42,8 @@ describe.skipIf(!hasDatabase)("user management (integration)", async () => {
   const { requireSession, UnauthenticatedError } = await import("@/src/services/auth/session");
   const { FORBIDDEN } = await import("@/src/lib/action-session");
   const { SESSION_EXPIRED } = await import("@/src/lib/action-result");
-  const { createOrgUserAction, setUserPasswordAction, listOrgUsersAction } = await import(
-    "./actions"
-  );
+  const { createOrgUserAction, setUserPasswordAction, setUserNameAction, listOrgUsersAction } =
+    await import("./actions");
 
   const session = vi.mocked(requireSession);
 
@@ -97,6 +96,11 @@ describe.skipIf(!hasDatabase)("user management (integration)", async () => {
     return rows.length;
   }
 
+  async function nameOf(userId: string) {
+    const [row] = await db.select({ name: users.name }).from(users).where(eq(users.id, userId));
+    return row?.name;
+  }
+
   let orgAId: string;
   let orgBId: string;
   let adminAId: string;
@@ -136,7 +140,7 @@ describe.skipIf(!hasDatabase)("user management (integration)", async () => {
       asSession({ userId: managerAId, orgId: orgAId, role: "manager" });
       const before = await userCount(orgAId);
 
-      const result = await createOrgUserAction("new-person@example.test");
+      const result = await createOrgUserAction({ name: "New Person", email: "new-person@example.test" });
       expect(result).toEqual({ ok: false, error: FORBIDDEN });
 
       expect(await userCount(orgAId)).toBe(before);
@@ -161,6 +165,16 @@ describe.skipIf(!hasDatabase)("user management (integration)", async () => {
       asSession({ userId: managerAId, orgId: orgAId, role: "manager" });
       const result = await listOrgUsersAction();
       expect(result).toEqual({ ok: false, error: FORBIDDEN });
+    });
+
+    it("setUserNameAction: rejected, target's name unchanged", async () => {
+      asSession({ userId: managerAId, orgId: orgAId, role: "manager" });
+      const before = await nameOf(targetInOrgAId);
+
+      const result = await setUserNameAction(targetInOrgAId, "Sneaky Rename");
+      expect(result).toEqual({ ok: false, error: FORBIDDEN });
+
+      expect(await nameOf(targetInOrgAId)).toBe(before);
     });
   });
 
@@ -196,7 +210,7 @@ describe.skipIf(!hasDatabase)("user management (integration)", async () => {
       await insertUser(orgAId, "manager", email);
 
       asSession({ userId: adminAId, orgId: orgAId, role: "admin" });
-      const result = await createOrgUserAction(email);
+      const result = await createOrgUserAction({ name: "Dup Person", email });
       expect(result.ok).toBe(false);
     });
 
@@ -205,7 +219,7 @@ describe.skipIf(!hasDatabase)("user management (integration)", async () => {
       await insertUser(orgBId, "manager", email);
 
       asSession({ userId: adminAId, orgId: orgAId, role: "admin" });
-      const result = await createOrgUserAction(email);
+      const result = await createOrgUserAction({ name: "Dup Person", email });
       expect(result.ok).toBe(false);
 
       // And no second row was created for it (still just the one in org B).
@@ -219,7 +233,10 @@ describe.skipIf(!hasDatabase)("user management (integration)", async () => {
       await insertUser(orgAId, "manager", mixedCaseEmail);
 
       asSession({ userId: adminAId, orgId: orgAId, role: "admin" });
-      const result = await createOrgUserAction(mixedCaseEmail.toLowerCase());
+      const result = await createOrgUserAction({
+        name: "Foo",
+        email: mixedCaseEmail.toLowerCase(),
+      });
       expect(result.ok).toBe(false);
     });
   });
@@ -249,7 +266,7 @@ describe.skipIf(!hasDatabase)("user management (integration)", async () => {
       asSession({ userId: adminAId, orgId: orgAId, role: "admin" });
       const email = `new-login-${Date.now()}@example.test`;
 
-      const result = await createOrgUserAction(email);
+      const result = await createOrgUserAction({ name: "New Login", email });
       expect(result.ok).toBe(true);
       if (!result.ok) throw new Error("unreachable");
 
@@ -302,11 +319,112 @@ describe.skipIf(!hasDatabase)("user management (integration)", async () => {
     });
   });
 
+  describe("(g) createOrgUserAction name validation (D-89)", () => {
+    it("rejects an empty name and writes no user row", async () => {
+      asSession({ userId: adminAId, orgId: orgAId, role: "admin" });
+      const email = `empty-name-${Date.now()}@example.test`;
+
+      const result = await createOrgUserAction({ name: "", email });
+      expect(result.ok).toBe(false);
+
+      const rows = await db.select({ id: users.id }).from(users).where(eq(users.email, email));
+      expect(rows).toHaveLength(0);
+    });
+
+    it("rejects a whitespace-only name and writes no user row", async () => {
+      asSession({ userId: adminAId, orgId: orgAId, role: "admin" });
+      const email = `whitespace-name-${Date.now()}@example.test`;
+
+      const result = await createOrgUserAction({ name: "   ", email });
+      expect(result.ok).toBe(false);
+
+      const rows = await db.select({ id: users.id }).from(users).where(eq(users.email, email));
+      expect(rows).toHaveLength(0);
+    });
+
+    it("accepts a valid name, trimmed", async () => {
+      asSession({ userId: adminAId, orgId: orgAId, role: "admin" });
+      const email = `trimmed-name-${Date.now()}@example.test`;
+
+      const result = await createOrgUserAction({ name: "  Trimmed Name  ", email });
+      expect(result.ok).toBe(true);
+
+      const [row] = await db.select({ name: users.name }).from(users).where(eq(users.email, email));
+      expect(row.name).toBe("Trimmed Name");
+    });
+  });
+
+  describe("(h) setUserNameAction (D-89)", () => {
+    it("an admin can rename a user in their own org, trimmed", async () => {
+      asSession({ userId: adminAId, orgId: orgAId, role: "admin" });
+
+      const result = await setUserNameAction(targetInOrgAId, "  Renamed Person  ");
+      expect(result).toEqual({ ok: true, data: undefined });
+
+      expect(await nameOf(targetInOrgAId)).toBe("Renamed Person");
+    });
+
+    it("rejects an empty name, target's name unchanged", async () => {
+      asSession({ userId: adminAId, orgId: orgAId, role: "admin" });
+      const before = await nameOf(targetInOrgAId);
+
+      const result = await setUserNameAction(targetInOrgAId, "");
+      expect(result.ok).toBe(false);
+
+      expect(await nameOf(targetInOrgAId)).toBe(before);
+    });
+
+    it("rejects a whitespace-only name, target's name unchanged", async () => {
+      asSession({ userId: adminAId, orgId: orgAId, role: "admin" });
+      const before = await nameOf(targetInOrgAId);
+
+      const result = await setUserNameAction(targetInOrgAId, "   ");
+      expect(result.ok).toBe(false);
+
+      expect(await nameOf(targetInOrgAId)).toBe(before);
+    });
+
+    it("rejects a non-uuid userId", async () => {
+      asSession({ userId: adminAId, orgId: orgAId, role: "admin" });
+      const result = await setUserNameAction("not-a-uuid", "Whoever");
+      expect(result.ok).toBe(false);
+    });
+
+    it("is org-scoped: another org's user id is refused with the same 'no longer exists' wording, and that user's name is unchanged", async () => {
+      asSession({ userId: adminAId, orgId: orgAId, role: "admin" });
+      const before = await nameOf(targetInOrgBId);
+
+      const crossOrg = await setUserNameAction(targetInOrgBId, "Should Not Land");
+      const absent = await setUserNameAction("00000000-0000-0000-0000-000000000000", "Whoever");
+
+      expect(crossOrg.ok).toBe(false);
+      expect(absent.ok).toBe(false);
+      expect(crossOrg).toEqual(absent);
+      expect(await nameOf(targetInOrgBId)).toBe(before);
+    });
+  });
+
+  describe("(i) a legacy user with no name on file (D-89)", () => {
+    it("listOrgUsersAction returns name: null for a row that predates the column", async () => {
+      asSession({ userId: adminAId, orgId: orgAId, role: "admin" });
+      // insertUser deliberately never sets `name`, so this row is exactly the legacy shape.
+      const legacyId = await insertUser(orgAId, "manager");
+
+      const result = await listOrgUsersAction();
+      expect(result.ok).toBe(true);
+      if (!result.ok) throw new Error("unreachable");
+
+      const row = result.data.find((entry) => entry.id === legacyId);
+      expect(row).toBeDefined();
+      expect(row!.name).toBeNull();
+    });
+  });
+
   describe("session edge cases", () => {
     it("an expired/unauthenticated session returns the session-expired result rather than throwing", async () => {
       session.mockRejectedValueOnce(new UnauthenticatedError());
 
-      const result = await createOrgUserAction("whoever@example.test");
+      const result = await createOrgUserAction({ name: "Whoever", email: "whoever@example.test" });
       expect(result).toEqual({ ok: false, error: SESSION_EXPIRED });
     });
 
@@ -314,6 +432,13 @@ describe.skipIf(!hasDatabase)("user management (integration)", async () => {
       session.mockRejectedValueOnce(new UnauthenticatedError());
 
       const result = await setUserPasswordAction(targetInOrgAId, "a-new-password-12");
+      expect(result).toEqual({ ok: false, error: SESSION_EXPIRED });
+    });
+
+    it("setUserNameAction also reports session-expired rather than throwing", async () => {
+      session.mockRejectedValueOnce(new UnauthenticatedError());
+
+      const result = await setUserNameAction(targetInOrgAId, "Whoever");
       expect(result).toEqual({ ok: false, error: SESSION_EXPIRED });
     });
 

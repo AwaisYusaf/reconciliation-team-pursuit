@@ -1,33 +1,28 @@
 "use client";
 
 /**
- * Org-wide audit log table (D-87) — filter, pagination and the before/after diff dialog.
- * The page itself stays a server component; this is the interactive part next to it.
+ * The before/after diff view for one audit event (D-87/D-89), hosted by the Expenses table's
+ * three-dot "View history" modal.
+ *
+ * Its own module rather than living in that table: the diff rendering is the substantial part
+ * and has nothing to do with the expense list around it. It was also once shared with an
+ * org-wide `/r/audit` page, which has since been removed in favour of the per-expense view.
  */
-import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useMemo, useState } from "react";
 
-import { buttonClassName } from "@/src/components/ui/button";
-import { Dialog } from "@/src/components/ui/dialog";
-import { Label } from "@/src/components/ui/field";
-import { Select } from "@/src/components/ui/select";
-import { EmptyState } from "@/src/components/ui/surfaces";
 import { TableCard, Td, Th } from "@/src/components/ui/table";
-import { formatDateTimeUS, formatDateUS, monthLabel } from "@/src/domain/dates";
+import { formatDateUS, monthLabel } from "@/src/domain/dates";
 import { formatMoney } from "@/src/domain/format";
 import type { ExpenseAuditActionType, ExpenseAuditSnapshot } from "@/src/db/schema";
 import type { OrgAuditEvent } from "@/src/modules/expenses/queries";
 
-const ACTION_LABELS: Record<ExpenseAuditActionType, string> = {
+export const ACTION_LABELS: Record<ExpenseAuditActionType, string> = {
   created: "Created",
   edited: "Edited",
   deleted: "Deleted",
   restored: "Restored",
   permanently_deleted: "Permanently deleted",
 };
-
-const ALL_ACTIONS = "All actions";
 
 /** Visible, non-em-dash placeholder for a blank field in the diff dialog. */
 const NONE = "None";
@@ -124,16 +119,25 @@ type DiffBlock =
   | { type: "equal"; tokens: string[] }
   | { type: "changed"; beforeTokens: string[]; afterTokens: string[] };
 
-// LCS is O(n*m) in token count. Above this, a full diff isn't worth the compute — fall back
-// to plain text rather than risk freezing the tab on a pathologically long blob.
-const MAX_DIFF_TOKENS = 4000;
+/**
+ * Ceiling on the LCS table, as a token-pair count: above it, fall back to plain text.
+ *
+ * The budget that matters here is memory, not time. The table is one tagged value per pair,
+ * so a pair count is directly a byte count (×8) — measured at the previous 4000×4000 ceiling
+ * it was 122 MB of heap for 155 ms of work. Nothing caps narrative length, four fields on one
+ * event are diffable, and this runs in the viewer's tab, so that ceiling allowed a single
+ * "View changes" click to ask for roughly half a gigabyte. 2.25M pairs is ~18 MB and ~20 ms,
+ * covers a 750-word-per-side edit in full, and anything longer still renders — just as the
+ * plain before/after columns rather than a word-level diff.
+ */
+const MAX_DIFF_PAIRS = 1500 * 1500;
 
 function diffWords(a: string, b: string): DiffBlock[] | null {
   const tokenize = (s: string) => s.match(/\S+|\s+/g) ?? [];
   const aTokens = tokenize(a);
   const bTokens = tokenize(b);
 
-  if (aTokens.length * bTokens.length > MAX_DIFF_TOKENS * MAX_DIFF_TOKENS) return null;
+  if (aTokens.length * bTokens.length > MAX_DIFF_PAIRS) return null;
 
   const n = aTokens.length;
   const m = bTokens.length;
@@ -249,9 +253,13 @@ function DiffSide({ blocks, side }: { blocks: DiffBlock[]; side: "before" | "aft
           <mark
             key={idx}
             className={
+              // Tokens, not raw Tailwind palette: no component here hardcodes a colour
+              // (globals.css). `diff-added`/`diff-removed` rather than the `success-bg`/
+              // `danger-bg` panel washes — a wash is too dim to pick a changed word out of a
+              // paragraph, which is the whole job here.
               side === "before"
-                ? "bg-red-100 text-red-700 line-through rounded-[2px] no-underline"
-                : "bg-green-100 text-green-800 rounded-[2px] no-underline"
+                ? "bg-diff-removed text-danger line-through rounded-[2px] no-underline"
+                : "bg-diff-added text-success rounded-[2px] no-underline"
             }
           >
             {text}
@@ -311,247 +319,130 @@ function ChangeGroupsColumn({ groups, side }: { groups: ChangeGroup[]; side: "be
     <ul className="space-y-2">
       {groups.map((group, idx) => (
         <li key={idx} className="text-[15px] leading-relaxed">
-          {group.truncatedStart && <span className="text-gray-400 italic">… </span>}
+          {group.truncatedStart && <span className="text-sub italic">… </span>}
           <DiffSide blocks={group.blocks} side={side} />
-          {group.truncatedEnd && <span className="text-gray-400 italic"> …</span>}
+          {group.truncatedEnd && <span className="text-sub italic"> …</span>}
         </li>
       ))}
     </ul>
   );
 }
 
-function DiffDialog({
-  event,
-  onDismiss,
-}: {
-  event: OrgAuditEvent | null;
-  onDismiss: () => void;
-}) {
+/** The diff view's content for one audit event — no dialog chrome, so a caller can host it
+ *  inside whatever overlay makes sense for it (today: `Modal`, from the Expenses table's
+ *  three-dot menu). */
+export function AuditDiffContent({ event }: { event: OrgAuditEvent }) {
   // Which diffable fields (by label) are pinned open to their full before/after text for the
-  // currently viewed event, instead of the default compact change list. Reset whenever the
-  // viewed event changes so switching rows doesn't carry a stale "expanded" state over onto
-  // an unrelated event.
+  // currently viewed event, instead of the default compact change list.
+  //
+  // Reset by remounting — every call site passes `key={event.id}` — rather than the
+  // effect-plus-setState this used to do, so switching rows still can't carry a stale
+  // "expanded" state onto an unrelated event, without the cascading extra render
+  // (`react-hooks/set-state-in-effect`) that pattern costs.
   const [expandedFields, setExpandedFields] = useState<Record<string, boolean>>({});
-  useEffect(() => {
-    setExpandedFields({});
-  }, [event?.id]);
-
-  // Bails before building any content when there's nothing to show: `Dialog` itself renders
-  // null while `open` is false, but React still has to evaluate `children` to construct its
-  // props, so a ternary computed here unconditionally ran `field.value(null)` on every render
-  // while the dialog was closed (`viewing` starts null) and crashed immediately on page load.
-  if (!event) return null;
 
   const before = event.beforeData;
   const after = event.afterData;
 
-  return (
-    <Dialog
-      open
-      title={`${ACTION_LABELS[event.action]} — ${event.reference ?? event.expenseName}`}
-      dismissLabel="Close"
-      onDismiss={onDismiss}
-      size="lg"
-    >
-      {before && after ? (
-        <TableCard minWidth={640}>
-          <thead>
-            <tr>
-              <Th>Field</Th>
-              <Th>Before</Th>
-              <Th>After</Th>
-            </tr>
-          </thead>
-          <tbody>
-            {FIELDS.filter((field) => field.differs(before, after)).map((field) => {
-              const beforeValue = field.value(before);
-              const afterValue = field.value(after);
-              const blocks = field.diffable ? diffWords(beforeValue, afterValue) : null;
+  /**
+   * Every changed field's diff, computed once per event instead of on every render.
+   *
+   * `diffWords` allocates an LCS table per diffable field (see `MAX_DIFF_PAIRS`), and toggling
+   * one field's "Show full text" re-renders this whole table — so without memoising, each such
+   * click rebuilt *every* field's diff from scratch. Null when there is only one side to show,
+   * which is the single-column view below.
+   */
+  const rows = useMemo(() => {
+    if (!before || !after) return null;
+    return FIELDS.filter((field) => field.differs(before, after)).map((field) => {
+      const beforeValue = field.value(before);
+      const afterValue = field.value(after);
+      const blocks = field.diffable ? diffWords(beforeValue, afterValue) : null;
+      return {
+        label: field.label,
+        beforeValue,
+        afterValue,
+        blocks,
+        changeCount: blocks ? blocks.filter((block) => block.type === "changed").length : 0,
+        groups: blocks ? groupChanges(blocks) : [],
+      };
+    });
+  }, [before, after]);
 
-              // Not diffable, or too long to diff cheaply (see MAX_DIFF_TOKENS) — fall back to
-              // the plain two-column view exactly as before.
-              if (!blocks) {
-                return (
-                  <tr key={field.label}>
-                    <Td bold>{field.label}</Td>
-                    <Td>{beforeValue}</Td>
-                    <Td>{afterValue}</Td>
-                  </tr>
-                );
-              }
-
-              const expanded = expandedFields[field.label] ?? false;
-              const changeCount = blocks.filter((b) => b.type === "changed").length;
-              const groups = groupChanges(blocks);
-
-              return (
-                <tr key={field.label}>
-                  <Td bold>
-                    {field.label}
-                    <div className="text-[13px] font-normal text-gray-500 mt-0.5">
-                      {changeCount} {changeCount === 1 ? "change" : "changes"}
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setExpandedFields((prev) => ({ ...prev, [field.label]: !prev[field.label] }))
-                      }
-                      className="text-[13px] font-normal text-accent underline hover:text-accent-dark"
-                    >
-                      {expanded ? "Show summary" : "Show full text"}
-                    </button>
-                  </Td>
-                  <Td>
-                    {expanded ? (
-                      <DiffSide blocks={blocks} side="before" />
-                    ) : (
-                      <ChangeGroupsColumn groups={groups} side="before" />
-                    )}
-                  </Td>
-                  <Td>
-                    {expanded ? (
-                      <DiffSide blocks={blocks} side="after" />
-                    ) : (
-                      <ChangeGroupsColumn groups={groups} side="after" />
-                    )}
-                  </Td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </TableCard>
-      ) : (
-        <TableCard minWidth={480}>
-          <thead>
-            <tr>
-              <Th colSpan={2}>{before ? "Final values" : "Initial values"}</Th>
-            </tr>
-          </thead>
-          <tbody>
-            {FIELDS.map((field) => (
-              <tr key={field.label}>
-                <Td bold>{field.label}</Td>
-                <Td>{field.value((before ?? after)!)}</Td>
+  return rows ? (
+    <TableCard minWidth={640}>
+      <thead>
+        <tr>
+          <Th>Field</Th>
+          <Th>Before</Th>
+          <Th>After</Th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map(({ label, beforeValue, afterValue, blocks, changeCount, groups }) => {
+          // Not diffable, or too long to diff within the memory ceiling (see MAX_DIFF_PAIRS) —
+          // fall back to the plain two-column view.
+          if (!blocks) {
+            return (
+              <tr key={label}>
+                <Td bold>{label}</Td>
+                <Td>{beforeValue}</Td>
+                <Td>{afterValue}</Td>
               </tr>
-            ))}
-          </tbody>
-        </TableCard>
-      )}
-    </Dialog>
-  );
-}
+            );
+          }
 
-export function AuditTable({
-  events,
-  page,
-  hasNextPage,
-  actionType,
-}: {
-  events: OrgAuditEvent[];
-  page: number;
-  hasNextPage: boolean;
-  actionType?: ExpenseAuditActionType;
-}) {
-  const router = useRouter();
-  const searchParams = useSearchParams();
-  const [viewing, setViewing] = useState<OrgAuditEvent | null>(null);
+          const expanded = expandedFields[label] ?? false;
 
-  function hrefFor(nextPage: number, nextAction: string) {
-    const params = new URLSearchParams(searchParams.toString());
-    params.set("page", String(nextPage));
-    if (nextAction === ALL_ACTIONS) params.delete("action");
-    else params.set("action", nextAction);
-    return `/r/audit?${params.toString()}`;
-  }
-
-  return (
-    <div>
-      <div className="flex flex-wrap gap-[18px] mb-5">
-        <div className="flex-1 min-w-[240px] max-w-[340px]">
-          <Label id="auditActionFilter-label" htmlFor="auditActionFilter">
-            Filter by action
-          </Label>
-          <Select
-            id="auditActionFilter"
-            aria-labelledby="auditActionFilter-label"
-            value={actionType ?? ALL_ACTIONS}
-            onValueChange={(value) => router.push(hrefFor(1, value))}
-          >
-            <option>{ALL_ACTIONS}</option>
-            {(Object.keys(ACTION_LABELS) as ExpenseAuditActionType[]).map((action) => (
-              <option key={action} value={action}>
-                {ACTION_LABELS[action]}
-              </option>
-            ))}
-          </Select>
-        </div>
-      </div>
-
-      {events.length === 0 ? (
-        <EmptyState>
-          {/* "recorded yet" is only true of an unfiltered first page — on a filter or a later
-              page an empty result means this view is empty, not that the log is. */}
-          {actionType || page > 1
-            ? "No audit events match this view."
-            : "No audit events recorded yet."}
-        </EmptyState>
-      ) : (
-        <TableCard minWidth={860}>
-          <thead>
-            <tr>
-              <Th>Date/Time</Th>
-              <Th>Actor</Th>
-              <Th>Action</Th>
-              <Th>Expense</Th>
-              <Th align="right" />
+          return (
+            <tr key={label}>
+              <Td bold>
+                {label}
+                <div className="text-[13px] font-normal text-sub mt-0.5">
+                  {changeCount} {changeCount === 1 ? "change" : "changes"}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setExpandedFields((prev) => ({ ...prev, [label]: !prev[label] }))}
+                  className="text-[13px] font-normal text-accent underline hover:text-accent-dark"
+                >
+                  {expanded ? "Show summary" : "Show full text"}
+                </button>
+              </Td>
+              <Td>
+                {expanded ? (
+                  <DiffSide blocks={blocks} side="before" />
+                ) : (
+                  <ChangeGroupsColumn groups={groups} side="before" />
+                )}
+              </Td>
+              <Td>
+                {expanded ? (
+                  <DiffSide blocks={blocks} side="after" />
+                ) : (
+                  <ChangeGroupsColumn groups={groups} side="after" />
+                )}
+              </Td>
             </tr>
-          </thead>
-          <tbody>
-            {events.map((event) => (
-              <tr key={event.id}>
-                <Td className="whitespace-nowrap tabular-nums">{formatDateTimeUS(event.at)}</Td>
-                <Td>{event.actorEmail}</Td>
-                <Td>{ACTION_LABELS[event.action]}</Td>
-                <Td>
-                  {event.reference ? `${event.reference} — ${event.expenseName}` : event.expenseName}
-                </Td>
-                <Td align="right">
-                  {(event.beforeData || event.afterData) && (
-                    <button
-                      type="button"
-                      onClick={() => setViewing(event)}
-                      className="text-[15px] text-accent underline hover:text-accent-dark"
-                    >
-                      View changes
-                    </button>
-                  )}
-                </Td>
-              </tr>
-            ))}
-          </tbody>
-        </TableCard>
-      )}
-
-      {/* Outside the empty branch on purpose: a page past the end renders no rows, and with
-          the controls nested in the table branch there was no "Previous" left to get back. */}
-      {(page > 1 || hasNextPage) && (
-        <div className="flex justify-between mt-5">
-          {page > 1 ? (
-            <Link href={hrefFor(page - 1, actionType ?? ALL_ACTIONS)} className={buttonClassName("secondary")}>
-              Previous
-            </Link>
-          ) : (
-            <span />
-          )}
-          {hasNextPage && (
-            <Link href={hrefFor(page + 1, actionType ?? ALL_ACTIONS)} className={buttonClassName("secondary")}>
-              Next
-            </Link>
-          )}
-        </div>
-      )}
-
-      <DiffDialog event={viewing} onDismiss={() => setViewing(null)} />
-    </div>
+          );
+        })}
+      </tbody>
+    </TableCard>
+  ) : (
+    <TableCard minWidth={480}>
+      <thead>
+        <tr>
+          <Th colSpan={2}>{before ? "Final values" : "Initial values"}</Th>
+        </tr>
+      </thead>
+      <tbody>
+        {FIELDS.map((field) => (
+          <tr key={field.label}>
+            <Td bold>{field.label}</Td>
+            <Td>{field.value((before ?? after)!)}</Td>
+          </tr>
+        ))}
+      </tbody>
+    </TableCard>
   );
 }

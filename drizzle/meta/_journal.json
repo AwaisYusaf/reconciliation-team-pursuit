@@ -148,6 +148,13 @@
       "when": 1788970714220,
       "tag": "0020_violet_firestar",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1789030259804,
+      "tag": "0021_tricky_namora",
+      "breakpoints": true
     }
   ]
 }

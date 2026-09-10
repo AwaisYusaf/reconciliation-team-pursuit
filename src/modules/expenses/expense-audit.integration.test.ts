@@ -10,7 +10,10 @@
 import { config } from "dotenv";
 
 vi.mock("next/cache", () => ({ revalidatePath: () => {} }));
-vi.mock("@/src/lib/action-session", () => ({ actionSession: vi.fn() }));
+// FORBIDDEN's exact wording is stable/public (see src/lib/action-session.ts) — restated here
+// since mocking the whole module below shadows the real export.
+const FORBIDDEN = "You do not have permission to do that.";
+vi.mock("@/src/lib/action-session", () => ({ actionSession: vi.fn(), requireAdmin: vi.fn() }));
 
 config({ path: ".env.local", quiet: true });
 
@@ -27,13 +30,14 @@ describe.skipIf(!hasDatabase)("expense audit events (integration)", async () => 
     await import("@/src/db/schema");
   const { hashPassword } = await import("@/src/services/auth/passwords");
   const { claimReferenceSeq } = await import("./references");
-  const { actionSession } = await import("@/src/lib/action-session");
+  const { actionSession, requireAdmin } = await import("@/src/lib/action-session");
   const {
     createExpenseAction,
     updateExpenseAction,
     deleteExpenseAction,
     restoreExpenseAction,
     permanentlyDeleteExpenseAction,
+    loadExpenseHistoryAction,
   } = await import("./actions");
   const { loadOrgAuditHistory } = await import("./queries");
 
@@ -46,6 +50,7 @@ describe.skipIf(!hasDatabase)("expense audit events (integration)", async () => 
   }
 
   const session = vi.mocked(actionSession);
+  const adminGate = vi.mocked(requireAdmin);
 
   let orgId: string;
   let otherOrgId: string;
@@ -71,18 +76,22 @@ describe.skipIf(!hasDatabase)("expense audit events (integration)", async () => 
     return row.id;
   }
 
-  function asUser(orgId: string, userId: string) {
-    session.mockResolvedValue({
+  function asUser(orgId: string, userId: string, role: "admin" | "manager" = "admin") {
+    const context = {
       orgId,
       userId,
       email: "e@example.com",
-      role: "admin",
+      role,
       orgName: "Org",
       docName: "Doc",
       activeMonth: MONTH,
       onboarded: true,
       welcomeDismissed: true,
-    });
+    };
+    session.mockResolvedValue(context);
+    // requireAdmin() is a separate export on the same mocked module — actions.ts that call it
+    // (loadExpenseHistoryAction) need it wired to the same session, not left undefined.
+    adminGate.mockResolvedValue(role === "admin" ? context : { denied: { ok: false, error: FORBIDDEN } });
   }
 
   let sortCounter = 0;
@@ -437,17 +446,15 @@ describe.skipIf(!hasDatabase)("expense audit events (integration)", async () => 
     });
   });
 
-  describe("role gating (page-level contract)", () => {
-    it("loadOrgAuditHistory itself has no role check — gating is the page's job, not the query's", async () => {
+  describe("role gating (caller-level contract)", () => {
+    it("loadOrgAuditHistory itself has no role check — gating is the caller's job, not the query's", async () => {
       // This proves what is actually testable at the module level without a browser: the
       // query function performs no role check and will happily return data for any orgId
-      // it's called with, regardless of the caller's role. The page (app/r/audit/page.tsx)
-      // is the sole gate — it redirects a non-admin before this query is ever called. That
-      // branching is server-component code that isn't reachable from a unit/integration test
-      // without rendering the page through Next's server runtime, which this suite does not
-      // do. Skipped here for that reason, not because it doesn't matter — a manual/browser
-      // check (or a Playwright-style e2e test, if this repo adds one) is the right place to
-      // assert the actual page output for a manager session.
+      // it's called with, regardless of the caller's role. `loadExpenseHistoryAction` is the
+      // gate — its `requireAdmin()` refuses a manager before this query is ever reached, and
+      // the tests below assert exactly that. What stays untested here is the UI side: that
+      // the row menu hides "History" from a manager is client rendering, not reachable from
+      // this suite, and it is defence in depth rather than the boundary either way.
       asUser(orgId, userA);
       const id = await insertExpense({ orgId, lineItemId });
       await deleteExpenseAction(id);
@@ -690,6 +697,96 @@ describe.skipIf(!hasDatabase)("expense audit events (integration)", async () => 
       // No overlap between pages (distinct ids across the full walk).
       const allIds = [...page1.events, ...page2.events, ...page3.events].map((event) => event.id);
       expect(new Set(allIds).size).toBe(101);
+    });
+  });
+
+  describe("actorName for a legacy account with no name on file (D-89)", () => {
+    it("actorName is null while actorEmail is intact, and userDisplay falls back to the email", async () => {
+      // insertUser() never sets `name`, so userA is exactly a legacy (pre-D-89) account.
+      asUser(orgId, userA);
+      const id = await insertExpense({ orgId, lineItemId });
+      await deleteExpenseAction(id);
+
+      const [aRow] = await db.select({ email: users.email, name: users.name }).from(users).where(eq(users.id, userA));
+      expect(aRow.name).toBeNull();
+
+      const events = await historyFor(orgId, id);
+      const deleted = events.find((event) => event.action === "deleted")!;
+      expect(deleted.actorName).toBeNull();
+      expect(deleted.actorEmail).toBe(aRow.email);
+
+      const { userDisplay } = await import("@/src/domain/user-display");
+      expect(userDisplay(deleted.actorName, deleted.actorEmail)).toBe(aRow.email);
+    });
+  });
+
+  describe("loadOrgAuditHistory: per-expense scoping via the expenseId option (D-89)", () => {
+    it("returns only the given expense's events, not a second expense's in the same org", async () => {
+      asUser(orgId, userA);
+      const idOne = await insertExpense({ orgId, lineItemId });
+      const idTwo = await insertExpense({ orgId, lineItemId });
+      await deleteExpenseAction(idOne);
+      await deleteExpenseAction(idTwo);
+      await restoreExpenseAction(idTwo);
+
+      const { events } = await loadOrgAuditHistory(orgId, { expenseId: idOne });
+      expect(events.length).toBeGreaterThan(0);
+      expect(events.every((event) => event.expenseId === idOne)).toBe(true);
+      expect(events.some((event) => event.expenseId === idTwo)).toBe(false);
+    });
+
+    it("a non-uuid expenseId returns an empty result instead of throwing", async () => {
+      const { events, hasNextPage } = await loadOrgAuditHistory(orgId, { expenseId: "not-a-uuid" });
+      expect(events).toHaveLength(0);
+      expect(hasNextPage).toBe(false);
+    });
+
+    it("an expenseId belonging to another org returns empty when called with this org's id", async () => {
+      asUser(otherOrgId, otherOrgUser);
+      const otherExpenseId = await insertExpense({ orgId: otherOrgId, lineItemId: otherLineItemId });
+      await deleteExpenseAction(otherExpenseId);
+
+      const { events } = await loadOrgAuditHistory(orgId, { expenseId: otherExpenseId });
+      expect(events).toHaveLength(0);
+
+      // Sanity: the same expenseId, queried with its OWN org, does return events.
+      const own = await loadOrgAuditHistory(otherOrgId, { expenseId: otherExpenseId });
+      expect(own.events.length).toBeGreaterThan(0);
+    });
+  });
+
+  describe("loadExpenseHistoryAction: admin-only server action (D-89)", () => {
+    it("a manager is refused with FORBIDDEN and gets no data", async () => {
+      asUser(orgId, userA);
+      const id = await insertExpense({ orgId, lineItemId });
+      await deleteExpenseAction(id);
+
+      asUser(orgId, userA, "manager");
+      const result = await loadExpenseHistoryAction(id);
+      expect(result).toEqual({ ok: false, error: FORBIDDEN });
+    });
+
+    it("an admin gets back exactly this expense's events, scoped", async () => {
+      asUser(orgId, userA);
+      const idOne = await insertExpense({ orgId, lineItemId });
+      const idTwo = await insertExpense({ orgId, lineItemId });
+      await deleteExpenseAction(idOne);
+      await deleteExpenseAction(idTwo);
+
+      const result = await loadExpenseHistoryAction(idOne);
+      expect(result.ok).toBe(true);
+      if (!result.ok) throw new Error("unreachable");
+      expect(result.data.events.length).toBeGreaterThan(0);
+      expect(result.data.events.every((event) => event.expenseId === idOne)).toBe(true);
+      // Two events on one expense is nowhere near a page, so the UI must not be told to
+      // claim history was withheld.
+      expect(result.data.truncated).toBe(false);
+    });
+
+    it("a non-uuid expenseId returns a failure rather than throwing", async () => {
+      asUser(orgId, userA);
+      const result = await loadExpenseHistoryAction("not-a-uuid");
+      expect(result.ok).toBe(false);
     });
   });
 });

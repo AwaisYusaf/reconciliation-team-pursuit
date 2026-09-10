@@ -126,7 +126,7 @@ async function documentsFor(orgId: string, expenseIds: string[]): Promise<Map<st
   return byExpense;
 }
 
-/** Page size for the org-wide audit log (D-87). */
+/** Page size for the audit log (D-87). */
 const AUDIT_PAGE_SIZE = 50;
 
 /**
@@ -144,6 +144,9 @@ export type OrgAuditEvent = {
   id: string;
   action: ExpenseAuditActionType;
   actorEmail: string;
+  /** Null for a legacy account that predates the `users.name` column (D-89); render through
+   *  `userDisplay` at the UI, not here. */
+  actorName: string | null;
   at: Date;
   expenseId: string | null;
   /** `{month}-{seq}` when the expense (still or once) has a month/reference to print — null
@@ -163,12 +166,20 @@ export type OrgAuditEvent = {
  */
 export async function loadOrgAuditHistory(
   orgId: string,
-  { page = 1, actionType }: { page?: number; actionType?: ExpenseAuditActionType } = {},
+  {
+    page = 1,
+    actionType,
+    expenseId,
+  }: { page?: number; actionType?: ExpenseAuditActionType; expenseId?: string } = {},
 ): Promise<{ events: OrgAuditEvent[]; hasNextPage: boolean }> {
   // Validated server-side rather than trusted from the caller — this is the query a client
   // component's filter reaches through a server action / search param, not a hardcoded value.
   const validAction =
     actionType && expenseAuditAction.enumValues.includes(actionType) ? actionType : undefined;
+
+  // A non-uuid must return empty, never reach the uuid column and raise a Postgres 22P02 as
+  // an unhandled 500 — same reasoning as `loadExpense`'s guard.
+  if (expenseId !== undefined && !isUuid(expenseId)) return { events: [], hasNextPage: false };
 
   // Clamped here rather than at the page: this is the shared entry point, so a caller that
   // forgets to sanitise its own search param still cannot reach SQL with a bad OFFSET.
@@ -180,6 +191,7 @@ export async function loadOrgAuditHistory(
       id: expenseAuditEvents.id,
       action: expenseAuditEvents.action,
       actorEmail: users.email,
+      actorName: users.name,
       at: expenseAuditEvents.createdAt,
       expenseId: expenseAuditEvents.expenseId,
       month: expenses.month,
@@ -196,6 +208,7 @@ export async function loadOrgAuditHistory(
       and(
         eq(expenseAuditEvents.orgId, orgId),
         validAction ? eq(expenseAuditEvents.action, validAction) : undefined,
+        expenseId !== undefined ? eq(expenseAuditEvents.expenseId, expenseId) : undefined,
       ),
     )
     // Id breaks a timestamp tie, the same reasoning as the per-expense history this replaces:
@@ -216,6 +229,7 @@ export async function loadOrgAuditHistory(
       id: row.id,
       action: row.action,
       actorEmail: row.actorEmail,
+      actorName: row.actorName,
       at: row.at,
       expenseId: row.expenseId,
       reference: row.month && row.referenceSeq ? expenseReference(row.month, row.referenceSeq) : null,
@@ -304,7 +318,10 @@ export async function loadMonthExpenses(orgId: string, month: string): Promise<E
     rows.map((row) => row.id),
   );
 
-  return rows.map((row) => ({ ...row, documents: documents.get(row.id) ?? [] }));
+  return rows.map((row) => ({
+    ...row,
+    documents: documents.get(row.id) ?? [],
+  }));
 }
 
 /** One trashed expense, as much of it as the Trash screen shows. */

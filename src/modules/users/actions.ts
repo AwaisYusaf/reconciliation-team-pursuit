@@ -12,6 +12,7 @@ import { z } from "zod";
 
 import { db } from "@/src/db";
 import { users, type UserRole } from "@/src/db/schema";
+import { nameSchema } from "@/src/domain/name";
 import { fail, ok, type ActionResult } from "@/src/lib/action-result";
 import { requireAdmin } from "@/src/lib/action-session";
 import { isUuid } from "@/src/lib/ids";
@@ -40,7 +41,13 @@ function withinProvisioningBudget(userId: string): ActionResult<never> | null {
   );
 }
 
-export async function createOrgUserAction(email: string): Promise<ActionResult<{ password: string }>> {
+export async function createOrgUserAction({
+  name,
+  email,
+}: {
+  name: string;
+  email: string;
+}): Promise<ActionResult<{ password: string }>> {
   const current = await requireAdmin();
   if ("denied" in current) return current.denied;
 
@@ -48,6 +55,10 @@ export async function createOrgUserAction(email: string): Promise<ActionResult<{
   // below can be used as a "does this address exist anywhere" oracle.
   const throttled = withinProvisioningBudget(current.userId);
   if (throttled) return throttled;
+
+  const parsedName = nameSchema.safeParse(name);
+  if (!parsedName.success) return fail("Enter a name.");
+  const cleanName = parsedName.data;
 
   const parsed = emailSchema.safeParse(email);
   if (!parsed.success) return fail("Enter a valid email address.");
@@ -68,6 +79,7 @@ export async function createOrgUserAction(email: string): Promise<ActionResult<{
   try {
     await db.insert(users).values({
       orgId: current.orgId,
+      name: cleanName,
       email: cleanEmail,
       passwordHash,
       role: "manager",
@@ -123,14 +135,50 @@ export async function setUserPasswordAction(
   return newPassword ? ok(undefined) : ok({ password });
 }
 
+/**
+ * Change a user's display name (D-89) — admin-only, no password hashing involved. Does NOT
+ * consume the argon2 provisioning budget: that budget protects the libuv threadpool argon2
+ * runs on, and a name change never touches it, so charging it here would throttle real
+ * password resets for no reason.
+ */
+export async function setUserNameAction(userId: string, name: string): Promise<ActionResult> {
+  const current = await requireAdmin();
+  if ("denied" in current) return current.denied;
+
+  if (!isUuid(userId)) return fail("That user no longer exists.");
+
+  const parsedName = nameSchema.safeParse(name);
+  if (!parsedName.success) return fail("Enter a name.");
+
+  // Same wording as setUserPasswordAction's miss, so a crafted id cannot confirm a user
+  // exists in another org.
+  const updated = await db
+    .update(users)
+    .set({ name: parsedName.data })
+    .where(and(eq(users.id, userId), eq(users.orgId, current.orgId)))
+    .returning({ id: users.id });
+  if (updated.length === 0) return fail("That user no longer exists.");
+
+  revalidatePath("/r/settings/users");
+  return ok();
+}
+
 export async function listOrgUsersAction(): Promise<
-  ActionResult<Array<{ id: string; email: string; role: UserRole; createdAt: Date }>>
+  ActionResult<
+    Array<{ id: string; name: string | null; email: string; role: UserRole; createdAt: Date }>
+  >
 > {
   const current = await requireAdmin();
   if ("denied" in current) return current.denied;
 
   const rows = await db
-    .select({ id: users.id, email: users.email, role: users.role, createdAt: users.createdAt })
+    .select({
+      id: users.id,
+      name: users.name,
+      email: users.email,
+      role: users.role,
+      createdAt: users.createdAt,
+    })
     .from(users)
     .where(eq(users.orgId, current.orgId))
     .orderBy(users.createdAt);

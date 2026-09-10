@@ -22,6 +22,7 @@ Multi-user per org (D-85). Org creation provisions one `admin`; admins create `m
 |---|---|---|
 | id | uuid PK | |
 | org_id | uuid FK | |
+| name | text null | Display name for "who did this" (D-89). Null for an account that predates this column; falls back to email at render (`userDisplay`) rather than a guess |
 | email | citext unique | Login identity |
 | password_hash | text | argon2id; password minimum 12 chars |
 | role | user_role enum | `admin` \| `manager`. No column default — a forgotten role is a type error, not a silent admin (D-85) |
@@ -111,7 +112,9 @@ own — it changes the base figure a normal month's math (R3) already runs again
 Stored: `tax_reimbursable`, `fees_reimbursable` — what this funder pays for, defaulted from the payment source at entry and fixed on the row thereafter (R1.3). Derived (never stored): `reimbursable` per R1.3 and `receipt total` per R1.3a; documentation status from documents (R4).
 
 ### expense_audit_events (D-86, D-87)
-Admin-only org-wide audit trail, covering the five expense mutations only (create/edit/soft-delete/restore/permanent-delete). Recurring's own expense writes are out of scope for now. Read via `loadOrgAuditHistory` (`src/modules/expenses/queries.ts`), rendered at `/r/audit`.
+Admin-only audit trail, covering the five expense mutations only (create/edit/soft-delete/restore/permanent-delete). Recurring's own expense writes are out of scope for now, so a one-click recurring add appears nowhere in this table — its actor is simply not recorded (D-90 dropped the `expenses.created_by_user_id`/`updated_by_user_id` columns that had covered that case).
+
+Read via `loadOrgAuditHistory` (`src/modules/expenses/queries.ts`) through its optional `expenseId` filter, which is what the Expenses table's three-dot "View history" uses (D-89) — there is no longer a separate org-wide page (D-91 removed `/r/audit`), so the per-expense view is the only reader. The unfiltered, paginated form of that query is kept for the same reason the `(org_id, created_at)` index is: it is the shape an org-wide view needs if one returns.
 | Field | Type | Notes |
 |---|---|---|
 | id | uuid PK | |

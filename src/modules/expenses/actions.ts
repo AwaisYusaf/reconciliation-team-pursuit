@@ -17,9 +17,10 @@ import {
 } from "@/src/db/schema";
 import { parseMoneyToCentsOrZero } from "@/src/domain/money";
 import { fail, ok, type ActionResult } from "@/src/lib/action-result";
-import { actionSession } from "@/src/lib/action-session";
+import { actionSession, requireAdmin } from "@/src/lib/action-session";
 import { carryNarrativeToTemplate } from "@/src/modules/recurring/narrative";
 import { claimReferenceSeq } from "./references";
+import { loadOrgAuditHistory, type OrgAuditEvent } from "./queries";
 import {
   deleteExpenseDocument as removeStoredDocument,
   deleteStoredObjects,
@@ -598,6 +599,26 @@ export type VendorSuggestion = {
   taxCents: number | null;
   feesCents: number | null;
 };
+
+/**
+ * One expense's audit history, admin-only (D-89) — backs the three-dot menu's "View history".
+ * The real security boundary: the client-side `isAdmin` prop that shows the menu is UI hiding
+ * only, this is what actually enforces it, and it reads `current.orgId` from the session
+ * rather than ever trusting an org id from the client.
+ */
+export async function loadExpenseHistoryAction(
+  expenseId: string,
+): Promise<ActionResult<{ events: OrgAuditEvent[]; truncated: boolean }>> {
+  const current = await requireAdmin();
+  if ("denied" in current) return current.denied;
+  if (!isUuid(expenseId)) return fail("That expense no longer exists.");
+
+  // One page is all this view shows — an expense with more events than that is far past what
+  // anyone reads in a modal. `truncated` is carried through so the UI can say so: silently
+  // dropping the rest would make an audit trail lie about being complete.
+  const { events, hasNextPage } = await loadOrgAuditHistory(current.orgId, { expenseId });
+  return ok({ events, truncated: hasNextPage });
+}
 
 /** Vendor autofill lookup (R8.1): exact match fills the form, partials are suggestions. */
 export async function searchVendorsAction(

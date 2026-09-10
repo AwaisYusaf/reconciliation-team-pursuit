@@ -15,11 +15,16 @@ import { Input, Label } from "@/src/components/ui/field";
 import { Card, CARD_PADDING, DangerPanel, SectionTitle } from "@/src/components/ui/surfaces";
 import { TableCard, Td, Th } from "@/src/components/ui/table";
 import { formatDateUS, todayIso } from "@/src/domain/dates";
+import { userDisplay } from "@/src/domain/user-display";
 import { reportResult } from "@/src/components/ui/toast";
 import type { UserRole } from "@/src/db/schema";
-import { createOrgUserAction, setUserPasswordAction } from "@/src/modules/users/actions";
+import {
+  createOrgUserAction,
+  setUserNameAction,
+  setUserPasswordAction,
+} from "@/src/modules/users/actions";
 
-export type OrgUser = { id: string; email: string; role: UserRole; createdAt: Date };
+export type OrgUser = { id: string; name: string | null; email: string; role: UserRole; createdAt: Date };
 
 /** Shown once, right after a password is generated — never persisted anywhere. */
 function GeneratedPasswordPanel({
@@ -61,10 +66,14 @@ function GeneratedPasswordPanel({
 export function UsersManager({ users }: { users: OrgUser[] }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
+  const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [shownPassword, setShownPassword] = useState<{ userId: string; password: string } | null>(
     null,
   );
+  // Inline row edit state — which row's name cell is swapped for an Input, and its draft value.
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingName, setEditingName] = useState("");
 
   return (
     <Card className={CARD_PADDING}>
@@ -76,34 +85,87 @@ export function UsersManager({ users }: { users: OrgUser[] }) {
         <TableCard minWidth={640}>
           <thead>
             <tr>
-              <Th>Email</Th>
+              <Th>User</Th>
               <Th>Role</Th>
               <Th>Added</Th>
-              <Th align="right" className="w-[160px]" />
+              <Th align="right" className="w-[240px]" />
             </tr>
           </thead>
           <tbody>
             {users.map((user) => (
               <tr key={user.id}>
-                <Td>{user.email}</Td>
+                <Td>
+                  {editingId === user.id ? (
+                    <div className="flex gap-2 items-center">
+                      <Input
+                        aria-label={`Name for ${user.email}`}
+                        value={editingName}
+                        onChange={(event) => setEditingName(event.target.value)}
+                        className="min-w-[160px]"
+                      />
+                      <Button
+                        variant="secondary"
+                        className="min-h-9 px-3 text-[15px]"
+                        disabled={pending || editingName.trim() === ""}
+                        onClick={() =>
+                          startTransition(async () => {
+                            const result = await setUserNameAction(user.id, editingName);
+                            if (reportResult(result, "Name updated")) {
+                              setEditingId(null);
+                              router.refresh();
+                            }
+                          })
+                        }
+                      >
+                        Save
+                      </Button>
+                      <Button variant="quiet" onClick={() => setEditingId(null)}>
+                        Cancel
+                      </Button>
+                    </div>
+                  ) : (
+                    <div>
+                      <div>{userDisplay(user.name, user.email)}</div>
+                      {/* When name is null the fallback above already IS the email — printing
+                          it again would be redundant, so only show it alongside a real name. */}
+                      {user.name?.trim() && (
+                        <div className="text-[13px] text-sub">{user.email}</div>
+                      )}
+                    </div>
+                  )}
+                </Td>
                 <Td className="capitalize">{user.role}</Td>
                 <Td>{formatDateUS(todayIso(user.createdAt))}</Td>
                 <Td align="right">
-                  <Button
-                    variant="quiet"
-                    disabled={pending}
-                    onClick={() =>
-                      startTransition(async () => {
-                        const result = await setUserPasswordAction(user.id);
-                        if (reportResult(result, "Password reset")) {
-                          if (result.data) setShownPassword({ userId: user.id, password: result.data.password });
-                          router.refresh();
-                        }
-                      })
-                    }
-                  >
-                    Set password
-                  </Button>
+                  <div className="flex gap-4 justify-end">
+                    {editingId !== user.id && (
+                      <Button
+                        variant="quiet"
+                        disabled={pending}
+                        onClick={() => {
+                          setEditingId(user.id);
+                          setEditingName(user.name ?? "");
+                        }}
+                      >
+                        Edit name
+                      </Button>
+                    )}
+                    <Button
+                      variant="quiet"
+                      disabled={pending}
+                      onClick={() =>
+                        startTransition(async () => {
+                          const result = await setUserPasswordAction(user.id);
+                          if (reportResult(result, "Password reset")) {
+                            if (result.data) setShownPassword({ userId: user.id, password: result.data.password });
+                            router.refresh();
+                          }
+                        })
+                      }
+                    >
+                      Set password
+                    </Button>
+                  </div>
                 </Td>
               </tr>
             ))}
@@ -119,22 +181,33 @@ export function UsersManager({ users }: { users: OrgUser[] }) {
       )}
 
       <div className="mt-6 pt-6 border-t border-line">
-        <Label htmlFor="newUserEmail">Add user</Label>
+        <Label htmlFor="newUserName">Add user</Label>
         <div className="flex gap-3">
+          {/* "Add user" heads the pair, so each field names itself — without this the name
+              input would announce as "Add user" and the email input as nothing at all. */}
+          <Input
+            id="newUserName"
+            aria-label="Name"
+            value={name}
+            placeholder="Name"
+            onChange={(event) => setName(event.target.value)}
+          />
           <Input
             id="newUserEmail"
+            aria-label="Email"
             type="email"
             value={email}
             placeholder="name@organization.org"
             onChange={(event) => setEmail(event.target.value)}
           />
           <Button
-            disabled={pending || email.trim() === ""}
+            disabled={pending || name.trim() === "" || email.trim() === ""}
             onClick={() =>
               startTransition(async () => {
-                const result = await createOrgUserAction(email);
+                const result = await createOrgUserAction({ name, email });
                 if (reportResult(result, "User added")) {
                   setShownPassword({ userId: "new", password: result.data.password });
+                  setName("");
                   setEmail("");
                   router.refresh();
                 }
