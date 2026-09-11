@@ -150,7 +150,7 @@ describe.skipIf(!canRun)("packet traceability (integration)", async () => {
     });
     if (!monthDoc.ok) throw new Error(monthDoc.error);
 
-    const snapshot = await loadMonthSnapshot(orgId, MONTH);
+    const snapshot = await loadMonthSnapshot(orgId, fundingSourceId, MONTH);
     const packet = await buildDeliverablePacket(snapshot);
     pageCount = packet.pageCount;
     delivered = packet.pdf;

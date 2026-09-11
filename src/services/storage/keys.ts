@@ -74,9 +74,12 @@ export function monthDocumentKey(input: {
   ].join("/");
 }
 
-/** `org/{orgId}/months/{YYYY-MM}/generated/{type}[-{slug}]-{hash}.{ext}` */
+/** `org/{orgId}/months/{YYYY-MM}/generated/{fundingSourceId}/{type}[-{slug}]-{hash}.{ext}`
+ *  (decision 2.9: expense/month document keys are unchanged; only generated artifacts, written
+ *  from Phase 2 on, get this segment — existing rows keep their stored key.) */
 export function generatedArtifactKey(input: {
   orgId: string;
+  fundingSourceId: string;
   month: MonthKey;
   type: string;
   lineItemName?: string | null;
@@ -92,6 +95,7 @@ export function generatedArtifactKey(input: {
     "months",
     input.month,
     "generated",
+    input.fundingSourceId,
     `${input.type}${slug}-${input.inputsHash}.${input.extension}`,
   ].join("/");
 }

@@ -37,6 +37,7 @@ export type ExpenseDetail = {
   name: string;
   lineItemId: string;
   lineItemName: string;
+  fundingSourceId: string;
   paymentSource: string;
   month: string;
   date: string;
@@ -56,13 +57,20 @@ export type ExpenseDetail = {
   documents: AttachedDocument[];
 };
 
-/** Options the expense form needs: line items and the org's active label lists. */
-export async function loadExpenseFormOptions(orgId: string) {
+/** Options the expense form needs: line items and the org's active label lists.
+ *  `fundingSourceId` null (All selected) lists every source's line items — Phase 4 splits
+ *  them by source; this phase keeps the flat list the form already renders. */
+export async function loadExpenseFormOptions(orgId: string, fundingSourceId: string | null) {
   const [items, sources, docTypes] = await Promise.all([
     db
       .select({ id: lineItems.id, name: lineItems.name })
       .from(lineItems)
-      .where(eq(lineItems.orgId, orgId))
+      .where(
+        and(
+          eq(lineItems.orgId, orgId),
+          fundingSourceId ? eq(lineItems.fundingSourceId, fundingSourceId) : undefined,
+        ),
+      )
       .orderBy(asc(lineItems.sortOrder), asc(lineItems.name)),
     db
       .select({
@@ -256,6 +264,7 @@ export async function loadExpense(orgId: string, id: string): Promise<ExpenseDet
       name: expenses.name,
       lineItemId: expenses.lineItemId,
       lineItemName: lineItems.name,
+      fundingSourceId: expenses.fundingSourceId,
       paymentSource: expenses.paymentSource,
       month: expenses.month,
       date: expenses.date,
@@ -284,14 +293,20 @@ export async function loadExpense(orgId: string, id: string): Promise<ExpenseDet
   return { ...expense, documents: documents.get(expense.id) ?? [] };
 }
 
-/** Every expense in a month, in entry order, with documents attached (m03). */
-export async function loadMonthExpenses(orgId: string, month: string): Promise<ExpenseDetail[]> {
+/** Every expense in a month, in entry order, with documents attached (m03).
+ *  `fundingSourceId` null lists every source's expenses (All selected). */
+export async function loadMonthExpenses(
+  orgId: string,
+  fundingSourceId: string | null,
+  month: string,
+): Promise<ExpenseDetail[]> {
   const rows = await db
     .select({
       id: expenses.id,
       name: expenses.name,
       lineItemId: expenses.lineItemId,
       lineItemName: lineItems.name,
+      fundingSourceId: expenses.fundingSourceId,
       paymentSource: expenses.paymentSource,
       month: expenses.month,
       date: expenses.date,
@@ -310,7 +325,14 @@ export async function loadMonthExpenses(orgId: string, month: string): Promise<E
     })
     .from(expenses)
     .innerJoin(lineItems, eq(lineItems.id, expenses.lineItemId))
-    .where(and(eq(expenses.orgId, orgId), eq(expenses.month, month), isNull(expenses.deletedAt)))
+    .where(
+      and(
+        eq(expenses.orgId, orgId),
+        fundingSourceId ? eq(expenses.fundingSourceId, fundingSourceId) : undefined,
+        eq(expenses.month, month),
+        isNull(expenses.deletedAt),
+      ),
+    )
     .orderBy(asc(expenses.sortOrder));
 
   const documents = await documentsFor(
@@ -346,6 +368,7 @@ export type TrashedExpense = {
  */
 export async function loadTrashedExpenses(
   orgId: string,
+  fundingSourceId: string | null,
   month?: string,
 ): Promise<TrashedExpense[]> {
   const rows = await db
@@ -366,6 +389,7 @@ export async function loadTrashedExpenses(
     .where(
       and(
         eq(expenses.orgId, orgId),
+        fundingSourceId ? eq(expenses.fundingSourceId, fundingSourceId) : undefined,
         isNotNull(expenses.deletedAt),
         month ? eq(expenses.month, month) : undefined,
       ),

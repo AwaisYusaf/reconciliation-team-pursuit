@@ -16,6 +16,7 @@ import {
 } from "@/src/generation/month-snapshot";
 import { attachmentHeader } from "@/src/lib/http";
 import { isUuid } from "@/src/lib/ids";
+import { loadSourceContext } from "@/src/modules/funding-sources/queries";
 import { getSession } from "@/src/services/auth/session";
 import { consume } from "@/src/services/rate-limit";
 
@@ -71,7 +72,14 @@ export async function GET(request: Request) {
   // A malformed id would raise a Postgres cast error out of an unguarded handler.
   if (!isUuid(lineItemId)) return new NextResponse("Not found", { status: 404 });
 
-  const snapshot = await loadMonthSnapshot(session.orgId, month as MonthKey);
+  // ponytail: session-scoped until Phase 6 takes ?source=
+  const { selectedId: fundingSourceId } = await loadSourceContext(
+    session.orgId,
+    session.activeFundingSourceId,
+  );
+  if (!fundingSourceId) return new NextResponse("Choose a funding source.", { status: 400 });
+
+  const snapshot = await loadMonthSnapshot(session.orgId, fundingSourceId, month as MonthKey);
   const lineItem = snapshot.lineItems.find((item) => item.id === lineItemId);
   // Indistinguishable from "belongs to another organisation", so a probe learns nothing.
   if (!lineItem) return new NextResponse("Not found", { status: 404 });
@@ -103,6 +111,7 @@ export async function GET(request: Request) {
   try {
     ({ body, contentType } = await resolveArtifact({
       orgId: session.orgId,
+      fundingSourceId,
       month: month as MonthKey,
       type: format === "pdf" ? "cover_pdf" : "cover_docx",
       lineItemId,

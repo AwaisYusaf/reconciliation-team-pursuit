@@ -48,6 +48,7 @@ describe.skipIf(!hasDatabase)("line item performances (integration)", async () =
       orgName: "Org",
       docName: "Doc",
       activeMonth: "2026-02",
+      activeFundingSourceId: null,
       onboarded: true,
       welcomeDismissed: true,
     });
@@ -83,7 +84,7 @@ describe.skipIf(!hasDatabase)("line item performances (integration)", async () =
       });
       expect(result.ok).toBe(false);
     }
-    const [{ scheduledValueCents }] = await loadLineItemBudgets(orgId);
+    const [{ scheduledValueCents }] = await loadLineItemBudgets(orgId, fundingSourceId);
     expect(scheduledValueCents).toBe(0);
   });
 
@@ -98,7 +99,7 @@ describe.skipIf(!hasDatabase)("line item performances (integration)", async () =
       });
       expect(result.ok).toBe(false);
     }
-    const [{ scheduledValueCents }] = await loadLineItemBudgets(orgId);
+    const [{ scheduledValueCents }] = await loadLineItemBudgets(orgId, fundingSourceId);
     expect(scheduledValueCents).toBe(0);
   });
 
@@ -113,7 +114,7 @@ describe.skipIf(!hasDatabase)("line item performances (integration)", async () =
       });
       expect(result.ok).toBe(false);
     }
-    const [{ scheduledValueCents }] = await loadLineItemBudgets(orgId);
+    const [{ scheduledValueCents }] = await loadLineItemBudgets(orgId, fundingSourceId);
     expect(scheduledValueCents).toBe(0);
   });
 
@@ -138,14 +139,14 @@ describe.skipIf(!hasDatabase)("line item performances (integration)", async () =
     });
     expect(first.ok).toBe(true);
 
-    const [budget] = await loadLineItemBudgets(orgId);
+    const [budget] = await loadLineItemBudgets(orgId, fundingSourceId);
     expect(budget.scheduledValueCents).toBe(17500000);
     // The performance-only slice (D-81) — what a renderer needs to show the split — read back
     // from the database alongside the combined total, not just derived in a test fixture.
     expect(budget.performanceCents).toBe(17500000);
 
     const { loadLineItemRows } = await import("./queries");
-    const [row] = (await loadLineItemRows(orgId)).filter((r) => r.id === lineItemId);
+    const [row] = (await loadLineItemRows(orgId, fundingSourceId)).filter((r) => r.id === lineItemId);
     const added = row.performances.find((p) => p.amountCents === 17500000);
     expect(added?.name).toBe("Q1 outcomes bonus");
     expect(added?.date).toBe("2026-02-14");
@@ -158,7 +159,7 @@ describe.skipIf(!hasDatabase)("line item performances (integration)", async () =
     });
     expect(second.ok).toBe(true);
 
-    const [afterSecond] = await loadLineItemBudgets(orgId);
+    const [afterSecond] = await loadLineItemBudgets(orgId, fundingSourceId);
     expect(afterSecond.scheduledValueCents).toBe(20000000);
     expect(afterSecond.performanceCents).toBe(20000000);
   });
@@ -184,14 +185,14 @@ describe.skipIf(!hasDatabase)("line item performances (integration)", async () =
       // No `countsTowardContractTotal` — proving the column's default, not overriding it.
     });
 
-    const [migratedBudget] = (await loadLineItemBudgets(orgId)).filter((row) => row.id === item.id);
+    const [migratedBudget] = (await loadLineItemBudgets(orgId, fundingSourceId)).filter((row) => row.id === item.id);
     expect(migratedBudget.performanceCents).toBe(17500000);
     expect(migratedBudget.newPerformanceCents).toBe(0);
 
     // The row inserted above has no name/date (it predates those columns, D-92) — the
     // UI-facing query must still load and render it, honestly, rather than crash or guess.
     const { loadLineItemRows } = await import("./queries");
-    const [legacyRow] = (await loadLineItemRows(orgId)).filter((r) => r.id === item.id);
+    const [legacyRow] = (await loadLineItemRows(orgId, fundingSourceId)).filter((r) => r.id === item.id);
     const legacyPerformance = legacyRow.performances.find((p) => p.amountCents === 17500000);
     expect(legacyPerformance?.name).toBeNull();
     expect(legacyPerformance?.date).toBeNull();
@@ -205,7 +206,7 @@ describe.skipIf(!hasDatabase)("line item performances (integration)", async () =
     });
     expect(added.ok).toBe(true);
 
-    const [afterAdd] = (await loadLineItemBudgets(orgId)).filter((row) => row.id === item.id);
+    const [afterAdd] = (await loadLineItemBudgets(orgId, fundingSourceId)).filter((row) => row.id === item.id);
     // The migrated $175,000 still doesn't count; the new $1,000 does.
     expect(afterAdd.performanceCents).toBe(17500000 + 100000);
     expect(afterAdd.newPerformanceCents).toBe(100000);
@@ -222,7 +223,7 @@ describe.skipIf(!hasDatabase)("line item performances (integration)", async () =
     expect(created.ok).toBe(true);
 
     const { loadLineItemRows } = await import("./queries");
-    const before = (await loadLineItemRows(orgId)).find((r) => r.id === lineItemId)!;
+    const before = (await loadLineItemRows(orgId, fundingSourceId)).find((r) => r.id === lineItemId)!;
     const target = before.performances.find((p) => p.name === "Original name")!;
 
     const edited = await saveLineItemPerformanceAction({
@@ -233,7 +234,7 @@ describe.skipIf(!hasDatabase)("line item performances (integration)", async () =
     });
     expect(edited.ok).toBe(true);
 
-    const after = (await loadLineItemRows(orgId)).find((r) => r.id === lineItemId)!;
+    const after = (await loadLineItemRows(orgId, fundingSourceId)).find((r) => r.id === lineItemId)!;
     const updated = after.performances.find((p) => p.id === target.id)!;
     expect(updated.name).toBe("Renamed performance");
     expect(updated.date).toBe("2026-03-15");
@@ -257,7 +258,7 @@ describe.skipIf(!hasDatabase)("line item performances (integration)", async () =
     });
     expect(created.ok).toBe(true);
     const { loadLineItemRows } = await import("./queries");
-    const target = (await loadLineItemRows(orgId))
+    const target = (await loadLineItemRows(orgId, fundingSourceId))
       .find((r) => r.id === lineItemId)!
       .performances.find((p) => p.name === "Untouched")!;
 
@@ -268,7 +269,7 @@ describe.skipIf(!hasDatabase)("line item performances (integration)", async () =
     ]);
     for (const result of rejections) expect(result.ok).toBe(false);
 
-    const unchanged = (await loadLineItemRows(orgId))
+    const unchanged = (await loadLineItemRows(orgId, fundingSourceId))
       .find((r) => r.id === lineItemId)!
       .performances.find((p) => p.id === target.id)!;
     expect(unchanged.name).toBe("Untouched");
@@ -288,7 +289,7 @@ describe.skipIf(!hasDatabase)("line item performances (integration)", async () =
     });
     expect(created.ok).toBe(true);
     const { loadLineItemRows } = await import("./queries");
-    const target = (await loadLineItemRows(orgId))
+    const target = (await loadLineItemRows(orgId, fundingSourceId))
       .find((r) => r.id === lineItemId)!
       .performances.find((p) => p.name === "Org A's own")!;
 
@@ -302,7 +303,7 @@ describe.skipIf(!hasDatabase)("line item performances (integration)", async () =
     expect(result.ok).toBe(false);
 
     asOrg(orgId);
-    const unchanged = (await loadLineItemRows(orgId))
+    const unchanged = (await loadLineItemRows(orgId, fundingSourceId))
       .find((r) => r.id === lineItemId)!
       .performances.find((p) => p.id === target.id)!;
     expect(unchanged.name).toBe("Org A's own");
@@ -334,7 +335,7 @@ describe.skipIf(!hasDatabase)("line item performances (integration)", async () =
     expect(added.ok).toBe(true);
 
     const { loadLineItemRows } = await import("./queries");
-    const performances = (await loadLineItemRows(orgId)).find((r) => r.id === item.id)!.performances;
+    const performances = (await loadLineItemRows(orgId, fundingSourceId)).find((r) => r.id === item.id)!.performances;
     expect(performances.find((p) => p.id === legacy.id)!.amountLocked).toBe(true);
     expect(performances.find((p) => p.name === "New money")!.amountLocked).toBe(false);
 
@@ -349,10 +350,10 @@ describe.skipIf(!hasDatabase)("line item performances (integration)", async () =
       error: expect.stringMatching(/already part of the contract value/),
     });
 
-    const [afterRefusal] = (await loadLineItemBudgets(orgId)).filter((row) => row.id === item.id);
+    const [afterRefusal] = (await loadLineItemBudgets(orgId, fundingSourceId)).filter((row) => row.id === item.id);
     expect(afterRefusal.performanceCents).toBe(17500000 + 100000);
     expect(afterRefusal.newPerformanceCents).toBe(100000);
-    const stillLegacy = (await loadLineItemRows(orgId))
+    const stillLegacy = (await loadLineItemRows(orgId, fundingSourceId))
       .find((r) => r.id === item.id)!
       .performances.find((p) => p.id === legacy.id)!;
     // The refusal is all-or-nothing: the name/date sent alongside the amount weren't written either.
@@ -367,7 +368,7 @@ describe.skipIf(!hasDatabase)("line item performances (integration)", async () =
       date: "2026-01-01",
     });
     expect(renamed.ok).toBe(true);
-    const backfilled = (await loadLineItemRows(orgId))
+    const backfilled = (await loadLineItemRows(orgId, fundingSourceId))
       .find((r) => r.id === item.id)!
       .performances.find((p) => p.id === legacy.id)!;
     expect(backfilled.name).toBe("Performance Grant");
@@ -383,7 +384,7 @@ describe.skipIf(!hasDatabase)("line item performances (integration)", async () =
       date: "2026-03-01",
     });
     expect(editedNew.ok).toBe(true);
-    const [afterNewEdit] = (await loadLineItemBudgets(orgId)).filter((row) => row.id === item.id);
+    const [afterNewEdit] = (await loadLineItemBudgets(orgId, fundingSourceId)).filter((row) => row.id === item.id);
     expect(afterNewEdit.newPerformanceCents).toBe(150000);
 
     // A missing id still says so, rather than the locked-amount message.
@@ -407,7 +408,7 @@ describe.skipIf(!hasDatabase)("line item performances (integration)", async () =
     const result = await deleteLineItemPerformanceAction(toDelete.id);
     expect(result.ok).toBe(true);
 
-    const [budget] = await loadLineItemBudgets(orgId);
+    const [budget] = await loadLineItemBudgets(orgId, fundingSourceId);
     expect(budget.scheduledValueCents).toBe(17500000);
   });
 
@@ -422,7 +423,7 @@ describe.skipIf(!hasDatabase)("line item performances (integration)", async () =
     expect(result.ok).toBe(false);
 
     asOrg(orgId);
-    const [budget] = await loadLineItemBudgets(orgId);
+    const [budget] = await loadLineItemBudgets(orgId, fundingSourceId);
     expect(budget.scheduledValueCents).toBe(17500000); // untouched
   });
 

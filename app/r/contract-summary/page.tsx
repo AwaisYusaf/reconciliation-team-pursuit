@@ -1,12 +1,13 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
+import { PickFundingSource } from "@/src/components/app-shell/pick-funding-source";
 import { DownloadButton } from "@/src/components/ui/download-button";
 import { Card, EmptyState, PageTitle, Subtext } from "@/src/components/ui/surfaces";
 import { SectionRow, TableCard, Td, Th } from "@/src/components/ui/table";
-import { loadContractSettings, loadExpenseAmounts, loadLineItemBudgets } from "@/src/db/queries";
+import { loadExpenseAmounts, loadFundingSourceSettings, loadLineItemBudgets } from "@/src/db/queries";
 import { db } from "@/src/db";
-import { contractSettings } from "@/src/db/schema";
+import { fundingSources } from "@/src/db/schema";
 import { contractContextItems } from "@/src/domain/contract-context";
 import { monthLabel } from "@/src/domain/dates";
 import { formatMoney, formatPercent, summaryRowLabel } from "@/src/domain/format";
@@ -14,8 +15,9 @@ import { blockingRecords, type GateExpense } from "@/src/domain/gate";
 import { downloadBlockedReason } from "@/src/domain/strings";
 import { contractSummary, type SummaryRow } from "@/src/domain/summary";
 import { loadMonthExpenses } from "@/src/modules/expenses/queries";
+import { loadSourceContext } from "@/src/modules/funding-sources/queries";
 import { getSession } from "@/src/services/auth/session";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 
 export const metadata = { title: "Contract Summary — Grant Expense Reconciliation" };
 
@@ -31,21 +33,36 @@ export default async function ContractSummaryPage() {
   const session = await getSession();
   if (!session) redirect("/login");
 
+  const { selectedId: fundingSourceId, activeSources } = await loadSourceContext(
+    session.orgId,
+    session.activeFundingSourceId,
+  );
   const month = session.activeMonth;
+
+  if (fundingSourceId === null) {
+    return (
+      <div>
+        <PageTitle className="mb-1.5">Contract Summary</PageTitle>
+        <Subtext className="mb-[26px]">Contract position for {monthLabel(month)}.</Subtext>
+        <PickFundingSource sources={activeSources} />
+      </div>
+    );
+  }
+
   const [lineItems, amounts, settings, identifiers, monthExpenses] = await Promise.all([
-    loadLineItemBudgets(session.orgId),
-    loadExpenseAmounts(session.orgId, month),
-    loadContractSettings(session.orgId),
+    loadLineItemBudgets(session.orgId, fundingSourceId),
+    loadExpenseAmounts(session.orgId, fundingSourceId, month),
+    loadFundingSourceSettings(session.orgId, fundingSourceId),
     db
       .select({
-        contractNumber: contractSettings.contractNumber,
-        basePoNumber: contractSettings.basePoNumber,
-        performancePoNumber: contractSettings.performancePoNumber,
+        contractNumber: fundingSources.contractNumber,
+        basePoNumber: fundingSources.basePoNumber,
+        performancePoNumber: fundingSources.performancePoNumber,
       })
-      .from(contractSettings)
-      .where(eq(contractSettings.orgId, session.orgId))
+      .from(fundingSources)
+      .where(and(eq(fundingSources.id, fundingSourceId), eq(fundingSources.orgId, session.orgId)))
       .limit(1),
-    loadMonthExpenses(session.orgId, month),
+    loadMonthExpenses(session.orgId, fundingSourceId, month),
   ]);
 
   if (lineItems.length === 0) {

@@ -1,8 +1,10 @@
 import { redirect } from "next/navigation";
 
+import { PickFundingSource } from "@/src/components/app-shell/pick-funding-source";
 import { PageTitle, Subtext } from "@/src/components/ui/surfaces";
 import { formatDateUS, monthLabel, todayIso } from "@/src/domain/dates";
 import { loadTrashedExpenses } from "@/src/modules/expenses/queries";
+import { loadSourceContext } from "@/src/modules/funding-sources/queries";
 import { getSession } from "@/src/services/auth/session";
 
 import { TrashTable, type TrashRow } from "./trash-table";
@@ -13,7 +15,20 @@ export default async function ExpenseTrashPage() {
   const session = await getSession();
   if (!session) redirect("/login");
 
-  const expenses = await loadTrashedExpenses(session.orgId);
+  const { selectedId: fundingSourceId, activeSources } = await loadSourceContext(
+    session.orgId,
+    session.activeFundingSourceId,
+  );
+  if (fundingSourceId === null) {
+    return (
+      <div>
+        <PageTitle className="mb-1.5">Trash</PageTitle>
+        <PickFundingSource sources={activeSources} />
+      </div>
+    );
+  }
+
+  const expenses = await loadTrashedExpenses(session.orgId, fundingSourceId);
   const rows: TrashRow[] = expenses.map((expense) => ({
     id: expense.id,
     name: expense.name,

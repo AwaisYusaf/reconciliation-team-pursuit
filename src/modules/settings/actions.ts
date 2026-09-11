@@ -13,6 +13,7 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/src/db";
 import {
   contractSettings,
+  fundingSources,
   organizations,
   paymentSources,
   supportingDocTypes,
@@ -23,6 +24,7 @@ import { isValidIsoDate } from "@/src/domain/dates";
 import { parseMoneyToCents } from "@/src/domain/money";
 import { fail, ok, type ActionResult } from "@/src/lib/action-result";
 import { actionSession } from "@/src/lib/action-session";
+import { primaryFundingSourceId } from "@/src/modules/funding-sources/queries";
 import { consume, reset as resetLimit } from "@/src/services/rate-limit";
 import { isUuid } from "@/src/lib/ids";
 import { hashPassword, validatePasswordPolicy, verifyPassword } from "@/src/services/auth/passwords";
@@ -88,10 +90,16 @@ export async function updateContractAction(input: {
     fiduciaryName: input.fiduciaryName.trim(),
   };
 
-  await db
-    .insert(contractSettings)
-    .values({ orgId: current.orgId, ...values })
-    .onConflictDoUpdate({ target: contractSettings.orgId, set: values });
+  // ponytail: dual-write until Phase 3 replaces this with updateFundingSourceAction; delete the contract_settings half then.
+  await db.transaction(async (tx) => {
+    await tx
+      .insert(contractSettings)
+      .values({ orgId: current.orgId, ...values })
+      .onConflictDoUpdate({ target: contractSettings.orgId, set: values });
+
+    const fundingSourceId = await primaryFundingSourceId(current.orgId, tx);
+    await tx.update(fundingSources).set(values).where(eq(fundingSources.id, fundingSourceId));
+  });
 
   revalidatePath("/", "layout");
   return ok();
@@ -113,13 +121,22 @@ export async function updateAdvancesReceivedAction(input: {
   const advancesReceivedCents = parseMoneyToCents(input.advancesReceived) ?? 0;
   if (advancesReceivedCents < 0) return fail("This figure cannot be negative.");
 
-  await db
-    .insert(contractSettings)
-    .values({ orgId: current.orgId, advancesReceivedCents })
-    .onConflictDoUpdate({
-      target: contractSettings.orgId,
-      set: { advancesReceivedCents },
-    });
+  // ponytail: dual-write until Phase 3 replaces this with updateFundingSourceAction; delete the contract_settings half then.
+  await db.transaction(async (tx) => {
+    await tx
+      .insert(contractSettings)
+      .values({ orgId: current.orgId, advancesReceivedCents })
+      .onConflictDoUpdate({
+        target: contractSettings.orgId,
+        set: { advancesReceivedCents },
+      });
+
+    const fundingSourceId = await primaryFundingSourceId(current.orgId, tx);
+    await tx
+      .update(fundingSources)
+      .set({ advancesReceivedCents })
+      .where(eq(fundingSources.id, fundingSourceId));
+  });
 
   revalidatePath("/", "layout");
   return ok();

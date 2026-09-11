@@ -1,11 +1,13 @@
 import { and, asc, count, eq, isNull } from "drizzle-orm";
 import { redirect } from "next/navigation";
 
+import { PickFundingSource } from "@/src/components/app-shell/pick-funding-source";
 import { PageTitle, Subtext } from "@/src/components/ui/surfaces";
 import { db } from "@/src/db";
 import { expenseDocuments, expenses, lineItems, paymentSources, recurringItems } from "@/src/db/schema";
 import { monthLabel, monthShortLabel } from "@/src/domain/dates";
 import { addedState } from "@/src/domain/recurring-rules";
+import { loadSourceContext } from "@/src/modules/funding-sources/queries";
 import { getSession } from "@/src/services/auth/session";
 
 import { RecurringManager, type RecurringRow } from "./recurring-manager";
@@ -17,6 +19,17 @@ export default async function RecurringPage() {
   if (!session) redirect("/login");
 
   const month = session.activeMonth;
+
+  const { selectedId: fundingSourceId, activeSources: activeFundingSources } =
+    await loadSourceContext(session.orgId, session.activeFundingSourceId);
+  if (fundingSourceId === null) {
+    return (
+      <div>
+        <PageTitle className="mb-2">Recurring Items</PageTitle>
+        <PickFundingSource sources={activeFundingSources} />
+      </div>
+    );
+  }
 
   const [items, options, sources, monthRows] = await Promise.all([
     db
@@ -34,12 +47,14 @@ export default async function RecurringPage() {
       })
       .from(recurringItems)
       .innerJoin(lineItems, eq(lineItems.id, recurringItems.lineItemId))
-      .where(eq(recurringItems.orgId, session.orgId))
+      .where(
+        and(eq(recurringItems.orgId, session.orgId), eq(lineItems.fundingSourceId, fundingSourceId)),
+      )
       .orderBy(asc(recurringItems.sortOrder)),
     db
       .select({ id: lineItems.id, name: lineItems.name })
       .from(lineItems)
-      .where(eq(lineItems.orgId, session.orgId))
+      .where(and(eq(lineItems.orgId, session.orgId), eq(lineItems.fundingSourceId, fundingSourceId)))
       .orderBy(asc(lineItems.sortOrder)),
     db
       .select({ label: paymentSources.label })
@@ -60,6 +75,7 @@ export default async function RecurringPage() {
       .where(
         and(
           eq(expenses.orgId, session.orgId),
+          eq(expenses.fundingSourceId, fundingSourceId),
           eq(expenses.month, month),
           isNull(expenses.deletedAt),
         ),

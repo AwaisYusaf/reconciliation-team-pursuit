@@ -13,11 +13,10 @@ import "server-only";
 import { and, eq, sql } from "drizzle-orm";
 
 import { db } from "@/src/db";
-import { loadContractSettings, loadExpenseAmounts, loadLineItemBudgets } from "@/src/db/queries";
+import { loadExpenseAmounts, loadFundingSourceSettings, loadLineItemBudgets } from "@/src/db/queries";
 import { monthSnapshotTotals, monthSnapshots } from "@/src/db/schema";
 import { allLineItemStats } from "@/src/domain/budget-math";
 import type { MonthKey } from "@/src/domain/dates";
-import { primaryFundingSourceId } from "@/src/modules/funding-sources/queries";
 
 /**
  * Record where every line item stood at the end of `month`, replacing any previous capture.
@@ -26,27 +25,34 @@ import { primaryFundingSourceId } from "@/src/modules/funding-sources/queries";
  * is now what was sent, so its figures are what the record should hold. The pinned artifact
  * still preserves the earlier bytes (R10.6).
  */
-export async function captureMonthSnapshot(orgId: string, month: MonthKey): Promise<void> {
+export async function captureMonthSnapshot(
+  orgId: string,
+  fundingSourceId: string,
+  month: MonthKey,
+): Promise<void> {
   await db.transaction(
     async (tx) => {
       // Read THROUGH the transaction. Passing `orgId` alone reads on another connection,
       // outside the repeatable-read snapshot — which is what this code did while the comment
       // above claimed otherwise, so a save landing mid-capture could persist a torn month
       // (D-72).
-      // ponytail: bridge until Phase 2 passes the selected source; delete in Phase 4
-      const fundingSourceId = await primaryFundingSourceId(orgId, tx);
-
       const [lineItems, amounts, settings] = await Promise.all([
-        loadLineItemBudgets(orgId, tx),
-        loadExpenseAmounts(orgId, month, tx),
-        loadContractSettings(orgId, tx),
+        loadLineItemBudgets(orgId, fundingSourceId, tx),
+        loadExpenseAmounts(orgId, fundingSourceId, month, tx),
+        loadFundingSourceSettings(orgId, fundingSourceId, tx),
       ]);
 
       const stats = allLineItemStats(lineItems, amounts, month);
 
       await tx
         .delete(monthSnapshots)
-        .where(and(eq(monthSnapshots.orgId, orgId), eq(monthSnapshots.month, month)));
+        .where(
+          and(
+            eq(monthSnapshots.orgId, orgId),
+            eq(monthSnapshots.fundingSourceId, fundingSourceId),
+            eq(monthSnapshots.month, month),
+          ),
+        );
 
       if (stats.length > 0) {
         await tx.insert(monthSnapshots).values(
@@ -108,13 +114,29 @@ export async function captureMonthSnapshot(orgId: string, month: MonthKey): Prom
  * labelled "as submitted" would assert something untrue. The pinned artifact is untouched —
  * that is the permanent record of bytes actually delivered (R10.6).
  */
-export async function discardMonthSnapshot(orgId: string, month: MonthKey): Promise<void> {
+export async function discardMonthSnapshot(
+  orgId: string,
+  fundingSourceId: string,
+  month: MonthKey,
+): Promise<void> {
   await db.transaction(async (tx) => {
     await tx
       .delete(monthSnapshots)
-      .where(and(eq(monthSnapshots.orgId, orgId), eq(monthSnapshots.month, month)));
+      .where(
+        and(
+          eq(monthSnapshots.orgId, orgId),
+          eq(monthSnapshots.fundingSourceId, fundingSourceId),
+          eq(monthSnapshots.month, month),
+        ),
+      );
     await tx
       .delete(monthSnapshotTotals)
-      .where(and(eq(monthSnapshotTotals.orgId, orgId), eq(monthSnapshotTotals.month, month)));
+      .where(
+        and(
+          eq(monthSnapshotTotals.orgId, orgId),
+          eq(monthSnapshotTotals.fundingSourceId, fundingSourceId),
+          eq(monthSnapshotTotals.month, month),
+        ),
+      );
   });
 }

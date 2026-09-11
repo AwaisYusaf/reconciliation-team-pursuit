@@ -34,7 +34,7 @@ import {
 } from "@/src/services/auth/session";
 import { hashPassword, validatePasswordPolicy, verifyPassword } from "@/src/services/auth/passwords";
 import { ORIGINAL_RULES } from "@/src/modules/expenses/reimbursement";
-import { primaryFundingSourceId } from "@/src/modules/funding-sources/queries";
+import { primaryFundingSourceId, requireOwnedFundingSource } from "@/src/modules/funding-sources/queries";
 import { consume, reset } from "@/src/services/rate-limit";
 import { nameSchema } from "@/src/domain/name";
 
@@ -437,6 +437,24 @@ export async function setActiveMonthAction(month: string): Promise<ActionResult>
   await db
     .update(organizations)
     .set({ activeMonth: month })
+    .where(eq(organizations.id, session.orgId));
+
+  return ok();
+}
+
+/** Persist the header's funding source selection (R2.3). `null` means "All". */
+export async function setActiveFundingSourceAction(id: string | null): Promise<ActionResult> {
+  const session = await requireSessionOrExpired();
+  if ("expired" in session) return session.expired;
+
+  if (id !== null) {
+    const owned = await requireOwnedFundingSource(session, id);
+    if ("denied" in owned) return owned.denied;
+  }
+
+  await db
+    .update(organizations)
+    .set({ activeFundingSourceId: id })
     .where(eq(organizations.id, session.orgId));
 
   return ok();

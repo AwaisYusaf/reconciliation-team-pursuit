@@ -30,6 +30,8 @@ export type SessionContext = {
   orgName: string;
   docName: string;
   activeMonth: string;
+  /** Header's current funding source selection (R2.3); null means "All" (Phase 6, D-93). */
+  activeFundingSourceId: string | null;
   onboarded: boolean;
   welcomeDismissed: boolean;
 };
@@ -75,6 +77,7 @@ export async function resolveSession(
       orgName: organizations.name,
       docName: organizations.docName,
       activeMonth: organizations.activeMonth,
+      activeFundingSourceId: organizations.activeFundingSourceId,
       onboardedAt: organizations.onboardedAt,
       welcomeDismissedAt: organizations.welcomeDismissedAt,
     })
@@ -110,6 +113,7 @@ export async function resolveSession(
       orgName: row.orgName,
       docName: row.docName,
       activeMonth: row.activeMonth,
+      activeFundingSourceId: row.activeFundingSourceId,
       onboarded: row.onboardedAt !== null,
       welcomeDismissed: row.welcomeDismissedAt !== null,
     },

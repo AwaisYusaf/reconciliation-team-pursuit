@@ -61,26 +61,26 @@ describe.skipIf(!hasDatabase)("line item usage counts (integration)", async () =
   });
 
   it("counts expenses across every month, not only the active one", async () => {
-    const rows = await loadLineItemRows(orgId);
+    const rows = await loadLineItemRows(orgId, fundingSourceId);
     const salary = rows.find((row) => row.name === "Salary")!;
     expect(salary.expenseCount).toBe(2);
   });
 
   it("lists the recurring items a delete would cascade", async () => {
-    const rows = await loadLineItemRows(orgId);
+    const rows = await loadLineItemRows(orgId, fundingSourceId);
     const office = rows.find((row) => row.name === "Office Space")!;
     expect(office.expenseCount).toBe(0);
     expect(office.recurringNames).toEqual(["Monthly rent", "Parking"]);
   });
 
   it("reports zero usage for an untouched line item", async () => {
-    const rows = await loadLineItemRows(orgId);
+    const rows = await loadLineItemRows(orgId, fundingSourceId);
     const unused = rows.find((row) => row.name === "Unused")!;
     expect(unused).toMatchObject({ expenseCount: 0, recurringNames: [] });
   });
 
   it("feeds the delete rule the right verdict for each case", async () => {
-    const rows = await loadLineItemRows(orgId);
+    const rows = await loadLineItemRows(orgId, fundingSourceId);
     const verdicts = Object.fromEntries(
       rows.map((row) => [
         row.name,
@@ -129,7 +129,7 @@ describe.skipIf(!hasDatabase)("line item usage counts (integration)", async () =
   });
 
   it("returns rows in configured order", async () => {
-    const rows = await loadLineItemRows(orgId);
+    const rows = await loadLineItemRows(orgId, fundingSourceId);
     expect(rows.map((row) => row.name)).toEqual(["Salary", "Unused"]);
     expect(unusedId).toBeTruthy();
   });

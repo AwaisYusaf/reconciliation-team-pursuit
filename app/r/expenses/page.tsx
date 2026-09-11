@@ -2,6 +2,7 @@ import { and, asc, eq } from "drizzle-orm";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
+import { PickFundingSource } from "@/src/components/app-shell/pick-funding-source";
 import { buttonClassName } from "@/src/components/ui/button";
 import { DangerPanel, PageTitle, Subtext } from "@/src/components/ui/surfaces";
 import { db } from "@/src/db";
@@ -11,6 +12,7 @@ import { expenseReference } from "@/src/domain/strings";
 import { documentationStatus, type GateExpense } from "@/src/domain/gate";
 import { reimbursableCents } from "@/src/domain/money";
 import { loadMonthExpenses } from "@/src/modules/expenses/queries";
+import { loadSourceContext } from "@/src/modules/funding-sources/queries";
 import { getSession } from "@/src/services/auth/session";
 
 import { ExpensesTable, type ExpenseRow, type RowDocument } from "./expenses-table";
@@ -47,8 +49,22 @@ export default async function ExpensesPage({
   const month = viewingRequestedMonth ? requestedMonth! : session.activeMonth;
   const isAdmin = session.role === "admin";
 
+  const { selectedId: fundingSourceId, activeSources } = await loadSourceContext(
+    session.orgId,
+    session.activeFundingSourceId,
+  );
+  if (fundingSourceId === null) {
+    return (
+      <div>
+        <PageTitle className="mb-1.5">Expenses This Month</PageTitle>
+        <Subtext className="mb-6">{monthLabel(month)}</Subtext>
+        <PickFundingSource sources={activeSources} />
+      </div>
+    );
+  }
+
   const [expenses, sources] = await Promise.all([
-    loadMonthExpenses(session.orgId, month),
+    loadMonthExpenses(session.orgId, fundingSourceId, month),
     db
       .select({ label: paymentSources.label })
       .from(paymentSources)

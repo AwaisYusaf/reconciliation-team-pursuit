@@ -43,9 +43,10 @@ describe.skipIf(!hasDatabase)("snapshot stability (integration)", async () => {
   const EXPENSE_2_ID = "00000000-0000-0000-0000-000000000006";
   const EXPENSE_3_ID = "00000000-0000-0000-0000-000000000007";
   const MONTH_DOCUMENT_ID = "00000000-0000-0000-0000-000000000008";
-  // Fixed, same reasoning as every other id here: the source exists (NOT NULL, Phase 6,
-  // D-93) but `loadMonthSnapshot`/`inputsHash` never read it in Phase 1, so it plays no part
-  // in the hash — only its presence is required for the inserts below to succeed.
+  // Fixed, same reasoning as every other id here. From Phase 2 on `loadMonthSnapshot` takes
+  // it as an explicit scope argument, but it is never folded into the hashed snapshot itself
+  // (decision 2.8) — only its presence is required for the inserts below to succeed and for
+  // the loader call.
   const FUNDING_SOURCE_ID = "00000000-0000-0000-0000-000000000009";
 
   const MONTH = "2026-02";
@@ -58,15 +59,29 @@ describe.skipIf(!hasDatabase)("snapshot stability (integration)", async () => {
       activeMonth: MONTH,
     });
 
+    // From Phase 2 on, `loadMonthSnapshot`'s `settings` come from this row instead of
+    // `contract_settings` (decision 2.8) — the same values the migration would have copied
+    // onto a migrated org's first source, so the hash stays what it was before the switch.
     await db.insert(fundingSources).values({
       id: FUNDING_SOURCE_ID,
       orgId: ORG_ID,
       name: "Source 1",
       type: "grant",
       sortOrder: 0,
+      projectName: "Stability Project",
+      contractNumber: "C-100",
+      basePoNumber: "PO-1",
+      performancePoNumber: "PO-2",
+      contractValueCents: 940_000_00,
+      contractStart: "2026-01-01",
+      contractEnd: "2026-12-31",
+      fiduciaryName: "Stability Fiduciary",
+      advancesReceivedCents: 10_000_00,
       ...ORIGINAL_RULES,
     });
 
+    // Kept alongside the source row: `contract_settings` still exists (deprecated, 2.4) and
+    // this proves nothing here still reads it — `loadMonthSnapshot` no longer joins it.
     await db.insert(contractSettings).values({
       orgId: ORG_ID,
       projectName: "Stability Project",
@@ -205,7 +220,7 @@ describe.skipIf(!hasDatabase)("snapshot stability (integration)", async () => {
   });
 
   it("hashes the packet, summary and cover-sheet inputs to fixed constants", async () => {
-    const snapshot = await loadMonthSnapshot(ORG_ID, MONTH);
+    const snapshot = await loadMonthSnapshot(ORG_ID, FUNDING_SOURCE_ID, MONTH);
 
     expect(inputsHash({ snapshot, generatorVersion: "packet-12" })).toBe(
       "601381160f2166473a81f5f98c10f241",

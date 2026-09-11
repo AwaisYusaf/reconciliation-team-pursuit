@@ -79,36 +79,43 @@ describe("key construction (data-model §S3)", () => {
     ).toBe(`org/${ORG}/months/2026-02/month-docs/bank_statement/doc-3.pdf`);
   });
 
+  const SOURCE = "01a00b6a-623a-71de-ba3a-a1b8fa8af39d";
+
   it("builds generated artifact keys, slugging the line item name", () => {
     expect(
       generatedArtifactKey({
         orgId: ORG,
+        fundingSourceId: SOURCE,
         month: "2026-02",
         type: "cover_docx",
         lineItemName: "Social Services & Support",
         inputsHash: "abc123",
         extension: "docx",
       }),
-    ).toBe(`org/${ORG}/months/2026-02/generated/cover_docx-social-services-support-abc123.docx`);
+    ).toBe(
+      `org/${ORG}/months/2026-02/generated/${SOURCE}/cover_docx-social-services-support-abc123.docx`,
+    );
   });
 
   it("omits the slug for packet and summary artifacts", () => {
     expect(
       generatedArtifactKey({
         orgId: ORG,
+        fundingSourceId: SOURCE,
         month: "2026-02",
         type: "packet_pdf",
         lineItemName: null,
         inputsHash: "def456",
         extension: "pdf",
       }),
-    ).toBe(`org/${ORG}/months/2026-02/generated/packet_pdf-def456.pdf`);
+    ).toBe(`org/${ORG}/months/2026-02/generated/${SOURCE}/packet_pdf-def456.pdf`);
   });
 
   it("keeps a slashed line item name from breaking the key layout", () => {
     const build = (lineItemName: string) =>
       generatedArtifactKey({
         orgId: ORG,
+        fundingSourceId: SOURCE,
         month: "2026-02",
         type: "cover_pdf",
         lineItemName,

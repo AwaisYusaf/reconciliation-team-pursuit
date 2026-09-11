@@ -86,7 +86,7 @@ describe.skipIf(!hasDatabase)("loadMonthSnapshot and trash (integration)", async
       })
       .returning({ id: expenses.id });
 
-    const before = await loadMonthSnapshot(orgId, CURRENT_MONTH);
+    const before = await loadMonthSnapshot(orgId, fundingSourceId, CURRENT_MONTH);
     expect(before.expenses.map((row) => row.id)).toContain(currentExpense.id);
     expect(before.amounts.filter((row) => row.month === PRIOR_MONTH)).toHaveLength(1);
     expect(before.amounts.find((row) => row.month === PRIOR_MONTH)?.subtotalCents).toBe(9_000);
@@ -100,14 +100,14 @@ describe.skipIf(!hasDatabase)("loadMonthSnapshot and trash (integration)", async
       .set({ deletedAt: new Date() })
       .where(eq(expenses.id, currentExpense.id));
 
-    const trashed = await loadMonthSnapshot(orgId, CURRENT_MONTH);
+    const trashed = await loadMonthSnapshot(orgId, fundingSourceId, CURRENT_MONTH);
     expect(trashed.expenses.map((row) => row.id)).not.toContain(currentExpense.id);
     expect(trashed.amounts.filter((row) => row.month === PRIOR_MONTH)).toHaveLength(0);
 
     await db.update(expenses).set({ deletedAt: null }).where(eq(expenses.id, priorExpense.id));
     await db.update(expenses).set({ deletedAt: null }).where(eq(expenses.id, currentExpense.id));
 
-    const restored = await loadMonthSnapshot(orgId, CURRENT_MONTH);
+    const restored = await loadMonthSnapshot(orgId, fundingSourceId, CURRENT_MONTH);
     expect(restored.expenses.map((row) => row.id)).toContain(currentExpense.id);
     expect(restored.amounts.filter((row) => row.month === PRIOR_MONTH)).toHaveLength(1);
     expect(restored.amounts.find((row) => row.month === PRIOR_MONTH)?.subtotalCents).toBe(9_000);

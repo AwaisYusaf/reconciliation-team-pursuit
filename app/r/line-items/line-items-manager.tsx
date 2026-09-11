@@ -50,7 +50,13 @@ const DENSE_CELL = "py-1.5!";
 const DENSE_CONTROL = "min-h-9! py-1!";
 const DENSE_BUTTON = "min-h-8! px-2.5! py-0.5! text-[15px]!";
 
-export function LineItemsManager({ rows }: { rows: LineItemRow[] }) {
+export function LineItemsManager({
+  rows,
+  fundingSourceId,
+}: {
+  rows: LineItemRow[];
+  fundingSourceId: string;
+}) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
 
@@ -133,7 +139,11 @@ export function LineItemsManager({ rows }: { rows: LineItemRow[] }) {
   function move(index: number, delta: number) {
     const next = moveInOrder(rows, index, delta);
     if (next[index] === rows[index]) return;
-    run(() => reorderLineItemsAction(next.map((row) => row.id)), undefined, "Order updated");
+    run(
+      () => reorderLineItemsAction(next.map((row) => row.id), fundingSourceId),
+      undefined,
+      "Order updated",
+    );
   }
 
   function remove(row: LineItemRow) {
@@ -449,7 +459,7 @@ export function LineItemsManager({ rows }: { rows: LineItemRow[] }) {
                 disabled={pending}
                 onClick={() =>
                   run(
-                    () => saveLineItemAction({ id: row.id, ...draft }),
+                    () => saveLineItemAction({ id: row.id, fundingSourceId, ...draft }),
                     undefined,
                     "Line item saved",
                   )
@@ -577,7 +587,7 @@ export function LineItemsManager({ rows }: { rows: LineItemRow[] }) {
               disabled={pending}
               onClick={() =>
                 run(
-                  () => saveLineItemAction(addDraft),
+                  () => saveLineItemAction({ fundingSourceId, ...addDraft }),
                   () => {
                     setShowAdd(false);
                     setAddDraft({ name: "", scheduledValue: "", openingBilled: "" });

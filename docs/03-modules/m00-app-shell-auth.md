@@ -1,19 +1,20 @@
 # m00 — App Shell & Auth
 
 ## Purpose
-Everything outside the eight feature screens: sign in, sign up, onboarding, and the authenticated chrome (header, month selector, nav, log out) every other module renders inside.
+Everything outside the eight feature screens: sign in, sign up, onboarding, and the authenticated chrome (header, month selector, funding source selector, nav, log out) every other module renders inside.
 
 ## Scope
 - Routes: `/login`, `/signup`, `/onboarding/line-items`, `/onboarding/contract` (stay unprefixed — outside the `/r` group), authenticated layout wrapping all app routes at `/r`.
 - Session: email + password → custom DB-backed session (architecture §Auth, D-06: cookie token hashed at rest, 30-day sliding TTL, password change invalidates other sessions). No demo credentials anywhere in UI. Login throttled per email+IP (10 attempts / 15 min).
 - Sign-up (`SIGNUP_ENABLED`, default false → login-page link hidden and `/signup` renders "Sign-ups are closed.") creates org + user; `organizations.onboarded_at` is null until onboarding completes — login redirects into onboarding while null, straight to Dashboard after.
 - Onboarding step 1 **persists line items immediately** (rather than holding them in client state) so a refresh or an abandoned signup never loses the typed budget; `onboarded_at` stays null until step 2, which is what makes the flow resumable. Step 2 (Finish **and** Skip both) writes contract_settings (row always created, zero/null defaults), seeds payment sources + supporting doc types (D-19), and sets `onboarded_at`. `active_month` is initialised to the current month (America/Detroit, R2.5) at signup.
-- Month selector: the union of **the contract's own months** (`contract_start`…`contract_end`, inclusive, capped at 120), the rolling window from 12 months before to 3 after the current month, any month containing data, and the persisted active month — newest first, grouped by year with `<optgroup>`. Plus an `Other month…` option opening a free month picker for anything outside that union (back-entry before the contract, or past its end — D-14/D-30). The contract months are what make a multi-year contract fully selectable without an administrator adding months by hand, and what make the list extend itself when the end date is edited on renewal; the rolling window is the floor for organisations that never entered contract dates. Persists selection (`organizations.active_month`); changing it re-scopes every screen.
+- Month selector: the union of **the contract's own months** (`contract_start`…`contract_end`, inclusive, capped at 120), the rolling window from 12 months before to 3 after the current month, any month containing data, and the persisted active month — newest first, grouped by year with `<optgroup>`. Plus an `Other month…` option opening a free month picker for anything outside that union (back-entry before the contract, or past its end — D-14/D-30). The contract months are what make a multi-year contract fully selectable without an administrator adding months by hand, and what make the list extend itself when the end date is edited on renewal; the rolling window is the floor for organisations that never entered contract dates. Persists selection (`organizations.active_month`); changing it re-scopes every screen. With **All** funding sources selected, this is the union of every active source's own contract months and expense months (§14 open question 5).
+- Funding source selector (Phase 6, D-93, R14.2): renders next to the month selector, **only when the organisation has more than one funding source** — a single-source organisation never sees it and every screen behaves exactly as before this feature shipped. Options: "All funding sources", then each active source, then archived sources under a separate "Archived" group (view-only history, not selectable for new work). Persists selection (`organizations.active_funding_source_id`; `setActiveFundingSourceAction`, same persist-then-refresh pattern as the month selector) and re-scopes every screen the way the month does.
 - First-run affordances: welcome banner on Dashboard until dismissed (`welcome_dismissed_at`) — "Your budget is set up. Add your first expense to get started." + Add Expense / Dismiss.
 - Login page carries the R12 line: `Forgot your password? Contact Mantaq.` (no self-serve reset — operator runbook, D-26).
 
 ## Data
-Reads/writes `organizations`, `users`, `contract_settings`, `line_items` (onboarding creates them). Rules: R2.3 (month persistence), R9.1 (line item creation).
+Reads/writes `organizations`, `users`, `contract_settings`, `funding_sources`, `line_items` (onboarding creates the first funding source and its line items). Rules: R2.3 (month persistence), R9.1 (line item creation), §14 (funding source selection and isolation).
 
 ## Behavior notes
 - Login errors (exact): unknown email → `We couldn't find an organisation with that email. Create an account to get started.` · wrong password → `That password doesn't match this organisation email.` · empty → `Enter your organisation email and password.`
@@ -22,7 +23,7 @@ Reads/writes `organizations`, `users`, `contract_settings`, `line_items` (onboar
 - Onboarding step 2 "Your contract": total contract value, start/end dates, fiduciary name — all optional; `Finish setup` / `Skip for now` both land on Dashboard with banner. (Full contract detail lives in Settings, m09.)
 
 ## Server surface
-`signIn` (rate-limited), `signOut`, `signUp`, `completeOnboarding` (creates line items + contract settings + seeded lists transactionally, sets onboarded_at), `setActiveMonth`, `dismissWelcomeBanner`.
+`signIn` (rate-limited), `signOut`, `signUp` (also creates the organisation's first funding source), `completeOnboarding` (creates line items + contract settings + seeded lists transactionally, sets onboarded_at), `setActiveMonth`, `setActiveFundingSource`, `dismissWelcomeBanner`.
 
 ## Acceptance
 Sign-up → onboarding → empty dashboard flow works; abandoning mid-onboarding and logging back in resumes onboarding; refresh restores session + active month; all app routes redirect unauthenticated users to `/login`; passwords hashed (argon2id, min 12); login throttle engages; no route leaks another org's data (two-org IDOR suite passes).

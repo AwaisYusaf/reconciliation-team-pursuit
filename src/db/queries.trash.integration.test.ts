@@ -88,21 +88,21 @@ describe.skipIf(!hasDatabase)("loadExpenseAmounts and trash (integration)", asyn
       })
       .returning({ id: expenses.id });
 
-    const before = await loadExpenseAmounts(orgId, MONTH);
+    const before = await loadExpenseAmounts(orgId, fundingSourceId, MONTH);
     expect(before).toHaveLength(2);
     const beforeTotal = before.reduce((sum, row) => sum + row.subtotalCents, 0);
     expect(beforeTotal).toBe(12_000);
 
     await db.update(expenses).set({ deletedAt: new Date() }).where(eq(expenses.id, toTrash.id));
 
-    const trashed = await loadExpenseAmounts(orgId, MONTH);
+    const trashed = await loadExpenseAmounts(orgId, fundingSourceId, MONTH);
     expect(trashed).toHaveLength(1);
     expect(trashed[0].subtotalCents).toBe(5_000);
     expect(trashed.reduce((sum, row) => sum + row.subtotalCents, 0)).toBe(5_000);
 
     await db.update(expenses).set({ deletedAt: null }).where(eq(expenses.id, toTrash.id));
 
-    const restored = await loadExpenseAmounts(orgId, MONTH);
+    const restored = await loadExpenseAmounts(orgId, fundingSourceId, MONTH);
     expect(restored).toHaveLength(2);
     expect(restored.reduce((sum, row) => sum + row.subtotalCents, 0)).toBe(beforeTotal);
     const restoredRow = restored.find((row) => row.lineItemId === lineItemId && row.subtotalCents === 7_000);

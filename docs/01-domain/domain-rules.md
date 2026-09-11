@@ -16,7 +16,7 @@ Binding rules for all screens and generators. Module specs and code reference th
 
 - **R2.1** Reporting month key: `YYYY-MM`. Display: `February 2026`. Ordering is chronological on the key.
 - **R2.2** Every expense belongs to exactly one month (defaults to the active month at creation; **editable from the expense form**). **Expense date is independent of month** — a February expense may be paid 03/09 (real case). Date defaults to today, is not constrained to the month, and prints nowhere on cover sheets (it appears in the Excel detail sheet).
-- **R2.3** The active month is app-wide UI state, persisted per organisation (`organizations.active_month`): dashboard, lists, cover sheets, packet, and summary all reflect it.
+- **R2.3** The active month is app-wide UI state, persisted per organisation (`organizations.active_month`): dashboard, lists, cover sheets, packet, and summary all reflect it. The active **funding source** is persisted the same way (`organizations.active_funding_source_id`, §14) — one shared choice per organisation, not per user, exactly like the month.
 - **R2.4** Invoice period string for documents: `M/1/YYYY to M/<lastday>/YYYY`.
 - **R2.6** **Expense reference:** every expense carries a number unique within its month, printed as `{month}-{seq}` (e.g. `2026-02-014`, three digits, growing past that rather than truncating). Assigned at insert from a per-month counter on `month_statuses`, advanced under the insert's own row lock, and guarded by a unique index on (org, month, reference_seq) — deliberately **not** `sort_order`, which races on assignment and is reused after a delete. A deleted expense leaves a gap; its number is never reissued. The column carries **no default** and a check constraint refuses anything below 1, so an insert path that forgets to claim a number is a type error rather than two rows silently colliding (D-63). Reassigned when an expense is moved to another month, because the reference names the packet it appears in. It is printed in the packet's expense index (packet-pdf-spec §1b) and in the page footer of every page documenting that one expense (R10.5, D-70) — and, since D-83, in each expense's **body heading** on the cover sheet (`{Name} — {reference}:`, R6.4), which is outside the table. It is still **never inside the cover sheet's three-column table**, which is the approved layout and neither gains a column nor has its text edited.
 - **R2.5** **Timezone:** all date-only values, "today", "current month", and period boundaries are computed in the fixed organisation timezone **America/Detroit** — never via UTC conversion. (A UTC server must not flip Detroit's date after ~8 pm.)
@@ -135,3 +135,36 @@ Let `opening` = line item's opening previously-billed balance (setup figure), `e
   inside one transaction under a per-organisation advisory lock, so concurrent uploads cannot each
   see room and both be admitted (D-64, D-65).
 - **R13.2** Per file: images (jpg/png/webp/heic) and PDFs only, ≤ 25 MB — applied to the uploaded bytes *and* re-applied to the stored bytes, because conversion to JPEG grows a file by roughly 1.4×. Encrypted, corrupt, or 0-page PDFs are rejected at process & attach (R4.6).
+
+## 14. Funding sources (Phase 6, D-93)
+
+- **R14.1** An organisation can have several **funding sources** — the City of Detroit contract, a
+  grant, a donation, a line of credit. Each one owns its own line items, expenses, contract
+  details (funder, fiduciary, contract number, PO numbers, contract value, start/end dates,
+  advances received) and tax/fee reimbursement rules. Every organisation gets a first funding
+  source at sign-up; an existing organisation's current single contract became its first funding
+  source when this shipped, named after its project name (or "Source 1" if that was empty) —
+  nothing else changed for it (R14.5).
+- **R14.2** **Selection**, exactly like the active month (R2.3): one choice shared by the whole
+  organisation, persisted on `organizations.active_funding_source_id`. `NULL` means **All**.
+  - If the organisation has exactly **one** source (archived included), it is always selected —
+    the header selector is hidden and every screen behaves as if this feature did not exist.
+  - Otherwise, the stored id is honoured if it still names one of the organisation's sources
+    (archived sources stay selectable, so their history remains viewable) — an id that names no
+    source of this organisation, or none at all, falls back to All.
+- **R14.3** **Archiving** a source hides it from pickers (the header selector, the line item's
+  source field on a new expense) without deleting anything — its history, documents and
+  downloaded packets remain. No new line item or expense may be created against an archived
+  source. Editing an already-saved expense that sits on an archived source is allowed (history
+  corrections); moving an expense *into* an archived source is refused.
+- **R14.4** **Isolation.** Every grant-scoped table — line items, expenses, monthly documents,
+  month status, month snapshots, generated artifacts — carries a `funding_source_id`, and every
+  reader is scoped by it. A funding source's packet, cover sheets, Excel summary, budget totals
+  and expense list never contain another source's rows, and adding or editing a second source
+  changes nothing in the first. Enforced in the database by composite foreign keys (a line item's
+  source and an expense's source must agree, and a source must belong to the row's own
+  organisation) as well as in the application layer (data-model.md, D-93 decisions 2.1–2.2).
+- **R14.5** **Single-source organisations see zero visible change**: same figures, same document
+  names, same downloaded packets. The month snapshot's cache key (R10.4) never hashes the funding
+  source id — only the *scope* of a cached artifact depends on it — so a single-source
+  organisation's already-downloaded packets keep matching the same cache entry (D-93 decision 2.8).

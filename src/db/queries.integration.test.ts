@@ -81,13 +81,13 @@ describe.skipIf(!hasDatabase)("query layer (integration)", async () => {
   });
 
   it("includes the reporting month and everything before it, excluding later months", async () => {
-    const rows = await loadExpenseAmounts(orgId, "2026-02");
+    const rows = await loadExpenseAmounts(orgId, fundingSourceId, "2026-02");
     expect(rows.map((row) => row.month).sort()).toEqual(["2025-12", "2026-01", "2026-02"]);
   });
 
   it("compares month keys chronologically, not lexicographically by accident", async () => {
     // "2026-10" > "2026-03" as strings and as dates — the zero-padded key makes both agree.
-    const rows = await loadExpenseAmounts(orgId, "2026-03");
+    const rows = await loadExpenseAmounts(orgId, fundingSourceId, "2026-03");
     expect(rows.map((row) => row.month).sort()).toEqual([
       "2025-12",
       "2026-01",
@@ -95,21 +95,21 @@ describe.skipIf(!hasDatabase)("query layer (integration)", async () => {
       "2026-03",
     ]);
 
-    const all = await loadExpenseAmounts(orgId, "2026-12");
+    const all = await loadExpenseAmounts(orgId, fundingSourceId, "2026-12");
     expect(all).toHaveLength(5);
   });
 
   it("never returns another organisation's expenses", async () => {
-    const rows = await loadExpenseAmounts(orgId, "2026-12");
+    const rows = await loadExpenseAmounts(orgId, fundingSourceId, "2026-12");
     expect(rows.every((row) => row.subtotalCents !== 500000)).toBe(true);
 
-    const otherRows = await loadExpenseAmounts(otherOrgId, "2026-02");
+    const otherRows = await loadExpenseAmounts(otherOrgId, otherFundingSourceId, "2026-02");
     expect(otherRows).toHaveLength(1);
     expect(otherRows[0].subtotalCents).toBe(500000);
   });
 
   it("never returns another organisation's line items", async () => {
-    const items = await loadLineItemBudgets(orgId);
+    const items = await loadLineItemBudgets(orgId, fundingSourceId);
     expect(items).toHaveLength(1);
     expect(items[0].scheduledValueCents).toBe(100000);
   });
@@ -119,7 +119,7 @@ describe.skipIf(!hasDatabase)("query layer (integration)", async () => {
       .insert(lineItems)
       .values({ orgId, fundingSourceId, name: "Analytical Support", scheduledValueCents: 5000, sortOrder: -1 });
 
-    const items = await loadLineItemBudgets(orgId);
+    const items = await loadLineItemBudgets(orgId, fundingSourceId);
     expect(items.map((item) => item.name)).toEqual(["Analytical Support", "Salary"]);
   });
 });

@@ -1,11 +1,13 @@
 import { redirect } from "next/navigation";
 
+import { PickFundingSource } from "@/src/components/app-shell/pick-funding-source";
 import { PageTitle, Subtext } from "@/src/components/ui/surfaces";
 import { loadExpenseAmounts, loadLineItemBudgets } from "@/src/db/queries";
 import { allLineItemStats } from "@/src/domain/budget-math";
 import { monthLabel, monthWindow, todayIso } from "@/src/domain/dates";
 import { ExpenseForm } from "@/src/modules/expenses/expense-form";
 import { loadExpenseFormOptions } from "@/src/modules/expenses/queries";
+import { loadSourceContext } from "@/src/modules/funding-sources/queries";
 import { getSession } from "@/src/services/auth/session";
 
 export const metadata = { title: "Add Expense — Grant Expense Reconciliation" };
@@ -14,11 +16,24 @@ export default async function NewExpensePage() {
   const session = await getSession();
   if (!session) redirect("/login");
 
+  const { selectedId: fundingSourceId, activeSources } = await loadSourceContext(
+    session.orgId,
+    session.activeFundingSourceId,
+  );
+  if (fundingSourceId === null) {
+    return (
+      <div>
+        <PageTitle className="mb-2">Add Expense</PageTitle>
+        <PickFundingSource sources={activeSources} />
+      </div>
+    );
+  }
+
   const month = session.activeMonth;
   const [options, lineItems, amounts] = await Promise.all([
-    loadExpenseFormOptions(session.orgId),
-    loadLineItemBudgets(session.orgId),
-    loadExpenseAmounts(session.orgId, month),
+    loadExpenseFormOptions(session.orgId, fundingSourceId),
+    loadLineItemBudgets(session.orgId, fundingSourceId),
+    loadExpenseAmounts(session.orgId, fundingSourceId, month),
   ]);
 
   // Remaining per line item drives the live projection as the user types (R3.7).

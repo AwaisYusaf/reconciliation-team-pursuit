@@ -1,6 +1,8 @@
 import { redirect } from "next/navigation";
 
+import { PickFundingSource } from "@/src/components/app-shell/pick-funding-source";
 import { PageTitle, Subtext } from "@/src/components/ui/surfaces";
+import { loadSourceContext } from "@/src/modules/funding-sources/queries";
 import { loadLineItemRows } from "@/src/modules/line-items/queries";
 import { getSession } from "@/src/services/auth/session";
 
@@ -12,7 +14,10 @@ export default async function LineItemsPage() {
   const session = await getSession();
   if (!session) redirect("/login");
 
-  const rows = await loadLineItemRows(session.orgId);
+  const { selectedId, activeSources } = await loadSourceContext(
+    session.orgId,
+    session.activeFundingSourceId,
+  );
 
   return (
     <div>
@@ -22,7 +27,22 @@ export default async function LineItemsPage() {
         Order here controls their order in documents.
       </Subtext>
 
-      <LineItemsManager rows={rows} />
+      {selectedId === null ? (
+        <PickFundingSource sources={activeSources} />
+      ) : (
+        <LineItemsManagerFor orgId={session.orgId} fundingSourceId={selectedId} />
+      )}
     </div>
   );
+}
+
+async function LineItemsManagerFor({
+  orgId,
+  fundingSourceId,
+}: {
+  orgId: string;
+  fundingSourceId: string;
+}) {
+  const rows = await loadLineItemRows(orgId, fundingSourceId);
+  return <LineItemsManager rows={rows} fundingSourceId={fundingSourceId} />;
 }

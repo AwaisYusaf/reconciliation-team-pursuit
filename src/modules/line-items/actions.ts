@@ -18,7 +18,7 @@ import { UI } from "@/src/domain/strings";
 import { fail, ok, type ActionResult } from "@/src/lib/action-result";
 import { actionSession } from "@/src/lib/action-session";
 import { isUuid } from "@/src/lib/ids";
-import { primaryFundingSourceId } from "@/src/modules/funding-sources/queries";
+import { requireOwnedFundingSource } from "@/src/modules/funding-sources/queries";
 
 
 /** Every screen reads line items, so a change invalidates the whole authenticated tree. */
@@ -28,12 +28,16 @@ function revalidateAll(): void {
 
 export async function saveLineItemAction(input: {
   id?: string;
+  fundingSourceId: string;
   name: string;
   scheduledValue: string;
   openingBilled: string;
 }): Promise<ActionResult> {
   const current = await actionSession();
   if ("expired" in current) return current.expired;
+
+  const source = await requireOwnedFundingSource(current, input.fundingSourceId);
+  if ("denied" in source) return source.denied;
 
   const name = input.name.trim();
   if (!name) return fail("Enter a line item name.");
@@ -46,12 +50,13 @@ export async function saveLineItemAction(input: {
   const openingBilledCents = parseMoneyToCents(input.openingBilled) ?? 0;
   if (openingBilledCents < 0) return fail("Opening previously billed cannot be negative.");
 
-  // Case-insensitive uniqueness matches the database index, so the friendly message wins
-  // the race rather than a constraint violation reaching the user.
+  // Case-insensitive uniqueness matches the database index (`line_items_source_name_uq`),
+  // scoped to this source — two sources can each have a "Salary" — so the friendly message
+  // wins the race rather than a constraint violation reaching the user.
   const existing = await db
     .select({ id: lineItems.id, name: lineItems.name })
     .from(lineItems)
-    .where(eq(lineItems.orgId, current.orgId));
+    .where(eq(lineItems.fundingSourceId, source.id));
   if (isDuplicateName(name, existing, input.id)) return fail(UI.lineItemDuplicate);
 
   if (input.id) {
@@ -61,20 +66,27 @@ export async function saveLineItemAction(input: {
     const updated = await db
       .update(lineItems)
       .set({ name, scheduledValueCents, openingBilledCents })
-      .where(and(eq(lineItems.id, input.id), eq(lineItems.orgId, current.orgId)))
+      .where(
+        and(
+          eq(lineItems.id, input.id),
+          eq(lineItems.orgId, current.orgId),
+          eq(lineItems.fundingSourceId, source.id),
+        ),
+      )
       .returning({ id: lineItems.id });
     if (updated.length === 0) return fail("That line item no longer exists.");
   } else {
+    // Archived sources still hold history, but no new line item may be added to one.
+    if (source.archivedAt) return fail("That funding source is archived.");
+
     const [{ value: maxSort }] = await db
       .select({ value: sql<number>`coalesce(max(${lineItems.sortOrder}), -1)` })
       .from(lineItems)
-      .where(eq(lineItems.orgId, current.orgId));
+      .where(eq(lineItems.fundingSourceId, source.id));
 
-    // ponytail: bridge until Phase 2 passes the selected source; delete in Phase 4
-    const fundingSourceId = await primaryFundingSourceId(current.orgId);
     await db.insert(lineItems).values({
       orgId: current.orgId,
-      fundingSourceId,
+      fundingSourceId: source.id,
       name,
       scheduledValueCents,
       openingBilledCents,
@@ -164,9 +176,15 @@ export async function deleteLineItemAction(
 }
 
 /** Persist a new display order; the order drives documents as well as screens. */
-export async function reorderLineItemsAction(orderedIds: string[]): Promise<ActionResult> {
+export async function reorderLineItemsAction(
+  orderedIds: string[],
+  fundingSourceId: string,
+): Promise<ActionResult> {
   const current = await actionSession();
   if ("expired" in current) return current.expired;
+
+  const source = await requireOwnedFundingSource(current, fundingSourceId);
+  if ("denied" in source) return source.denied;
 
   if (orderedIds.length === 0 || !orderedIds.every(isUuid)) {
     return fail("That list is out of date — reload the page.");
@@ -175,10 +193,10 @@ export async function reorderLineItemsAction(orderedIds: string[]): Promise<Acti
   const owned = await db
     .select({ id: lineItems.id })
     .from(lineItems)
-    .where(and(eq(lineItems.orgId, current.orgId), inArray(lineItems.id, orderedIds)));
+    .where(and(eq(lineItems.fundingSourceId, source.id), inArray(lineItems.id, orderedIds)));
 
-  // Reject the whole reorder if the client sent an id from another organisation or a
-  // stale list, rather than silently applying a partial order.
+  // Reject the whole reorder if the client sent an id from another source (or organisation)
+  // or a stale list, rather than silently applying a partial order across sources.
   if (owned.length !== orderedIds.length) return fail("That list is out of date — reload the page.");
 
   await db.transaction(async (tx) => {
@@ -186,7 +204,7 @@ export async function reorderLineItemsAction(orderedIds: string[]): Promise<Acti
       await tx
         .update(lineItems)
         .set({ sortOrder: index })
-        .where(and(eq(lineItems.id, id), eq(lineItems.orgId, current.orgId)));
+        .where(and(eq(lineItems.id, id), eq(lineItems.fundingSourceId, source.id)));
     }
   });
 

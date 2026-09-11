@@ -28,15 +28,25 @@ export default async function EditExpensePage({
   // Org-scoped lookup: another organisation's id is simply not found.
   if (!expense) notFound();
 
+  // Scoped to the expense's OWN source, not the header selection: an expense on a
+  // non-selected (or archived) source must still be editable (§6).
+  const fundingSourceId = expense.fundingSourceId;
+
   const [options, lineItems, months, submittedRows] = await Promise.all([
-    loadExpenseFormOptions(session.orgId),
-    loadLineItemBudgets(session.orgId),
+    loadExpenseFormOptions(session.orgId, fundingSourceId),
+    loadLineItemBudgets(session.orgId, fundingSourceId),
     // The same list the header offers: a month you can view must be one you can move into.
-    loadSelectableMonths(session.orgId, [expense.month, session.activeMonth]),
+    loadSelectableMonths(session.orgId, fundingSourceId, [expense.month, session.activeMonth]),
     db
       .select({ month: monthStatuses.month, submittedAt: monthStatuses.submittedAt })
       .from(monthStatuses)
-      .where(and(eq(monthStatuses.orgId, session.orgId), isNotNull(monthStatuses.submittedAt))),
+      .where(
+        and(
+          eq(monthStatuses.orgId, session.orgId),
+          eq(monthStatuses.fundingSourceId, fundingSourceId),
+          isNotNull(monthStatuses.submittedAt),
+        ),
+      ),
   ]);
 
   // The Month dropdown moves the expense (R2.2), so both the budget projection and the
@@ -44,7 +54,7 @@ export default async function EditExpensePage({
   // the expense happens to sit in now. Both were resolved for the source month alone, which
   // meant moving into a submitted month warned about nothing and the R3.7 projection quietly
   // described the wrong month's budget.
-  const amounts = await loadExpenseAmounts(session.orgId, months[0] ?? expense.month);
+  const amounts = await loadExpenseAmounts(session.orgId, fundingSourceId, months[0] ?? expense.month);
   const remainingByMonth = Object.fromEntries(
     months.map((month) => [
       month,

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
+import { PickFundingSource } from "@/src/components/app-shell/pick-funding-source";
 import {
   Card,
   CARD_PADDING,
@@ -15,6 +16,7 @@ import { formatMoney } from "@/src/domain/format";
 import { UI } from "@/src/domain/strings";
 import { packetContents } from "@/src/generation/packet-order";
 import { loadTrashedExpenses } from "@/src/modules/expenses/queries";
+import { loadSourceContext } from "@/src/modules/funding-sources/queries";
 import { loadPacketReadiness } from "@/src/modules/packet/queries";
 import { getSession } from "@/src/services/auth/session";
 
@@ -35,11 +37,25 @@ export default async function PacketPage() {
   const session = await getSession();
   if (!session) redirect("/login");
 
+  const { selectedId: fundingSourceId, activeSources } = await loadSourceContext(
+    session.orgId,
+    session.activeFundingSourceId,
+  );
   const month = session.activeMonth;
   const label = monthLabel(month);
+
+  if (fundingSourceId === null) {
+    return (
+      <div>
+        <PageHeader title="Month-End Packet" subtext={`Everything the funder receives for ${label}.`} />
+        <PickFundingSource sources={activeSources} />
+      </div>
+    );
+  }
+
   const [readiness, deletedInMonth] = await Promise.all([
-    loadPacketReadiness(session.orgId, month),
-    loadTrashedExpenses(session.orgId, month),
+    loadPacketReadiness(session.orgId, fundingSourceId, month),
+    loadTrashedExpenses(session.orgId, fundingSourceId, month),
   ]);
 
   const blocked = readiness.blocking.length > 0;

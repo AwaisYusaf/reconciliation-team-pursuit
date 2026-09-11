@@ -12,7 +12,7 @@ import { isValidMonthKey } from "@/src/domain/dates";
 import { isUuid } from "@/src/lib/ids";
 import { fail, ok, type ActionResult } from "@/src/lib/action-result";
 import { actionSession } from "@/src/lib/action-session";
-import { primaryFundingSourceId } from "@/src/modules/funding-sources/queries";
+import { loadSourceContext } from "@/src/modules/funding-sources/queries";
 import { captureMonthSnapshot, discardMonthSnapshot } from "./snapshot";
 import { deleteMonthDocument } from "@/src/services/storage/documents";
 
@@ -42,8 +42,12 @@ export async function markMonthSubmittedAction(month: string): Promise<ActionRes
   if ("expired" in current) return current.expired;
   if (!isValidMonthKey(month)) return fail("That is not a valid month.");
 
-  // ponytail: bridge until Phase 2 passes the selected source; delete in Phase 4
-  const fundingSourceId = await primaryFundingSourceId(current.orgId);
+  const { selectedId: fundingSourceId } = await loadSourceContext(
+    current.orgId,
+    current.activeFundingSourceId,
+  );
+  if (!fundingSourceId) return fail("Choose a funding source.");
+
   const now = new Date();
   await db
     .insert(monthStatuses)
@@ -56,7 +60,7 @@ export async function markMonthSubmittedAction(month: string): Promise<ActionRes
   // Submission is what makes a month's figures official, so it is where they are recorded
   // (D-68). Everything else in the app recomputes from live rows, which means a later
   // correction would otherwise rewrite what this month is said to have closed at.
-  await captureMonthSnapshot(current.orgId, month);
+  await captureMonthSnapshot(current.orgId, fundingSourceId, month);
 
   revalidatePath("/", "layout");
   return ok();
@@ -68,14 +72,26 @@ export async function clearMonthSubmittedAction(month: string): Promise<ActionRe
   if ("expired" in current) return current.expired;
   if (!isValidMonthKey(month)) return fail("That is not a valid month.");
 
+  const { selectedId: fundingSourceId } = await loadSourceContext(
+    current.orgId,
+    current.activeFundingSourceId,
+  );
+  if (!fundingSourceId) return fail("Choose a funding source.");
+
   await db
     .update(monthStatuses)
     .set({ submittedAt: null })
-    .where(and(eq(monthStatuses.orgId, current.orgId), eq(monthStatuses.month, month)));
+    .where(
+      and(
+        eq(monthStatuses.orgId, current.orgId),
+        eq(monthStatuses.fundingSourceId, fundingSourceId),
+        eq(monthStatuses.month, month),
+      ),
+    );
 
   // No longer claimed as sent, so figures labelled "as submitted" would assert something
   // untrue. The pinned artifact keeps the bytes that were actually delivered (R10.6).
-  await discardMonthSnapshot(current.orgId, month);
+  await discardMonthSnapshot(current.orgId, fundingSourceId, month);
 
   revalidatePath("/", "layout");
   return ok();

@@ -2,6 +2,7 @@ import { and, eq } from "drizzle-orm";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
+import { PickFundingSource } from "@/src/components/app-shell/pick-funding-source";
 import { WelcomeBanner } from "@/src/components/app-shell/welcome-banner";
 import { buttonClassName } from "@/src/components/ui/button";
 import { DangerPanel, EmptyState, PageTitle, Subtext } from "@/src/components/ui/surfaces";
@@ -12,6 +13,7 @@ import { loadExpenseAmounts, loadLineItemBudgets } from "@/src/db/queries";
 import { allLineItemStats, grantPosition, monthPositions, snapshotDrift } from "@/src/domain/budget-math";
 import { monthLabel, monthShortLabel } from "@/src/domain/dates";
 import { formatMoney, formatPercent } from "@/src/domain/format";
+import { loadSourceContext } from "@/src/modules/funding-sources/queries";
 import { getSession } from "@/src/services/auth/session";
 
 /** Wording for each figure the drift notice can report (R3.8). */
@@ -33,10 +35,24 @@ export default async function DashboardPage() {
   const session = await getSession();
   if (!session) redirect("/login");
 
+  const { selectedId: fundingSourceId, activeSources } = await loadSourceContext(
+    session.orgId,
+    session.activeFundingSourceId,
+  );
+  if (fundingSourceId === null) {
+    return (
+      <div>
+        <PageTitle className="mb-1.5">Dashboard</PageTitle>
+        <Subtext className="mb-[26px]">Budget status for {monthLabel(session.activeMonth)}.</Subtext>
+        <PickFundingSource sources={activeSources} />
+      </div>
+    );
+  }
+
   const month = session.activeMonth;
   const [lineItems, expenses] = await Promise.all([
-    loadLineItemBudgets(session.orgId),
-    loadExpenseAmounts(session.orgId, month),
+    loadLineItemBudgets(session.orgId, fundingSourceId),
+    loadExpenseAmounts(session.orgId, fundingSourceId, month),
   ]);
 
   // What this month was submitted as, if it was. Present only for a submitted month (D-68).
@@ -52,7 +68,13 @@ export default async function DashboardPage() {
       remainingCents: monthSnapshots.remainingCents,
     })
     .from(monthSnapshots)
-    .where(and(eq(monthSnapshots.orgId, session.orgId), eq(monthSnapshots.month, month)));
+    .where(
+      and(
+        eq(monthSnapshots.orgId, session.orgId),
+        eq(monthSnapshots.fundingSourceId, fundingSourceId),
+        eq(monthSnapshots.month, month),
+      ),
+    );
 
   const stats = allLineItemStats(lineItems, expenses, month);
   // Two views, deliberately not one table (R3.8): the month on its own, and the grant to

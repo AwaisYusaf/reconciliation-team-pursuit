@@ -8,6 +8,7 @@ import { gateExpenses, loadMonthSnapshot } from "@/src/generation/month-snapshot
 import { buildSummaryWorkbook, summaryWorkbookName } from "@/src/generation/summary-xlsx";
 import { attachmentHeader } from "@/src/lib/http";
 import { deletedItemsRefusal, loadTrashedExpenses } from "@/src/modules/expenses/queries";
+import { loadSourceContext } from "@/src/modules/funding-sources/queries";
 import { getSession } from "@/src/services/auth/session";
 import { consume } from "@/src/services/rate-limit";
 
@@ -58,10 +59,17 @@ export async function GET(request: Request) {
   const month = url.searchParams.get("month") ?? "";
   if (!isValidMonthKey(month)) return new NextResponse("Unknown month", { status: 400 });
 
+  // ponytail: session-scoped until Phase 6 takes ?source=
+  const { selectedId: fundingSourceId } = await loadSourceContext(
+    session.orgId,
+    session.activeFundingSourceId,
+  );
+  if (!fundingSourceId) return new NextResponse("Choose a funding source.", { status: 400 });
+
   // Re-checked here, not just in the packet screen's dialog — see the packet route's own
   // comment on this same gate. A promise enforced only in the browser is not enforced.
   const confirmedDeletions = url.searchParams.get("confirmedDeletions") === "1";
-  const deletedThisMonth = await loadTrashedExpenses(session.orgId, month);
+  const deletedThisMonth = await loadTrashedExpenses(session.orgId, fundingSourceId, month);
   if (deletedThisMonth.length > 0 && !confirmedDeletions) {
     return new NextResponse(deletedItemsRefusal(deletedThisMonth), {
       status: 409,
@@ -69,7 +77,7 @@ export async function GET(request: Request) {
     });
   }
 
-  const snapshot = await loadMonthSnapshot(session.orgId, month as MonthKey);
+  const snapshot = await loadMonthSnapshot(session.orgId, fundingSourceId, month as MonthKey);
 
   const blocking = blockingRecords(gateExpenses(snapshot.expenses));
   if (blocking.length > 0) {
@@ -85,6 +93,7 @@ export async function GET(request: Request) {
   try {
     ({ body, contentType } = await resolveArtifact({
       orgId: session.orgId,
+      fundingSourceId,
       month: month as MonthKey,
       type: "summary_xlsx",
       extension: "xlsx",

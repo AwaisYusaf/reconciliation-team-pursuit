@@ -63,6 +63,7 @@ describe.skipIf(!hasDatabase)("removeRecurringFromMonthAction (integration)", as
       orgName: "Org",
       docName: "Doc",
       activeMonth: MONTH,
+      activeFundingSourceId: null,
       onboarded: true,
       welcomeDismissed: true,
     });
@@ -156,7 +157,7 @@ describe.skipIf(!hasDatabase)("removeRecurringFromMonthAction (integration)", as
     expect(row.subtotalCents).toBe(5000);
 
     // Never even reached the trash.
-    const trashed = await loadTrashedExpenses(orgId);
+    const trashed = await loadTrashedExpenses(orgId, fundingSourceId);
     expect(trashed.map((entry) => entry.id)).not.toContain(handTyped.id);
   });
 
@@ -255,7 +256,7 @@ describe.skipIf(!hasDatabase)("removeRecurringFromMonthAction (integration)", as
     const [row] = await db.select().from(expenses).where(eq(expenses.id, createdExpense.id));
     expect(row.deletedAt).not.toBeNull(); // this one Remove is genuinely allowed to touch
 
-    const trashed = await loadTrashedExpenses(orgId);
+    const trashed = await loadTrashedExpenses(orgId, fundingSourceId);
     expect(trashed.map((entry) => entry.id)).toContain(createdExpense.id);
   });
 });

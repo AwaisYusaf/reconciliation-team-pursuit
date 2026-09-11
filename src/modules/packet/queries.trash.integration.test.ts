@@ -70,7 +70,7 @@ describe.skipIf(!hasDatabase)("loadPacketReadiness and trash (integration)", asy
       })
       .returning({ id: expenses.id });
 
-    const before = await loadPacketReadiness(orgId, MONTH);
+    const before = await loadPacketReadiness(orgId, fundingSourceId, MONTH);
     expect(before.totalAmountCents).toBe(6_000);
     expect(before.totalRecords).toBe(1);
     expect(before.blocking.map((row) => row.expenseId)).toContain(expense.id);
@@ -82,7 +82,7 @@ describe.skipIf(!hasDatabase)("loadPacketReadiness and trash (integration)", asy
 
     await db.update(expenses).set({ deletedAt: new Date() }).where(eq(expenses.id, expense.id));
 
-    const trashed = await loadPacketReadiness(orgId, MONTH);
+    const trashed = await loadPacketReadiness(orgId, fundingSourceId, MONTH);
     expect(trashed.totalAmountCents).toBe(0);
     expect(trashed.totalRecords).toBe(0);
     expect(trashed.blocking).toHaveLength(0);
@@ -94,7 +94,7 @@ describe.skipIf(!hasDatabase)("loadPacketReadiness and trash (integration)", asy
 
     await db.update(expenses).set({ deletedAt: null }).where(eq(expenses.id, expense.id));
 
-    const restored = await loadPacketReadiness(orgId, MONTH);
+    const restored = await loadPacketReadiness(orgId, fundingSourceId, MONTH);
     expect(restored.totalAmountCents).toBe(6_000);
     expect(restored.totalRecords).toBe(1);
     expect(restored.blocking.map((row) => row.expenseId)).toContain(expense.id);

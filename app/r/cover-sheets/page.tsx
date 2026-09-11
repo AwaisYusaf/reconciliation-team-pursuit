@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
+import { PickFundingSource } from "@/src/components/app-shell/pick-funding-source";
 import { DownloadButton } from "@/src/components/ui/download-button";
 import {
   DangerPanel,
@@ -14,6 +15,7 @@ import { monthLabel } from "@/src/domain/dates";
 import { blockingRecords, type GateExpense } from "@/src/domain/gate";
 import { coverSheetTitle, UI } from "@/src/domain/strings";
 import { loadMonthExpenses, type ExpenseDetail } from "@/src/modules/expenses/queries";
+import { loadSourceContext } from "@/src/modules/funding-sources/queries";
 import { getSession } from "@/src/services/auth/session";
 
 import { CoverSheetPreview, type PreviewRow } from "./cover-sheet-preview";
@@ -36,10 +38,26 @@ export default async function CoverSheetsPage({
   const session = await getSession();
   if (!session) redirect("/login");
 
+  const { selectedId: fundingSourceId, activeSources } = await loadSourceContext(
+    session.orgId,
+    session.activeFundingSourceId,
+  );
+  if (fundingSourceId === null) {
+    return (
+      <div>
+        <PageHeader
+          title="Cover Sheets"
+          subtext={`Breakdown documents for ${monthLabel(session.activeMonth)}.`}
+        />
+        <PickFundingSource sources={activeSources} />
+      </div>
+    );
+  }
+
   const month = session.activeMonth;
   const [lineItems, expenses] = await Promise.all([
-    loadLineItemBudgets(session.orgId),
-    loadMonthExpenses(session.orgId, month),
+    loadLineItemBudgets(session.orgId, fundingSourceId),
+    loadMonthExpenses(session.orgId, fundingSourceId, month),
   ]);
 
   const { lineItem: requested } = await searchParams;

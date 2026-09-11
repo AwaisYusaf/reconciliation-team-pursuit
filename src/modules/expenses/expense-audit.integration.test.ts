@@ -86,6 +86,7 @@ describe.skipIf(!hasDatabase)("expense audit events (integration)", async () => 
       orgName: "Org",
       docName: "Doc",
       activeMonth: MONTH,
+      activeFundingSourceId: null,
       onboarded: true,
       welcomeDismissed: true,
     };

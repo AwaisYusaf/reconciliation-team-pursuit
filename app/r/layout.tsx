@@ -1,11 +1,13 @@
 import { redirect } from "next/navigation";
 
 import { AppNav } from "@/src/components/app-shell/app-nav";
+import { FundingSourceSelector } from "@/src/components/app-shell/funding-source-selector";
 import { MonthSelector } from "@/src/components/app-shell/month-selector";
 import { Button } from "@/src/components/ui/button";
 import { AppToaster } from "@/src/components/ui/toast";
 import { loadSelectableMonths } from "@/src/db/months";
 import { signOutAction } from "@/src/modules/auth/actions";
+import { loadSourceContext } from "@/src/modules/funding-sources/queries";
 import { getSession } from "@/src/services/auth/session";
 
 /**
@@ -19,9 +21,14 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   if (!session) redirect("/login");
   if (!session.onboarded) redirect("/onboarding/line-items");
 
+  const { sources, selectedId, single } = await loadSourceContext(
+    session.orgId,
+    session.activeFundingSourceId,
+  );
+
   // One list, shared with the expense form: a month the header can select must also be a
   // month an expense can be moved into.
-  const months = await loadSelectableMonths(session.orgId, [session.activeMonth]);
+  const months = await loadSelectableMonths(session.orgId, selectedId, [session.activeMonth]);
   const activeMonth = session.activeMonth;
 
   return (
@@ -49,8 +56,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             bg-surface, and a line between them made two white boxes read as separate bars
             stacked on top of each other instead of one continuous header surface. */}
         <div className="bg-surface px-4 sm:px-6 pt-3 sm:pt-4">
-          <div className="max-w-[1220px] mx-auto">
+          <div className="max-w-[1220px] mx-auto flex flex-wrap gap-4">
             <MonthSelector months={months} activeMonth={activeMonth} />
+            {!single && <FundingSourceSelector sources={sources} selectedId={selectedId} />}
           </div>
         </div>
       </header>

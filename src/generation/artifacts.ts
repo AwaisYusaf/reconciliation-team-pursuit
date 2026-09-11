@@ -15,7 +15,6 @@ import { db } from "@/src/db";
 import { generatedArtifacts } from "@/src/db/schema";
 import type { ArtifactType } from "@/src/db/schema";
 import type { MonthKey } from "@/src/domain/dates";
-import { primaryFundingSourceId } from "@/src/modules/funding-sources/queries";
 import { storage } from "@/src/services/storage/driver";
 import { generatedArtifactKey } from "@/src/services/storage/keys";
 
@@ -29,6 +28,7 @@ export const CONTENT_TYPES: Record<string, string> = {
 
 export type ResolveArtifactInput = {
   orgId: string;
+  fundingSourceId: string;
   month: MonthKey;
   type: ArtifactType;
   /** Set for cover sheets; null for the packet and the workbook. */
@@ -59,6 +59,7 @@ export async function resolveArtifact(input: ResolveArtifactInput): Promise<Reso
 
   const scope = and(
     eq(generatedArtifacts.orgId, input.orgId),
+    eq(generatedArtifacts.fundingSourceId, input.fundingSourceId),
     eq(generatedArtifacts.month, input.month),
     eq(generatedArtifacts.type, input.type),
     lineItemId
@@ -96,6 +97,7 @@ export async function resolveArtifact(input: ResolveArtifactInput): Promise<Reso
   const body = await input.build();
   const key = generatedArtifactKey({
     orgId: input.orgId,
+    fundingSourceId: input.fundingSourceId,
     month: input.month,
     type: input.type,
     lineItemName: input.lineItemName ?? null,
@@ -105,9 +107,6 @@ export async function resolveArtifact(input: ResolveArtifactInput): Promise<Reso
 
   await store.put({ key, body, contentType });
 
-  // ponytail: bridge until Phase 2 passes the selected source; delete in Phase 4
-  const fundingSourceId = await primaryFundingSourceId(input.orgId);
-
   // Written pre-pinned: it is being served right now, which is what pinning records.
   // `generated_artifacts_content_uq` makes this idempotent, so two concurrent downloads of
   // the same month converge on one row rather than each inserting their own.
@@ -115,7 +114,7 @@ export async function resolveArtifact(input: ResolveArtifactInput): Promise<Reso
     .insert(generatedArtifacts)
     .values({
       orgId: input.orgId,
-      fundingSourceId,
+      fundingSourceId: input.fundingSourceId,
       month: input.month,
       type: input.type,
       lineItemId,

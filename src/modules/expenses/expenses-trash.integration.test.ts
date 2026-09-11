@@ -81,6 +81,7 @@ describe.skipIf(!hasDatabase)("expense trash (integration)", async () => {
       orgName: "Org",
       docName: "Doc",
       activeMonth: MONTH,
+      activeFundingSourceId: null,
       onboarded: true,
       welcomeDismissed: true,
     });
@@ -452,11 +453,11 @@ describe.skipIf(!hasDatabase)("expense trash (integration)", async () => {
       const trashId = await insertExpense({ orgId, lineItemId, month, name: "Trashed" });
 
       await deleteExpenseAction(trashId);
-      let rows = await loadMonthExpenses(orgId, month);
+      let rows = await loadMonthExpenses(orgId, fundingSourceId, month);
       expect(rows.map((row) => row.id).sort()).toEqual([keepId].sort());
 
       await restoreExpenseAction(trashId);
-      rows = await loadMonthExpenses(orgId, month);
+      rows = await loadMonthExpenses(orgId, fundingSourceId, month);
       expect(rows.map((row) => row.id).sort()).toEqual([keepId, trashId].sort());
     });
   });
@@ -481,7 +482,7 @@ describe.skipIf(!hasDatabase)("expense trash (integration)", async () => {
       const otherId = await insertExpense({ orgId: otherOrgId, lineItemId: otherLineItemId, month });
       await deleteExpenseAction(otherId);
 
-      const trashed = await loadTrashedExpenses(orgId);
+      const trashed = await loadTrashedExpenses(orgId, fundingSourceId);
       const ids = trashed.map((row) => row.id);
 
       expect(ids).not.toContain(active);
@@ -505,20 +506,20 @@ describe.skipIf(!hasDatabase)("expense trash (integration)", async () => {
       const inB = await insertExpense({ orgId, lineItemId, month: monthB, name: "Deleted in B" });
       await deleteExpenseAction(inB);
 
-      const scopedToA = await loadTrashedExpenses(orgId, monthA);
+      const scopedToA = await loadTrashedExpenses(orgId, fundingSourceId, monthA);
       expect(scopedToA.map((row) => row.id)).toEqual([inA]);
 
-      const scopedToB = await loadTrashedExpenses(orgId, monthB);
+      const scopedToB = await loadTrashedExpenses(orgId, fundingSourceId, monthB);
       expect(scopedToB.map((row) => row.id)).toEqual([inB]);
 
       // No month given still means every month, unchanged from before this parameter existed.
-      const unscoped = await loadTrashedExpenses(orgId);
+      const unscoped = await loadTrashedExpenses(orgId, fundingSourceId);
       const unscopedIds = unscoped.map((row) => row.id);
       expect(unscopedIds).toContain(inA);
       expect(unscopedIds).toContain(inB);
 
       // A month with nothing deleted in it returns empty, not every month's rows.
-      expect(await loadTrashedExpenses(orgId, "2099-07")).toEqual([]);
+      expect(await loadTrashedExpenses(orgId, fundingSourceId, "2099-07")).toEqual([]);
     });
   });
 
@@ -533,7 +534,7 @@ describe.skipIf(!hasDatabase)("expense trash (integration)", async () => {
       const id = await insertExpense({ orgId, lineItemId: item.id, name: "Will be trashed" });
       await deleteExpenseAction(id);
 
-      const rows = await loadLineItemRows(orgId);
+      const rows = await loadLineItemRows(orgId, fundingSourceId);
       const row = rows.find((r) => r.id === item.id)!;
       expect(row.expenseCount).toBe(1);
       expect(planLineItemDelete({ ...row, performanceTotalCents: 0 }).allowed).toBe(false);

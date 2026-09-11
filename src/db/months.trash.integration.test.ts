@@ -67,17 +67,17 @@ describe.skipIf(!hasDatabase)("loadSelectableMonths and trash (integration)", as
       })
       .returning({ id: expenses.id });
 
-    const before = await loadSelectableMonths(orgId);
+    const before = await loadSelectableMonths(orgId, fundingSourceId);
     expect(before).toContain(TRASH_ONLY_MONTH);
 
     await db.update(expenses).set({ deletedAt: new Date() }).where(eq(expenses.id, expense.id));
 
-    const trashed = await loadSelectableMonths(orgId);
+    const trashed = await loadSelectableMonths(orgId, fundingSourceId);
     expect(trashed).not.toContain(TRASH_ONLY_MONTH);
 
     await db.update(expenses).set({ deletedAt: null }).where(eq(expenses.id, expense.id));
 
-    const restored = await loadSelectableMonths(orgId);
+    const restored = await loadSelectableMonths(orgId, fundingSourceId);
     expect(restored).toContain(TRASH_ONLY_MONTH);
   });
 });
