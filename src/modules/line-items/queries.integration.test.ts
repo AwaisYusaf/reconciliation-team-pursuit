@@ -17,27 +17,27 @@ const hasDatabase = Boolean(process.env.DATABASE_URL);
 describe.skipIf(!hasDatabase)("line item usage counts (integration)", async () => {
   const { db } = await import("@/src/db");
   const { expenses, lineItems, organizations, recurringItems } = await import("@/src/db/schema");
+  const { createTestOrg } = await import("@/src/db/test-org");
   const { planLineItemDelete } = await import("@/src/domain/line-item-rules");
   const { loadLineItemRows } = await import("./queries");
 
   let orgId: string;
+  let fundingSourceId: string;
   let usedId: string;
   let recurringOnlyId: string;
   let unusedId: string;
 
   beforeAll(async () => {
-    const [org] = await db
-      .insert(organizations)
-      .values({ name: "m08 Org", docName: "m08", activeMonth: "2026-02" })
-      .returning({ id: organizations.id });
-    orgId = org.id;
+    const org = await createTestOrg({ name: "m08 Org", docName: "m08", activeMonth: "2026-02" });
+    orgId = org.orgId;
+    fundingSourceId = org.fundingSourceId;
 
     const inserted = await db
       .insert(lineItems)
       .values([
-        { orgId, name: "Salary", scheduledValueCents: 100000, sortOrder: 0 },
-        { orgId, name: "Office Space", scheduledValueCents: 50000, sortOrder: 1 },
-        { orgId, name: "Unused", scheduledValueCents: 1000, sortOrder: 2 },
+        { orgId, fundingSourceId, name: "Salary", scheduledValueCents: 100000, sortOrder: 0 },
+        { orgId, fundingSourceId, name: "Office Space", scheduledValueCents: 50000, sortOrder: 1 },
+        { orgId, fundingSourceId, name: "Unused", scheduledValueCents: 1000, sortOrder: 2 },
       ])
       .returning({ id: lineItems.id, name: lineItems.name });
 
@@ -46,8 +46,8 @@ describe.skipIf(!hasDatabase)("line item usage counts (integration)", async () =
     unusedId = inserted.find((row) => row.name === "Unused")!.id;
 
     await db.insert(expenses).values([
-      { orgId, lineItemId: usedId, month: "2026-01", date: "2026-01-10", name: "Payroll 1", paymentSource: "x", subtotalCents: 1000, referenceSeq: 1, taxReimbursable: false, feesReimbursable: true },
-      { orgId, lineItemId: usedId, month: "2026-02", date: "2026-02-10", name: "Payroll 2", paymentSource: "x", subtotalCents: 2000, referenceSeq: 1, taxReimbursable: false, feesReimbursable: true },
+      { orgId, fundingSourceId, lineItemId: usedId, month: "2026-01", date: "2026-01-10", name: "Payroll 1", paymentSource: "x", subtotalCents: 1000, referenceSeq: 1, taxReimbursable: false, feesReimbursable: true },
+      { orgId, fundingSourceId, lineItemId: usedId, month: "2026-02", date: "2026-02-10", name: "Payroll 2", paymentSource: "x", subtotalCents: 2000, referenceSeq: 1, taxReimbursable: false, feesReimbursable: true },
     ]);
 
     await db.insert(recurringItems).values([

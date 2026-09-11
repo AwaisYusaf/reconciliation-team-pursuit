@@ -84,6 +84,7 @@ describe.skipIf(!hasDatabase)("snapshot stability (integration)", async () => {
       {
         id: LINE_ITEM_1_ID,
         orgId: ORG_ID,
+        fundingSourceId: FUNDING_SOURCE_ID,
         name: "Salary",
         scheduledValueCents: 500_000_00,
         openingBilledCents: 0,
@@ -92,6 +93,7 @@ describe.skipIf(!hasDatabase)("snapshot stability (integration)", async () => {
       {
         id: LINE_ITEM_2_ID,
         orgId: ORG_ID,
+        fundingSourceId: FUNDING_SOURCE_ID,
         name: "Travel",
         scheduledValueCents: 50_000_00,
         openingBilledCents: 0,
@@ -114,6 +116,7 @@ describe.skipIf(!hasDatabase)("snapshot stability (integration)", async () => {
       {
         id: EXPENSE_1_ID,
         orgId: ORG_ID,
+        fundingSourceId: FUNDING_SOURCE_ID,
         lineItemId: LINE_ITEM_1_ID,
         month: MONTH,
         date: "2026-02-05",
@@ -135,6 +138,7 @@ describe.skipIf(!hasDatabase)("snapshot stability (integration)", async () => {
       {
         id: EXPENSE_2_ID,
         orgId: ORG_ID,
+        fundingSourceId: FUNDING_SOURCE_ID,
         lineItemId: LINE_ITEM_2_ID,
         month: MONTH,
         date: "2026-02-10",
@@ -156,6 +160,7 @@ describe.skipIf(!hasDatabase)("snapshot stability (integration)", async () => {
       {
         id: EXPENSE_3_ID,
         orgId: ORG_ID,
+        fundingSourceId: FUNDING_SOURCE_ID,
         lineItemId: LINE_ITEM_1_ID,
         month: MONTH,
         date: "2026-02-20",
@@ -179,6 +184,7 @@ describe.skipIf(!hasDatabase)("snapshot stability (integration)", async () => {
     await db.insert(monthDocuments).values({
       id: MONTH_DOCUMENT_ID,
       orgId: ORG_ID,
+      fundingSourceId: FUNDING_SOURCE_ID,
       month: MONTH,
       category: "bank_statement",
       title: "February bank statement",

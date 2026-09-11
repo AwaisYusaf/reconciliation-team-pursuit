@@ -2,6 +2,8 @@
 
 Postgres, single database, org-scoped rows (single-tenant-per-org from day one; every table except `organizations` carries `org_id`). Money = integer cents (`bigint`). Months = `char(7)` `YYYY-MM`. IDs = uuid v7, generated in app code (`uuid` package — Postgres 14 has no native `uuidv7()`). Timestamps `created_at`/`updated_at` on all tables (omitted below). Implemented in `src/db/schema.ts` (Drizzle). (Revised per `04-engineering/review-2026-08-16.md`.)
 
+**Funding sources (Phase 6, D-93):** every grant-scoped table (line items and everything under them) also carries `funding_source_id`, backed by a composite FK to `funding_sources(id, org_id)` so a row can never point at another organisation's or another source's parent. `contract_settings` and the payment-source rule columns are kept but deprecated — no longer read or written.
+
 **Case-insensitive text:** the tables below describe unique text as `citext`; the implementation uses plain `text` columns with `lower()` expression unique indexes instead, so the database needs no extension provisioned. Behaviour is identical, and it matches the Integrity-rules section's `lower()` phrasing.
 
 ## Entities
@@ -13,6 +15,7 @@ Postgres, single database, org-scoped rows (single-tenant-per-org from day one; 
 | name | text | Legal/display name — "Team Pursuit Global" |
 | doc_name | text | Name printed on documents — "Team Pursuit". Non-empty; defaults to `name` |
 | active_month | char(7) | Last selected month (per-org UI persistence, R2.3). Initialized to the current month in America/Detroit at signup |
+| active_funding_source_id | uuid FK null | Last selected funding source (per-org UI persistence, same model as `active_month`, D-93 2.5). `NULL` = "All". Plain single-column FK (not composite — `SET NULL` on a composite key would null `organizations.id` too); app code re-validates it belongs to the org whenever it is read |
 | onboarded_at | timestamptz null | Null → login redirects into onboarding (m00) |
 | welcome_dismissed_at | timestamptz null | First-run banner dismissal |
 
@@ -36,7 +39,8 @@ Multi-user per org (D-85). Org creation provisions one `admin`; admins create `m
 
 Logout deletes the row; password change deletes all the user's other sessions (revocation is row deletion).
 
-### contract_settings (1:1 organizations)
+### contract_settings (1:1 organizations) — **deprecated (Phase 6, D-93)**
+Superseded by `funding_sources`: contract details now live on each funding source. Kept in the database, no longer read or written, so the migration stays additive and reversible. A later phase drops this table once Phase 6 has run in production.
 | Field | Type | Notes |
 |---|---|---|
 | org_id | uuid PK/FK | Row always created at onboarding (zero/null defaults), even on Skip |
@@ -61,16 +65,39 @@ Logout deletes the row; password change deletes all the user's other sessions (r
 | label | text | Unique per org (case-insensitive). Seeded with the three defaults |
 | sort_order | int | |
 | active | boolean | Deactivated labels leave pickers; history keeps its snapshot |
+| tax_reimbursable / fees_reimbursable | boolean | **Deprecated (Phase 6, D-93)** — superseded by `funding_sources.tax_reimbursable`/`fees_reimbursable`. Kept in the database, no longer read or written: payment sources go back to meaning only how something was paid |
 
 ### supporting_doc_types (org-configurable list — R11.1, decision D-19)
 Same shape as payment_sources; seeded with the six defaults.
+
+### funding_sources (Phase 6, D-93)
+An organisation's separate pot of money: its own line items, expenses, monthly packets, contract details and reimbursement rules. Every organisation gets one at sign-up; existing organisations were migrated into their first source (`drizzle/0023_faulty_tyrannus.sql`). Composite FK target: `(id, org_id)` is unique, so every grant-scoped table can reference it with a composite FK that makes cross-source and cross-org rows unrepresentable.
+| Field | Type | Notes |
+|---|---|---|
+| id | uuid PK | |
+| org_id | uuid FK | cascade delete |
+| name | text | Unique per org, case-insensitive |
+| type | funding_source_type enum | `grant` \| `donation` \| `line_of_credit` \| `other`; default `grant` |
+| doc_name | text null | Printed on this source's documents; null → `organizations.doc_name` |
+| project_name | text | "Community Violence Intervention" — same columns/defaults as the deprecated `contract_settings` |
+| contract_number | text | e.g. 6007211 |
+| base_po_number | text | e.g. 3086984 |
+| performance_po_number | text | e.g. 3089749 |
+| contract_value_cents | bigint | 0 → derive from scheduled totals (R7.3) |
+| contract_start / contract_end | date null | |
+| fiduciary_name | text | "Detroit Crime Commission" |
+| advances_received_cents | bigint | R7.4 |
+| tax_reimbursable / fees_reimbursable | boolean | Reimbursement rules (moved from `payment_sources`, R1.3). No column defaults — a forgotten value must be a type error |
+| sort_order | int | Order in pickers and the All dashboard |
+| archived_at | timestamptz null | Set → hidden from pickers; history and documents stay |
 
 ### line_items
 | Field | Type | Notes |
 |---|---|---|
 | id | uuid PK | |
 | org_id | uuid FK | |
-| name | text | Unique per org, case-insensitive |
+| funding_source_id | uuid FK | Composite FK `(funding_source_id, org_id) → funding_sources(id, org_id)` (D-93 2.2) |
+| name | text | Unique per **source**, case-insensitive — two sources can each have "Salary" |
 | scheduled_value_cents | bigint | **Base** budget, directly editable — the effective Scheduled Value everything else reads is this plus every row in `line_item_performances` (R9.5), summed in `loadLineItemBudgets` |
 | opening_billed_cents | bigint | Opening previously-billed (R3.1); default 0 |
 | sort_order | int | Cover sheet/section & packet order |
@@ -98,6 +125,7 @@ Excel workbook, Contract Summary) reads them, only the pre-aggregated total.
 |---|---|---|
 | id | uuid PK | Client-generated uuid v7 accepted at create (draft-upload keying) |
 | org_id | uuid FK | |
+| funding_source_id | uuid FK | Stored directly even though derivable from the line item (D-93 2.1). Composite FK `(funding_source_id, org_id) → funding_sources(id, org_id)`; composite FK `(line_item_id, funding_source_id) → line_items(id, funding_source_id)` makes a cross-source line item unrepresentable |
 | line_item_id | uuid FK | restrict delete (R9.3) |
 | month | char(7) | R2.1; editable from the form (R2.2) |
 | date | date | Defaults today in America/Detroit (R2.5); independent of month |
@@ -110,7 +138,7 @@ Excel workbook, Contract Summary) reads them, only the pre-aggregated total.
 | no_receipt | boolean | default false |
 | no_receipt_reason | text null | Required non-empty when no_receipt (R4.2, R6.7) |
 | sort_order | int | **Per-month monotonic counter** assigned at insert — orders m03's flat list, cover-sheet rows (within line item), and Excel grouping consistently |
-| reference_seq | int | **Per-month, unique** with (org_id, month) — the number behind the printed reference `{month}-{seq}` (R2.6), drawn from `month_statuses.next_reference_seq`. Distinct from `sort_order`, which races and is reused after a delete |
+| reference_seq | int | **Per-(source, month), unique** with (org_id, funding_source_id, month) — the number behind the printed reference `{month}-{seq}` (R2.6, D-93 2.6), drawn from `month_statuses.next_reference_seq`. Distinct from `sort_order`, which races and is reused after a delete |
 | recurring_item_id | uuid null | Set when the row was created by a recurring item's one-click add (R8.3). Deliberately **not** a foreign key: the link records provenance, and deleting the recurring item must not alter an expense that is already part of a submitted month. Indexed. |
 
 Stored: `tax_reimbursable`, `fees_reimbursable` — what this funder pays for, defaulted from the payment source at entry and fixed on the row thereafter (R1.3). Derived (never stored): `reimbursable` per R1.3 and `receipt total` per R1.3a; documentation status from documents (R4).
@@ -165,6 +193,7 @@ Same processing/status fields as expense_documents, plus:
 |---|---|---|
 | id | uuid PK | |
 | org_id | uuid FK | |
+| funding_source_id | uuid FK | Composite FK `(funding_source_id, org_id) → funding_sources(id, org_id)` |
 | month | char(7) | |
 | category | enum | `bank_statement` \| `combined_hours` \| `timesheet` \| `fiduciary_invoice` \| `other` — category order authority: packet-pdf-spec §Canonical section order (the section itself is last, D-77) |
 | title | text null | Optional label shown in packet manager |
@@ -172,7 +201,7 @@ Same processing/status fields as expense_documents, plus:
 ### month_statuses (decision D-21)
 | Field | Type | Notes |
 |---|---|---|
-| org_id + month | PK | |
+| org_id + funding_source_id + month | PK | Reference counter per (source, month) (D-93 2.6) |
 | submitted_at | timestamptz null | Set via "Mark as submitted" on the packet screen; drives the R10.6 edit warning |
 
 ### vendor_defaults (library, R8.1–R8.2)
@@ -204,6 +233,7 @@ Same processing/status fields as expense_documents, plus:
 |---|---|---|
 | id | uuid PK | |
 | org_id | uuid FK | |
+| funding_source_id | uuid FK | Composite FK `(funding_source_id, org_id) → funding_sources(id, org_id)`; part of the lookup scope, never the hashed snapshot (D-93 2.8) |
 | month | char(7) | |
 | type | enum | `packet_pdf` \| `summary_xlsx` \| `cover_docx` \| `cover_pdf` |
 | line_item_id | uuid FK null | For cover sheets |
@@ -211,11 +241,11 @@ Same processing/status fields as expense_documents, plus:
 | downloaded_at | timestamptz null | Set on first successful download → **pinned forever** (no replacement, no lifecycle expiry) |
 | s3_key, size_bytes, page_count | | |
 
-Unique index `(org_id, month, type, line_item_id)` **where downloaded_at is null** — one live cache entry; pinned rows accumulate as history.
+Unique index `(org_id, funding_source_id, month, type, line_item_id)` **where downloaded_at is null** — one live cache entry per source; pinned rows accumulate as history.
 
 ## Relationships summary
 
-organizations 1—1 contract_settings · 1—n users, payment_sources, supporting_doc_types, line_items, expenses, month_documents, month_statuses, vendor_defaults, recurring_items, generated_artifacts. expenses 1—n expense_documents. line_items 1—n expenses (restrict), recurring_items (cascade after confirm), vendor_defaults (set null).
+organizations 1—1 contract_settings (deprecated) · 1—n users, payment_sources, supporting_doc_types, funding_sources, line_items, expenses, month_documents, month_statuses, vendor_defaults, recurring_items, generated_artifacts. funding_sources 1—n line_items, expenses, month_documents, month_statuses, generated_artifacts. expenses 1—n expense_documents. line_items 1—n expenses (restrict), recurring_items (cascade after confirm), vendor_defaults (set null).
 
 ## S3 layout (private bucket)
 
@@ -224,9 +254,10 @@ org/{orgId}/
   months/{YYYY-MM}/
     expenses/{expenseId}/{proof|receipt|supporting}/{docId}.{ext}
     month-docs/{category}/{docId}.{ext}
-    generated/{type}[-{lineItemSlug}]-{inputsHash}.{ext}
+    generated/{fundingSourceId}/{type}[-{lineItemSlug}]-{inputsHash}.{ext}
 backups/  (pg_dump nightly — separate prefix, 30 daily + 12 monthly, lifecycle-managed)
 ```
+- **Generated artifact keys gain a `{fundingSourceId}/` segment** for artifacts written from Phase 6 on (D-93 2.9). Expense and month document keys are unchanged — the new `funding_source_id` column on the row is what scopes them. Existing rows keep their stored `s3_key`.
 
 - **Keys never contain user-supplied filenames** (PII-free keys; original name lives in the DB and is served via RFC 5987-encoded `Content-Disposition`). Key month reflects upload time and is **historical** — moving an expense to another month never moves objects (DB row is authoritative).
 - One sanitizer for every slug/filename use: allow `[A-Za-z0-9._ -]`, collapse whitespace, strip `\/:*?"<>|`, cap length 80.
@@ -246,7 +277,8 @@ Deleting an expense/document deletes S3 objects inline best-effort; a nightly sw
 
 - `no_receipt = true ⇒ no_receipt_reason <> ''` (check constraint); service layer rejects `no_receipt = true` combined with attached receipt documents (R4.2).
 - `kind = 'supporting' ⇔ supporting_type not null` (check constraint).
-- Unique `(org_id, lower(name))` on line_items and vendor_defaults; unique `(org_id, lower(label))` on payment_sources and supporting_doc_types; unique `lower(email)` on users.
+- Unique `(org_id, lower(name))` on vendor_defaults; unique `(funding_source_id, lower(name))` on line_items (two sources can each have "Salary", D-93 2.2); unique `(org_id, lower(label))` on payment_sources and supporting_doc_types; unique `lower(email)` on users; unique `(org_id, lower(name))` on funding_sources.
+- Composite FKs (D-93 2.2): every grant-scoped table's `(funding_source_id, org_id) → funding_sources(id, org_id)`, and `expenses(line_item_id, funding_source_id) → line_items(id, funding_source_id)` — cross-source and cross-org rows are unrepresentable at the database level. `ON DELETE NO ACTION` (not `RESTRICT`) so org deletion cascades in one statement.
 - `generated_artifacts` live-cache uniqueness coalesces the nullable `line_item_id` (SQL NULLs are distinct in unique indexes, which would otherwise allow duplicate packet/summary cache rows).
-- Indexes for hot paths (declared in the Drizzle schema): expenses `(org_id, month)`; expense_documents `(expense_id, kind, sort_order)`; month_documents `(org_id, month, category, sort_order)`; generated_artifacts `(org_id, month, type, line_item_id)`; sessions `(user_id)`, `(expires_at)`.
+- Indexes for hot paths (declared in the Drizzle schema): expenses `(org_id, funding_source_id, month)`; expense_documents `(expense_id, kind, sort_order)`; month_documents `(org_id, funding_source_id, month, category, sort_order)`; generated_artifacts `(org_id, funding_source_id, month, type, line_item_id)`; sessions `(user_id)`, `(expires_at)`.
 - No denormalized totals — all figures derive at read time through the calculation service (R10.2).

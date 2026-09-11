@@ -22,6 +22,7 @@ const hasDatabase = Boolean(process.env.DATABASE_URL);
 describe.skipIf(!hasDatabase)("line item performances (integration)", async () => {
   const { db } = await import("@/src/db");
   const { lineItemPerformances, lineItems, organizations } = await import("@/src/db/schema");
+  const { createTestOrg } = await import("@/src/db/test-org");
   const { loadLineItemBudgets } = await import("@/src/db/queries");
   const { actionSession } = await import("@/src/lib/action-session");
   const {
@@ -34,6 +35,7 @@ describe.skipIf(!hasDatabase)("line item performances (integration)", async () =
   const session = vi.mocked(actionSession);
 
   let orgId: string;
+  let fundingSourceId: string;
   let otherOrgId: string;
   let lineItemId: string;
 
@@ -52,20 +54,15 @@ describe.skipIf(!hasDatabase)("line item performances (integration)", async () =
   }
 
   beforeAll(async () => {
-    const [org] = await db
-      .insert(organizations)
-      .values({ name: "m08 Performances Org", docName: "Perf", activeMonth: "2026-02" })
-      .returning({ id: organizations.id });
-    orgId = org.id;
-    const [other] = await db
-      .insert(organizations)
-      .values({ name: "m08 Performances Other Org", docName: "Other", activeMonth: "2026-02" })
-      .returning({ id: organizations.id });
-    otherOrgId = other.id;
+    const org = await createTestOrg({ name: "m08 Performances Org", docName: "Perf", activeMonth: "2026-02" });
+    orgId = org.orgId;
+    fundingSourceId = org.fundingSourceId;
+    const other = await createTestOrg({ name: "m08 Performances Other Org", docName: "Other", activeMonth: "2026-02" });
+    otherOrgId = other.orgId;
 
     const [item] = await db
       .insert(lineItems)
-      .values({ orgId, name: "Performance Grant 1", scheduledValueCents: 0, sortOrder: 0 })
+      .values({ orgId, fundingSourceId, name: "Performance Grant 1", scheduledValueCents: 0, sortOrder: 0 })
       .returning({ id: lineItems.id });
     lineItemId = item.id;
   });
@@ -176,7 +173,7 @@ describe.skipIf(!hasDatabase)("line item performances (integration)", async () =
     // data: $940,000 read $1,115,000.00 before this column existed).
     const [item] = await db
       .insert(lineItems)
-      .values({ orgId, name: "D-82 migrated-style line item", scheduledValueCents: 0, sortOrder: 1 })
+      .values({ orgId, fundingSourceId, name: "D-82 migrated-style line item", scheduledValueCents: 0, sortOrder: 1 })
       .returning({ id: lineItems.id });
 
     await db.insert(lineItemPerformances).values({
@@ -320,7 +317,7 @@ describe.skipIf(!hasDatabase)("line item performances (integration)", async () =
     // total (a boolean can't say "only the delta is new money"), so the action refuses it.
     const [item] = await db
       .insert(lineItems)
-      .values({ orgId, name: "D-92 locked-amount line item", scheduledValueCents: 0, sortOrder: 2 })
+      .values({ orgId, fundingSourceId, name: "D-92 locked-amount line item", scheduledValueCents: 0, sortOrder: 2 })
       .returning({ id: lineItems.id });
     const [legacy] = await db
       .insert(lineItemPerformances)

@@ -24,30 +24,31 @@ const hasDatabase = Boolean(process.env.DATABASE_URL);
 describe.skipIf(!hasDatabase)("upload caps under concurrency (integration)", async () => {
   const { db } = await import("@/src/db");
   const { expenseDocuments, expenses, lineItems, organizations } = await import("@/src/db/schema");
+  const { createTestOrg } = await import("@/src/db/test-org");
   const { ingestExpenseDocument, MAX_EXPENSE_BYTES, MAX_ORG_BYTES } = await import("./documents");
 
   let orgId: string;
+  let fundingSourceId: string;
   let expenseId: string;
   let sizingExpenseId: string;
   let ballastExpenseId: string;
   let png: Buffer;
 
   beforeAll(async () => {
-    const [org] = await db
-      .insert(organizations)
-      .values({ name: "Upload Org", docName: "Upload", activeMonth: "2099-01" })
-      .returning({ id: organizations.id });
-    orgId = org.id;
+    const org = await createTestOrg({ name: "Upload Org", docName: "Upload", activeMonth: "2099-01" });
+    orgId = org.orgId;
+    fundingSourceId = org.fundingSourceId;
 
     const [item] = await db
       .insert(lineItems)
-      .values({ orgId, name: "Transportation", scheduledValueCents: 100_000, sortOrder: 0 })
+      .values({ orgId, fundingSourceId, name: "Transportation", scheduledValueCents: 100_000, sortOrder: 0 })
       .returning({ id: lineItems.id });
 
     const [expense] = await db
       .insert(expenses)
       .values({
         orgId,
+        fundingSourceId,
         lineItemId: item.id,
         month: "2099-01",
         date: "2099-01-05",
@@ -67,6 +68,7 @@ describe.skipIf(!hasDatabase)("upload caps under concurrency (integration)", asy
       .insert(expenses)
       .values({
         orgId,
+        fundingSourceId,
         lineItemId: item.id,
         month: "2099-01",
         date: "2099-01-06",
@@ -85,6 +87,7 @@ describe.skipIf(!hasDatabase)("upload caps under concurrency (integration)", asy
       .insert(expenses)
       .values({
         orgId,
+        fundingSourceId,
         lineItemId: item.id,
         month: "2099-01",
         date: "2099-01-07",

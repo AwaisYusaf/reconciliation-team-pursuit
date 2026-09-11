@@ -39,6 +39,7 @@ describe.skipIf(!hasDatabase)("removeRecurringFromMonthAction (integration)", as
     recurringItems,
     users,
   } = await import("@/src/db/schema");
+  const { createTestOrg } = await import("@/src/db/test-org");
   const { hashPassword } = await import("@/src/services/auth/passwords");
   const { claimReferenceSeq } = await import("@/src/modules/expenses/references");
   const { actionSession } = await import("@/src/lib/action-session");
@@ -48,6 +49,7 @@ describe.skipIf(!hasDatabase)("removeRecurringFromMonthAction (integration)", as
   const session = vi.mocked(actionSession);
 
   let orgId: string;
+  let fundingSourceId: string;
   let lineItemId: string;
   let userId: string;
   const MONTH = "2099-08";
@@ -67,15 +69,13 @@ describe.skipIf(!hasDatabase)("removeRecurringFromMonthAction (integration)", as
   }
 
   beforeAll(async () => {
-    const [org] = await db
-      .insert(organizations)
-      .values({ name: "Remove-From-Month Org", docName: "RFM", activeMonth: MONTH })
-      .returning({ id: organizations.id });
-    orgId = org.id;
+    const org = await createTestOrg({ name: "Remove-From-Month Org", docName: "RFM", activeMonth: MONTH });
+    orgId = org.orgId;
+    fundingSourceId = org.fundingSourceId;
 
     const [item] = await db
       .insert(lineItems)
-      .values({ orgId, name: "Parking", scheduledValueCents: 500_000, sortOrder: 0 })
+      .values({ orgId, fundingSourceId, name: "Parking", scheduledValueCents: 500_000, sortOrder: 0 })
       .returning({ id: lineItems.id });
     lineItemId = item.id;
 
@@ -107,6 +107,7 @@ describe.skipIf(!hasDatabase)("removeRecurringFromMonthAction (integration)", as
       .insert(expenses)
       .values({
         orgId,
+        fundingSourceId,
         lineItemId,
         month: MONTH,
         date: `${MONTH}-10`,
@@ -114,7 +115,7 @@ describe.skipIf(!hasDatabase)("removeRecurringFromMonthAction (integration)", as
         paymentSource: "Cash",
         subtotalCents: 5000,
         sortOrder: 0,
-        referenceSeq: await claimReferenceSeq(orgId, MONTH),
+        referenceSeq: await claimReferenceSeq(orgId, fundingSourceId, MONTH),
         taxReimbursable: false,
         feesReimbursable: true,
       })
@@ -166,6 +167,7 @@ describe.skipIf(!hasDatabase)("removeRecurringFromMonthAction (integration)", as
       .insert(expenses)
       .values({
         orgId,
+        fundingSourceId,
         lineItemId,
         month: MONTH,
         date: `${MONTH}-11`,
@@ -173,7 +175,7 @@ describe.skipIf(!hasDatabase)("removeRecurringFromMonthAction (integration)", as
         paymentSource: "Cash",
         subtotalCents: 5000,
         sortOrder: 1,
-        referenceSeq: await claimReferenceSeq(orgId, MONTH),
+        referenceSeq: await claimReferenceSeq(orgId, fundingSourceId, MONTH),
         taxReimbursable: false,
         feesReimbursable: true,
       })

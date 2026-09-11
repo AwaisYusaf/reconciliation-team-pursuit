@@ -30,6 +30,7 @@ describe.skipIf(!hasDatabase)("expense trash (integration)", async () => {
     paymentSources,
     users,
   } = await import("@/src/db/schema");
+  const { createTestOrg } = await import("@/src/db/test-org");
   const { hashPassword } = await import("@/src/services/auth/passwords");
   const { claimReferenceSeq } = await import("./references");
   const { actionSession } = await import("@/src/lib/action-session");
@@ -48,6 +49,7 @@ describe.skipIf(!hasDatabase)("expense trash (integration)", async () => {
   const session = vi.mocked(actionSession);
 
   let orgId: string;
+  let fundingSourceId: string;
   let lineItemId: string;
   let otherOrgId: string;
   let otherLineItemId: string;
@@ -93,10 +95,17 @@ describe.skipIf(!hasDatabase)("expense trash (integration)", async () => {
     name?: string;
   }) {
     const month = overrides.month ?? MONTH;
+    // The expense's source is its line item's source (Phase 6, D-93) — resolved here so the
+    // call sites stay unchanged; this is setup, not an assertion.
+    const [item] = await db
+      .select({ fundingSourceId: lineItems.fundingSourceId })
+      .from(lineItems)
+      .where(eq(lineItems.id, overrides.lineItemId));
     const [row] = await db
       .insert(expenses)
       .values({
         orgId: overrides.orgId,
+        fundingSourceId: item.fundingSourceId,
         lineItemId: overrides.lineItemId,
         month,
         date: `${month}-10`,
@@ -104,7 +113,7 @@ describe.skipIf(!hasDatabase)("expense trash (integration)", async () => {
         paymentSource: "Cash",
         subtotalCents: 1000,
         sortOrder: sortCounter++,
-        referenceSeq: await claimReferenceSeq(overrides.orgId, month),
+        referenceSeq: await claimReferenceSeq(overrides.orgId, item.fundingSourceId, month),
         taxReimbursable: false,
         feesReimbursable: true,
       })
@@ -118,29 +127,24 @@ describe.skipIf(!hasDatabase)("expense trash (integration)", async () => {
   }
 
   beforeAll(async () => {
-    const [org] = await db
-      .insert(organizations)
-      .values({ name: "Trash Org", docName: "Trash", activeMonth: MONTH })
-      .returning({ id: organizations.id });
-    orgId = org.id;
+    const org = await createTestOrg({ name: "Trash Org", docName: "Trash", activeMonth: MONTH });
+    orgId = org.orgId;
+    fundingSourceId = org.fundingSourceId;
 
     const [item] = await db
       .insert(lineItems)
-      .values({ orgId, name: "Travel", scheduledValueCents: 500_000, sortOrder: 0 })
+      .values({ orgId, fundingSourceId, name: "Travel", scheduledValueCents: 500_000, sortOrder: 0 })
       .returning({ id: lineItems.id });
     lineItemId = item.id;
 
     await db.insert(paymentSources).values({ orgId, label: "Cash", sortOrder: 0 });
 
-    const [other] = await db
-      .insert(organizations)
-      .values({ name: "Other Org", docName: "Other", activeMonth: MONTH })
-      .returning({ id: organizations.id });
-    otherOrgId = other.id;
+    const other = await createTestOrg({ name: "Other Org", docName: "Other", activeMonth: MONTH });
+    otherOrgId = other.orgId;
 
     const [otherItem] = await db
       .insert(lineItems)
-      .values({ orgId: otherOrgId, name: "Other Travel", scheduledValueCents: 500_000, sortOrder: 0 })
+      .values({ orgId: otherOrgId, fundingSourceId: other.fundingSourceId, name: "Other Travel", scheduledValueCents: 500_000, sortOrder: 0 })
       .returning({ id: lineItems.id });
     otherLineItemId = otherItem.id;
 
@@ -522,7 +526,7 @@ describe.skipIf(!hasDatabase)("expense trash (integration)", async () => {
     it("a trashed expense still counts toward loadLineItemRows and blocks the delete plan", async () => {
       const [item] = await db
         .insert(lineItems)
-        .values({ orgId, name: "Blocked by trash", scheduledValueCents: 1000, sortOrder: 5 })
+        .values({ orgId, fundingSourceId, name: "Blocked by trash", scheduledValueCents: 1000, sortOrder: 5 })
         .returning({ id: lineItems.id });
 
       asOrg(orgId);
