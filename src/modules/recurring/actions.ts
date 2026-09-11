@@ -10,6 +10,7 @@ import { db } from "@/src/db";
 import {
   expenseDocuments,
   expenses,
+  fundingSources,
   lineItems,
   paymentSources,
   recurringItems,
@@ -48,11 +49,14 @@ export async function saveRecurringItemAction(input: {
   if (invalid) return fail(invalid);
 
   const owned = await db
-    .select({ id: lineItems.id })
+    .select({ id: lineItems.id, archivedAt: fundingSources.archivedAt })
     .from(lineItems)
+    .innerJoin(fundingSources, eq(fundingSources.id, lineItems.fundingSourceId))
     .where(and(eq(lineItems.id, input.lineItemId), eq(lineItems.orgId, current.orgId)))
     .limit(1);
   if (owned.length === 0) return fail("Choose a line item.");
+  // A template exists to create new expenses, which an archived source no longer takes (D-93).
+  if (owned[0].archivedAt) return fail("That funding source is archived.");
 
   const values = {
     name: input.name.trim(),
@@ -130,6 +134,7 @@ export async function addRecurringToMonthAction(
       amountCents: recurringItems.amountCents,
       lineItemId: recurringItems.lineItemId,
       fundingSourceId: lineItems.fundingSourceId,
+      sourceArchivedAt: fundingSources.archivedAt,
       defaultDescription: recurringItems.defaultDescription,
       defaultNarrative: recurringItems.defaultNarrative,
       defaultPaymentSource: recurringItems.defaultPaymentSource,
@@ -138,10 +143,13 @@ export async function addRecurringToMonthAction(
     })
     .from(recurringItems)
     .innerJoin(lineItems, eq(lineItems.id, recurringItems.lineItemId))
+    .innerJoin(fundingSources, eq(fundingSources.id, lineItems.fundingSourceId))
     .where(and(eq(recurringItems.id, id), eq(recurringItems.orgId, current.orgId)))
     .limit(1);
   const item = rows[0];
   if (!item) return fail("That recurring item no longer exists.");
+  // Same rule as createExpenseAction: an archived source takes no new expenses (D-93).
+  if (item.sourceArchivedAt) return fail("That funding source is archived.");
 
   // Fall back to the vendor library's description when the item has none of its own.
   const [vendor] = await db

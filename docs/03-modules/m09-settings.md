@@ -24,7 +24,7 @@ Each section saves independently with inline confirmation ("Saved").
 `updateOrganisationAction`, `createFundingSourceAction`, `updateFundingSourceAction`, `archiveFundingSourceAction`, `unarchiveFundingSourceAction` (all in `src/modules/funding-sources/actions.ts`, `actionSession()` not `requireAdmin()` — D-93), `saveLabelAction`, `setLabelActiveAction`, `saveVendorAction`, `deleteVendorAction`, `changePasswordAction`.
 
 ## Acceptance
-Doc name flows into all generated filenames/titles; PO/advance edits change m07 + Excel immediately; list edits flow into m02 pickers and m03 cards while history keeps old labels; vendor edits affect autofill; password change re-hashes, keeps the current session, and invalidates others.
+Doc name flows into all generated filenames/titles, except for a funding source that sets its own document name, which wins for that source's documents (D-93); PO/advance edits change m07 + Excel immediately; list edits flow into m02 pickers and m03 cards while history keeps old labels; vendor edits affect autofill; password change re-hashes, keeps the current session, and invalidates others.
 
 ---
 

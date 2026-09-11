@@ -79,7 +79,9 @@ export function RecurringManager({
   multiSource,
 }: {
   rows: RecurringRow[];
-  lineItems: Array<{ id: string; name: string }>;
+  /** `label` is what the picker shows (source-qualified when the org has several sources);
+   *  `name` is the bare line item name the filters match on. */
+  lineItems: Array<{ id: string; name: string; label: string }>;
   paymentSources: string[];
   month: string;
   monthLabel: string;
@@ -236,8 +238,6 @@ export function RecurringManager({
           </div>
           <div className="flex-[2] min-w-[220px]">
             <Label id="rec-line-label" htmlFor="rec-line">Line item</Label>
-            {/* ponytail: with All selected the line item list spans sources; label with the
-                source name if that reads ambiguously */}
             <Select
               id="rec-line"
               aria-labelledby="rec-line-label"
@@ -247,7 +247,7 @@ export function RecurringManager({
               <option value="">Choose a line item</option>
               {lineItems.map((item) => (
                 <option key={item.id} value={item.id}>
-                  {item.name}
+                  {item.label}
                 </option>
               ))}
             </Select>

@@ -4,7 +4,7 @@
 On-screen preview of each line item's Breakdown document exactly as it will print, plus Word/PDF downloads. The preview *is* the trust-builder: what Misty sees here is byte-for-byte what the City receives inside the packet.
 
 ## Scope
-Route `/r/cover-sheets`, scoped to the header's selected funding source (§14, D-93) — this screen requires one source picked, and shows `PickFundingSource` when "All" is selected. Line item selector (each + All, from that source only), faithful preview per `02-outputs/cover-sheet-spec.md`, `Download Word` / `Download PDF` buttons, gate handling.
+Route `/r/cover-sheets`, scoped to the header's selected funding source (§14, D-93) — this screen requires one source picked, and shows `PickFundingSource` when "All" is selected. Line item selector (each + All, from that source only), faithful preview per `02-outputs/cover-sheet-spec.md` (its title uses the same document name the file prints: the source's own, else the organisation's — R6.1), `Download Word` / `Download PDF` buttons, gate handling.
 
 ## Data
 Reads that source's expenses + documents per (month, line item); calls the cover-sheet generator for downloads, passing the source id. Rules R6.*, R4.3, §14.

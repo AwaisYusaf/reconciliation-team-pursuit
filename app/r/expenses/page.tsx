@@ -177,6 +177,7 @@ export default async function ExpensesPage({
         multiSource={multiSource}
         fundingSources={fundingSources}
         selectedSourceId={scope}
+        sourceFilterOffered={selectedId === null}
         totalBy={scope === null ? "source" : "payment"}
       />
     </div>

@@ -1,3 +1,5 @@
+import "server-only";
+
 /**
  * Funding source lookups (Phase 6, D-93). Server-only.
  */

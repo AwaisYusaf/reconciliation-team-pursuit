@@ -5,6 +5,7 @@
  * and tax/fee rules its first funding source will inherit, whether its active payment sources
  * disagree on those rules (a divergence the operator should review before deploy), and a
  * before-picture of row counts. Only SELECTs; opens the transaction read-only as a second guard.
+ * Exits 2 with a BLOCKER line if any row would make migration 0023 fail; 0 otherwise.
  *
  *   npm run db:preflight-funding-sources
  */
@@ -134,6 +135,28 @@ async function main() {
     }
 
     console.log(`\n${orgs.length} organisation${orgs.length === 1 ? "" : "s"}, ${divergentCount} with divergent rules.`);
+
+    // The migration backfills each expense's funding source from its OWN organisation, then adds
+    // the composite key (line_item_id, funding_source_id) → line_items. An expense pointing at a
+    // line item of another organisation would fail that key and abort the whole migration (it
+    // rolls back, but the deploy fails). The app has always refused such rows, so this should be
+    // zero; checked rather than assumed, because a failed deploy is found out at the worst time.
+    const crossOrg = (
+      await db.execute<{ count: string }>(
+        sql`select count(*)::text as count
+            from expenses e join line_items li on li.id = e.line_item_id
+            where li.org_id <> e.org_id`,
+      )
+    ).rows[0];
+    if (Number(crossOrg?.count ?? 0) > 0) {
+      console.log(
+        `BLOCKER: ${crossOrg!.count} expense(s) reference another organisation's line item. ` +
+          `Migration 0023 will fail on them. Do not deploy; investigate these rows first.`,
+      );
+      process.exitCode = 2;
+    } else {
+      console.log("No expense references another organisation's line item (migration 0023 can add its keys).");
+    }
   } catch (error) {
     console.error(error instanceof Error ? error.message : error);
     process.exitCode = 1;

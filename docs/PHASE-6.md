@@ -584,6 +584,49 @@ filenames), domain-rules **R10.3, R10.4, R10.6, §11**, `03-modules/m04`, `m06`,
 
 ---
 
+## Results (Phase 7, 2026-09-11)
+
+### Migration rehearsal — production data is preserved
+
+Run on throwaway local databases only (`ngo_rehearsal`, `ngo_rehearsal_ref`), never the dev or
+production database. "Before" was built with the **pre-feature code** (e5a0ff8): migrations
+0000–0022, `db:seed`, `db:fixture`, `db:fixture -- docs` (40 expenses, 80 attached documents),
+plus production-shaped edge cases: a submitted month with month snapshots and totals, a pinned
+(downloaded) packet artifact, an unpinned summary artifact and a pinned cover sheet, a month
+document, a trashed expense, a legacy performance with no name/date, a second organisation whose
+project name is only spaces and whose active payment sources disagree on tax/fee rules (an
+inactive one sorted first), and a third organisation with no `contract_settings` row at all.
+"After" ran migration 0023 with the branch code.
+
+| Check | Result |
+|---|---|
+| Every original column of all 18 pre-existing tables (row count + checksum over every row) | **identical** — the only difference anywhere is the migration counter, 23 → 24 |
+| Packet, summary and cover-sheet cache keys for every org × month (20 keys), old code before vs new code after | **all 20 identical** — already-downloaded and cached artifacts keep matching |
+| Rows assigned to a funding source other than their organisation's, across the 7 backfilled tables | **0** |
+| Source name / rules per org | project name carried over; blank or whitespace project → "Source 1"; missing `contract_settings` → "Source 1" with zeroed contract fields; rules from the first **active** payment source (the inactive one was skipped), else (tax no, fees yes) |
+| Migration that cannot complete (a planted expense pointing at another organisation's line item) | `db:preflight-funding-sources` prints `BLOCKER` and exits 2; `db:migrate` then fails and leaves **no trace** — still 23 migrations, no `funding_sources`, no new columns. The deploy aborts with the old version still serving. |
+| Rollback (`docs/04-engineering/rollback-0023-funding-sources.sql`) | schema identical to a database migrated only to 0022 (44 indexes, 48 constraints, 190 columns, 6 enum types); data identical to "before" (0 of 19 differing) |
+| Re-apply 0023 after a rollback | succeeds; data and all 20 cache keys identical to the first apply |
+| Rollback after contract details were edited post-deploy (one org with a `contract_settings` row, one without) | edits carried into `contract_settings` for both |
+| Rollback once a second source exists | refused with an exception; nothing changed |
+
+### Deploying to production
+
+1. Deploy at a quiet time. `deploy.sh` builds first, then migrates, then restarts. Between the
+   migration committing and the new app taking over (seconds), the **old** app still serving
+   cannot save an expense or line item: its inserts lack the new required column, and its
+   reference-number upsert targets the old key. Those saves fail with an error and write
+   nothing; no data is at risk, but a user saving in that window would have to retry.
+2. Take a fresh backup (`./backup.sh`) and confirm the upload checkpoint.
+3. Run `npm run db:preflight-funding-sources` against production (read-only, writes nothing).
+   Exit 2 / a `BLOCKER` line: do not deploy. Read the per-org lines, especially any rules
+   `WARNING`.
+4. `./deploy.sh`. A failed migration aborts the deploy with the old version still serving.
+5. Verify as the City org: the selector is hidden, the dashboard figures match the day before,
+   and re-downloading an already-downloaded month's packet serves it from cache (same bytes).
+
+---
+
 ## Appendix A — Product spec (verbatim from the client brief, 2026-09-11)
 
 Today an organization has one contract. Its line items, expenses, monthly packets and settings all

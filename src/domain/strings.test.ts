@@ -128,6 +128,38 @@ describe("filenames (R10.3)", () => {
     );
   });
 
+  it("caps a very long source name so it cannot crowd the month out of the filename", () => {
+    // FILENAME_SOURCE_MAX is 30; anything longer is truncated rather than pushing the month
+    // (and, on the cover sheet, the line item name) past sanitiseForFilename's 80-char cut.
+    const longName = "A".repeat(60);
+    const cappedSource = "A".repeat(30);
+
+    const packetName = packetFilename("Team Pursuit", "February 2026", longName);
+    expect(packetName).toContain("February_2026");
+    expect(packetName).toBe(`Team_Pursuit_${cappedSource}_February_2026_Packet.pdf`);
+
+    const summaryName = summaryFilename("Team Pursuit", "February 2026", longName);
+    expect(summaryName).toContain("February_2026");
+    expect(summaryName).toBe(`Team_Pursuit_${cappedSource}_February_2026_Summary.xlsx`);
+
+    const coverName = coverSheetFilename("Team Pursuit", "February 2026", "Salary", "docx", longName);
+    expect(coverName).toContain("February 2026");
+    expect(coverName).toContain("Salary");
+    expect(coverName).toContain("Breakdown");
+    expect(coverName).toBe(`Team Pursuit ${cappedSource} February 2026 Salary Breakdown.docx`);
+  });
+
+  it("gives two different months two different filenames even with a long source name", () => {
+    const longName = "B".repeat(60);
+    const february = packetFilename("Team Pursuit", "February 2026", longName);
+    const march = packetFilename("Team Pursuit", "March 2026", longName);
+    expect(february).not.toBe(march);
+
+    const febCover = coverSheetFilename("Team Pursuit", "February 2026", "Salary", "docx", longName);
+    const marCover = coverSheetFilename("Team Pursuit", "March 2026", "Salary", "docx", longName);
+    expect(febCover).not.toBe(marCover);
+  });
+
   it("omits the source segment for an empty, blank or absent sourceName — byte-identical to the single-source filename", () => {
     expect(coverSheetFilename("Team Pursuit", "February 2026", "Salary", "docx", null)).toBe(
       "Team Pursuit February 2026 Salary Breakdown.docx",

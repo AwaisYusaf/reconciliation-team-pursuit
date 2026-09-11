@@ -190,8 +190,9 @@ export function coverSheetFilename(
   extension: "docx" | "pdf",
   sourceName?: string | null,
 ): string {
-  const title = sourceName && sourceName.trim()
-    ? [docName, sourceName, monthLabel, lineItemName, "Breakdown"].filter((part) => part && part.trim()).join(" ")
+  const source = filenameSourcePart(sourceName);
+  const title = source
+    ? [docName, source, monthLabel, lineItemName, "Breakdown"].filter((part) => part && part.trim()).join(" ")
     : coverSheetTitle(docName, monthLabel, lineItemName);
   return `${sanitiseForFilename(title)}.${extension}`;
 }
@@ -213,6 +214,22 @@ export function packetFilename(docName: string, monthLabel: string, sourceName?:
 }
 
 function underscored(docName: string, sourceName: string | null | undefined, monthLabel: string): string {
-  const parts = [docName, sourceName, monthLabel].filter((part) => part && part.trim());
+  const parts = [docName, filenameSourcePart(sourceName), monthLabel].filter((part) => part && part.trim());
   return sanitiseForFilename(parts.join(" ")).replace(/ /g, "_");
+}
+
+/** Longest source name a filename carries (characters, after sanitising). */
+const FILENAME_SOURCE_MAX = 30;
+
+/**
+ * The source-name slice of a filename, shortened so it cannot crowd out what follows it.
+ *
+ * `sanitiseForFilename` cuts the whole name at 80 characters, and the source sits in front of
+ * the month: an uncapped long source name cut the month off, so February's and March's
+ * packets downloaded under one filename. Only multi-source filenames carry a source at all,
+ * so single-source filenames are untouched.
+ */
+function filenameSourcePart(sourceName: string | null | undefined): string {
+  if (!sourceName || !sourceName.trim()) return "";
+  return sanitiseForFilename(sourceName).slice(0, FILENAME_SOURCE_MAX).trim();
 }

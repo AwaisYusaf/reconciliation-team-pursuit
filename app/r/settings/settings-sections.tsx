@@ -187,9 +187,16 @@ export function SettingsSections({
 
   const [org, setOrg] = useState(organisation);
 
-  function run(work: () => Promise<ActionResult<unknown>>, successMessage: string) {
+  function run(
+    work: () => Promise<ActionResult<unknown>>,
+    successMessage: string,
+    onDone?: () => void,
+  ) {
     startTransition(async () => {
-      if (reportResult(await work(), successMessage)) router.refresh();
+      if (reportResult(await work(), successMessage)) {
+        onDone?.();
+        router.refresh();
+      }
     });
   }
 
@@ -356,7 +363,11 @@ function FundingSourcesSection({
   fundingSources: FundingSourceRow[];
   orgDocName: string;
   pending: boolean;
-  run: (work: () => Promise<ActionResult<unknown>>, successMessage: string) => void;
+  run: (
+    work: () => Promise<ActionResult<unknown>>,
+    successMessage: string,
+    onDone?: () => void,
+  ) => void;
 }) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState(EMPTY_FUNDING_SOURCE_DRAFT);
@@ -391,8 +402,13 @@ function FundingSourcesSection({
       editingId === NEW_FUNDING_SOURCE
         ? () => createFundingSourceAction(draft)
         : () => updateFundingSourceAction({ ...draft, id: editingId! });
-    run(work, editingId === NEW_FUNDING_SOURCE ? "Funding source added" : "Funding source saved");
-    setEditingId(null);
+    // Closed only once the save succeeds: closing straight away threw the typed values away on
+    // any refusal (duplicate name, end before start), and reopening reset the draft.
+    run(
+      work,
+      editingId === NEW_FUNDING_SOURCE ? "Funding source added" : "Funding source saved",
+      () => setEditingId(null),
+    );
   }
 
   const activeCount = fundingSources.filter((s) => !s.archived).length;
@@ -616,7 +632,11 @@ function LabelList({
   kind: "paymentSource" | "supportingDocType";
   rows: LabelRow[];
   pending: boolean;
-  run: (work: () => Promise<ActionResult<unknown>>, successMessage: string) => void;
+  run: (
+    work: () => Promise<ActionResult<unknown>>,
+    successMessage: string,
+    onDone?: () => void,
+  ) => void;
 }) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState("");

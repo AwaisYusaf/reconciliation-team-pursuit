@@ -32,7 +32,11 @@ export default async function NewExpensePage() {
     );
   }
 
-  const initialFundingSourceId = selectedId ?? activeSources[0].id;
+  // The header may hold an archived source (history stays viewable), but a new expense can
+  // only go on an active one — the form's options are active-only, so pre-filling an archived
+  // id left it with no line items and, with one active source, no control to fix it.
+  const initialFundingSourceId =
+    activeSources.find((source) => source.id === selectedId)?.id ?? activeSources[0].id;
   const month = session.activeMonth;
   const options = await loadExpenseFormOptions(session.orgId, null);
 

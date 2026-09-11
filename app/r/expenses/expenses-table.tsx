@@ -191,6 +191,7 @@ export function ExpensesTable({
   multiSource,
   fundingSources,
   selectedSourceId,
+  sourceFilterOffered,
   totalBy,
 }: {
   rows: ExpenseRow[];
@@ -207,6 +208,8 @@ export function ExpensesTable({
   fundingSources: { id: string; name: string }[];
   /** The resolved header/`?source=` scope. Null means "All". */
   selectedSourceId: string | null;
+  /** True when the header is on "All" — the only time the source filter is offered. */
+  sourceFilterOffered: boolean;
   /** "source" only when All is the resolved scope (R5.2: no combined total across funders). */
   totalBy: "payment" | "source";
 }) {
@@ -298,8 +301,45 @@ export function ExpensesTable({
     matchesDocumentationFilter(row, "Missing documentation"),
   ).length;
 
+  // Server-scoped, not a client-side filter: offered whenever the header is on "All" — keyed
+  // on that, not on the current filter value, or picking a source hid the control and left no
+  // way back to All. Navigates so the resolved scope actually changes what's loaded.
+  const sourceFilterControl =
+    multiSource && sourceFilterOffered ? (
+      <div className="flex-1 min-w-[240px] max-w-[340px]">
+        <Label id="fundingSourceFilter-label" htmlFor="fundingSourceFilter">
+          Filter by funding source
+        </Label>
+        <Select
+          id="fundingSourceFilter"
+          aria-labelledby="fundingSourceFilter-label"
+          value={selectedSourceId ?? ""}
+          onValueChange={(value) => {
+            const params = new URLSearchParams();
+            if (monthParam) params.set("month", monthParam);
+            if (value) params.set("source", value);
+            const query = params.toString();
+            router.push(`/r/expenses${query ? `?${query}` : ""}`);
+          }}
+        >
+          <option value="">{ALL_FUNDING_SOURCES}</option>
+          {fundingSources.map((source) => (
+            <option key={source.id} value={source.id}>
+              {source.name}
+            </option>
+          ))}
+        </Select>
+      </div>
+    ) : null;
+
   if (rows.length === 0) {
-    return <EmptyState>No expenses recorded for {month} yet.</EmptyState>;
+    // A source filter that matched nothing must still offer the way back.
+    return (
+      <div className="flex flex-col gap-5">
+        {sourceFilterControl}
+        <EmptyState>No expenses recorded for {month} yet.</EmptyState>
+      </div>
+    );
   }
 
   return (
@@ -443,34 +483,7 @@ export function ExpensesTable({
             ))}
           </Select>
         </div>
-        {/* Server-scoped, not a client-side filter: only offered with "All" active in the
-            header, and navigates so the resolved scope actually changes what's loaded. */}
-        {multiSource && selectedSourceId === null && (
-          <div className="flex-1 min-w-[240px] max-w-[340px]">
-            <Label id="fundingSourceFilter-label" htmlFor="fundingSourceFilter">
-              Filter by funding source
-            </Label>
-            <Select
-              id="fundingSourceFilter"
-              aria-labelledby="fundingSourceFilter-label"
-              value={selectedSourceId ?? ""}
-              onValueChange={(value) => {
-                const params = new URLSearchParams();
-                if (monthParam) params.set("month", monthParam);
-                if (value) params.set("source", value);
-                const query = params.toString();
-                router.push(`/r/expenses${query ? `?${query}` : ""}`);
-              }}
-            >
-              <option value="">{ALL_FUNDING_SOURCES}</option>
-              {fundingSources.map((source) => (
-                <option key={source.id} value={source.id}>
-                  {source.name}
-                </option>
-              ))}
-            </Select>
-          </div>
-        )}
+        {sourceFilterControl}
       </div>
 
       <TableCard minWidth={1160}>

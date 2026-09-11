@@ -70,6 +70,7 @@ export default async function ExpenseTrashPage({
         multiSource={multiSource}
         fundingSources={fundingSources}
         selectedSourceId={scope}
+        sourceFilterOffered={selectedId === null}
       />
     </div>
   );

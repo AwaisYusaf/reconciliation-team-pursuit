@@ -172,7 +172,7 @@ export default async function ContractSummaryPage() {
 
       <div className="mt-7">
         <DownloadButton
-          href={`/api/downloads/summary?month=${month}`}
+          href={`/api/downloads/summary?month=${month}&source=${fundingSourceId}`}
           disabled={refusal !== null}
         >
           Download Summary (Excel)

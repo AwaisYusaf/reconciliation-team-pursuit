@@ -45,6 +45,7 @@ export function TrashTable({
   multiSource,
   fundingSources,
   selectedSourceId,
+  sourceFilterOffered,
 }: {
   rows: TrashRow[];
   /** True when the org has more than one funding source (active or archived). */
@@ -53,6 +54,8 @@ export function TrashTable({
   fundingSources: { id: string; name: string }[];
   /** The resolved header/`?source=` scope. Null means "All". */
   selectedSourceId: string | null;
+  /** True when the header is on "All" — the only time the source filter is offered. */
+  sourceFilterOffered: boolean;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -78,11 +81,9 @@ export function TrashTable({
     });
   }
 
-  if (rows.length === 0) return <EmptyState>Nothing in the trash.</EmptyState>;
-
-  return (
-    <>
-      {multiSource && selectedSourceId === null && (
+  // Offered whenever the header is on "All" — keyed on that, not on the current filter value,
+  // or picking a source hid the control and left no way back to All.
+  const sourceFilterControl = multiSource && sourceFilterOffered && (
         <div className="mb-5 max-w-[340px]">
           <Label id="trashSourceFilter-label" htmlFor="trashSourceFilter">
             Filter by funding source
@@ -104,7 +105,20 @@ export function TrashTable({
             ))}
           </Select>
         </div>
-      )}
+  );
+
+  if (rows.length === 0) {
+    return (
+      <>
+        {sourceFilterControl}
+        <EmptyState>Nothing in the trash.</EmptyState>
+      </>
+    );
+  }
+
+  return (
+    <>
+      {sourceFilterControl}
       <TableCard minWidth={980}>
       <thead>
         <tr>

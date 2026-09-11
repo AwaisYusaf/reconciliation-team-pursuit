@@ -141,7 +141,7 @@ Excel workbook, Contract Summary) reads them, only the pre-aggregated total.
 | reference_seq | int | **Per-(source, month), unique** with (org_id, funding_source_id, month) — the number behind the printed reference `{month}-{seq}` (R2.6, D-93 2.6), drawn from `month_statuses.next_reference_seq`. Distinct from `sort_order`, which races and is reused after a delete |
 | recurring_item_id | uuid null | Set when the row was created by a recurring item's one-click add (R8.3). Deliberately **not** a foreign key: the link records provenance, and deleting the recurring item must not alter an expense that is already part of a submitted month. Indexed. |
 
-Stored: `tax_reimbursable`, `fees_reimbursable` — what this funder pays for, defaulted from the payment source at entry and fixed on the row thereafter (R1.3). Derived (never stored): `reimbursable` per R1.3 and `receipt total` per R1.3a; documentation status from documents (R4).
+Stored: `tax_reimbursable`, `fees_reimbursable` — what this funder pays for, defaulted from the expense's **funding source** at entry (D-93; before that, from the payment source) and fixed on the row thereafter (R1.3) — changing a source's rules later never rewrites what was already claimed. Derived (never stored): `reimbursable` per R1.3 and `receipt total` per R1.3a; documentation status from documents (R4).
 
 ### expense_audit_events (D-86, D-87)
 Admin-only audit trail, covering the five expense mutations only (create/edit/soft-delete/restore/permanent-delete). Recurring's own expense writes are out of scope for now, so a one-click recurring add appears nowhere in this table — its actor is simply not recorded (D-90 dropped the `expenses.created_by_user_id`/`updated_by_user_id` columns that had covered that case).

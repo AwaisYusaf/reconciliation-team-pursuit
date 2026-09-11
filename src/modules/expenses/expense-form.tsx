@@ -179,7 +179,12 @@ export function ExpenseForm({
   // always just the currently selected funding source's own list (spec §4: the line item
   // list only shows that source's line items).
   const sourceLineItems = options.lineItemsBySource[values.fundingSourceId] ?? [];
-  const sourceLineItemIds = sourceLineItems.map((item) => item.id);
+  // Resolved from the source a state update actually lands on, never captured at render: a
+  // fresh array here was a dependency of the vendor-search effect, which re-ran on every
+  // render and, with the compiler off, looped a timer and a server call every 250 ms. It also
+  // let a search started under one source autofill a line item into the next.
+  const lineItemIdsFor = (fundingSourceId: string) =>
+    (options.lineItemsBySource[fundingSourceId] ?? []).map((item) => item.id);
 
   // On the add form files are held until the expense exists, then uploaded against it.
   const [queued, setQueued] = useState<PendingUpload[]>([]);
@@ -316,7 +321,7 @@ export function ExpenseForm({
             current,
             exact,
             options.paymentSources,
-            sourceLineItemIds,
+            (options.lineItemsBySource[current.fundingSourceId] ?? []).map((item) => item.id),
           ),
         );
         setAutofilled(true);
@@ -333,10 +338,9 @@ export function ExpenseForm({
     return () => {
       if (searchTimer.current) clearTimeout(searchTimer.current);
     };
-    // `options.paymentSources` and the current source's line item ids are both read when an
-    // exact match autofills, so both belong here. Re-running on a new identity costs nothing:
-    // the work is debounced, and the effect only starts a timer.
-  }, [values.name, existing, options.paymentSources, sourceLineItemIds]);
+    // Only stable props and the typed name: the line item ids are read from the updater's own
+    // `current`, so nothing rebuilt per render may appear here (see `lineItemIdsFor`).
+  }, [values.name, existing, options.paymentSources, options.lineItemsBySource]);
 
   /**
    * Apply a vendor the user actually clicked.
@@ -355,7 +359,7 @@ export function ExpenseForm({
         current,
         row,
         options.paymentSources,
-        sourceLineItemIds,
+        lineItemIdsFor(current.fundingSourceId),
       ),
     );
     setSuggestions([]);

@@ -38,7 +38,7 @@ export default async function CoverSheetsPage({
   const session = await getSession();
   if (!session) redirect("/login");
 
-  const { selectedId: fundingSourceId, activeSources } = await loadSourceContext(
+  const { selectedId: fundingSourceId, activeSources, sources } = await loadSourceContext(
     session.orgId,
     session.activeFundingSourceId,
   );
@@ -101,8 +101,9 @@ export default async function CoverSheetsPage({
           <CoverSheetSection
             key={lineItem.id}
             // The name printed on documents, not the legal name (R6.1) — the preview's whole
-            // purpose is to show exactly what the generated file will say.
-            docName={session.docName}
+            // purpose is to show exactly what the generated file will say, so it resolves the
+            // way the snapshot does: the source's own document name, else the org's (D-93).
+            docName={sources.find((source) => source.id === fundingSourceId)?.docName ?? session.docName}
             monthLabelText={label}
             month={month}
             fundingSourceId={fundingSourceId}

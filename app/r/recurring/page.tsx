@@ -25,6 +25,9 @@ export default async function RecurringPage() {
   );
   const multiSource = fundingSources.length > 1;
   const sourceNameById = new Map(fundingSources.map((source) => [source.id, source.name]));
+  const archivedSourceIds = new Set(
+    fundingSources.filter((source) => source.archivedAt !== null).map((source) => source.id),
+  );
 
   const [items, options, sources, monthRows] = await Promise.all([
     db
@@ -52,7 +55,7 @@ export default async function RecurringPage() {
       )
       .orderBy(asc(recurringItems.sortOrder)),
     db
-      .select({ id: lineItems.id, name: lineItems.name })
+      .select({ id: lineItems.id, name: lineItems.name, fundingSourceId: lineItems.fundingSourceId })
       .from(lineItems)
       .where(
         and(
@@ -88,6 +91,20 @@ export default async function RecurringPage() {
       )
       .groupBy(expenses.id),
   ]);
+
+  // The picker offers only line items a template can be saved on — an archived source takes no
+  // new expenses, so `saveRecurringItemAction` refuses it — and, when the org has more than one
+  // source, says which source each belongs to: two sources may each have a "Salary". `label`
+  // is display only; `name` stays the bare line item name the filters match on.
+  const pickerLineItems = options
+    .filter((item) => !archivedSourceIds.has(item.fundingSourceId))
+    .map((item) => ({
+      id: item.id,
+      name: item.name,
+      label: multiSource
+        ? `${item.name} (${sourceNameById.get(item.fundingSourceId) ?? ""})`
+        : item.name,
+    }));
 
   const activeSources = sources.map((row) => row.label);
   // Null means never set, which is a different fact from a genuine zero (D-54), so it shows
@@ -132,7 +149,7 @@ export default async function RecurringPage() {
 
       <RecurringManager
         rows={rows}
-        lineItems={options}
+        lineItems={pickerLineItems}
         paymentSources={activeSources}
         month={month}
         monthLabel={monthLabel(month)}
