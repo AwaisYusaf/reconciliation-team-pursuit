@@ -12,6 +12,8 @@ import {
   thumbnailSrc,
   useDocumentViewer,
 } from "@/src/components/ui/document-viewer";
+import { Label } from "@/src/components/ui/field";
+import { Select } from "@/src/components/ui/select";
 import { EmptyState } from "@/src/components/ui/surfaces";
 import { TableCard, Td, Th } from "@/src/components/ui/table";
 import { reportResult } from "@/src/components/ui/toast";
@@ -23,10 +25,13 @@ import {
 import type { ActionResult } from "@/src/lib/action-result";
 import type { RowDocument } from "../expenses-table";
 
+const ALL_FUNDING_SOURCES = "All funding sources";
+
 export type TrashRow = {
   id: string;
   name: string;
   lineItemName: string;
+  fundingSourceName: string;
   /** Already formatted for display (`monthLabel`). */
   month: string;
   amountCents: number;
@@ -35,7 +40,20 @@ export type TrashRow = {
   documents: RowDocument[];
 };
 
-export function TrashTable({ rows }: { rows: TrashRow[] }) {
+export function TrashTable({
+  rows,
+  multiSource,
+  fundingSources,
+  selectedSourceId,
+}: {
+  rows: TrashRow[];
+  /** True when the org has more than one funding source (active or archived). */
+  multiSource: boolean;
+  /** Active sources, plus any archived one with a trashed expense in these rows. */
+  fundingSources: { id: string; name: string }[];
+  /** The resolved header/`?source=` scope. Null means "All". */
+  selectedSourceId: string | null;
+}) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const { open, viewer } = useDocumentViewer();
@@ -64,11 +82,35 @@ export function TrashTable({ rows }: { rows: TrashRow[] }) {
 
   return (
     <>
+      {multiSource && selectedSourceId === null && (
+        <div className="mb-5 max-w-[340px]">
+          <Label id="trashSourceFilter-label" htmlFor="trashSourceFilter">
+            Filter by funding source
+          </Label>
+          <Select
+            id="trashSourceFilter"
+            aria-labelledby="trashSourceFilter-label"
+            value={selectedSourceId ?? ""}
+            onValueChange={(value) => {
+              const query = value ? `?source=${value}` : "";
+              router.push(`/r/expenses/trash${query}`);
+            }}
+          >
+            <option value="">{ALL_FUNDING_SOURCES}</option>
+            {fundingSources.map((source) => (
+              <option key={source.id} value={source.id}>
+                {source.name}
+              </option>
+            ))}
+          </Select>
+        </div>
+      )}
       <TableCard minWidth={980}>
       <thead>
         <tr>
           <Th>Name</Th>
           <Th>Line Item</Th>
+          {multiSource && <Th>Funding Source</Th>}
           <Th>Month</Th>
           <Th align="right">Amount</Th>
           <Th>Files</Th>
@@ -81,6 +123,7 @@ export function TrashTable({ rows }: { rows: TrashRow[] }) {
           <tr key={row.id}>
             <Td>{row.name}</Td>
             <Td>{row.lineItemName}</Td>
+            {multiSource && <Td className="text-[15px] text-sub leading-snug">{row.fundingSourceName}</Td>}
             <Td>{row.month}</Td>
             <Td align="right" numeric>
               {formatMoney(row.amountCents)}

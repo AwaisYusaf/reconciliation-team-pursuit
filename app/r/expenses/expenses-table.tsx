@@ -69,6 +69,7 @@ export type ExpenseRow = {
   name: string;
   lineItemName: string;
   paymentSource: string;
+  fundingSourceName: string;
   reimbursableCents: number;
   proofs: RowDocument[];
   receipts: RowDocument[];
@@ -85,6 +86,7 @@ export type ExpenseRow = {
 
 const ALL_LINE_ITEMS = "All line items";
 const ALL_SOURCES = "All payment sources";
+const ALL_FUNDING_SOURCES = "All funding sources";
 
 /**
  * This expense's audit trail (D-89), opened from the "History" item in the row's ⋮ menu
@@ -184,13 +186,29 @@ export function ExpensesTable({
   paymentSourceLabels,
   lineItemNames,
   month,
+  monthParam,
   isAdmin,
+  multiSource,
+  fundingSources,
+  selectedSourceId,
+  totalBy,
 }: {
   rows: ExpenseRow[];
   paymentSourceLabels: string[];
   lineItemNames: string[];
   month: string;
+  /** The raw `?month=` value the page was opened with, if any — carried onto the funding
+   *  source filter's navigation so switching sources does not lose it. */
+  monthParam?: string;
   isAdmin: boolean;
+  /** True when the org has more than one funding source (active or archived). */
+  multiSource: boolean;
+  /** Active sources, plus any archived one with an expense in this month's rows. */
+  fundingSources: { id: string; name: string }[];
+  /** The resolved header/`?source=` scope. Null means "All". */
+  selectedSourceId: string | null;
+  /** "source" only when All is the resolved scope (R5.2: no combined total across funders). */
+  totalBy: "payment" | "source";
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -258,15 +276,20 @@ export function ExpensesTable({
     return [...matched].sort(SORTS[sort].compare);
   }, [rows, lineFilter, sourceFilter, docFilter, query, sort]);
 
-  // Cards always total the whole month, never the filtered subset (R5.2).
+  // Cards always total the whole month, never the filtered subset (R5.2). With All selected,
+  // one card per funding source instead of per payment source — different funders' money is
+  // not one budget, so there is deliberately no combined figure either way.
+  const cardLabels = totalBy === "source" ? fundingSources.map((source) => source.name) : paymentSourceLabels;
   const totals = useMemo(() => {
     const map = new Map<string, number>();
-    for (const label of paymentSourceLabels) map.set(label, 0);
+    for (const label of cardLabels) map.set(label, 0);
+    const key = totalBy === "source" ? (row: ExpenseRow) => row.fundingSourceName : (row: ExpenseRow) => row.paymentSource;
     for (const row of rows) {
-      map.set(row.paymentSource, (map.get(row.paymentSource) ?? 0) + row.reimbursableCents);
+      const label = key(row);
+      map.set(label, (map.get(label) ?? 0) + row.reimbursableCents);
     }
     return map;
-  }, [rows, paymentSourceLabels]);
+  }, [rows, cardLabels, totalBy]);
 
   // Counted with the filter's own predicate rather than `!row.complete`. The two are equal by
   // construction in the gate, but "equal by construction somewhere else" is how this project's
@@ -282,7 +305,7 @@ export function ExpensesTable({
   return (
     <div>
       <div className="flex flex-wrap gap-4 mb-5">
-        {paymentSourceLabels.map((label) => (
+        {cardLabels.map((label) => (
           <Card key={label} className="flex-1 min-w-[240px] px-5 py-[18px]">
             <div className="text-[13px] text-sub leading-snug">{label}</div>
             <div className="text-xl font-bold tabular-nums mt-2">
@@ -420,6 +443,34 @@ export function ExpensesTable({
             ))}
           </Select>
         </div>
+        {/* Server-scoped, not a client-side filter: only offered with "All" active in the
+            header, and navigates so the resolved scope actually changes what's loaded. */}
+        {multiSource && selectedSourceId === null && (
+          <div className="flex-1 min-w-[240px] max-w-[340px]">
+            <Label id="fundingSourceFilter-label" htmlFor="fundingSourceFilter">
+              Filter by funding source
+            </Label>
+            <Select
+              id="fundingSourceFilter"
+              aria-labelledby="fundingSourceFilter-label"
+              value={selectedSourceId ?? ""}
+              onValueChange={(value) => {
+                const params = new URLSearchParams();
+                if (monthParam) params.set("month", monthParam);
+                if (value) params.set("source", value);
+                const query = params.toString();
+                router.push(`/r/expenses${query ? `?${query}` : ""}`);
+              }}
+            >
+              <option value="">{ALL_FUNDING_SOURCES}</option>
+              {fundingSources.map((source) => (
+                <option key={source.id} value={source.id}>
+                  {source.name}
+                </option>
+              ))}
+            </Select>
+          </div>
+        )}
       </div>
 
       <TableCard minWidth={1160}>
@@ -428,6 +479,7 @@ export function ExpensesTable({
             <Th sticky>Ref / Date</Th>
             <Th>Name</Th>
             <Th>Line Item</Th>
+            {multiSource && <Th>Funding Source</Th>}
             <Th>Source</Th>
             <Th align="right">Amount</Th>
             <Th>Proof</Th>
@@ -463,6 +515,7 @@ export function ExpensesTable({
               </Td>
               <Td>{row.name}</Td>
               <Td>{row.lineItemName}</Td>
+              {multiSource && <Td className="text-[15px] text-sub leading-snug">{row.fundingSourceName}</Td>}
               <Td className="text-[15px] text-sub leading-snug">{row.paymentSource}</Td>
               <Td align="right" numeric>
                 {formatMoney(row.reimbursableCents)}

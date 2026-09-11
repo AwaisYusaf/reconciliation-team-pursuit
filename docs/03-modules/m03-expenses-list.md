@@ -4,16 +4,18 @@
 Everything recorded for the active month: totals by payment source, filters, documentation status at a glance, entry point to fix/edit/delete.
 
 ## Scope
-Route `/r/expenses`. Read view + row actions (edit navigates to m02; delete with confirm).
+Route `/r/expenses`. Read view + row actions (edit navigates to m02; delete with confirm). Scoped by the header's funding-source selection (§14); with **All** selected (only possible once an org has more than one source), an additional `?source=` filter narrows the list further (D-93).
 
 ## Data
-Reads `expenses` + `expense_documents` (status), calculation service for card totals. Deletes via m02's `deleteExpense`.
+Reads `expenses` + `expense_documents` (status), `funding_sources` (names, for the column and filter), calculation service for card totals. Deletes via m02's `deleteExpenseAction`.
 
 ## Behavior
-- One summary card per active payment source (R5.2), label = the org's source label, value = Σ reimbursable for the month (retired labels present in the month get their own card).
+- With one source selected: one summary card per active payment source (R5.2), label = the org's source label, value = Σ reimbursable for the month (retired labels present in the month get their own card) — unchanged from before D-93.
+- With **All** selected: one card per **funding source** instead (D-93) — never per payment source across funders, and never a single combined figure, since different funders' money is not one budget.
+- With more than one funding source in the org, the table gains a **Funding Source** column, and an additional filter appears when All is selected: "Filter by funding source" (All funding sources + each active source, plus any archived source with an expense in the current month) — server-validated via `findFundingSource`; an unrecognised id is just treated as All.
 - Filters: line item (All + each), payment source (All + each), and **documentation** — `All
   records | Missing documentation | Missing proof of payment | Missing receipt/justification |
-  Missing narrative`; all combinable, and combinable with the search box.
+  Missing narrative`; all combinable, and combinable with the search box and the funding-source filter above.
   - The documentation filter reads the row's `missing` (`MissingKind | null`), which the page
     already gets from `documentationStatus` — the same judgement as the packet's blocking list
     (R4.3). It is never re-derived from the row's document arrays: that would agree today and
@@ -23,8 +25,9 @@ Reads `expenses` + `expense_documents` (status), calculation service for card to
     most likely to be used to find them.
   - The incomplete strip's count runs through the same predicate as the filter, so the number
     shown and the rows the filter returns cannot disagree.
-- Table: `Ref / Date | Name | Line Item | Source | Amount | Proof | Receipt | Support | Narrative |
-  (actions)`. Headers are kept short and the reference shares its column with the date so the
+- Table: `Ref / Date | Name | Line Item | [Funding Source] | Source | Amount | Proof | Receipt | Support | Narrative |
+  (actions)` — the Funding Source column only appears when the org has more than one source.
+  Headers are kept short and the reference shares its column with the date so the
   whole table fits the 1220px content width (widened from 1100px for the Narrative column)
   without scrolling sideways, from the `xl` viewport breakpoint up — a table that scrolls
   hides its own row actions. "Amount" is unqualified on purpose: R1.3 defines that as the

@@ -54,6 +54,7 @@ describe.skipIf(!hasDatabase)("expense audit events (integration)", async () => 
   const adminGate = vi.mocked(requireAdmin);
 
   let orgId: string;
+  let fundingSourceId: string;
   let otherOrgId: string;
   let lineItemId: string;
   let lineItemId2: string;
@@ -128,6 +129,7 @@ describe.skipIf(!hasDatabase)("expense audit events (integration)", async () => 
   function baseInput(overrides: Partial<Parameters<typeof createExpenseAction>[0]> = {}) {
     return {
       name: "An expense",
+      fundingSourceId,
       lineItemId,
       paymentSource: "Cash",
       taxReimbursable: false,
@@ -157,6 +159,7 @@ describe.skipIf(!hasDatabase)("expense audit events (integration)", async () => 
   beforeAll(async () => {
     const org = await createTestOrg({ name: "Audit Org", docName: "Audit", activeMonth: MONTH });
     orgId = org.orgId;
+    fundingSourceId = org.fundingSourceId;
 
     const [item] = await db
       .insert(lineItems)

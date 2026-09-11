@@ -11,6 +11,7 @@ import {
   expenseAuditEvents,
   expenseDocuments,
   expenses,
+  fundingSources,
   lineItems,
   vendorDefaults,
   type ExpenseAuditSnapshot,
@@ -18,6 +19,7 @@ import {
 import { parseMoneyToCentsOrZero } from "@/src/domain/money";
 import { fail, ok, type ActionResult } from "@/src/lib/action-result";
 import { actionSession, requireAdmin } from "@/src/lib/action-session";
+import { requireOwnedFundingSource } from "@/src/modules/funding-sources/queries";
 import { carryNarrativeToTemplate } from "@/src/modules/recurring/narrative";
 import { claimReferenceSeq } from "./references";
 import { loadOrgAuditHistory, type OrgAuditEvent } from "./queries";
@@ -33,6 +35,7 @@ import { validate } from "./validation";
 export type ExpenseInput = {
   id?: string;
   name: string;
+  fundingSourceId: string;
   lineItemId: string;
   paymentSource: string;
   /** Which parts of the receipt this funder reimburses (R1.3); defaults come from the source. */
@@ -53,6 +56,7 @@ export type ExpenseInput = {
 function toRow(input: ExpenseInput) {
   return {
     name: input.name.trim(),
+    fundingSourceId: input.fundingSourceId,
     lineItemId: input.lineItemId,
     paymentSource: input.paymentSource,
     month: input.month,
@@ -70,8 +74,33 @@ function toRow(input: ExpenseInput) {
   };
 }
 
-function snapshotOf(row: ReturnType<typeof toRow>, lineItemName: string): ExpenseAuditSnapshot {
-  return { ...row, lineItemName };
+function snapshotOf(
+  row: ReturnType<typeof toRow>,
+  lineItemName: string,
+  fundingSourceName: string,
+): ExpenseAuditSnapshot {
+  // `fundingSourceId` itself is not part of the snapshot's field set (only its resolved
+  // name is, like `lineItemName`) — read off explicitly rather than spread, so it can never
+  // reappear in `ExpenseAuditSnapshot` by accident.
+  return {
+    name: row.name,
+    lineItemId: row.lineItemId,
+    lineItemName,
+    fundingSourceName,
+    paymentSource: row.paymentSource,
+    month: row.month,
+    date: row.date,
+    description: row.description,
+    subtotalCents: row.subtotalCents,
+    taxCents: row.taxCents,
+    feesCents: row.feesCents,
+    taxReimbursable: row.taxReimbursable,
+    feesReimbursable: row.feesReimbursable,
+    note: row.note,
+    narrative: row.narrative,
+    noReceipt: row.noReceipt,
+    noReceiptReason: row.noReceiptReason,
+  };
 }
 
 /** Reads just the snapshot's own fields off a superset object — used where the caller
@@ -81,6 +110,7 @@ function pickSnapshot(row: ExpenseAuditSnapshot): ExpenseAuditSnapshot {
     name: row.name,
     lineItemId: row.lineItemId,
     lineItemName: row.lineItemName,
+    fundingSourceName: row.fundingSourceName,
     paymentSource: row.paymentSource,
     month: row.month,
     date: row.date,
@@ -105,6 +135,7 @@ function pickSnapshot(row: ExpenseAuditSnapshot): ExpenseAuditSnapshot {
  */
 const EXPENSE_SNAPSHOT_COLUMNS = {
   name: expenses.name,
+  fundingSourceId: expenses.fundingSourceId,
   lineItemId: expenses.lineItemId,
   paymentSource: expenses.paymentSource,
   month: expenses.month,
@@ -188,10 +219,24 @@ export async function createExpenseAction(
   const invalid = validate(input);
   if (invalid) return fail(invalid);
 
+  const source = await requireOwnedFundingSource(current, input.fundingSourceId);
+  if ("denied" in source) return source.denied;
+  if (source.archivedAt) return fail("That funding source is archived.");
+
+  // Scoped to the funding source too, not just the org: this is the invariant that makes
+  // "saving against another source's line item is impossible" hold even if this check were
+  // ever forgotten — the composite FK `expenses(line_item_id, funding_source_id) →
+  // line_items(id, funding_source_id)` (D-93) backstops it at the database.
   const owned = await db
-    .select({ id: lineItems.id, name: lineItems.name, fundingSourceId: lineItems.fundingSourceId })
+    .select({ id: lineItems.id, name: lineItems.name })
     .from(lineItems)
-    .where(and(eq(lineItems.id, input.lineItemId), eq(lineItems.orgId, current.orgId)))
+    .where(
+      and(
+        eq(lineItems.id, input.lineItemId),
+        eq(lineItems.orgId, current.orgId),
+        eq(lineItems.fundingSourceId, input.fundingSourceId),
+      ),
+    )
     .limit(1);
   if (owned.length === 0) return fail("Choose a line item.");
 
@@ -221,12 +266,11 @@ export async function createExpenseAction(
       .insert(expenses)
       .values({
         orgId: current.orgId,
-        fundingSourceId: owned[0].fundingSourceId,
         ...row,
         sortOrder: Number(next),
         // `tx`, not the pooled handle: this runs inside the transaction above, and a second
         // pool checkout from in here deadlocks under concurrency (see claimReferenceSeq).
-        referenceSeq: await claimReferenceSeq(current.orgId, owned[0].fundingSourceId, row.month, tx),
+        referenceSeq: await claimReferenceSeq(current.orgId, input.fundingSourceId, row.month, tx),
       })
       .returning({ id: expenses.id });
 
@@ -236,7 +280,7 @@ export async function createExpenseAction(
       actorUserId: current.userId,
       action: "created",
       beforeData: null,
-      afterData: snapshotOf(row, owned[0].name),
+      afterData: snapshotOf(row, owned[0].name, source.name),
     });
 
     return row_;
@@ -256,13 +300,22 @@ export async function updateExpenseAction(input: ExpenseInput): Promise<ActionRe
   if (invalid) return fail(invalid);
   if (!isUuid(input.id)) return fail("That expense no longer exists.");
 
-  // The line item must belong to this organisation. Without this check an update could
-  // rebind an expense to another organisation's line item — a cross-tenant reference that
-  // would then render that organisation's line item name on this one's screens.
+  const source = await requireOwnedFundingSource(current, input.fundingSourceId);
+  if ("denied" in source) return source.denied;
+
+  // The line item must belong to this organisation AND the (possibly new) source. Without
+  // this check an update could rebind an expense to another source's — or another
+  // organisation's — line item, the same invariant `createExpenseAction` enforces.
   const ownsLineItem = await db
     .select({ id: lineItems.id, name: lineItems.name })
     .from(lineItems)
-    .where(and(eq(lineItems.id, input.lineItemId), eq(lineItems.orgId, current.orgId)))
+    .where(
+      and(
+        eq(lineItems.id, input.lineItemId),
+        eq(lineItems.orgId, current.orgId),
+        eq(lineItems.fundingSourceId, input.fundingSourceId),
+      ),
+    )
     .limit(1);
   if (ownsLineItem.length === 0) return fail("Choose a line item.");
 
@@ -271,14 +324,14 @@ export async function updateExpenseAction(input: ExpenseInput): Promise<ActionRe
   // uneditable the moment its payment source is deactivated — and the only way out would be
   // to overwrite the snapshot that already printed on a submitted cover sheet. Only a
   // *changed* label has to be one the organisation currently offers.
-  // Joined to lineItems for the OLD line item's name: the snapshot has to name whatever this
-  // expense belonged to before the update, which is not necessarily `input.lineItemId` — an
-  // edit can move it to a different one, and the before snapshot must describe what was true
-  // a moment ago, not what the form is about to save.
+  // Joined to lineItems for the OLD line item's name, and fundingSources for the OLD source's
+  // name: the snapshot has to name whatever this expense belonged to before the update, which
+  // is not necessarily what the form is about to save — an edit can move either one.
   const [existing] = await db
     .select({
       month: expenses.month,
       fundingSourceId: expenses.fundingSourceId,
+      fundingSourceName: fundingSources.name,
       recurringItemId: expenses.recurringItemId,
       sortOrder: expenses.sortOrder,
       referenceSeq: expenses.referenceSeq,
@@ -300,6 +353,7 @@ export async function updateExpenseAction(input: ExpenseInput): Promise<ActionRe
     })
     .from(expenses)
     .innerJoin(lineItems, eq(lineItems.id, expenses.lineItemId))
+    .innerJoin(fundingSources, eq(fundingSources.id, expenses.fundingSourceId))
     .where(
       and(
         eq(expenses.id, input.id),
@@ -317,6 +371,11 @@ export async function updateExpenseAction(input: ExpenseInput): Promise<ActionRe
     return fail("Choose a payment source.");
   }
 
+  // Moving source is allowed; moving INTO an archived source is not. An expense that already
+  // sits on an archived source (source unchanged) stays editable — history corrections.
+  const sourceChanged = existing.fundingSourceId !== input.fundingSourceId;
+  if (sourceChanged && source.archivedAt) return fail("That funding source is archived.");
+
   const row = toRow(input);
 
   // Moving an expense to another month must give it that month's next counter value,
@@ -333,19 +392,19 @@ export async function updateExpenseAction(input: ExpenseInput): Promise<ActionRe
     sortOrder = Number(next);
   }
 
-  // The reference names the packet the expense appears in, so a move to another month earns
-  // that month's next number. Staying put keeps the number it was given — a reference that
-  // changed under an already-printed packet would be worse than one that never moves.
-  const movedMonth = existing.month !== row.month;
+  // The reference names the packet the expense appears in, so a move to another month OR
+  // another funding source earns that target's next number — the same reasoning as a month
+  // move, generalised (D-93 R2.6). Staying put keeps the number it was given.
+  const moved = existing.month !== row.month || sourceChanged;
   // Captured so the narrowing from the guard above survives into the retry callback.
   const expenseId = input.id;
-  // `existing` was already fetched with exactly the snapshot's fields (plus three unrelated
-  // ones this update logic also needs) — `pickSnapshot` reads off it directly rather than a
+  // `existing` was already fetched with exactly the snapshot's fields (plus unrelated ones
+  // this update logic also needs) — `pickSnapshot` reads off it directly rather than a
   // second hand-maintained field list next to `EXPENSE_SNAPSHOT_COLUMNS`.
   const beforeSnapshot = pickSnapshot(existing);
 
-  const nextReferenceSeq = movedMonth
-    ? await claimReferenceSeq(current.orgId, existing.fundingSourceId, row.month)
+  const nextReferenceSeq = moved
+    ? await claimReferenceSeq(current.orgId, input.fundingSourceId, row.month)
     : undefined;
 
   // The update and its audit event must land together — see the same reasoning in
@@ -371,7 +430,7 @@ export async function updateExpenseAction(input: ExpenseInput): Promise<ActionRe
         actorUserId: current.userId,
         action: "edited",
         beforeData: beforeSnapshot,
-        afterData: snapshotOf(row, ownsLineItem[0].name),
+        afterData: snapshotOf(row, ownsLineItem[0].name, source.name),
       });
     }
 
@@ -435,12 +494,13 @@ export async function deleteExpenseAction(id: string): Promise<ActionResult> {
     if (trashed_.length === 0) return trashed_;
     const [row] = trashed_;
 
-    // RETURNING cannot reach a joined table, so the line item's name — the one field the
-    // snapshot needs that isn't a column on `expenses` — costs one extra select. The FK is
-    // `onDelete: "restrict"` (schema.ts), so the row this points at can never be gone.
+    // RETURNING cannot reach a joined table, so the line item's (and its source's) name — the
+    // fields the snapshot needs that aren't columns on `expenses` — cost one extra select. The
+    // FK is `onDelete: "restrict"` (schema.ts), so the row this points at can never be gone.
     const [lineItem] = await tx
-      .select({ name: lineItems.name })
+      .select({ name: lineItems.name, fundingSourceName: fundingSources.name })
       .from(lineItems)
+      .innerJoin(fundingSources, eq(fundingSources.id, lineItems.fundingSourceId))
       .where(eq(lineItems.id, row.lineItemId))
       .limit(1);
 
@@ -449,7 +509,7 @@ export async function deleteExpenseAction(id: string): Promise<ActionResult> {
       expenseId: id,
       actorUserId: current.userId,
       action: "deleted",
-      beforeData: snapshotOf(row, lineItem?.name ?? ""),
+      beforeData: snapshotOf(row, lineItem?.name ?? "", lineItem?.fundingSourceName ?? ""),
       afterData: null,
     });
 
@@ -479,11 +539,12 @@ export async function restoreExpenseAction(id: string): Promise<ActionResult> {
     if (restored_.length === 0) return restored_;
     const [row] = restored_;
 
-    // RETURNING cannot reach a joined table, so the line item's name costs one extra select,
-    // the same cost as `deleteExpenseAction`.
+    // RETURNING cannot reach a joined table, so the line item's (and its source's) name costs
+    // one extra select, the same cost as `deleteExpenseAction`.
     const [lineItem] = await tx
-      .select({ name: lineItems.name })
+      .select({ name: lineItems.name, fundingSourceName: fundingSources.name })
       .from(lineItems)
+      .innerJoin(fundingSources, eq(fundingSources.id, lineItems.fundingSourceId))
       .where(eq(lineItems.id, row.lineItemId))
       .limit(1);
 
@@ -493,7 +554,7 @@ export async function restoreExpenseAction(id: string): Promise<ActionResult> {
       actorUserId: current.userId,
       action: "restored",
       beforeData: null,
-      afterData: snapshotOf(row, lineItem?.name ?? ""),
+      afterData: snapshotOf(row, lineItem?.name ?? "", lineItem?.fundingSourceName ?? ""),
     });
 
     return restored_;
@@ -527,15 +588,20 @@ export async function permanentlyDeleteExpenseAction(id: string): Promise<Action
   // this snapshot — the last chance to record what this expense was, since the row is about
   // to be gone for good — costs no extra query.
   const exists = await db
-    .select({ ...EXPENSE_SNAPSHOT_COLUMNS, lineItemName: lineItems.name })
+    .select({
+      ...EXPENSE_SNAPSHOT_COLUMNS,
+      lineItemName: lineItems.name,
+      lineItemFundingSourceName: fundingSources.name,
+    })
     .from(expenses)
     .innerJoin(lineItems, eq(lineItems.id, expenses.lineItemId))
+    .innerJoin(fundingSources, eq(fundingSources.id, lineItems.fundingSourceId))
     .where(
       and(eq(expenses.id, id), eq(expenses.orgId, current.orgId), isNotNull(expenses.deletedAt)),
     )
     .limit(1);
   if (exists.length === 0) return fail("That expense no longer exists.");
-  const { lineItemName, ...existsRow } = exists[0];
+  const { lineItemName, lineItemFundingSourceName, ...existsRow } = exists[0];
 
   // The audit event and the delete must land together, in this order and inside one real
   // transaction: the event is written first, while the row it points at (still required by
@@ -551,7 +617,7 @@ export async function permanentlyDeleteExpenseAction(id: string): Promise<Action
         expenseId: id,
         actorUserId: current.userId,
         action: "permanently_deleted",
-        beforeData: snapshotOf(existsRow, lineItemName),
+        beforeData: snapshotOf(existsRow, lineItemName, lineItemFundingSourceName),
         afterData: null,
       });
 

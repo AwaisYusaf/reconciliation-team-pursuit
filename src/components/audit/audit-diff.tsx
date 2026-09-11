@@ -41,6 +41,11 @@ const FIELDS: {
 }[] = [
   { label: "Name", value: (s) => s.name || NONE, differs: (a, b) => a.name !== b.name },
   {
+    label: "Funding Source",
+    value: (s) => s.fundingSourceName || NONE,
+    differs: (a, b) => (a.fundingSourceName ?? "") !== (b.fundingSourceName ?? ""),
+  },
+  {
     label: "Line Item",
     value: (s) => s.lineItemName || NONE,
     // lineItemId is deliberately never shown on its own (noise) — but a change to the id with

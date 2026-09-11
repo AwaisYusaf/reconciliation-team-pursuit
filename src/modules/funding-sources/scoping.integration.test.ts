@@ -158,9 +158,13 @@ describe.skipIf(!hasDatabase)("funding source isolation across loaders (integrat
     expect((await findLineItem(orgId, sourceA, itemA))?.id).toBe(itemA);
   });
 
-  it("loadExpenseFormOptions scoped to one source lists only that source's line items", async () => {
-    const options = await loadExpenseFormOptions(orgId, sourceA);
-    expect(options.lineItems.map((i) => i.id)).toEqual([itemA]);
+  // Phase 4: `loadExpenseFormOptions` no longer returns a flat `lineItems` list — it groups by
+  // source instead. Rewritten to keep the same intent (no cross-source leakage) against the
+  // new shape rather than the removed one.
+  it("loadExpenseFormOptions groups line items by source with no cross-source leakage", async () => {
+    const options = await loadExpenseFormOptions(orgId, null);
+    expect(options.lineItemsBySource[sourceA]?.map((i) => i.id)).toEqual([itemA]);
+    expect(options.lineItemsBySource[sourceB]?.map((i) => i.id)).toEqual([itemB]);
   });
 
   it("loadMonthExpenses and loadTrashedExpenses never cross sources", async () => {

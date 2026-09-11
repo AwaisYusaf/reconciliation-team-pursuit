@@ -3,7 +3,7 @@ import "server-only";
 /**
  * Expense reads for m02 and m03.
  */
-import { and, asc, desc, eq, isNotNull, isNull } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNotNull, isNull } from "drizzle-orm";
 
 import { db } from "@/src/db";
 import { isUuid } from "@/src/lib/ids";
@@ -12,6 +12,7 @@ import {
   expenseAuditEvents,
   expenseDocuments,
   expenses,
+  fundingSources,
   lineItems,
   paymentSources,
   supportingDocTypes,
@@ -57,27 +58,35 @@ export type ExpenseDetail = {
   documents: AttachedDocument[];
 };
 
-/** Options the expense form needs: line items and the org's active label lists.
- *  `fundingSourceId` null (All selected) lists every source's line items — Phase 4 splits
- *  them by source; this phase keeps the flat list the form already renders. */
-export async function loadExpenseFormOptions(orgId: string, fundingSourceId: string | null) {
-  const [items, sources, docTypes] = await Promise.all([
-    db
-      .select({ id: lineItems.id, name: lineItems.name })
-      .from(lineItems)
-      .where(
-        and(
-          eq(lineItems.orgId, orgId),
-          fundingSourceId ? eq(lineItems.fundingSourceId, fundingSourceId) : undefined,
-        ),
-      )
-      .orderBy(asc(lineItems.sortOrder), asc(lineItems.name)),
+/** Options the expense form needs: the org's funding sources (each with its own line items) and
+ *  its active label lists. `currentSourceId` is the expense's own source on edit (so an archived
+ *  source it already sits on is still offered), `null` on the add form. */
+export async function loadExpenseFormOptions(orgId: string, currentSourceId: string | null) {
+  const [activeSources, currentSource, paySources, docTypes] = await Promise.all([
     db
       .select({
-        label: paymentSources.label,
-        taxReimbursable: paymentSources.taxReimbursable,
-        feesReimbursable: paymentSources.feesReimbursable,
+        id: fundingSources.id,
+        name: fundingSources.name,
+        taxReimbursable: fundingSources.taxReimbursable,
+        feesReimbursable: fundingSources.feesReimbursable,
       })
+      .from(fundingSources)
+      .where(and(eq(fundingSources.orgId, orgId), isNull(fundingSources.archivedAt)))
+      .orderBy(asc(fundingSources.sortOrder), asc(fundingSources.name), asc(fundingSources.id)),
+    currentSourceId
+      ? db
+          .select({
+            id: fundingSources.id,
+            name: fundingSources.name,
+            taxReimbursable: fundingSources.taxReimbursable,
+            feesReimbursable: fundingSources.feesReimbursable,
+          })
+          .from(fundingSources)
+          .where(and(eq(fundingSources.id, currentSourceId), eq(fundingSources.orgId, orgId)))
+          .limit(1)
+      : Promise.resolve([]),
+    db
+      .select({ label: paymentSources.label })
       .from(paymentSources)
       .where(and(eq(paymentSources.orgId, orgId), eq(paymentSources.active, true)))
       .orderBy(asc(paymentSources.sortOrder)),
@@ -88,19 +97,32 @@ export async function loadExpenseFormOptions(orgId: string, fundingSourceId: str
       .orderBy(asc(supportingDocTypes.sortOrder)),
   ]);
 
+  // `currentSource` (archived or not) is added only if not already in the active list.
+  const fundingSourcesList = activeSources.some((source) => source.id === currentSourceId)
+    ? activeSources
+    : [...activeSources, ...currentSource];
+
+  const sourceIds = fundingSourcesList.map((source) => source.id);
+  const items =
+    sourceIds.length === 0
+      ? []
+      : await db
+          .select({ id: lineItems.id, name: lineItems.name, fundingSourceId: lineItems.fundingSourceId })
+          .from(lineItems)
+          .where(and(eq(lineItems.orgId, orgId), inArray(lineItems.fundingSourceId, sourceIds)))
+          .orderBy(asc(lineItems.sortOrder), asc(lineItems.name));
+
+  const lineItemsBySource: Record<string, Array<{ id: string; name: string }>> = Object.fromEntries(
+    sourceIds.map((id) => [id, []]),
+  );
+  for (const item of items) {
+    lineItemsBySource[item.fundingSourceId]!.push({ id: item.id, name: item.name });
+  }
+
   return {
-    lineItems: items,
-    paymentSources: sources.map((row) => row.label),
-    /**
-     * Each funder's reimbursement rules, so choosing a payment source sets the flags rather
-     * than leaving them to be re-decided on every expense (R1.3, D-67).
-     */
-    reimbursementRules: Object.fromEntries(
-      sources.map((row) => [
-        row.label,
-        { taxReimbursable: row.taxReimbursable, feesReimbursable: row.feesReimbursable },
-      ]),
-    ),
+    fundingSources: fundingSourcesList,
+    lineItemsBySource,
+    paymentSources: paySources.map((row) => row.label),
     supportingDocTypes: docTypes.map((row) => row.label),
   };
 }
@@ -352,6 +374,7 @@ export type TrashedExpense = {
   name: string;
   month: string;
   lineItemName: string;
+  fundingSourceId: string;
   amountCents: number;
   deletedAt: Date;
   // Soft delete leaves documents attached (they only go away on permanent delete), so the
@@ -377,6 +400,7 @@ export async function loadTrashedExpenses(
       name: expenses.name,
       month: expenses.month,
       lineItemName: lineItems.name,
+      fundingSourceId: expenses.fundingSourceId,
       subtotalCents: expenses.subtotalCents,
       taxCents: expenses.taxCents,
       feesCents: expenses.feesCents,
@@ -403,6 +427,7 @@ export async function loadTrashedExpenses(
     name: row.name,
     month: row.month,
     lineItemName: row.lineItemName,
+    fundingSourceId: row.fundingSourceId,
     amountCents: reimbursableCents(row),
     // Narrowed by the WHERE above: every row here has a `deletedAt` already.
     deletedAt: row.deletedAt!,

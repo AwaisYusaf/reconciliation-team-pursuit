@@ -1,18 +1,19 @@
 import "server-only";
 
 /**
- * Which parts of a receipt a funder reimburses (R1.3, D-67).
+ * Which parts of a receipt a funder reimburses (R1.3, D-67, Phase 4/D-93).
  *
  * Its own module so every path that creates an expense resolves the flags the same way. The
  * expense form and the recurring one-click add previously disagreed: the form inherited the
  * payment source's rules while the add fell through to the column defaults, so the identical
  * expense under the identical funder claimed a different amount depending on how it was
- * entered.
+ * entered. From Phase 4 on the rules come from the **funding source**, not the payment
+ * source — a payment source is only how something was paid (R5.1/R5.2).
  */
 import { and, eq } from "drizzle-orm";
 
 import { db } from "@/src/db";
-import { paymentSources } from "@/src/db/schema";
+import { fundingSources } from "@/src/db/schema";
 
 export type ReimbursementRules = {
   taxReimbursable: boolean;
@@ -31,20 +32,20 @@ export const ORIGINAL_RULES: ReimbursementRules = {
   feesReimbursable: true,
 };
 
-/** What this funder reimburses, by payment source label. */
-export async function reimbursementRulesFor(
+/** What this funding source reimburses. */
+export async function rulesForFundingSource(
   orgId: string,
-  label: string | null | undefined,
+  fundingSourceId: string | null | undefined,
 ): Promise<ReimbursementRules> {
-  if (!label) return ORIGINAL_RULES;
+  if (!fundingSourceId) return ORIGINAL_RULES;
 
   const [source] = await db
     .select({
-      taxReimbursable: paymentSources.taxReimbursable,
-      feesReimbursable: paymentSources.feesReimbursable,
+      taxReimbursable: fundingSources.taxReimbursable,
+      feesReimbursable: fundingSources.feesReimbursable,
     })
-    .from(paymentSources)
-    .where(and(eq(paymentSources.orgId, orgId), eq(paymentSources.label, label)))
+    .from(fundingSources)
+    .where(and(eq(fundingSources.orgId, orgId), eq(fundingSources.id, fundingSourceId)))
     .limit(1);
 
   return source ?? ORIGINAL_RULES;

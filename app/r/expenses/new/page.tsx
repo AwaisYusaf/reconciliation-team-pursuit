@@ -16,11 +16,14 @@ export default async function NewExpensePage() {
   const session = await getSession();
   if (!session) redirect("/login");
 
-  const { selectedId: fundingSourceId, activeSources } = await loadSourceContext(
+  const { selectedId, activeSources } = await loadSourceContext(
     session.orgId,
     session.activeFundingSourceId,
   );
-  if (fundingSourceId === null) {
+
+  // Defensive fallback only — Phase 3 refuses archiving the last active source, so this
+  // should be unreachable, but the page must not crash if it somehow were.
+  if (activeSources.length === 0) {
     return (
       <div>
         <PageTitle className="mb-2">Add Expense</PageTitle>
@@ -29,19 +32,24 @@ export default async function NewExpensePage() {
     );
   }
 
+  const initialFundingSourceId = selectedId ?? activeSources[0].id;
   const month = session.activeMonth;
-  const [options, lineItems, amounts] = await Promise.all([
-    loadExpenseFormOptions(session.orgId, fundingSourceId),
-    loadLineItemBudgets(session.orgId, fundingSourceId),
-    loadExpenseAmounts(session.orgId, fundingSourceId, month),
-  ]);
+  const options = await loadExpenseFormOptions(session.orgId, null);
 
-  // Remaining per line item drives the live projection as the user types (R3.7).
-  const remaining = Object.fromEntries(
-    allLineItemStats(lineItems, amounts, month).map((row) => [
-      row.lineItem.id,
-      row.remainingCents,
-    ]),
+  // Remaining per line item drives the live projection as the user types (R3.7). Line item
+  // ids are UUIDs and unique across sources, so every source's figures merge into one flat
+  // map without collision.
+  const remaining: Record<string, number> = {};
+  await Promise.all(
+    options.fundingSources.map(async (source) => {
+      const [lineItems, amounts] = await Promise.all([
+        loadLineItemBudgets(session.orgId, source.id),
+        loadExpenseAmounts(session.orgId, source.id, month),
+      ]);
+      for (const row of allLineItemStats(lineItems, amounts, month)) {
+        remaining[row.lineItem.id] = row.remainingCents;
+      }
+    }),
   );
 
   return (
@@ -57,6 +65,7 @@ export default async function NewExpensePage() {
         remaining={remaining}
         today={todayIso()}
         activeMonth={month}
+        initialFundingSourceId={initialFundingSourceId}
       />
     </div>
   );

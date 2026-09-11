@@ -55,69 +55,61 @@ function usablePaymentSource(
   return activeSources.includes(vendor.paymentSource) ? vendor.paymentSource : null;
 }
 
+/**
+ * A remembered line item, but only while it belongs to the current funding source.
+ *
+ * The payment source no longer decides the reimbursement flags (Phase 4/D-93) — the form's
+ * Funding source field does, applied when it changes. A remembered `lineItemId` that belongs
+ * to a *different* source must not cross over, so it falls back to whatever the field already
+ * holds (which is `""` on the typed-name path — left empty, per spec).
+ */
+function usableLineItemId(
+  vendor: VendorFill,
+  sourceLineItemIds: readonly string[],
+  current: string,
+): string {
+  if (vendor.lineItemId && sourceLineItemIds.includes(vendor.lineItemId)) return vendor.lineItemId;
+  return current;
+}
+
 /** Applied when the typed name matches a vendor exactly — blanks only. */
 export function fillFromTypedName(
   current: ExpenseInput,
   vendor: VendorFill,
   activeSources: readonly string[] = [],
-  rules?: ReimbursementRuleMap,
+  sourceLineItemIds: readonly string[] = [],
 ): ExpenseInput {
   // Something already chosen means the user is past this field; leave the whole form alone.
   if (current.lineItemId || current.description) return current;
 
-  return withFunderRules({
+  return {
     ...current,
-    lineItemId: vendor.lineItemId ?? current.lineItemId,
+    lineItemId: usableLineItemId(vendor, sourceLineItemIds, current.lineItemId),
     description: vendor.description,
     paymentSource: current.paymentSource || (usablePaymentSource(vendor, activeSources) ?? ""),
     subtotal: current.subtotal || moneyField(vendor.subtotalCents),
     tax: current.tax || moneyField(vendor.taxCents),
     fees: current.fees || moneyField(vendor.feesCents),
-  }, rules);
+  };
 }
 
 /** Applied when a suggestion is clicked — overwrites, except a subtotal already typed. */
-/** What each funder reimburses, keyed by payment source label (R1.3, D-67). */
-export type ReimbursementRuleMap = Record<
-  string,
-  { taxReimbursable: boolean; feesReimbursable: boolean }
->;
-
-/**
- * Keep the reimbursement flags with whatever payment source the form now holds (D-71).
- *
- * Setting the source without them is how the same expense came to claim two different
- * amounts depending on how it was entered. Autofill sets the source *programmatically*, so
- * the Select's own change handler never runs — which is why this has to live here rather
- * than only on the control.
- *
- * An unknown source leaves the flags untouched: it is either a retired label already on the
- * record, whose saved rules must stand, or one the org does not offer, where guessing would
- * be worse than keeping what the user last saw.
- */
-function withFunderRules(
-  values: ExpenseInput,
-  rules: ReimbursementRuleMap | undefined,
-): ExpenseInput {
-  const funder = rules?.[values.paymentSource];
-  return funder ? { ...values, ...funder } : values;
-}
-
 export function fillFromClick(
   current: ExpenseInput,
   vendor: VendorFill,
   activeSources: readonly string[] = [],
-  rules?: ReimbursementRuleMap,
+  sourceLineItemIds: readonly string[] = [],
 ): ExpenseInput {
-  return withFunderRules({
+  return {
     ...current,
     name: vendor.name,
-    // A vendor with no remembered line item must not blank out one already chosen.
-    lineItemId: vendor.lineItemId ?? current.lineItemId,
+    // A vendor with no remembered line item — or one outside the current source — must not
+    // blank out one already chosen.
+    lineItemId: usableLineItemId(vendor, sourceLineItemIds, current.lineItemId),
     description: vendor.description || current.description,
     paymentSource: usablePaymentSource(vendor, activeSources) ?? current.paymentSource,
     subtotal: current.subtotal || moneyField(vendor.subtotalCents),
     tax: moneyField(vendor.taxCents) || current.tax,
     fees: moneyField(vendor.feesCents) || current.fees,
-  }, rules);
+  };
 }

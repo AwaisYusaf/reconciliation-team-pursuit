@@ -1,7 +1,6 @@
 import { and, asc, count, eq, isNull } from "drizzle-orm";
 import { redirect } from "next/navigation";
 
-import { PickFundingSource } from "@/src/components/app-shell/pick-funding-source";
 import { PageTitle, Subtext } from "@/src/components/ui/surfaces";
 import { db } from "@/src/db";
 import { expenseDocuments, expenses, lineItems, paymentSources, recurringItems } from "@/src/db/schema";
@@ -20,16 +19,12 @@ export default async function RecurringPage() {
 
   const month = session.activeMonth;
 
-  const { selectedId: fundingSourceId, activeSources: activeFundingSources } =
-    await loadSourceContext(session.orgId, session.activeFundingSourceId);
-  if (fundingSourceId === null) {
-    return (
-      <div>
-        <PageTitle className="mb-2">Recurring Items</PageTitle>
-        <PickFundingSource sources={activeFundingSources} />
-      </div>
-    );
-  }
+  const { sources: fundingSources, selectedId: fundingSourceId } = await loadSourceContext(
+    session.orgId,
+    session.activeFundingSourceId,
+  );
+  const multiSource = fundingSources.length > 1;
+  const sourceNameById = new Map(fundingSources.map((source) => [source.id, source.name]));
 
   const [items, options, sources, monthRows] = await Promise.all([
     db
@@ -39,6 +34,7 @@ export default async function RecurringPage() {
         amountCents: recurringItems.amountCents,
         lineItemId: recurringItems.lineItemId,
         lineItemName: lineItems.name,
+        fundingSourceId: lineItems.fundingSourceId,
         defaultDescription: recurringItems.defaultDescription,
         defaultNarrative: recurringItems.defaultNarrative,
         defaultPaymentSource: recurringItems.defaultPaymentSource,
@@ -48,13 +44,22 @@ export default async function RecurringPage() {
       .from(recurringItems)
       .innerJoin(lineItems, eq(lineItems.id, recurringItems.lineItemId))
       .where(
-        and(eq(recurringItems.orgId, session.orgId), eq(lineItems.fundingSourceId, fundingSourceId)),
+        and(
+          eq(recurringItems.orgId, session.orgId),
+          // "All" (null) loads every source's recurring items; a chosen source scopes as before.
+          fundingSourceId ? eq(lineItems.fundingSourceId, fundingSourceId) : undefined,
+        ),
       )
       .orderBy(asc(recurringItems.sortOrder)),
     db
       .select({ id: lineItems.id, name: lineItems.name })
       .from(lineItems)
-      .where(and(eq(lineItems.orgId, session.orgId), eq(lineItems.fundingSourceId, fundingSourceId)))
+      .where(
+        and(
+          eq(lineItems.orgId, session.orgId),
+          fundingSourceId ? eq(lineItems.fundingSourceId, fundingSourceId) : undefined,
+        ),
+      )
       .orderBy(asc(lineItems.sortOrder)),
     db
       .select({ label: paymentSources.label })
@@ -75,7 +80,8 @@ export default async function RecurringPage() {
       .where(
         and(
           eq(expenses.orgId, session.orgId),
-          eq(expenses.fundingSourceId, fundingSourceId),
+          // Scoped the same way as `items` above: every source's rows with All selected.
+          fundingSourceId ? eq(expenses.fundingSourceId, fundingSourceId) : undefined,
           eq(expenses.month, month),
           isNull(expenses.deletedAt),
         ),
@@ -102,6 +108,7 @@ export default async function RecurringPage() {
       amountCents: item.amountCents,
       lineItemId: item.lineItemId,
       lineItemName: item.lineItemName,
+      fundingSourceName: sourceNameById.get(item.fundingSourceId) ?? "",
       defaultDescription: item.defaultDescription ?? "",
       defaultNarrative: item.defaultNarrative ?? "",
       // A retired label is not offered again; the item falls back to the org default (R5.2).
@@ -130,6 +137,7 @@ export default async function RecurringPage() {
         month={month}
         monthLabel={monthLabel(month)}
         monthShort={monthShortLabel(month)}
+        multiSource={multiSource}
       />
     </div>
   );

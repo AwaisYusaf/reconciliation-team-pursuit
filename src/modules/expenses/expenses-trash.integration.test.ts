@@ -392,6 +392,7 @@ describe.skipIf(!hasDatabase)("expense trash (integration)", async () => {
       // production code path, not a re-implementation of it.
       const created = await createExpenseAction({
         name: "New while sibling trashed",
+        fundingSourceId,
         lineItemId,
         paymentSource: "Cash",
         taxReimbursable: false,

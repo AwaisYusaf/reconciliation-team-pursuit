@@ -32,21 +32,20 @@ export default async function EditExpensePage({
   // non-selected (or archived) source must still be editable (§6).
   const fundingSourceId = expense.fundingSourceId;
 
-  const [options, lineItems, months, submittedRows] = await Promise.all([
+  const [options, months, submittedRows] = await Promise.all([
     loadExpenseFormOptions(session.orgId, fundingSourceId),
-    loadLineItemBudgets(session.orgId, fundingSourceId),
     // The same list the header offers: a month you can view must be one you can move into.
     loadSelectableMonths(session.orgId, fundingSourceId, [expense.month, session.activeMonth]),
+    // Every source's submitted months, not just this expense's own — the warning must cover
+    // both the old and the new source once the user changes it (§4, R10.6).
     db
-      .select({ month: monthStatuses.month, submittedAt: monthStatuses.submittedAt })
+      .select({
+        fundingSourceId: monthStatuses.fundingSourceId,
+        month: monthStatuses.month,
+        submittedAt: monthStatuses.submittedAt,
+      })
       .from(monthStatuses)
-      .where(
-        and(
-          eq(monthStatuses.orgId, session.orgId),
-          eq(monthStatuses.fundingSourceId, fundingSourceId),
-          isNotNull(monthStatuses.submittedAt),
-        ),
-      ),
+      .where(and(eq(monthStatuses.orgId, session.orgId), isNotNull(monthStatuses.submittedAt))),
   ]);
 
   // The Month dropdown moves the expense (R2.2), so both the budget projection and the
@@ -54,24 +53,35 @@ export default async function EditExpensePage({
   // the expense happens to sit in now. Both were resolved for the source month alone, which
   // meant moving into a submitted month warned about nothing and the R3.7 projection quietly
   // described the wrong month's budget.
-  const amounts = await loadExpenseAmounts(session.orgId, fundingSourceId, months[0] ?? expense.month);
-  const remainingByMonth = Object.fromEntries(
-    months.map((month) => [
-      month,
-      Object.fromEntries(
-        allLineItemStats(lineItems, amounts, month).map((row) => [
-          row.lineItem.id,
-          row.remainingCents,
-        ]),
-      ),
-    ]),
+  //
+  // Line item ids are UUIDs and unique across sources, so every source's figures — run once
+  // per source in `options.fundingSources` — merge into one flat map per month, keeping the
+  // projection and the line item labels correct after the user changes the funding source.
+  const remainingByMonth: Record<string, Record<string, number>> = Object.fromEntries(
+    months.map((month) => [month, {}]),
+  );
+  await Promise.all(
+    options.fundingSources.map(async (source) => {
+      const [lineItems, amounts] = await Promise.all([
+        loadLineItemBudgets(session.orgId, source.id),
+        loadExpenseAmounts(session.orgId, source.id, months[0] ?? expense.month),
+      ]);
+      for (const month of months) {
+        for (const row of allLineItemStats(lineItems, amounts, month)) {
+          remainingByMonth[month][row.lineItem.id] = row.remainingCents;
+        }
+      }
+    }),
   );
   const remaining = remainingByMonth[expense.month] ?? {};
 
   const submittedOn = Object.fromEntries(
     submittedRows
       .filter((row) => row.submittedAt)
-      .map((row) => [row.month, formatDateUS(todayIso(row.submittedAt!))]),
+      .map((row) => [
+        `${row.fundingSourceId}:${row.month}`,
+        formatDateUS(todayIso(row.submittedAt!)),
+      ]),
   );
 
   const toMoney = (cents: number) => (cents / 100).toFixed(2);
@@ -88,14 +98,18 @@ export default async function EditExpensePage({
         submittedOn={submittedOn}
         today={todayIso()}
         activeMonth={expense.month}
+        initialFundingSourceId={expense.fundingSourceId}
         existing={{
           id: expense.id,
           documents: expense.documents,
           savedReimbursableCents: reimbursableCents(expense),
-          monthSubmittedOn: submittedOn[expense.month] ?? null,
+          // This expense's own source + month — kept meaning exactly that; the form resolves
+          // the target source/month warning itself from `submittedOn`.
+          monthSubmittedOn: submittedOn[`${expense.fundingSourceId}:${expense.month}`] ?? null,
           values: {
             id: expense.id,
             name: expense.name,
+            fundingSourceId: expense.fundingSourceId,
             lineItemId: expense.lineItemId,
             paymentSource: expense.paymentSource,
             month: expense.month,

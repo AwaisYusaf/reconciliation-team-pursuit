@@ -31,6 +31,7 @@ export type RecurringRow = {
   amountCents: number;
   lineItemId: string;
   lineItemName: string;
+  fundingSourceName: string;
   defaultDescription: string;
   defaultNarrative: string;
   defaultPaymentSource: string;
@@ -75,6 +76,7 @@ export function RecurringManager({
   month,
   monthLabel,
   monthShort,
+  multiSource,
 }: {
   rows: RecurringRow[];
   lineItems: Array<{ id: string; name: string }>;
@@ -82,6 +84,8 @@ export function RecurringManager({
   month: string;
   monthLabel: string;
   monthShort: string;
+  /** True when the org has more than one funding source; shows the Funding Source column. */
+  multiSource: boolean;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -232,6 +236,8 @@ export function RecurringManager({
           </div>
           <div className="flex-[2] min-w-[220px]">
             <Label id="rec-line-label" htmlFor="rec-line">Line item</Label>
+            {/* ponytail: with All selected the line item list spans sources; label with the
+                source name if that reads ambiguously */}
             <Select
               id="rec-line"
               aria-labelledby="rec-line-label"
@@ -460,6 +466,7 @@ export function RecurringManager({
                 Amount
               </Th>
               <Th>Line Item</Th>
+              {multiSource && <Th>Funding Source</Th>}
               <Th align="right" className="w-[320px]" />
             </tr>
           </thead>
@@ -472,6 +479,7 @@ export function RecurringManager({
                   {formatMoney(row.amountCents)}
                 </Td>
                 <Td>{row.lineItemName}</Td>
+                {multiSource && <Td className="text-[15px] text-sub leading-snug">{row.fundingSourceName}</Td>}
                 <Td align="right">
                   <div className="flex items-center justify-end gap-4 flex-wrap">
                     <Button
@@ -523,7 +531,7 @@ export function RecurringManager({
               </tr>
               {draft?.id === row.id && (
                 <tr>
-                  <td colSpan={4} className="p-0 border-b border-line">
+                  <td colSpan={multiSource ? 5 : 4} className="p-0 border-b border-line">
                     <div className="p-4 sm:p-6">{renderDraftForm(draft)}</div>
                   </td>
                 </tr>

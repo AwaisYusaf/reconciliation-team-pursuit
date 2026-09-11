@@ -425,7 +425,7 @@ export const expenses = pgTable(
      * backfilled every existing row to the original rule and then the defaults were dropped
      * (0013): while they existed, an insert could omit them and silently claim a different
      * amount from an identical expense entered another way — which is exactly what the
-     * recurring one-click add did. `reimbursementRulesFor` is the only supplier.
+     * recurring one-click add did. `rulesForFundingSource` is the only supplier.
      */
     taxReimbursable: boolean("tax_reimbursable").notNull(),
     feesReimbursable: boolean("fees_reimbursable").notNull(),

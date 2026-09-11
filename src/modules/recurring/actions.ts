@@ -21,7 +21,7 @@ import { addedState, validateRecurring } from "@/src/domain/recurring-rules";
 import { fail, ok, type ActionResult } from "@/src/lib/action-result";
 import { actionSession } from "@/src/lib/action-session";
 import { isUuid } from "@/src/lib/ids";
-import { reimbursementRulesFor } from "@/src/modules/expenses/reimbursement";
+import { rulesForFundingSource } from "@/src/modules/expenses/reimbursement";
 import { claimReferenceSeq } from "@/src/modules/expenses/references";
 
 
@@ -178,10 +178,11 @@ export async function addRecurringToMonthAction(
     .from(expenses)
     .where(and(eq(expenses.orgId, current.orgId), eq(expenses.month, month)));
 
-  // The funder decides what it reimburses, so a one-click add must resolve the same rules the
-  // expense form does (D-67). Falling through to the column defaults meant the identical
-  // expense claimed a different amount depending on how it was entered.
-  const rules = await reimbursementRulesFor(current.orgId, paymentSource);
+  // The funding source decides what it reimburses, so a one-click add must resolve the same
+  // rules the expense form does (D-67, Phase 4/D-93 — no longer the payment source). Falling
+  // through to the column defaults meant the identical expense claimed a different amount
+  // depending on how it was entered.
+  const rules = await rulesForFundingSource(current.orgId, item.fundingSourceId);
 
   await db.insert(expenses).values({
     orgId: current.orgId,
