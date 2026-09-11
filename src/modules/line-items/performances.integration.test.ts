@@ -26,6 +26,7 @@ describe.skipIf(!hasDatabase)("line item performances (integration)", async () =
   const { actionSession } = await import("@/src/lib/action-session");
   const {
     addLineItemPerformanceAction,
+    saveLineItemPerformanceAction,
     deleteLineItemPerformanceAction,
     deleteLineItemAction,
   } = await import("./actions");
@@ -77,7 +78,42 @@ describe.skipIf(!hasDatabase)("line item performances (integration)", async () =
   it("rejects a blank, zero or negative amount without touching the database", async () => {
     asOrg(orgId);
     for (const bad of ["", "0", "0.00", "-5.00", "not a number"]) {
-      const result = await addLineItemPerformanceAction(lineItemId, bad);
+      const result = await addLineItemPerformanceAction({
+        lineItemId,
+        name: "Test performance",
+        amount: bad,
+        date: "2026-02-01",
+      });
+      expect(result.ok).toBe(false);
+    }
+    const [{ scheduledValueCents }] = await loadLineItemBudgets(orgId);
+    expect(scheduledValueCents).toBe(0);
+  });
+
+  it("rejects a blank or whitespace-only name without touching the database", async () => {
+    asOrg(orgId);
+    for (const bad of ["", "   "]) {
+      const result = await addLineItemPerformanceAction({
+        lineItemId,
+        name: bad,
+        amount: "500.00",
+        date: "2026-02-01",
+      });
+      expect(result.ok).toBe(false);
+    }
+    const [{ scheduledValueCents }] = await loadLineItemBudgets(orgId);
+    expect(scheduledValueCents).toBe(0);
+  });
+
+  it("rejects a missing or malformed date without touching the database", async () => {
+    asOrg(orgId);
+    for (const bad of ["", "not-a-date", "2026-13-40", "02/01/2026"]) {
+      const result = await addLineItemPerformanceAction({
+        lineItemId,
+        name: "Test performance",
+        amount: "500.00",
+        date: bad,
+      });
       expect(result.ok).toBe(false);
     }
     const [{ scheduledValueCents }] = await loadLineItemBudgets(orgId);
@@ -86,13 +122,23 @@ describe.skipIf(!hasDatabase)("line item performances (integration)", async () =
 
   it("refuses to add a performance to another organisation's line item", async () => {
     asOrg(otherOrgId);
-    const result = await addLineItemPerformanceAction(lineItemId, "100.00");
+    const result = await addLineItemPerformanceAction({
+      lineItemId,
+      name: "Test performance",
+      amount: "100.00",
+      date: "2026-02-01",
+    });
     expect(result.ok).toBe(false);
   });
 
-  it("adding a performance rolls straight into the line item's effective Scheduled Value", async () => {
+  it("adding a performance rolls straight into the line item's effective Scheduled Value, name and date round-trip", async () => {
     asOrg(orgId);
-    const first = await addLineItemPerformanceAction(lineItemId, "175000.00");
+    const first = await addLineItemPerformanceAction({
+      lineItemId,
+      name: "Q1 outcomes bonus",
+      amount: "175000.00",
+      date: "2026-02-14",
+    });
     expect(first.ok).toBe(true);
 
     const [budget] = await loadLineItemBudgets(orgId);
@@ -101,7 +147,18 @@ describe.skipIf(!hasDatabase)("line item performances (integration)", async () =
     // from the database alongside the combined total, not just derived in a test fixture.
     expect(budget.performanceCents).toBe(17500000);
 
-    const second = await addLineItemPerformanceAction(lineItemId, "25000.00");
+    const { loadLineItemRows } = await import("./queries");
+    const [row] = (await loadLineItemRows(orgId)).filter((r) => r.id === lineItemId);
+    const added = row.performances.find((p) => p.amountCents === 17500000);
+    expect(added?.name).toBe("Q1 outcomes bonus");
+    expect(added?.date).toBe("2026-02-14");
+
+    const second = await addLineItemPerformanceAction({
+      lineItemId,
+      name: "Q2 outcomes bonus",
+      amount: "25000.00",
+      date: "2026-05-01",
+    });
     expect(second.ok).toBe(true);
 
     const [afterSecond] = await loadLineItemBudgets(orgId);
@@ -134,14 +191,212 @@ describe.skipIf(!hasDatabase)("line item performances (integration)", async () =
     expect(migratedBudget.performanceCents).toBe(17500000);
     expect(migratedBudget.newPerformanceCents).toBe(0);
 
+    // The row inserted above has no name/date (it predates those columns, D-92) — the
+    // UI-facing query must still load and render it, honestly, rather than crash or guess.
+    const { loadLineItemRows } = await import("./queries");
+    const [legacyRow] = (await loadLineItemRows(orgId)).filter((r) => r.id === item.id);
+    const legacyPerformance = legacyRow.performances.find((p) => p.amountCents === 17500000);
+    expect(legacyPerformance?.name).toBeNull();
+    expect(legacyPerformance?.date).toBeNull();
+
     asOrg(orgId);
-    const added = await addLineItemPerformanceAction(item.id, "1000.00");
+    const added = await addLineItemPerformanceAction({
+      lineItemId: item.id,
+      name: "New performance",
+      amount: "1000.00",
+      date: "2026-03-01",
+    });
     expect(added.ok).toBe(true);
 
     const [afterAdd] = (await loadLineItemBudgets(orgId)).filter((row) => row.id === item.id);
     // The migrated $175,000 still doesn't count; the new $1,000 does.
     expect(afterAdd.performanceCents).toBe(17500000 + 100000);
     expect(afterAdd.newPerformanceCents).toBe(100000);
+  });
+
+  it("saveLineItemPerformanceAction (D-92): edits name, amount and date in place, changing the total by exactly the delta", async () => {
+    asOrg(orgId);
+    const created = await addLineItemPerformanceAction({
+      lineItemId,
+      name: "Original name",
+      amount: "300.00",
+      date: "2026-01-01",
+    });
+    expect(created.ok).toBe(true);
+
+    const { loadLineItemRows } = await import("./queries");
+    const before = (await loadLineItemRows(orgId)).find((r) => r.id === lineItemId)!;
+    const target = before.performances.find((p) => p.name === "Original name")!;
+
+    const edited = await saveLineItemPerformanceAction({
+      id: target.id,
+      name: "Renamed performance",
+      amount: "450.00",
+      date: "2026-03-15",
+    });
+    expect(edited.ok).toBe(true);
+
+    const after = (await loadLineItemRows(orgId)).find((r) => r.id === lineItemId)!;
+    const updated = after.performances.find((p) => p.id === target.id)!;
+    expect(updated.name).toBe("Renamed performance");
+    expect(updated.date).toBe("2026-03-15");
+    expect(updated.amountCents).toBe(45000);
+
+    // The line item's total moved by exactly the amount delta (450 - 300 = 150), not by the
+    // new amount alone — proving this is an update in place, not a second insert.
+    expect(after.totalScheduledValueCents - before.totalScheduledValueCents).toBe(15000);
+
+    // Clean up so it doesn't leak into the delete/cascade tests below.
+    await deleteLineItemPerformanceAction(target.id);
+  });
+
+  it("saveLineItemPerformanceAction rejects a blank name, invalid date or non-positive amount without changing the row", async () => {
+    asOrg(orgId);
+    const created = await addLineItemPerformanceAction({
+      lineItemId,
+      name: "Untouched",
+      amount: "200.00",
+      date: "2026-01-01",
+    });
+    expect(created.ok).toBe(true);
+    const { loadLineItemRows } = await import("./queries");
+    const target = (await loadLineItemRows(orgId))
+      .find((r) => r.id === lineItemId)!
+      .performances.find((p) => p.name === "Untouched")!;
+
+    const rejections = await Promise.all([
+      saveLineItemPerformanceAction({ id: target.id, name: "", amount: "200.00", date: "2026-01-01" }),
+      saveLineItemPerformanceAction({ id: target.id, name: "Untouched", amount: "0", date: "2026-01-01" }),
+      saveLineItemPerformanceAction({ id: target.id, name: "Untouched", amount: "200.00", date: "not-a-date" }),
+    ]);
+    for (const result of rejections) expect(result.ok).toBe(false);
+
+    const unchanged = (await loadLineItemRows(orgId))
+      .find((r) => r.id === lineItemId)!
+      .performances.find((p) => p.id === target.id)!;
+    expect(unchanged.name).toBe("Untouched");
+    expect(unchanged.amountCents).toBe(20000);
+    expect(unchanged.date).toBe("2026-01-01");
+
+    await deleteLineItemPerformanceAction(target.id);
+  });
+
+  it("refuses to edit another organisation's performance", async () => {
+    asOrg(orgId);
+    const created = await addLineItemPerformanceAction({
+      lineItemId,
+      name: "Org A's own",
+      amount: "600.00",
+      date: "2026-01-01",
+    });
+    expect(created.ok).toBe(true);
+    const { loadLineItemRows } = await import("./queries");
+    const target = (await loadLineItemRows(orgId))
+      .find((r) => r.id === lineItemId)!
+      .performances.find((p) => p.name === "Org A's own")!;
+
+    asOrg(otherOrgId);
+    const result = await saveLineItemPerformanceAction({
+      id: target.id,
+      name: "Hijacked",
+      amount: "1.00",
+      date: "2026-01-01",
+    });
+    expect(result.ok).toBe(false);
+
+    asOrg(orgId);
+    const unchanged = (await loadLineItemRows(orgId))
+      .find((r) => r.id === lineItemId)!
+      .performances.find((p) => p.id === target.id)!;
+    expect(unchanged.name).toBe("Org A's own");
+    expect(unchanged.amountCents).toBe(60000);
+
+    await deleteLineItemPerformanceAction(target.id);
+  });
+
+  it("a migrated performance's amount is locked — name/date still editable, contract total can't drift (D-92)", async () => {
+    // Inserted directly, like the migration did: `countsTowardContractTotal` defaults false.
+    // Editing its amount would move the line item's Scheduled Value but not the contract
+    // total (a boolean can't say "only the delta is new money"), so the action refuses it.
+    const [item] = await db
+      .insert(lineItems)
+      .values({ orgId, name: "D-92 locked-amount line item", scheduledValueCents: 0, sortOrder: 2 })
+      .returning({ id: lineItems.id });
+    const [legacy] = await db
+      .insert(lineItemPerformances)
+      .values({ orgId, lineItemId: item.id, amountCents: 17500000, sortOrder: 0 })
+      .returning({ id: lineItemPerformances.id });
+
+    asOrg(orgId);
+    const added = await addLineItemPerformanceAction({
+      lineItemId: item.id,
+      name: "New money",
+      amount: "1000.00",
+      date: "2026-03-01",
+    });
+    expect(added.ok).toBe(true);
+
+    const { loadLineItemRows } = await import("./queries");
+    const performances = (await loadLineItemRows(orgId)).find((r) => r.id === item.id)!.performances;
+    expect(performances.find((p) => p.id === legacy.id)!.amountLocked).toBe(true);
+    expect(performances.find((p) => p.name === "New money")!.amountLocked).toBe(false);
+
+    const refused = await saveLineItemPerformanceAction({
+      id: legacy.id,
+      name: "Performance Grant",
+      amount: "200000.00",
+      date: "2026-01-01",
+    });
+    expect(refused).toMatchObject({
+      ok: false,
+      error: expect.stringMatching(/already part of the contract value/),
+    });
+
+    const [afterRefusal] = (await loadLineItemBudgets(orgId)).filter((row) => row.id === item.id);
+    expect(afterRefusal.performanceCents).toBe(17500000 + 100000);
+    expect(afterRefusal.newPerformanceCents).toBe(100000);
+    const stillLegacy = (await loadLineItemRows(orgId))
+      .find((r) => r.id === item.id)!
+      .performances.find((p) => p.id === legacy.id)!;
+    // The refusal is all-or-nothing: the name/date sent alongside the amount weren't written either.
+    expect(stillLegacy.name).toBeNull();
+    expect(stillLegacy.date).toBeNull();
+
+    // Same amount, real name/date: allowed, and it backfills the legacy row's blanks.
+    const renamed = await saveLineItemPerformanceAction({
+      id: legacy.id,
+      name: "Performance Grant",
+      amount: "175000.00",
+      date: "2026-01-01",
+    });
+    expect(renamed.ok).toBe(true);
+    const backfilled = (await loadLineItemRows(orgId))
+      .find((r) => r.id === item.id)!
+      .performances.find((p) => p.id === legacy.id)!;
+    expect(backfilled.name).toBe("Performance Grant");
+    expect(backfilled.date).toBe("2026-01-01");
+    expect(backfilled.amountLocked).toBe(true);
+
+    // A new performance's amount stays editable.
+    const newOne = performances.find((p) => p.name === "New money")!;
+    const editedNew = await saveLineItemPerformanceAction({
+      id: newOne.id,
+      name: "New money",
+      amount: "1500.00",
+      date: "2026-03-01",
+    });
+    expect(editedNew.ok).toBe(true);
+    const [afterNewEdit] = (await loadLineItemBudgets(orgId)).filter((row) => row.id === item.id);
+    expect(afterNewEdit.newPerformanceCents).toBe(150000);
+
+    // A missing id still says so, rather than the locked-amount message.
+    const missing = await saveLineItemPerformanceAction({
+      id: "00000000-0000-4000-8000-000000000000",
+      name: "Ghost",
+      amount: "1.00",
+      date: "2026-01-01",
+    });
+    expect(missing).toMatchObject({ ok: false, error: "That performance no longer exists." });
   });
 
   it("deleting a performance removes exactly its amount from the total", async () => {

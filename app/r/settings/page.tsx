@@ -22,9 +22,9 @@ export default async function SettingsPage() {
   // The action itself re-checks the role — this is only what decides whether the Users tab
   // has anything to show, not the security boundary. Skipped entirely for a manager, so
   // there's never a moment where their RSC payload could carry another user's data.
-  const users: OrgUser[] = isAdmin
-    ? await listOrgUsersAction().then((result) => (result.ok ? result.data : []))
-    : [];
+  const usersResult = isAdmin ? await listOrgUsersAction() : null;
+  const users: OrgUser[] = usersResult?.ok ? usersResult.data : [];
+  const usersError = usersResult && !usersResult.ok ? usersResult.error : undefined;
 
   const money = (cents: number) => (cents / 100).toFixed(2);
 
@@ -65,6 +65,7 @@ export default async function SettingsPage() {
         lineItems={data.lineItems}
         isAdmin={isAdmin}
         users={users}
+        usersError={usersError}
       />
     </div>
   );

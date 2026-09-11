@@ -82,12 +82,16 @@ Same shape as payment_sources; seeded with the six defaults.
 | org_id | uuid FK | |
 | line_item_id | uuid FK | cascade delete with its line item |
 | amount_cents | bigint | Check `> 0` |
-| sort_order | int | Order added — numbers the on-screen "Performance 1/2/3…" list |
-| counts_toward_contract_total | boolean | Default `false` (R7.3, D-82). `addLineItemPerformanceAction` sets it `true` — new money the org's `contract_value_cents` hasn't caught up to. Every pre-existing row, the migrated Performance Grant included, defaults `false`: that money was already inside whatever the org typed into `contract_value_cents` before it had a line item of its own |
+| name | text null | Required when added through the UI (D-92); null for a performance that predates this column, rendered as a positional fallback ("Performance 1/2/3…"), never guessed — editing such a row starts the field blank, so it is only ever filled with a value someone typed |
+| date | date null | Same nullability story as `name` — required going forward, absent on legacy rows |
+| sort_order | int | Order added — numbers the on-screen "Performance 1/2/3…" fallback when `name` is absent |
+| counts_toward_contract_total | boolean | Default `false` (R7.3, D-82). `addLineItemPerformanceAction` sets it `true` — new money the org's `contract_value_cents` hasn't caught up to. Every pre-existing row, the migrated Performance Grant included, defaults `false`: that money was already inside whatever the org typed into `contract_value_cents` before it had a line item of its own. When `false`, `saveLineItemPerformanceAction` refuses any change to `amount_cents` (name/date stay editable) — surfaced to the UI as `amountLocked` (R9.5, D-92) |
 
 Replaces the retired `contract_settings.perf_grant_*` figures (R7.2, D-80): a performance is
-just an amount added to a line item from the Line Items screen, with no month dimension of its
-own — it changes the base figure a normal month's math (R3) already runs against.
+an amount, name and date added to a line item from the Line Items screen's "Manage" panel
+(D-92), with no month dimension of its own — it changes the base figure a normal month's math
+(R3) already runs against. `name`/`date` are display-only: nothing downstream (the packet, the
+Excel workbook, Contract Summary) reads them, only the pre-aggregated total.
 
 ### expenses
 | Field | Type | Notes |

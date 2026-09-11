@@ -125,6 +125,7 @@ export function SettingsSections({
   lineItems,
   isAdmin,
   users,
+  usersError,
 }: {
   email: string;
   organisation: { name: string; docName: string };
@@ -139,6 +140,9 @@ export function SettingsSections({
   isAdmin: boolean;
   /** Admin-only (D-89 pattern); empty for a manager, never fetched for one (see page.tsx). */
   users: OrgUser[];
+  /** Set when the users list failed to load — shown instead of an empty "No users yet.",
+   *  which would read as the accounts being gone. */
+  usersError?: string;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -164,8 +168,10 @@ export function SettingsSections({
       {/* Always a vertical list on a light track, the active item a raised white pill — a
           horizontal scrolling row on mobile looked cramped with no scroll affordance, and
           plain text with no card/border underneath didn't read as a sidebar at all. Stacked
-          above the panel on mobile, pinned to the side on desktop. */}
-      <div className="w-full lg:w-[220px] lg:flex-none lg:sticky lg:top-6 bg-section border-2 border-line rounded-[10px] p-2">
+          above the panel on mobile, pinned to the side on desktop. `top-24` clears the app's
+          own sticky tab bar (~71px tall at lg, app/r/layout.tsx), which would otherwise draw
+          over the top of this list once the page scrolls. */}
+      <div className="w-full lg:w-[220px] lg:flex-none lg:sticky lg:top-24 bg-section border-2 border-line rounded-[10px] p-2">
         <nav aria-label="Settings sections" className="flex flex-col gap-0.5">
           {visibleSections.map((id) => (
             <button
@@ -437,7 +443,13 @@ export function SettingsSections({
           </Card>
         )}
 
-        {active === "users" && isAdmin && <UsersManager users={users} />}
+        {active === "users" &&
+          isAdmin &&
+          (usersError ? (
+            <p className="text-[15px] text-danger">{usersError}</p>
+          ) : (
+            <UsersManager users={users} />
+          ))}
 
         {active === "account" && (
           <Card className={CARD_PADDING}>

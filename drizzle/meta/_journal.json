@@ -155,6 +155,13 @@
       "when": 1789030259804,
       "tag": "0021_tricky_namora",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1789103784404,
+      "tag": "0022_fantastic_sleeper",
+      "breakpoints": true
     }
   ]
 }

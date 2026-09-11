@@ -60,7 +60,7 @@ export function OnboardingLineItemsForm({ initialRows }: { initialRows: Row[] })
           <tbody>
             {rows.map((row, index) => (
               <tr key={index}>
-                <Td className="py-2.5">
+                <Td className="py-2.5!">
                   <Input
                     name="lineItemName"
                     value={row.name}
@@ -69,7 +69,7 @@ export function OnboardingLineItemsForm({ initialRows }: { initialRows: Row[] })
                     placeholder="Line item name"
                   />
                 </Td>
-                <Td className="py-2.5">
+                <Td className="py-2.5!">
                   <MoneyInput
                     name="lineItemBudget"
                     value={row.budget}
@@ -78,7 +78,7 @@ export function OnboardingLineItemsForm({ initialRows }: { initialRows: Row[] })
                     placeholder="0.00"
                   />
                 </Td>
-                <Td align="right" className="py-2.5">
+                <Td align="right" className="py-2.5!">
                   <button
                     type="button"
                     onClick={() => setRows((current) => current.filter((_, i) => i !== index))}
