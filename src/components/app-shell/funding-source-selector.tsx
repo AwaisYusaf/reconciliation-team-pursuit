@@ -23,8 +23,13 @@ export function FundingSourceSelector({
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
-  const active = sources.filter((source) => source.archivedAt === null);
-  const archived = sources.filter((source) => source.archivedAt !== null);
+  // Archived sources are finished, so the header offers only active ones. The one exception is
+  // an archived source that is *currently* selected: without its option the control would show
+  // a value it cannot display. Archiving the selected source already resets it to All, so this
+  // only covers a selection stored before archiving existed.
+  const options = sources.filter(
+    (source) => source.archivedAt === null || source.id === selectedId,
+  );
 
   function apply(value: string) {
     setError(null);
@@ -56,20 +61,11 @@ export function FundingSourceSelector({
         className="w-[220px]"
       >
         <option value={ALL}>All funding sources</option>
-        {active.map((source) => (
+        {options.map((source) => (
           <option key={source.id} value={source.id}>
             {source.name}
           </option>
         ))}
-        {archived.length > 0 && (
-          <optgroup label="Archived">
-            {archived.map((source) => (
-              <option key={source.id} value={source.id}>
-                {source.name}
-              </option>
-            ))}
-          </optgroup>
-        )}
       </Select>
 
       {error && <div className="text-[15px] text-danger">{error}</div>}

@@ -9,6 +9,9 @@ import { Helper, Input, Label, MoneyInput } from "@/src/components/ui/field";
 import { Select } from "@/src/components/ui/select";
 import { Card, CARD_PADDING, DangerPanel, SectionTitle } from "@/src/components/ui/surfaces";
 import { reportResult } from "@/src/components/ui/toast";
+import { formatDateUS } from "@/src/domain/dates";
+import { formatMoney } from "@/src/domain/format";
+import { parseMoneyToCents } from "@/src/domain/money";
 import { cn } from "@/src/lib/cn";
 import type { ActionResult } from "@/src/lib/action-result";
 import {
@@ -354,6 +357,107 @@ export function SettingsSections({
 /** Sentinel `editingId` value meaning "the add form, not an edit". */
 const NEW_FUNDING_SOURCE = "new";
 
+/** A funding source's details, read-only — what clicking its name in the list reveals. */
+function FundingSourceDetails({
+  source,
+  orgDocName,
+}: {
+  source: FundingSourceRow;
+  orgDocName: string;
+}) {
+  const money = (value: string) => formatMoney(parseMoneyToCents(value) ?? 0);
+  const date = (value: string) => (value ? formatDateUS(value) : null);
+  const period =
+    source.contractStart || source.contractEnd
+      ? `${date(source.contractStart) ?? "Not set"} – ${date(source.contractEnd) ?? "Not set"}`
+      : null;
+
+  // The two figures people come here for, then when the money runs — read at a glance.
+  const tiles: Array<[string, string | null, boolean]> = [
+    ["Contract value", money(source.contractValue), true],
+    ["Advances received", money(source.advancesReceived), true],
+    ["Contract period", period, false],
+  ];
+
+  const details: Array<[string, string | null]> = [
+    ["Project name", source.projectName || null],
+    ["Contract number", source.contractNumber || null],
+    ["Base PO number", source.basePoNumber || null],
+    ["Performance PO number", source.performancePoNumber || null],
+    ["Fiduciary", source.fiduciaryName || null],
+  ];
+
+  return (
+    <div
+      id={`funding-source-details-${source.id}`}
+      className="basis-full mt-1 rounded-[3px] bg-section p-4 flex flex-col gap-4"
+    >
+      <div className="grid gap-3 sm:grid-cols-3">
+        {tiles.map(([label, value, figure]) => (
+          <div key={label} className="rounded-[3px] border border-line bg-surface px-4 py-3">
+            <div className="text-[13px] text-sub">{label}</div>
+            <div
+              className={cn(
+                "mt-1 tabular-nums",
+                value === null
+                  ? "text-[15px] text-sub"
+                  : figure
+                    ? "text-xl font-semibold text-ink"
+                    : "text-base font-medium text-ink",
+              )}
+            >
+              {value ?? "Not set"}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <dl className="grid gap-x-6 gap-y-3 sm:grid-cols-2 lg:grid-cols-3">
+        {details.map(([label, value]) => (
+          <div key={label}>
+            <dt className="text-[13px] text-sub">{label}</dt>
+            <dd className={cn("text-[15px]", value === null ? "text-sub" : "text-ink font-medium")}>
+              {value ?? "Not set"}
+            </dd>
+          </div>
+        ))}
+        <div>
+          {/* What prints on this source's documents: its own name if set, else the org's (R6.1). */}
+          <dt className="text-[13px] text-sub">Document name</dt>
+          <dd className="text-[15px] text-ink font-medium">
+            {source.docName || orgDocName}
+            {!source.docName && (
+              <span className="ml-1.5 font-normal text-sub">(organization&apos;s)</span>
+            )}
+          </dd>
+        </div>
+      </dl>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-[13px] text-sub mr-1">This funder</span>
+        <RuleBadge reimbursed={source.taxReimbursable} label="sales tax" />
+        <RuleBadge reimbursed={source.feesReimbursable} label="fees" />
+      </div>
+    </div>
+  );
+}
+
+/** One reimbursement rule as a chip. "Not reimbursed" is a rule, not a problem, so it stays
+ *  neutral rather than taking the danger colour. */
+function RuleBadge({ reimbursed, label }: { reimbursed: boolean; label: string }) {
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[13px] font-medium",
+        reimbursed ? "bg-success-bg text-success" : "bg-surface text-sub border border-line",
+      )}
+    >
+      <span aria-hidden="true">{reimbursed ? "✓" : "✕"}</span>
+      {reimbursed ? `Reimburses ${label}` : `Does not reimburse ${label}`}
+    </span>
+  );
+}
+
 function FundingSourcesSection({
   fundingSources,
   orgDocName,
@@ -412,17 +516,79 @@ function FundingSourcesSection({
   }
 
   const activeCount = fundingSources.filter((s) => !s.archived).length;
+  const archivedCount = fundingSources.length - activeCount;
+  // Archived sources are finished work, so the list opens on the active ones; the toggle is
+  // still one click away because Unarchive lives on the archived rows.
+  const [showArchived, setShowArchived] = useState(false);
+  /** Sources whose details are open, read-only — any number at once, so two can be compared
+   *  side by side. Edit is still the way to change them. */
+  const [expandedIds, setExpandedIds] = useState<ReadonlySet<string>>(() => new Set());
+  function toggleExpanded(id: string) {
+    setExpandedIds((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+  // The row being edited always stays visible: hiding it would take its open form with it and
+  // leave Edit and Add disabled with nothing on screen to finish or cancel.
+  const visibleSources = showArchived
+    ? fundingSources
+    : fundingSources.filter((source) => !source.archived || source.id === editingId);
 
   return (
     <div>
+      {archivedCount > 0 && (
+        <div className="flex justify-end mb-3">
+          {/* A switch, not a link: it flips a view, it does not go anywhere. `role="switch"` with
+              `aria-checked` is what makes a screen reader announce it as on/off; being a real
+              <button>, Space and Enter work without extra key handling. */}
+          <button
+            type="button"
+            role="switch"
+            aria-checked={showArchived}
+            onClick={() => setShowArchived((current) => !current)}
+            className="inline-flex items-center gap-2.5 text-[15px] text-ink rounded-[3px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+          >
+            <span>Show archived ({archivedCount})</span>
+            <span
+              aria-hidden="true"
+              className={`relative inline-block h-5 w-9 rounded-full transition-colors ${
+                showArchived ? "bg-accent" : "bg-line"
+              }`}
+            >
+              <span
+                className={`absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-surface shadow transition-transform ${
+                  showArchived ? "translate-x-4" : "translate-x-0"
+                }`}
+              />
+            </span>
+          </button>
+        </div>
+      )}
       <div className="flex flex-col gap-3 mb-6">
-        {fundingSources.map((source) => (
+        {visibleSources.map((source) => (
           <div
             key={source.id}
             className="flex flex-wrap items-center gap-3.5 justify-between border border-line rounded-[3px] px-4 py-3 bg-surface"
           >
             <div className="flex items-center gap-2.5 flex-1 min-w-[220px]">
-              <span className="text-base text-ink font-medium">{source.name}</span>
+              <button
+                type="button"
+                aria-expanded={expandedIds.has(source.id)}
+                aria-controls={`funding-source-details-${source.id}`}
+                onClick={() => toggleExpanded(source.id)}
+                className="inline-flex items-center gap-1.5 text-base text-ink font-medium hover:text-accent rounded-[3px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+              >
+                <span
+                  aria-hidden="true"
+                  className={`text-sub text-[13px] transition-transform ${expandedIds.has(source.id) ? "rotate-90" : ""}`}
+                >
+                  ▶
+                </span>
+                {source.name}
+              </button>
               <span className="text-[13px] text-sub uppercase tracking-[0.04em]">
                 {FUNDING_SOURCE_TYPES.find(([value]) => value === source.type)?.[1] ?? source.type}
               </span>
@@ -433,7 +599,11 @@ function FundingSourcesSection({
               )}
             </div>
             <div className="flex items-center gap-3.5">
-              <Button variant="quiet" disabled={pending} onClick={() => startEdit(source)}>
+              <Button
+                variant="quiet"
+                disabled={pending || editingId !== null}
+                onClick={() => startEdit(source)}
+              >
                 Edit
               </Button>
               {source.archived ? (
@@ -458,16 +628,76 @@ function FundingSourcesSection({
                 </Button>
               )}
             </div>
+            {/* Editing replaces this row's details in place with the same fields as inputs. */}
+            {editingId === source.id ? (
+              <div className="basis-full mt-1 rounded-[3px] bg-section p-4">
+                <FundingSourceForm
+                  draft={draft}
+                  setDraft={setDraft}
+                  orgDocName={orgDocName}
+                  pending={pending}
+                  onCancel={() => setEditingId(null)}
+                  onSave={save}
+                />
+              </div>
+            ) : (
+              expandedIds.has(source.id) && (
+                <FundingSourceDetails source={source} orgDocName={orgDocName} />
+              )
+            )}
           </div>
         ))}
       </div>
 
-      {editingId === null ? (
-        <Button variant="secondary" disabled={pending} onClick={startAdd}>
+      {/* Only a NEW source's form sits down here — it has no row yet. Editing an existing source
+          opens the same form inside that source's own row, above. */}
+      {editingId === NEW_FUNDING_SOURCE ? (
+        // Same card and panel as editing a row, so adding and editing look like one thing.
+        <div className="flex flex-wrap items-center gap-3.5 border border-line rounded-[3px] px-4 py-3 bg-surface">
+          <span className="text-base text-ink font-medium">New funding source</span>
+          <div className="basis-full mt-1 rounded-[3px] bg-section p-4">
+            <FundingSourceForm
+              draft={draft}
+              setDraft={setDraft}
+              orgDocName={orgDocName}
+              pending={pending}
+              onCancel={() => setEditingId(null)}
+              onSave={save}
+            />
+          </div>
+        </div>
+      ) : (
+        // Disabled while a row is being edited: one draft at a time, and starting an add would
+        // silently replace the edit in progress.
+        <Button variant="secondary" disabled={pending || editingId !== null} onClick={startAdd}>
           Add funding source
         </Button>
-      ) : (
-        <div className="border-t border-line pt-6">
+      )}
+    </div>
+  );
+}
+
+type FundingSourceDraft = typeof EMPTY_FUNDING_SOURCE_DRAFT;
+
+/** The add/edit form for one funding source — rendered in the row being edited, or at the
+ *  bottom of the list for a new one. */
+function FundingSourceForm({
+  draft,
+  setDraft,
+  orgDocName,
+  pending,
+  onCancel,
+  onSave,
+}: {
+  draft: FundingSourceDraft;
+  setDraft: (next: FundingSourceDraft) => void;
+  orgDocName: string;
+  pending: boolean;
+  onCancel: () => void;
+  onSave: () => void;
+}) {
+  return (
+        <div>
           <div className="grid gap-5 lg:grid-cols-2">
             <div>
               <Label htmlFor="fsName">Name</Label>
@@ -606,16 +836,14 @@ function FundingSourcesSection({
           </div>
 
           <div className="flex justify-end gap-3 mt-6">
-            <Button variant="quiet" disabled={pending} onClick={() => setEditingId(null)}>
+            <Button variant="quiet" disabled={pending} onClick={onCancel}>
               Cancel
             </Button>
-            <Button disabled={pending} onClick={save}>
+            <Button disabled={pending} onClick={onSave}>
               Save
             </Button>
           </div>
         </div>
-      )}
-    </div>
   );
 }
 

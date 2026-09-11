@@ -155,8 +155,9 @@ Let `opening` = line item's opening previously-billed balance (setup figure), `e
 - **R14.3** **Archiving** a source takes it out of every picker that *creates* something — the
   expense form's source field, the Add Expense default, the recurring template's line item list,
   the "pick a source" panels — without deleting anything. Its history, documents and downloaded
-  packets remain, and it stays in the header selector under **Archived** so that history can be
-  viewed and its packets downloaded. The server refuses new line items, new expenses, recurring
+  packets remain. It is also left out of the header selector and, by default, out of the Settings
+  list (a "Show archived" toggle reveals it there): to view its screens or download its packets,
+  unarchive it first. The server refuses new line items, new expenses, recurring
   templates on its line items, and recurring "Add to month" against an archived source. Allowed:
   editing an already-saved expense on it (history corrections), finishing its last months
   (month documents, Submitted), and editing its line items. Moving an expense *into* an archived
