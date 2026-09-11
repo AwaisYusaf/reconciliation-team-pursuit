@@ -6,7 +6,7 @@
  * Every action authenticates independently — middleware only improves redirect UX and is
  * never the security boundary (architecture §Application layout).
  */
-import { eq, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { z } from "zod";
@@ -14,6 +14,7 @@ import { z } from "zod";
 import { db } from "@/src/db";
 import {
   contractSettings,
+  fundingSources,
   lineItems,
   organizations,
   paymentSources,
@@ -32,6 +33,8 @@ import {
   type SessionContext,
 } from "@/src/services/auth/session";
 import { hashPassword, validatePasswordPolicy, verifyPassword } from "@/src/services/auth/passwords";
+import { ORIGINAL_RULES } from "@/src/modules/expenses/reimbursement";
+import { primaryFundingSourceId } from "@/src/modules/funding-sources/queries";
 import { consume, reset } from "@/src/services/rate-limit";
 import { nameSchema } from "@/src/domain/name";
 
@@ -269,6 +272,15 @@ export async function signUpAction(
       .values({ orgId: org.id, name, email, passwordHash, role: "admin" })
       .returning({ id: users.id });
 
+    // Every organisation gets a first funding source at sign-up (Phase 6, D-93 decision 2.2).
+    await tx.insert(fundingSources).values({
+      orgId: org.id,
+      name: "Source 1",
+      type: "grant",
+      sortOrder: 0,
+      ...ORIGINAL_RULES,
+    });
+
     return user.id;
   });
 
@@ -314,11 +326,15 @@ export async function saveOnboardingLineItemsAction(
   }
 
   await db.transaction(async (tx) => {
+    const fundingSourceId = await primaryFundingSourceId(session.orgId, tx);
     // Safe to replace wholesale: onboarding runs before any expense can exist.
-    await tx.delete(lineItems).where(eq(lineItems.orgId, session.orgId));
+    await tx
+      .delete(lineItems)
+      .where(and(eq(lineItems.orgId, session.orgId), eq(lineItems.fundingSourceId, fundingSourceId)));
     await tx.insert(lineItems).values(
       rows.map((row, index) => ({
         orgId: session.orgId,
+        fundingSourceId,
         name: row.name,
         scheduledValueCents: row.cents as number,
         sortOrder: index,
@@ -368,10 +384,17 @@ export async function completeOnboardingAction(
       };
 
   await db.transaction(async (tx) => {
+    // ponytail: dual-write until Phase 3 moves every reader to the funding source; delete this upsert then.
     await tx
       .insert(contractSettings)
       .values({ orgId: session.orgId, ...values })
       .onConflictDoUpdate({ target: contractSettings.orgId, set: values });
+
+    // Deviation from the Phase 1 plan text (which said "instead of contract_settings"):
+    // write the same fields to the source row too, so a newly-onboarded org's contract
+    // summary is never empty once Phase 3 stops reading contract_settings.
+    const fundingSourceId = await primaryFundingSourceId(session.orgId, tx);
+    await tx.update(fundingSources).set(values).where(eq(fundingSources.id, fundingSourceId));
 
     await tx
       .insert(paymentSources)

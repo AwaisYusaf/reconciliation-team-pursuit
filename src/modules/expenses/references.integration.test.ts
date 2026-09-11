@@ -21,24 +21,30 @@ const hasDatabase = Boolean(process.env.DATABASE_URL);
 describe.skipIf(!hasDatabase)("expense references (integration)", async () => {
   const { db } = await import("@/src/db");
   const { expenses, lineItems, organizations } = await import("@/src/db/schema");
+  const { createTestOrg } = await import("@/src/db/test-org");
   const { claimReferenceSeq } = await import("./references");
 
   let orgId: string;
+  let fundingSourceId: string;
   let lineItemId: string;
 
   const MONTH = "2099-03";
   const OTHER_MONTH = "2099-04";
 
   beforeAll(async () => {
-    const [org] = await db
-      .insert(organizations)
-      .values({ name: "Reference Org", docName: "Ref", activeMonth: MONTH })
-      .returning({ id: organizations.id });
-    orgId = org.id;
+    const org = await createTestOrg({ name: "Reference Org", docName: "Ref", activeMonth: MONTH });
+    orgId = org.orgId;
+    fundingSourceId = org.fundingSourceId;
 
     const [item] = await db
       .insert(lineItems)
-      .values({ orgId, name: "Transportation", scheduledValueCents: 100_000, sortOrder: 0 })
+      .values({
+        orgId,
+        fundingSourceId,
+        name: "Transportation",
+        scheduledValueCents: 100_000,
+        sortOrder: 0,
+      })
       .returning({ id: lineItems.id });
     lineItemId = item.id;
   });
@@ -67,6 +73,7 @@ describe.skipIf(!hasDatabase)("expense references (integration)", async () => {
   function expense(name: string, referenceSeq: number, month = MONTH) {
     return db.insert(expenses).values({
       orgId,
+      fundingSourceId,
       lineItemId,
       month,
       date: `${month}-01`,
@@ -84,23 +91,23 @@ describe.skipIf(!hasDatabase)("expense references (integration)", async () => {
 
   it("starts at 1 and never hands out 0", async () => {
     // 0 was the old column default, and the number the bug stamped on every recurring add.
-    expect(await claimReferenceSeq(orgId, MONTH)).toBe(1);
+    expect(await claimReferenceSeq(orgId, fundingSourceId, MONTH)).toBe(1);
   });
 
   it("advances by one on each claim", async () => {
-    expect(await claimReferenceSeq(orgId, MONTH)).toBe(2);
-    expect(await claimReferenceSeq(orgId, MONTH)).toBe(3);
+    expect(await claimReferenceSeq(orgId, fundingSourceId, MONTH)).toBe(2);
+    expect(await claimReferenceSeq(orgId, fundingSourceId, MONTH)).toBe(3);
   });
 
   it("counts independently per month", async () => {
-    expect(await claimReferenceSeq(orgId, OTHER_MONTH)).toBe(1);
+    expect(await claimReferenceSeq(orgId, fundingSourceId, OTHER_MONTH)).toBe(1);
   });
 
   it("never repeats a number under concurrent claims", async () => {
     // The counter is advanced by the upsert itself, under its own row lock — this is what
     // makes retry logic unnecessary.
     const claimed = await Promise.all(
-      Array.from({ length: 10 }, () => claimReferenceSeq(orgId, "2099-05")),
+      Array.from({ length: 10 }, () => claimReferenceSeq(orgId, fundingSourceId, "2099-05")),
     );
     expect(new Set(claimed).size).toBe(10);
     expect(Math.min(...claimed)).toBe(1);
@@ -109,9 +116,9 @@ describe.skipIf(!hasDatabase)("expense references (integration)", async () => {
 
   it("lets two expenses claimed in the same month both save", async () => {
     // The exact shape that failed: two one-click recurring adds into one month.
-    const first = await claimReferenceSeq(orgId, "2099-06");
+    const first = await claimReferenceSeq(orgId, fundingSourceId, "2099-06");
     await expense("Recurring A", first, "2099-06");
-    const second = await claimReferenceSeq(orgId, "2099-06");
+    const second = await claimReferenceSeq(orgId, fundingSourceId, "2099-06");
     await expense("Recurring B", second, "2099-06");
 
     const rows = await db
@@ -136,11 +143,12 @@ describe.skipIf(!hasDatabase)("expense references (integration)", async () => {
 
     const from = "2099-10";
     const to = "2099-11";
-    const seq = await claimReferenceSeq(orgId, from);
+    const seq = await claimReferenceSeq(orgId, fundingSourceId, from);
     const [moved] = await db
       .insert(expenses)
       .values({
         orgId,
+        fundingSourceId,
         lineItemId,
         taxReimbursable: false,
         feesReimbursable: true,
@@ -173,9 +181,9 @@ describe.skipIf(!hasDatabase)("expense references (integration)", async () => {
     });
 
     // Occupy the destination's first reference, so a naive move would collide.
-    await expense("Already there", await claimReferenceSeq(orgId, to), to);
+    await expense("Already there", await claimReferenceSeq(orgId, fundingSourceId, to), to);
 
-    const destinationSeq = await claimReferenceSeq(orgId, to);
+    const destinationSeq = await claimReferenceSeq(orgId, fundingSourceId, to);
     await db
       .update(expenses)
       .set({ month: to, referenceSeq: destinationSeq })
@@ -224,7 +232,7 @@ describe.skipIf(!hasDatabase)("expense references (integration)", async () => {
       .from(expenses)
       .where(and(eq(expenses.orgId, orgId), eq(expenses.month, from)));
     expect(sourceRows).toHaveLength(0);
-    expect(await claimReferenceSeq(orgId, from)).toBeGreaterThan(seq);
+    expect(await claimReferenceSeq(orgId, fundingSourceId, from)).toBeGreaterThan(seq);
   });
 
   /**
@@ -240,7 +248,7 @@ describe.skipIf(!hasDatabase)("expense references (integration)", async () => {
     // pooled handle this never resolves; the timeout is what turns that hang into a failure.
     const claimed = await Promise.all(
       Array.from({ length: 14 }, () =>
-        db.transaction((tx) => claimReferenceSeq(orgId, MONTH_TX, tx)),
+        db.transaction((tx) => claimReferenceSeq(orgId, fundingSourceId, MONTH_TX, tx)),
       ),
     );
 
@@ -253,17 +261,17 @@ describe.skipIf(!hasDatabase)("expense references (integration)", async () => {
     // The second half of passing `tx`: a claim that is not committed is not spent, so a
     // failed insert no longer burns a reference number the expense never used.
     const MONTH_RB = "2099-07";
-    const before = await claimReferenceSeq(orgId, MONTH_RB);
+    const before = await claimReferenceSeq(orgId, fundingSourceId, MONTH_RB);
 
     await expect(
       db.transaction(async (tx) => {
-        await claimReferenceSeq(orgId, MONTH_RB, tx);
+        await claimReferenceSeq(orgId, fundingSourceId, MONTH_RB, tx);
         throw new Error("insert failed after the claim");
       }),
     ).rejects.toThrow("insert failed after the claim");
 
     // Straight after `before`, with the rolled-back claim in between leaving no gap.
-    expect(await claimReferenceSeq(orgId, MONTH_RB)).toBe(before + 1);
+    expect(await claimReferenceSeq(orgId, fundingSourceId, MONTH_RB)).toBe(before + 1);
   });
 
   it("rejects reference 0 outright", async () => {

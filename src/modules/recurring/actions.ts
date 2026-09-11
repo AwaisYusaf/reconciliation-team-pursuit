@@ -129,6 +129,7 @@ export async function addRecurringToMonthAction(
       name: recurringItems.name,
       amountCents: recurringItems.amountCents,
       lineItemId: recurringItems.lineItemId,
+      fundingSourceId: lineItems.fundingSourceId,
       defaultDescription: recurringItems.defaultDescription,
       defaultNarrative: recurringItems.defaultNarrative,
       defaultPaymentSource: recurringItems.defaultPaymentSource,
@@ -136,6 +137,7 @@ export async function addRecurringToMonthAction(
       defaultFeesCents: recurringItems.defaultFeesCents,
     })
     .from(recurringItems)
+    .innerJoin(lineItems, eq(lineItems.id, recurringItems.lineItemId))
     .where(and(eq(recurringItems.id, id), eq(recurringItems.orgId, current.orgId)))
     .limit(1);
   const item = rows[0];
@@ -184,6 +186,7 @@ export async function addRecurringToMonthAction(
   await db.insert(expenses).values({
     orgId: current.orgId,
     lineItemId: item.lineItemId,
+    fundingSourceId: item.fundingSourceId,
     month,
     date: todayIso(),
     name: item.name,
@@ -202,7 +205,7 @@ export async function addRecurringToMonthAction(
     // R2.6: a one-click add is an expense like any other and needs the month's next
     // reference. Omitting this left every added row at the column default, so the second
     // add into a month collided on `expenses_org_month_reference_uq` and failed.
-    referenceSeq: await claimReferenceSeq(current.orgId, month),
+    referenceSeq: await claimReferenceSeq(current.orgId, item.fundingSourceId, month),
     recurringItemId: id,
   });
 

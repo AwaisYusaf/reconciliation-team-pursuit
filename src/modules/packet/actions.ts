@@ -12,6 +12,7 @@ import { isValidMonthKey } from "@/src/domain/dates";
 import { isUuid } from "@/src/lib/ids";
 import { fail, ok, type ActionResult } from "@/src/lib/action-result";
 import { actionSession } from "@/src/lib/action-session";
+import { primaryFundingSourceId } from "@/src/modules/funding-sources/queries";
 import { captureMonthSnapshot, discardMonthSnapshot } from "./snapshot";
 import { deleteMonthDocument } from "@/src/services/storage/documents";
 
@@ -41,12 +42,14 @@ export async function markMonthSubmittedAction(month: string): Promise<ActionRes
   if ("expired" in current) return current.expired;
   if (!isValidMonthKey(month)) return fail("That is not a valid month.");
 
+  // ponytail: bridge until Phase 2 passes the selected source; delete in Phase 4
+  const fundingSourceId = await primaryFundingSourceId(current.orgId);
   const now = new Date();
   await db
     .insert(monthStatuses)
-    .values({ orgId: current.orgId, month, submittedAt: now })
+    .values({ orgId: current.orgId, fundingSourceId, month, submittedAt: now })
     .onConflictDoUpdate({
-      target: [monthStatuses.orgId, monthStatuses.month],
+      target: [monthStatuses.orgId, monthStatuses.fundingSourceId, monthStatuses.month],
       set: { submittedAt: now },
     });
 

@@ -189,7 +189,7 @@ export async function createExpenseAction(
   if (invalid) return fail(invalid);
 
   const owned = await db
-    .select({ id: lineItems.id, name: lineItems.name })
+    .select({ id: lineItems.id, name: lineItems.name, fundingSourceId: lineItems.fundingSourceId })
     .from(lineItems)
     .where(and(eq(lineItems.id, input.lineItemId), eq(lineItems.orgId, current.orgId)))
     .limit(1);
@@ -221,11 +221,12 @@ export async function createExpenseAction(
       .insert(expenses)
       .values({
         orgId: current.orgId,
+        fundingSourceId: owned[0].fundingSourceId,
         ...row,
         sortOrder: Number(next),
         // `tx`, not the pooled handle: this runs inside the transaction above, and a second
         // pool checkout from in here deadlocks under concurrency (see claimReferenceSeq).
-        referenceSeq: await claimReferenceSeq(current.orgId, row.month, tx),
+        referenceSeq: await claimReferenceSeq(current.orgId, owned[0].fundingSourceId, row.month, tx),
       })
       .returning({ id: expenses.id });
 
@@ -277,6 +278,7 @@ export async function updateExpenseAction(input: ExpenseInput): Promise<ActionRe
   const [existing] = await db
     .select({
       month: expenses.month,
+      fundingSourceId: expenses.fundingSourceId,
       recurringItemId: expenses.recurringItemId,
       sortOrder: expenses.sortOrder,
       referenceSeq: expenses.referenceSeq,
@@ -342,7 +344,9 @@ export async function updateExpenseAction(input: ExpenseInput): Promise<ActionRe
   // second hand-maintained field list next to `EXPENSE_SNAPSHOT_COLUMNS`.
   const beforeSnapshot = pickSnapshot(existing);
 
-  const nextReferenceSeq = movedMonth ? await claimReferenceSeq(current.orgId, row.month) : undefined;
+  const nextReferenceSeq = movedMonth
+    ? await claimReferenceSeq(current.orgId, existing.fundingSourceId, row.month)
+    : undefined;
 
   // The update and its audit event must land together — see the same reasoning in
   // createExpenseAction. A failure between them would otherwise leave an edit applied with no

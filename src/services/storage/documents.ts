@@ -14,6 +14,7 @@ import { v7 as uuidv7 } from "uuid";
 
 import { db } from "@/src/db";
 import { isKnownSupportingDocType } from "@/src/modules/settings/labels";
+import { primaryFundingSourceId } from "@/src/modules/funding-sources/queries";
 import { expenseDocuments, expenses, monthDocuments, organizations } from "@/src/db/schema";
 import type { MonthDocumentCategory } from "@/src/db/schema";
 
@@ -414,9 +415,12 @@ export async function ingestMonthDocument(input: {
       const quotaError = await orgStorageError(tx, input.orgId, incomingBytes);
       if (quotaError) return quotaError;
 
+      // ponytail: bridge until Phase 2 passes the selected source; delete in Phase 4
+      const fundingSourceId = await primaryFundingSourceId(input.orgId, tx);
       await tx.insert(monthDocuments).values({
         id: documentId,
         orgId: input.orgId,
+        fundingSourceId,
         month: input.month,
         category: input.category,
         title: input.title?.trim() || null,

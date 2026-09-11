@@ -25,11 +25,13 @@ describe.skipIf(!hasDatabase)("snapshot stability (integration)", async () => {
   const {
     contractSettings,
     expenses,
+    fundingSources,
     lineItemPerformances,
     lineItems,
     monthDocuments,
     organizations,
   } = await import("@/src/db/schema");
+  const { ORIGINAL_RULES } = await import("@/src/modules/expenses/reimbursement");
   const { inputsHash } = await import("./cache-key");
   const { loadMonthSnapshot } = await import("./month-snapshot");
 
@@ -41,6 +43,10 @@ describe.skipIf(!hasDatabase)("snapshot stability (integration)", async () => {
   const EXPENSE_2_ID = "00000000-0000-0000-0000-000000000006";
   const EXPENSE_3_ID = "00000000-0000-0000-0000-000000000007";
   const MONTH_DOCUMENT_ID = "00000000-0000-0000-0000-000000000008";
+  // Fixed, same reasoning as every other id here: the source exists (NOT NULL, Phase 6,
+  // D-93) but `loadMonthSnapshot`/`inputsHash` never read it in Phase 1, so it plays no part
+  // in the hash — only its presence is required for the inserts below to succeed.
+  const FUNDING_SOURCE_ID = "00000000-0000-0000-0000-000000000009";
 
   const MONTH = "2026-02";
 
@@ -50,6 +56,15 @@ describe.skipIf(!hasDatabase)("snapshot stability (integration)", async () => {
       name: "Stability Org",
       docName: "Stability",
       activeMonth: MONTH,
+    });
+
+    await db.insert(fundingSources).values({
+      id: FUNDING_SOURCE_ID,
+      orgId: ORG_ID,
+      name: "Source 1",
+      type: "grant",
+      sortOrder: 0,
+      ...ORIGINAL_RULES,
     });
 
     await db.insert(contractSettings).values({

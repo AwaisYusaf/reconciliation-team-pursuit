@@ -20,15 +20,16 @@ import type { MonthKey } from "@/src/domain/dates";
 type Executor = Database | Parameters<Parameters<Database["transaction"]>[0]>[0];
 
 /**
- * Claim the next reference number for a month (R2.6).
+ * Claim the next reference number for a source, per month (R2.6, D-93 decision 2.6).
  *
  * One statement, so the counter is read and advanced under the same row lock: two saves in
- * the same month cannot be handed the same number, and nothing has to detect a collision and
- * retry. Deleting an expense leaves its number spent — a reference that has been printed is
- * never handed to something else.
+ * the same source's month cannot be handed the same number, and nothing has to detect a
+ * collision and retry. Deleting an expense leaves its number spent — a reference that has
+ * been printed is never handed to something else.
  *
- * `month_statuses` gains a row here if the month has none. That is harmless: the only other
- * column is `submitted_at`, and a row with it null already means exactly what no row means.
+ * `month_statuses` gains a row here if the (source, month) has none. That is harmless: the
+ * only other column is `submitted_at`, and a row with it null already means exactly what no
+ * row means.
  *
  * **Every path that inserts an expense must call this.** `reference_seq` has no column
  * default precisely so that forgetting is a compile error rather than two rows colliding on
@@ -43,14 +44,15 @@ type Executor = Database | Parameters<Parameters<Database["transaction"]>[0]>[0]
  */
 export async function claimReferenceSeq(
   orgId: string,
+  fundingSourceId: string,
   month: MonthKey,
   executor: Executor = db,
 ): Promise<number> {
   const [claimed] = await executor
     .insert(monthStatuses)
-    .values({ orgId, month, nextReferenceSeq: 2 })
+    .values({ orgId, fundingSourceId, month, nextReferenceSeq: 2 })
     .onConflictDoUpdate({
-      target: [monthStatuses.orgId, monthStatuses.month],
+      target: [monthStatuses.orgId, monthStatuses.fundingSourceId, monthStatuses.month],
       set: { nextReferenceSeq: sql`${monthStatuses.nextReferenceSeq} + 1` },
     })
     .returning({ next: monthStatuses.nextReferenceSeq });

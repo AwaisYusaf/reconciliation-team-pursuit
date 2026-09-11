@@ -162,6 +162,13 @@
       "when": 1789103784404,
       "tag": "0022_fantastic_sleeper",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1789123847775,
+      "tag": "0023_faulty_tyrannus",
+      "breakpoints": true
     }
   ]
 }

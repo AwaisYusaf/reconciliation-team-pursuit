@@ -17,6 +17,7 @@ import { loadContractSettings, loadExpenseAmounts, loadLineItemBudgets } from "@
 import { monthSnapshotTotals, monthSnapshots } from "@/src/db/schema";
 import { allLineItemStats } from "@/src/domain/budget-math";
 import type { MonthKey } from "@/src/domain/dates";
+import { primaryFundingSourceId } from "@/src/modules/funding-sources/queries";
 
 /**
  * Record where every line item stood at the end of `month`, replacing any previous capture.
@@ -32,6 +33,9 @@ export async function captureMonthSnapshot(orgId: string, month: MonthKey): Prom
       // outside the repeatable-read snapshot — which is what this code did while the comment
       // above claimed otherwise, so a save landing mid-capture could persist a torn month
       // (D-72).
+      // ponytail: bridge until Phase 2 passes the selected source; delete in Phase 4
+      const fundingSourceId = await primaryFundingSourceId(orgId, tx);
+
       const [lineItems, amounts, settings] = await Promise.all([
         loadLineItemBudgets(orgId, tx),
         loadExpenseAmounts(orgId, month, tx),
@@ -48,6 +52,7 @@ export async function captureMonthSnapshot(orgId: string, month: MonthKey): Prom
         await tx.insert(monthSnapshots).values(
           stats.map((stat) => ({
             orgId,
+            fundingSourceId,
             month,
             lineItemId: stat.lineItem.id,
             lineItemName: stat.lineItem.name,
@@ -70,6 +75,7 @@ export async function captureMonthSnapshot(orgId: string, month: MonthKey): Prom
         .insert(monthSnapshotTotals)
         .values({
           orgId,
+          fundingSourceId,
           month,
           contractValueCents: settings.contractValueCents,
           perfGrantScheduledCents: 0,
@@ -77,7 +83,11 @@ export async function captureMonthSnapshot(orgId: string, month: MonthKey): Prom
           advancesReceivedCents: settings.advancesReceivedCents,
         })
         .onConflictDoUpdate({
-          target: [monthSnapshotTotals.orgId, monthSnapshotTotals.month],
+          target: [
+            monthSnapshotTotals.orgId,
+            monthSnapshotTotals.fundingSourceId,
+            monthSnapshotTotals.month,
+          ],
           set: {
             contractValueCents: settings.contractValueCents,
             perfGrantScheduledCents: 0,

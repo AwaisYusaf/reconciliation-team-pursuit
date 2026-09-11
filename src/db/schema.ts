@@ -8,6 +8,9 @@
  * - Case-insensitive uniqueness uses `lower()` expression indexes rather than the
  *   `citext` extension, so the database needs no extensions to be provisioned.
  * - Every table except `organizations` carries `org_id`; every query path re-checks it.
+ * - Every grant-scoped table (line items and everything under them) also carries
+ *   `funding_source_id`, backed by a composite FK to `funding_sources(id, org_id)` so a row
+ *   can never point at another organisation's or another source's parent (Phase 6, D-93).
  */
 import { sql } from "drizzle-orm";
 import {
@@ -16,6 +19,7 @@ import {
   char,
   check,
   date,
+  foreignKey,
   index,
   integer,
   jsonb,
@@ -26,6 +30,7 @@ import {
   timestamp,
   uniqueIndex,
   uuid,
+  type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 import { v7 as uuidv7 } from "uuid";
 
@@ -99,6 +104,19 @@ export const organizations = pgTable("organizations", {
   docName: text("doc_name").notNull(),
   /** Last selected month (per-org UI persistence, R2.3). */
   activeMonth: char("active_month", { length: 7 }).notNull(),
+  /**
+   * Last selected funding source (per-org UI persistence, R2.3, same model as `active_month`).
+   * `NULL` means "All". Not a composite FK: `SET NULL` on a composite key would null
+   * `organizations.id` too, so this stays a plain single-column FK; app code re-validates it
+   * belongs to the org whenever it is read (Phase 2). The explicit `AnyPgColumn` return type on
+   * the reference callback (instead of letting it infer `fundingSources.id`'s type) is required
+   * here because `funding_sources` in turn references `organizations` — without it the two
+   * tables' types depend on each other and TS can't resolve either.
+   */
+  activeFundingSourceId: uuid("active_funding_source_id").references(
+    (): AnyPgColumn => fundingSources.id,
+    { onDelete: "set null" },
+  ),
   /** Null → login redirects into onboarding (m00). */
   onboardedAt: timestamp("onboarded_at", { withTimezone: true }),
   /** First-run banner dismissal (m00). */
@@ -161,6 +179,11 @@ export const sessions = pgTable(
 
 /* ------------------------------------------------------- contract settings */
 
+/**
+ * @deprecated Superseded by `funding_sources` (Phase 6, D-93): contract details now live on
+ * each funding source. Kept in the database, no longer read or written, so the migration stays
+ * additive and reversible. A later phase drops this table once Phase 6 has run in production.
+ */
 export const contractSettings = pgTable("contract_settings", {
   orgId: uuid("org_id")
     .primaryKey()
@@ -194,12 +217,13 @@ export const paymentSources = pgTable(
     /** Deactivated labels leave pickers; history keeps its snapshot. */
     active: boolean().notNull().default(true),
     /**
-     * The reimbursement rules this funder applies, offered as the default on a new expense
-     * (R1.3, D-67). "Different funding sources have different requirements" is the reason the
-     * feature exists, so the source is where the answer belongs — set once, not re-decided
-     * on every entry. The expense keeps its own copy once saved.
+     * @deprecated Superseded by `funding_sources.tax_reimbursable`/`fees_reimbursable`
+     * (Phase 6, D-93): the reimbursement rules now live on the funding source, not the payment
+     * source ("payment sources go back to meaning only how something was paid"). Kept in the
+     * database, no longer read or written.
      */
     taxReimbursable: boolean("tax_reimbursable").notNull().default(false),
+    /** @deprecated See `taxReimbursable` above. */
     feesReimbursable: boolean("fees_reimbursable").notNull().default(true),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
@@ -224,6 +248,61 @@ export const supportingDocTypes = pgTable(
   (t) => [uniqueIndex("supporting_doc_types_org_label_uq").on(t.orgId, sql`lower(${t.label})`)],
 );
 
+/* ------------------------------------------------------------ funding sources */
+
+/** funding_sources.type — Grant / Donation / Line of credit / Other (Appendix A §1). */
+export const fundingSourceType = pgEnum("funding_source_type", [
+  "grant",
+  "donation",
+  "line_of_credit",
+  "other",
+]);
+
+/**
+ * An organisation's separate pot of money (Phase 6, D-93): its own line items, expenses,
+ * monthly packets, contract details and reimbursement rules. Every organisation gets one at
+ * sign-up; existing organisations were migrated into their first source (drizzle/0023).
+ */
+export const fundingSources = pgTable(
+  "funding_sources",
+  {
+    id: id(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    name: text().notNull(),
+    type: fundingSourceType().notNull().default("grant"),
+    /** Printed on this source's documents; null → organizations.doc_name (spec §1). */
+    docName: text("doc_name"),
+    // ---- contract details: same columns and defaults as contract_settings (deprecated above)
+    projectName: text("project_name").notNull().default(""),
+    contractNumber: text("contract_number").notNull().default(""),
+    basePoNumber: text("base_po_number").notNull().default(""),
+    performancePoNumber: text("performance_po_number").notNull().default(""),
+    contractValueCents: cents("contract_value_cents"),
+    contractStart: date("contract_start"),
+    contractEnd: date("contract_end"),
+    fiduciaryName: text("fiduciary_name").notNull().default(""),
+    advancesReceivedCents: cents("advances_received_cents"),
+    /**
+     * Reimbursement rules (moved from payment_sources, R1.3). No defaults, same reason as
+     * expenses.taxReimbursable below: a forgotten value must be a type error.
+     */
+    taxReimbursable: boolean("tax_reimbursable").notNull(),
+    feesReimbursable: boolean("fees_reimbursable").notNull(),
+    sortOrder: integer("sort_order").notNull().default(0),
+    /** Set → hidden from pickers; history and documents stay (spec §1). */
+    archivedAt: timestamp("archived_at", { withTimezone: true }),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    uniqueIndex("funding_sources_id_org_uq").on(t.id, t.orgId), // target of composite FKs
+    uniqueIndex("funding_sources_org_name_uq").on(t.orgId, sql`lower(${t.name})`),
+    index("funding_sources_org_sort_idx").on(t.orgId, t.sortOrder),
+  ],
+);
+
 /* --------------------------------------------------------------- line items */
 
 export const lineItems = pgTable(
@@ -233,6 +312,7 @@ export const lineItems = pgTable(
     orgId: uuid("org_id")
       .notNull()
       .references(() => organizations.id, { onDelete: "cascade" }),
+    fundingSourceId: uuid("funding_source_id").notNull(),
     name: text().notNull(),
     /** Budget / scheduled value. */
     scheduledValueCents: cents("scheduled_value_cents"),
@@ -244,8 +324,13 @@ export const lineItems = pgTable(
     updatedAt: updatedAt(),
   },
   (t) => [
-    uniqueIndex("line_items_org_name_uq").on(t.orgId, sql`lower(${t.name})`),
-    index("line_items_org_sort_idx").on(t.orgId, t.sortOrder),
+    uniqueIndex("line_items_id_source_uq").on(t.id, t.fundingSourceId), // target of the expenses composite FK
+    uniqueIndex("line_items_source_name_uq").on(t.fundingSourceId, sql`lower(${t.name})`),
+    index("line_items_org_sort_idx").on(t.orgId, t.fundingSourceId, t.sortOrder),
+    foreignKey({
+      columns: [t.fundingSourceId, t.orgId],
+      foreignColumns: [fundingSources.id, fundingSources.orgId],
+    }),
   ],
 );
 
@@ -310,6 +395,12 @@ export const expenses = pgTable(
     lineItemId: uuid("line_item_id")
       .notNull()
       .references(() => lineItems.id, { onDelete: "restrict" }),
+    /**
+     * Denormalised from the line item (D-93 decision 2.1): letting the reference counter,
+     * unique indexes and filters read this column directly avoids a join, and the composite FK
+     * below makes it impossible for it to disagree with the line item it points at.
+     */
+    fundingSourceId: uuid("funding_source_id").notNull(),
     /** Reporting month (R2.1); editable from the form (R2.2). */
     month: char({ length: 7 }).notNull(),
     /** Defaults to today in America/Detroit (R2.5); independent of `month`. */
@@ -386,9 +477,15 @@ export const expenses = pgTable(
     index("expenses_org_month_idx").on(t.orgId, t.month),
     index("expenses_line_item_idx").on(t.lineItemId),
     index("expenses_org_month_sort_idx").on(t.orgId, t.month, t.sortOrder),
+    index("expenses_org_source_month_idx").on(t.orgId, t.fundingSourceId, t.month),
     // What makes a reference trustworthy. Assignment reads max+1 and can race, so the
     // database is the arbiter and the caller retries rather than hoping.
-    uniqueIndex("expenses_org_month_reference_uq").on(t.orgId, t.month, t.referenceSeq),
+    uniqueIndex("expenses_org_month_reference_uq").on(
+      t.orgId,
+      t.fundingSourceId,
+      t.month,
+      t.referenceSeq,
+    ),
     // References start at 1 (R2.6). Catches anything reaching the table outside Drizzle —
     // a raw SQL insert cannot fall back to 0 and collide with the next one.
     check("expenses_reference_seq_ck", sql`${t.referenceSeq} >= 1`),
@@ -396,6 +493,16 @@ export const expenses = pgTable(
       "expenses_no_receipt_reason_ck",
       sql`not ${t.noReceipt} or (${t.noReceiptReason} is not null and btrim(${t.noReceiptReason}) <> '')`,
     ),
+    // ★ An expense's line item must belong to the expense's own source — cross-source and
+    // cross-org saves become unrepresentable in the database (D-93 decision 2.2).
+    foreignKey({
+      columns: [t.lineItemId, t.fundingSourceId],
+      foreignColumns: [lineItems.id, lineItems.fundingSourceId],
+    }),
+    foreignKey({
+      columns: [t.fundingSourceId, t.orgId],
+      foreignColumns: [fundingSources.id, fundingSources.orgId],
+    }),
   ],
 );
 
@@ -412,6 +519,8 @@ export type ExpenseAuditSnapshot = {
   name: string;
   lineItemId: string;
   lineItemName: string;
+  /** Set from Phase 4 on, so history can show a source move; older events simply lack it. */
+  fundingSourceName?: string;
   paymentSource: string;
   month: string;
   date: string;
@@ -523,6 +632,7 @@ export const monthDocuments = pgTable(
     orgId: uuid("org_id")
       .notNull()
       .references(() => organizations.id, { onDelete: "cascade" }),
+    fundingSourceId: uuid("funding_source_id").notNull(),
     month: char({ length: 7 }).notNull(),
     category: monthDocumentCategory().notNull(),
     /** Optional label shown in the packet manager. */
@@ -541,7 +651,19 @@ export const monthDocuments = pgTable(
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
-  (t) => [index("month_documents_org_month_idx").on(t.orgId, t.month, t.category, t.sortOrder)],
+  (t) => [
+    index("month_documents_org_month_idx").on(
+      t.orgId,
+      t.fundingSourceId,
+      t.month,
+      t.category,
+      t.sortOrder,
+    ),
+    foreignKey({
+      columns: [t.fundingSourceId, t.orgId],
+      foreignColumns: [fundingSources.id, fundingSources.orgId],
+    }),
+  ],
 );
 
 /* ----------------------------------------------------------- month statuses */
@@ -553,6 +675,7 @@ export const monthStatuses = pgTable(
     orgId: uuid("org_id")
       .notNull()
       .references(() => organizations.id, { onDelete: "cascade" }),
+    fundingSourceId: uuid("funding_source_id").notNull(),
     month: char({ length: 7 }).notNull(),
     submittedAt: timestamp("submitted_at", { withTimezone: true }),
     /**
@@ -569,7 +692,13 @@ export const monthStatuses = pgTable(
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
-  (t) => [primaryKey({ columns: [t.orgId, t.month] })],
+  (t) => [
+    primaryKey({ columns: [t.orgId, t.fundingSourceId, t.month] }),
+    foreignKey({
+      columns: [t.fundingSourceId, t.orgId],
+      foreignColumns: [fundingSources.id, fundingSources.orgId],
+    }),
+  ],
 );
 
 /* --------------------------------------------------------- month snapshots */
@@ -596,6 +725,7 @@ export const monthSnapshots = pgTable(
     orgId: uuid("org_id")
       .notNull()
       .references(() => organizations.id, { onDelete: "cascade" }),
+    fundingSourceId: uuid("funding_source_id").notNull(),
     month: char({ length: 7 }).notNull(),
     /**
      * Nulled rather than cascaded when a line item is deleted, matching generated artifacts:
@@ -616,8 +746,17 @@ export const monthSnapshots = pgTable(
     createdAt: createdAt(),
   },
   (t) => [
-    uniqueIndex("month_snapshots_line_item_uq").on(t.orgId, t.month, t.lineItemName),
-    index("month_snapshots_lookup_idx").on(t.orgId, t.month),
+    uniqueIndex("month_snapshots_line_item_uq").on(
+      t.orgId,
+      t.fundingSourceId,
+      t.month,
+      t.lineItemName,
+    ),
+    index("month_snapshots_lookup_idx").on(t.orgId, t.fundingSourceId, t.month),
+    foreignKey({
+      columns: [t.fundingSourceId, t.orgId],
+      foreignColumns: [fundingSources.id, fundingSources.orgId],
+    }),
   ],
 );
 
@@ -635,6 +774,7 @@ export const monthSnapshotTotals = pgTable(
     orgId: uuid("org_id")
       .notNull()
       .references(() => organizations.id, { onDelete: "cascade" }),
+    fundingSourceId: uuid("funding_source_id").notNull(),
     month: char({ length: 7 }).notNull(),
     contractValueCents: cents("contract_value_cents"),
     perfGrantScheduledCents: cents("perf_grant_scheduled_cents"),
@@ -643,7 +783,13 @@ export const monthSnapshotTotals = pgTable(
     /** When these were captured — the submission that produced them. */
     capturedAt: timestamp("captured_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [primaryKey({ columns: [t.orgId, t.month] })],
+  (t) => [
+    primaryKey({ columns: [t.orgId, t.fundingSourceId, t.month] }),
+    foreignKey({
+      columns: [t.fundingSourceId, t.orgId],
+      foreignColumns: [fundingSources.id, fundingSources.orgId],
+    }),
+  ],
 );
 
 /* ---------------------------------------------------------- vendor defaults */
@@ -738,6 +884,7 @@ export const generatedArtifacts = pgTable(
     orgId: uuid("org_id")
       .notNull()
       .references(() => organizations.id, { onDelete: "cascade" }),
+    fundingSourceId: uuid("funding_source_id").notNull(),
     month: char({ length: 7 }).notNull(),
     type: artifactType().notNull(),
     /**
@@ -759,12 +906,19 @@ export const generatedArtifacts = pgTable(
     updatedAt: updatedAt(),
   },
   (t) => [
-    index("generated_artifacts_lookup_idx").on(t.orgId, t.month, t.type, t.lineItemId),
+    index("generated_artifacts_lookup_idx").on(
+      t.orgId,
+      t.fundingSourceId,
+      t.month,
+      t.type,
+      t.lineItemId,
+    ),
     // One live cache entry per output; pinned (downloaded) rows accumulate as history.
     // line_item_id is coalesced because SQL NULLs are distinct in unique indexes.
     uniqueIndex("generated_artifacts_live_uq")
       .on(
         t.orgId,
+        t.fundingSourceId,
         t.month,
         t.type,
         sql`coalesce(${t.lineItemId}, '00000000-0000-0000-0000-000000000000'::uuid)`,
@@ -775,11 +929,16 @@ export const generatedArtifacts = pgTable(
     // would each insert a row and the permanent submission record would carry duplicates.
     uniqueIndex("generated_artifacts_content_uq").on(
       t.orgId,
+      t.fundingSourceId,
       t.month,
       t.type,
       sql`coalesce(${t.lineItemId}, '00000000-0000-0000-0000-000000000000'::uuid)`,
       t.inputsHash,
     ),
+    foreignKey({
+      columns: [t.fundingSourceId, t.orgId],
+      foreignColumns: [fundingSources.id, fundingSources.orgId],
+    }),
   ],
 );
 
@@ -789,6 +948,7 @@ export type Organization = typeof organizations.$inferSelect;
 export type User = typeof users.$inferSelect;
 export type Session = typeof sessions.$inferSelect;
 export type ContractSettings = typeof contractSettings.$inferSelect;
+export type FundingSource = typeof fundingSources.$inferSelect;
 export type PaymentSource = typeof paymentSources.$inferSelect;
 export type SupportingDocType = typeof supportingDocTypes.$inferSelect;
 export type LineItem = typeof lineItems.$inferSelect;
@@ -807,5 +967,6 @@ export type DocumentKind = (typeof documentKind.enumValues)[number];
 export type DocumentStatus = (typeof documentStatus.enumValues)[number];
 export type MonthDocumentCategory = (typeof monthDocumentCategory.enumValues)[number];
 export type ArtifactType = (typeof artifactType.enumValues)[number];
+export type FundingSourceType = (typeof fundingSourceType.enumValues)[number];
 export type UserRole = (typeof userRole.enumValues)[number];
 export type ExpenseAuditActionType = (typeof expenseAuditAction.enumValues)[number];

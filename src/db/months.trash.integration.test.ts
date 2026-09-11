@@ -16,10 +16,12 @@ const hasDatabase = Boolean(process.env.DATABASE_URL);
 describe.skipIf(!hasDatabase)("loadSelectableMonths and trash (integration)", async () => {
   const { db } = await import("@/src/db");
   const { expenses, lineItems, organizations } = await import("@/src/db/schema");
+  const { createTestOrg } = await import("@/src/db/test-org");
   const { claimReferenceSeq } = await import("@/src/modules/expenses/references");
   const { loadSelectableMonths } = await import("./months");
 
   let orgId: string;
+  let fundingSourceId: string;
   let lineItemId: string;
 
   // Distinctive, far-future months so they can never collide with the "current month" window
@@ -27,15 +29,17 @@ describe.skipIf(!hasDatabase)("loadSelectableMonths and trash (integration)", as
   const TRASH_ONLY_MONTH = "2099-06";
 
   beforeAll(async () => {
-    const [org] = await db
-      .insert(organizations)
-      .values({ name: "Months Trash Org", docName: "MonTrash", activeMonth: TRASH_ONLY_MONTH })
-      .returning({ id: organizations.id });
-    orgId = org.id;
+    const org = await createTestOrg({
+      name: "Months Trash Org",
+      docName: "MonTrash",
+      activeMonth: TRASH_ONLY_MONTH,
+    });
+    orgId = org.orgId;
+    fundingSourceId = org.fundingSourceId;
 
     const [item] = await db
       .insert(lineItems)
-      .values({ orgId, name: "Misc", scheduledValueCents: 10_000, sortOrder: 0 })
+      .values({ orgId, fundingSourceId, name: "Misc", scheduledValueCents: 10_000, sortOrder: 0 })
       .returning({ id: lineItems.id });
     lineItemId = item.id;
   });
@@ -49,6 +53,7 @@ describe.skipIf(!hasDatabase)("loadSelectableMonths and trash (integration)", as
       .insert(expenses)
       .values({
         orgId,
+        fundingSourceId,
         lineItemId,
         month: TRASH_ONLY_MONTH,
         date: `${TRASH_ONLY_MONTH}-10`,
@@ -58,7 +63,7 @@ describe.skipIf(!hasDatabase)("loadSelectableMonths and trash (integration)", as
         taxReimbursable: false,
         feesReimbursable: true,
         sortOrder: 0,
-        referenceSeq: await claimReferenceSeq(orgId, TRASH_ONLY_MONTH),
+        referenceSeq: await claimReferenceSeq(orgId, fundingSourceId, TRASH_ONLY_MONTH),
       })
       .returning({ id: expenses.id });
 

@@ -18,6 +18,7 @@ import { UI } from "@/src/domain/strings";
 import { fail, ok, type ActionResult } from "@/src/lib/action-result";
 import { actionSession } from "@/src/lib/action-session";
 import { isUuid } from "@/src/lib/ids";
+import { primaryFundingSourceId } from "@/src/modules/funding-sources/queries";
 
 
 /** Every screen reads line items, so a change invalidates the whole authenticated tree. */
@@ -69,8 +70,11 @@ export async function saveLineItemAction(input: {
       .from(lineItems)
       .where(eq(lineItems.orgId, current.orgId));
 
+    // ponytail: bridge until Phase 2 passes the selected source; delete in Phase 4
+    const fundingSourceId = await primaryFundingSourceId(current.orgId);
     await db.insert(lineItems).values({
       orgId: current.orgId,
+      fundingSourceId,
       name,
       scheduledValueCents,
       openingBilledCents,
