@@ -7,6 +7,7 @@ Docs-first, AI-native project. **These files are the source of truth.** Code ser
 | Path | What it is |
 |---|---|
 | `TASKS.md` | **Outstanding work** — everything unfinished, why it matters, and what is blocked on whom |
+| `PHASE-6.md` | **Phase 6** — multiple funding sources per organisation: data model, migration, phased build plan and acceptance proof (not started) |
 | `PHASE-5.md` | **Phase 5** — packet navigation: clickable references, page map, outline; plan and passing criteria, blocked on six decisions |
 | `PHASE-4.md` | **Phase 4** — Misty submission feedback: the deployed cover-sheet fix, and moving month documents to the end |
 | `PHASE-3.md` | **Phase 3** — the three fixes Misty reported after testing, phased with passing criteria |
