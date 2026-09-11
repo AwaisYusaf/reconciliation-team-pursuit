@@ -269,6 +269,13 @@ export const lineItemPerformances = pgTable(
       .notNull()
       .references(() => lineItems.id, { onDelete: "cascade" }),
     amountCents: cents("amount_cents"),
+    /**
+     * Required at the point of adding a new performance through the UI; absent (null) on any
+     * row that predates this column, including the migration-created Performance Grant row.
+     */
+    name: text(),
+    /** Same nullability story as `name` above — required going forward, absent on legacy rows. */
+    date: date(),
     /** Numbers the on-screen "Performance 1 / 2 / 3" list in the order each was added. */
     sortOrder: integer("sort_order").notNull().default(0),
     /**

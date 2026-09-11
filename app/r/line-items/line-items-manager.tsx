@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useState, useTransition, type KeyboardEvent } from "react";
 
 import { Button } from "@/src/components/ui/button";
 import { ConfirmButton } from "@/src/components/ui/confirm-button";
@@ -12,6 +12,8 @@ import { Card, DangerPanel } from "@/src/components/ui/surfaces";
 import { TableCard, Td, Th } from "@/src/components/ui/table";
 import { reportResult } from "@/src/components/ui/toast";
 import type { ActionResult } from "@/src/lib/action-result";
+import { cn } from "@/src/lib/cn";
+import { formatDateUS, todayIso } from "@/src/domain/dates";
 import { formatMoney } from "@/src/domain/format";
 import { cascadeConfirmation, moveInOrder } from "@/src/domain/line-item-rules";
 import {
@@ -20,6 +22,7 @@ import {
   deleteLineItemPerformanceAction,
   reorderLineItemsAction,
   saveLineItemAction,
+  saveLineItemPerformanceAction,
   type LineItemDeleteConfirmation,
 } from "@/src/modules/line-items/actions";
 import type { LineItemRow } from "@/src/modules/line-items/queries";
@@ -34,20 +37,40 @@ function performanceTotal(row: LineItemRow): number {
   return row.performances.reduce((sum, performance) => sum + performance.amountCents, 0);
 }
 
+/** A function, not a constant: a module-level `todayIso()` is frozen at first load, so a tab
+ *  left open past midnight would prefill yesterday. */
+function emptyPerformanceDraft() {
+  return { name: "", amount: "", date: todayIso() };
+}
+
+// Compact sizing for the Manage popup's performances table. `cn` only joins classes (no
+// tailwind-merge), so a plain `py-1` competes with Td/Button/Input's own padding and min-height
+// and loses on CSS order — the trailing `!` is what makes these overrides actually apply.
+const DENSE_CELL = "py-1.5!";
+const DENSE_CONTROL = "min-h-9! py-1!";
+const DENSE_BUTTON = "min-h-8! px-2.5! py-0.5! text-[15px]!";
+
 export function LineItemsManager({ rows }: { rows: LineItemRow[] }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
 
-  const [editingId, setEditingId] = useState<string | null>(null);
+  const [managingId, setManagingId] = useState<string | null>(null);
   const [draft, setDraft] = useState({ name: "", scheduledValue: "", openingBilled: "" });
+  const [newPerformance, setNewPerformance] = useState(emptyPerformanceDraft);
+  /** The one performance row currently in Edit mode, with its unsaved values. */
+  const [editingPerformance, setEditingPerformance] = useState<{
+    id: string;
+    name: string;
+    date: string;
+    amount: string;
+  } | null>(null);
+
   const [showAdd, setShowAdd] = useState(false);
   const [addDraft, setAddDraft] = useState({ name: "", scheduledValue: "", openingBilled: "" });
   const [error, setError] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<
     ({ id: string } & LineItemDeleteConfirmation) | null
   >(null);
-  const [performanceRowId, setPerformanceRowId] = useState<string | null>(null);
-  const [newPerformance, setNewPerformance] = useState("");
 
   function run(
     work: () => Promise<ActionResult<unknown>>,
@@ -67,14 +90,44 @@ export function LineItemsManager({ rows }: { rows: LineItemRow[] }) {
     });
   }
 
-  function startEdit(row: LineItemRow) {
-    setEditingId(row.id);
+  function openManage(row: LineItemRow) {
+    setManagingId(row.id);
     setError(null);
     setDraft({
       name: row.name,
       scheduledValue: toInput(row.scheduledValueCents),
       openingBilled: toInput(row.openingBilledCents),
     });
+    setNewPerformance(emptyPerformanceDraft());
+  }
+
+  function closeManage() {
+    setManagingId(null);
+    setNewPerformance(emptyPerformanceDraft());
+    setEditingPerformance(null);
+  }
+
+  /** A legacy performance has no name/date yet; they start blank rather than prefilled with
+   *  the positional label or today, so saving asks for real values instead of writing a
+   *  guess into the database ("never guessed", queries.ts). */
+  function startEditPerformance(performance: LineItemRow["performances"][number]) {
+    setEditingPerformance({
+      id: performance.id,
+      name: performance.name ?? "",
+      date: performance.date ?? "",
+      amount: toInput(performance.amountCents),
+    });
+  }
+
+  function saveEditedPerformance() {
+    if (!editingPerformance) return;
+    const values = editingPerformance;
+    // Row leaves Edit mode only once the save succeeds, so a refusal keeps the typed values.
+    run(
+      () => saveLineItemPerformanceAction(values),
+      () => setEditingPerformance(null),
+      "Performance saved",
+    );
   }
 
   function move(index: number, delta: number) {
@@ -104,8 +157,14 @@ export function LineItemsManager({ rows }: { rows: LineItemRow[] }) {
 
   function addPerformance(lineItemId: string) {
     run(
-      () => addLineItemPerformanceAction(lineItemId, newPerformance),
-      () => setNewPerformance(""),
+      () =>
+        addLineItemPerformanceAction({
+          lineItemId,
+          name: newPerformance.name,
+          amount: newPerformance.amount,
+          date: newPerformance.date,
+        }),
+      () => setNewPerformance(emptyPerformanceDraft()),
       "Performance added",
     );
   }
@@ -149,57 +208,254 @@ export function LineItemsManager({ rows }: { rows: LineItemRow[] }) {
           cascadeConfirmation(confirmDelete.recurringNames, confirmDelete.performanceTotalCents)}
       </Dialog>
 
+      {/* Edit and Add used to be two separate popups; a single "Manage" now covers the line
+          item's own fields and its performances together, since both are edited far less
+          often than they're just read from the table (D-92). */}
       {(() => {
-        const row = rows.find((r) => r.id === performanceRowId);
+        const row = rows.find((r) => r.id === managingId);
         if (!row) return null;
         return (
-          <Modal
-            open
-            title={`${row.name} — Performances`}
-            onClose={() => {
-              setPerformanceRowId(null);
-              setNewPerformance("");
-            }}
-          >
-            <div className="flex justify-between py-1.5 text-[15px]">
-              <span className="text-sub">Base value</span>
-              <span>{formatMoney(row.scheduledValueCents)}</span>
+          <Modal open title={`Manage — ${row.name}`} onClose={closeManage} size="lg">
+            {/* Small uppercase labels, not full SectionTitle headings — matching the compact
+                heading style Settings' own label lists use (settings-sections.tsx) rather
+                than a full card per section, which just made this popup tall for no reason. */}
+            <div className="text-[13px] uppercase tracking-[0.06em] text-sub font-bold mb-2">
+              Line item
             </div>
-            {row.performances.map((performance, index) => (
-              <div key={performance.id} className="flex justify-between items-center py-1.5 text-[15px]">
-                <span className="text-sub">Performance {index + 1}</span>
-                <div className="flex items-center gap-3">
-                  <span>{formatMoney(performance.amountCents)}</span>
-                  <ConfirmButton
-                    variant="quiet"
-                    disabled={pending}
-                    title={`Delete Performance ${index + 1}?`}
-                    body={`${formatMoney(performance.amountCents)} is removed from ${row.name}'s Scheduled Value. This cannot be undone.`}
-                    confirmLabel="Delete performance"
-                    onConfirm={() => removePerformance(performance.id)}
-                  >
-                    Delete
-                  </ConfirmButton>
-                </div>
-              </div>
-            ))}
-            <div className="flex justify-between py-1.5 text-[15px] font-bold border-t border-line mt-1 pt-2.5">
-              <span>Total</span>
-              <span>{formatMoney(row.totalScheduledValueCents)}</span>
-            </div>
-
-            <div className="flex flex-wrap gap-3 items-end mt-[18px]">
-              <div className="flex-1 min-w-[160px]">
-                <Label htmlFor="new-performance">Add performance</Label>
-                <MoneyInput
-                  id="new-performance"
-                  value={newPerformance}
-                  placeholder="0.00"
-                  onChange={(event) => setNewPerformance(event.target.value)}
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div>
+                <Label htmlFor="manage-name">Line item name</Label>
+                <Input
+                  id="manage-name"
+                  value={draft.name}
+                  onChange={(event) => setDraft({ ...draft, name: event.target.value })}
                 />
               </div>
-              <Button disabled={pending} onClick={() => addPerformance(row.id)}>
-                Add performance
+              <div>
+                <Label htmlFor="manage-scheduled">
+                  Scheduled value <span className="font-normal text-sub">(base only)</span>
+                </Label>
+                <MoneyInput
+                  id="manage-scheduled"
+                  value={draft.scheduledValue}
+                  onChange={(event) => setDraft({ ...draft, scheduledValue: event.target.value })}
+                />
+              </div>
+              <div>
+                <Label htmlFor="manage-opening">Opening previously billed</Label>
+                <MoneyInput
+                  id="manage-opening"
+                  value={draft.openingBilled}
+                  onChange={(event) => setDraft({ ...draft, openingBilled: event.target.value })}
+                />
+              </div>
+            </div>
+
+            <div className="text-[13px] uppercase tracking-[0.06em] text-sub font-bold mt-5 mb-2">
+              Performances
+            </div>
+            <TableCard minWidth={560}>
+              <thead>
+                <tr>
+                  <Th>Name</Th>
+                  <Th>Date</Th>
+                  <Th align="right">Amount</Th>
+                  <Th align="right" className="w-[160px]" />
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <Td colSpan={2} className={cn("text-sub", DENSE_CELL)}>
+                    Base value
+                  </Td>
+                  <Td align="right" numeric className={DENSE_CELL}>
+                    {formatMoney(row.scheduledValueCents)}
+                  </Td>
+                  <Td className={DENSE_CELL} />
+                </tr>
+                {row.performances.map((performance, index) => {
+                  const label = performance.name ?? `Performance ${index + 1}`;
+                  const edit =
+                    editingPerformance?.id === performance.id ? editingPerformance : null;
+                  const saveOnEnter = (event: KeyboardEvent<HTMLInputElement>) => {
+                    // The Save button is disabled while pending; Enter has to respect that too.
+                    if (event.key === "Enter" && !pending) saveEditedPerformance();
+                  };
+                  return (
+                    <tr key={performance.id}>
+                      <Td className={DENSE_CELL}>
+                        {edit ? (
+                          <Input
+                            aria-label="Performance name"
+                            autoFocus
+                            value={edit.name}
+                            placeholder="Performance name"
+                            onChange={(event) =>
+                              setEditingPerformance({ ...edit, name: event.target.value })
+                            }
+                            onKeyDown={saveOnEnter}
+                            className={DENSE_CONTROL}
+                          />
+                        ) : (
+                          label
+                        )}
+                      </Td>
+                      <Td className={cn("text-sub", DENSE_CELL)}>
+                        {edit ? (
+                          <Input
+                            aria-label="Performance date"
+                            type="date"
+                            value={edit.date}
+                            onChange={(event) =>
+                              setEditingPerformance({ ...edit, date: event.target.value })
+                            }
+                            onKeyDown={saveOnEnter}
+                            className={DENSE_CONTROL}
+                          />
+                        ) : performance.date ? (
+                          formatDateUS(performance.date)
+                        ) : (
+                          "—"
+                        )}
+                      </Td>
+                      <Td align="right" numeric className={DENSE_CELL}>
+                        {edit && !performance.amountLocked ? (
+                          <MoneyInput
+                            aria-label="Performance amount"
+                            value={edit.amount}
+                            onChange={(event) =>
+                              setEditingPerformance({ ...edit, amount: event.target.value })
+                            }
+                            onKeyDown={saveOnEnter}
+                            className={DENSE_CONTROL}
+                          />
+                        ) : (
+                          <>
+                            {formatMoney(performance.amountCents)}
+                            {edit && (
+                              <div className="text-[13px] text-sub">
+                                Part of the contract value. Delete and re-add to change.
+                              </div>
+                            )}
+                          </>
+                        )}
+                      </Td>
+                      <Td align="right" className={cn("whitespace-nowrap", DENSE_CELL)}>
+                        {edit ? (
+                          <>
+                            <Button
+                              className={DENSE_BUTTON}
+                              disabled={pending}
+                              onClick={saveEditedPerformance}
+                            >
+                              Save
+                            </Button>
+                            <Button
+                              variant="quiet"
+                              className={DENSE_BUTTON}
+                              disabled={pending}
+                              onClick={() => setEditingPerformance(null)}
+                            >
+                              Cancel
+                            </Button>
+                          </>
+                        ) : (
+                          <>
+                            <Button
+                              variant="quiet"
+                              className={DENSE_BUTTON}
+                              disabled={pending}
+                              onClick={() => startEditPerformance(performance)}
+                            >
+                              Edit
+                            </Button>
+                            <ConfirmButton
+                              variant="quiet"
+                              className={DENSE_BUTTON}
+                              disabled={pending}
+                              title={`Delete ${label}?`}
+                              body={`${formatMoney(performance.amountCents)} is removed from ${row.name}'s Scheduled Value. This cannot be undone.`}
+                              confirmLabel="Delete performance"
+                              onConfirm={() => removePerformance(performance.id)}
+                            >
+                              Delete
+                            </ConfirmButton>
+                          </>
+                        )}
+                      </Td>
+                    </tr>
+                  );
+                })}
+                <tr>
+                  <Td colSpan={2} className={cn("font-bold border-t-2 border-ink", DENSE_CELL)}>
+                    Total
+                  </Td>
+                  <Td
+                    align="right"
+                    numeric
+                    className={cn("font-bold border-t-2 border-ink", DENSE_CELL)}
+                  >
+                    {formatMoney(row.totalScheduledValueCents)}
+                  </Td>
+                  <Td className={cn("border-t-2 border-ink", DENSE_CELL)} />
+                </tr>
+              </tbody>
+            </TableCard>
+
+            <div className="flex flex-wrap items-end gap-2.5 mt-3">
+              <div className="flex-1 min-w-[160px]">
+                <Input
+                  aria-label="New performance name"
+                  value={newPerformance.name}
+                  placeholder="Performance name"
+                  onChange={(event) =>
+                    setNewPerformance({ ...newPerformance, name: event.target.value })
+                  }
+                />
+              </div>
+              <div className="w-[165px]">
+                <Input
+                  aria-label="New performance date"
+                  type="date"
+                  value={newPerformance.date}
+                  onChange={(event) =>
+                    setNewPerformance({ ...newPerformance, date: event.target.value })
+                  }
+                />
+              </div>
+              <div className="w-[110px]">
+                <MoneyInput
+                  aria-label="New performance amount"
+                  value={newPerformance.amount}
+                  placeholder="0.00"
+                  onChange={(event) =>
+                    setNewPerformance({ ...newPerformance, amount: event.target.value })
+                  }
+                />
+              </div>
+              <Button
+                className="min-h-9 px-3.5 text-[15px]"
+                disabled={pending}
+                onClick={() => addPerformance(row.id)}
+              >
+                Add
+              </Button>
+            </div>
+
+            <div className="flex justify-end mt-5 pt-4 border-t border-line">
+              <Button
+                variant="secondary"
+                className="min-h-9 px-3.5 text-[15px]"
+                disabled={pending}
+                onClick={() =>
+                  run(
+                    () => saveLineItemAction({ id: row.id, ...draft }),
+                    undefined,
+                    "Line item saved",
+                  )
+                }
+              >
+                Save line item
               </Button>
             </div>
           </Modal>
@@ -214,131 +470,58 @@ export function LineItemsManager({ rows }: { rows: LineItemRow[] }) {
             <Th align="right">Scheduled Value</Th>
             <Th align="right">Performances</Th>
             <Th align="right">Opening Previously Billed</Th>
-            <Th align="right" className="w-[210px]">
+            <Th align="right" className="w-[160px]">
               Actions
             </Th>
           </tr>
         </thead>
         <tbody>
-          {rows.map((row, index) => {
-            const editing = editingId === row.id;
-            return (
-              <tr key={row.id}>
-                <Td className="pl-4 pr-2 text-sub select-none">
-                  <div className="flex flex-col leading-none">
-                    <button
-                      type="button"
-                      aria-label={`Move ${row.name} up`}
-                      disabled={pending || index === 0}
-                      onClick={() => move(index, -1)}
-                      className="px-1 text-sub hover:text-ink disabled:opacity-30"
-                    >
-                      ▲
-                    </button>
-                    <button
-                      type="button"
-                      aria-label={`Move ${row.name} down`}
-                      disabled={pending || index === rows.length - 1}
-                      onClick={() => move(index, 1)}
-                      className="px-1 text-sub hover:text-ink disabled:opacity-30"
-                    >
-                      ▼
-                    </button>
-                  </div>
-                </Td>
-
-                {editing ? (
-                  <>
-                    <Td className="py-3">
-                      <Input
-                        value={draft.name}
-                        aria-label="Line item name"
-                        onChange={(event) => setDraft({ ...draft, name: event.target.value })}
-                      />
-                    </Td>
-                    <Td align="right" className="py-3">
-                      <MoneyInput
-                        value={draft.scheduledValue}
-                        aria-label="Scheduled value (base only, excludes performances)"
-                        onChange={(event) =>
-                          setDraft({ ...draft, scheduledValue: event.target.value })
-                        }
-                      />
-                      {/* The column above reads base + every performance (R9.5); this field
-                          edits only the base, so it starts from 0.00 on a line item that is
-                          all performance — a visible label, not just the aria-label, so typing
-                          the column's own total back in here doesn't double it. */}
-                      <div className="text-xs text-sub mt-1">Base value only</div>
-                    </Td>
-                    <Td align="right" className="py-3 text-sub" numeric>
-                      {/* Not editable here — performances are added/removed from the "Add" popup. */}
-                      {performanceTotal(row) > 0 ? formatMoney(performanceTotal(row)) : "—"}
-                    </Td>
-                    <Td align="right" className="py-3">
-                      <MoneyInput
-                        value={draft.openingBilled}
-                        aria-label="Opening previously billed"
-                        onChange={(event) =>
-                          setDraft({ ...draft, openingBilled: event.target.value })
-                        }
-                      />
-                    </Td>
-                    <Td align="right" className="py-3">
-                      <div className="flex gap-3.5 items-center justify-end">
-                        <Button
-                          variant="secondary"
-                          className="min-h-11 px-4 text-[15px]"
-                          disabled={pending}
-                          onClick={() =>
-                            run(
-                              () => saveLineItemAction({ id: row.id, ...draft }),
-                              () => setEditingId(null),
-                              "Line item saved",
-                            )
-                          }
-                        >
-                          Save
-                        </Button>
-                        <Button variant="quiet" onClick={() => setEditingId(null)}>
-                          Cancel
-                        </Button>
-                      </div>
-                    </Td>
-                  </>
-                ) : (
-                  <>
-                    <Td>{row.name}</Td>
-                    <Td align="right" numeric>
-                      {formatMoney(row.totalScheduledValueCents)}
-                    </Td>
-                    <Td align="right" numeric className="text-sub">
-                      {performanceTotal(row) > 0 ? formatMoney(performanceTotal(row)) : "—"}
-                    </Td>
-                    <Td align="right" numeric>
-                      {formatMoney(row.openingBilledCents)}
-                    </Td>
-                    <Td align="right">
-                      <div className="flex gap-4 justify-end">
-                        <Button variant="quiet" onClick={() => startEdit(row)} disabled={pending}>
-                          Edit
-                        </Button>
-                        <Button
-                          variant="quiet"
-                          onClick={() => setPerformanceRowId(row.id)}
-                          disabled={pending}
-                        >
-                          Add
-                        </Button>
-                        <Button variant="quiet" onClick={() => remove(row)} disabled={pending}>
-                          Delete
-                        </Button>
-                      </div>
-                    </Td>
-                  </>
-                )}
-              </tr>
-            );
-          })}
+          {rows.map((row, index) => (
+            <tr key={row.id}>
+              <Td className="pl-4 pr-2 text-sub select-none">
+                <div className="flex flex-col leading-none">
+                  <button
+                    type="button"
+                    aria-label={`Move ${row.name} up`}
+                    disabled={pending || index === 0}
+                    onClick={() => move(index, -1)}
+                    className="px-1 text-sub hover:text-ink disabled:opacity-30"
+                  >
+                    ▲
+                  </button>
+                  <button
+                    type="button"
+                    aria-label={`Move ${row.name} down`}
+                    disabled={pending || index === rows.length - 1}
+                    onClick={() => move(index, 1)}
+                    className="px-1 text-sub hover:text-ink disabled:opacity-30"
+                  >
+                    ▼
+                  </button>
+                </div>
+              </Td>
+              <Td>{row.name}</Td>
+              <Td align="right" numeric>
+                {formatMoney(row.totalScheduledValueCents)}
+              </Td>
+              <Td align="right" numeric className="text-sub">
+                {performanceTotal(row) > 0 ? formatMoney(performanceTotal(row)) : "—"}
+              </Td>
+              <Td align="right" numeric>
+                {formatMoney(row.openingBilledCents)}
+              </Td>
+              <Td align="right">
+                <div className="flex gap-4 justify-end">
+                  <Button variant="quiet" onClick={() => openManage(row)} disabled={pending}>
+                    Manage
+                  </Button>
+                  <Button variant="quiet" onClick={() => remove(row)} disabled={pending}>
+                    Delete
+                  </Button>
+                </div>
+              </Td>
+            </tr>
+          ))}
         </tbody>
       </TableCard>
 

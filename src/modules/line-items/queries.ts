@@ -8,7 +8,19 @@ import { and, asc, count, eq } from "drizzle-orm";
 import { db } from "@/src/db";
 import { expenses, lineItemPerformances, lineItems, recurringItems } from "@/src/db/schema";
 
-export type LineItemPerformanceRow = { id: string; amountCents: number };
+/** `name`/`date` are null for a performance that predates those columns (D-92) — rendered
+ *  as a positional fallback and a blank date, never guessed. */
+export type LineItemPerformanceRow = {
+  id: string;
+  amountCents: number;
+  name: string | null;
+  date: string | null;
+  /** True for a performance already inside the org's contract value (`countsTowardContractTotal`
+   *  false — the migrated Performance Grant). Its amount can't be edited: a boolean flag can't
+   *  express "only the delta is new money", so an edit would make the contract total and the
+   *  sum of scheduled values disagree. Delete and re-add to change it (D-92). */
+  amountLocked: boolean;
+};
 
 export type LineItemRow = {
   id: string;
@@ -50,6 +62,9 @@ export async function loadLineItemRows(orgId: string): Promise<LineItemRow[]> {
         id: lineItemPerformances.id,
         lineItemId: lineItemPerformances.lineItemId,
         amountCents: lineItemPerformances.amountCents,
+        name: lineItemPerformances.name,
+        date: lineItemPerformances.date,
+        countsTowardContractTotal: lineItemPerformances.countsTowardContractTotal,
       })
       .from(lineItemPerformances)
       .where(eq(lineItemPerformances.orgId, orgId))
@@ -66,7 +81,13 @@ export async function loadLineItemRows(orgId: string): Promise<LineItemRow[]> {
   const performancesByLineItem = new Map<string, LineItemPerformanceRow[]>();
   for (const row of performances) {
     const list = performancesByLineItem.get(row.lineItemId) ?? [];
-    list.push({ id: row.id, amountCents: row.amountCents });
+    list.push({
+      id: row.id,
+      amountCents: row.amountCents,
+      name: row.name,
+      date: row.date,
+      amountLocked: !row.countsTowardContractTotal,
+    });
     performancesByLineItem.set(row.lineItemId, list);
   }
 

@@ -6,11 +6,12 @@
  * Renaming needs no cascade: expenses, recurring items and vendor defaults all reference
  * a line item by id, so a rename is a single update and history follows automatically.
  */
-import { and, count, eq, inArray, sql, sum } from "drizzle-orm";
+import { and, count, eq, inArray, or, sql, sum } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
 import { db } from "@/src/db";
 import { expenses, lineItemPerformances, lineItems, recurringItems } from "@/src/db/schema";
+import { isValidIsoDate } from "@/src/domain/dates";
 import { isDuplicateName, planLineItemDelete } from "@/src/domain/line-item-rules";
 import { parseMoneyToCents } from "@/src/domain/money";
 import { UI } from "@/src/domain/strings";
@@ -190,38 +191,47 @@ export async function reorderLineItemsAction(orderedIds: string[]): Promise<Acti
 }
 
 /**
- * Add a performance to a line item (m08).
+ * Add a performance to a line item (m08, D-92).
  *
- * Just an amount — no label or date. It rolls straight into `scheduledValueCents` via
- * `loadLineItemBudgets`, so every screen and document that already reads that number picks it
- * up without change.
+ * A name, amount and date, all given by whoever adds it. Only the amount rolls into
+ * `scheduledValueCents` via `loadLineItemBudgets` — name/date are display-only, so every
+ * screen and document that already reads the total picks up the new amount without change.
  */
-export async function addLineItemPerformanceAction(
-  lineItemId: string,
-  amount: string,
-): Promise<ActionResult> {
+export async function addLineItemPerformanceAction(input: {
+  lineItemId: string;
+  name: string;
+  amount: string;
+  date: string;
+}): Promise<ActionResult> {
   const current = await actionSession();
   if ("expired" in current) return current.expired;
-  if (!isUuid(lineItemId)) return fail("That line item no longer exists.");
+  if (!isUuid(input.lineItemId)) return fail("That line item no longer exists.");
 
-  const amountCents = parseMoneyToCents(amount);
+  const name = input.name.trim();
+  if (!name) return fail("Enter a name for this performance.");
+
+  if (!isValidIsoDate(input.date)) return fail("Enter a valid date.");
+
+  const amountCents = parseMoneyToCents(input.amount);
   if (amountCents === null || amountCents <= 0) return fail("Enter a performance amount.");
 
   const owned = await db
     .select({ id: lineItems.id })
     .from(lineItems)
-    .where(and(eq(lineItems.id, lineItemId), eq(lineItems.orgId, current.orgId)))
+    .where(and(eq(lineItems.id, input.lineItemId), eq(lineItems.orgId, current.orgId)))
     .limit(1);
   if (owned.length === 0) return fail("That line item no longer exists.");
 
   const [{ value: maxSort }] = await db
     .select({ value: sql<number>`coalesce(max(${lineItemPerformances.sortOrder}), -1)` })
     .from(lineItemPerformances)
-    .where(eq(lineItemPerformances.lineItemId, lineItemId));
+    .where(eq(lineItemPerformances.lineItemId, input.lineItemId));
 
   await db.insert(lineItemPerformances).values({
     orgId: current.orgId,
-    lineItemId,
+    lineItemId: input.lineItemId,
+    name,
+    date: input.date,
     amountCents,
     sortOrder: Number(maxSort) + 1,
     // Real new money the org's contract value hasn't caught up to yet (D-82) — unlike the
@@ -233,7 +243,61 @@ export async function addLineItemPerformanceAction(
   return ok();
 }
 
-/** Remove one performance entry — a typo'd amount is corrected by deleting and re-adding. */
+/** Edit an existing performance's name, amount or date (D-92) — a typo no longer has to be
+ *  corrected by deleting and re-adding, which lost the original add date/sort position. */
+export async function saveLineItemPerformanceAction(input: {
+  id: string;
+  name: string;
+  amount: string;
+  date: string;
+}): Promise<ActionResult> {
+  const current = await actionSession();
+  if ("expired" in current) return current.expired;
+  if (!isUuid(input.id)) return fail("That performance no longer exists.");
+
+  const name = input.name.trim();
+  if (!name) return fail("Enter a name for this performance.");
+
+  if (!isValidIsoDate(input.date)) return fail("Enter a valid date.");
+
+  const amountCents = parseMoneyToCents(input.amount);
+  if (amountCents === null || amountCents <= 0) return fail("Enter a performance amount.");
+
+  // A performance already inside the contract value (`countsTowardContractTotal` false, D-82)
+  // keeps its amount: the flag can't say "only the delta is new money", so an edit would split
+  // the contract total from the sum of scheduled values. Checked in the same statement as the
+  // write rather than read-then-update, so nothing can slip between the check and the change.
+  const updated = await db
+    .update(lineItemPerformances)
+    .set({ name, date: input.date, amountCents })
+    .where(
+      and(
+        eq(lineItemPerformances.id, input.id),
+        eq(lineItemPerformances.orgId, current.orgId),
+        or(
+          eq(lineItemPerformances.countsTowardContractTotal, true),
+          eq(lineItemPerformances.amountCents, amountCents),
+        ),
+      ),
+    )
+    .returning({ id: lineItemPerformances.id });
+  if (updated.length === 0) {
+    const [exists] = await db
+      .select({ id: lineItemPerformances.id })
+      .from(lineItemPerformances)
+      .where(and(eq(lineItemPerformances.id, input.id), eq(lineItemPerformances.orgId, current.orgId)));
+    return fail(
+      exists
+        ? "This performance is already part of the contract value, so its amount can't be edited. Delete it and add a new one to change the amount."
+        : "That performance no longer exists.",
+    );
+  }
+
+  revalidateAll();
+  return ok();
+}
+
+/** Remove one performance entry. */
 export async function deleteLineItemPerformanceAction(id: string): Promise<ActionResult> {
   const current = await actionSession();
   if ("expired" in current) return current.expired;
