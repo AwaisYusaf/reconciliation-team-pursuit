@@ -4,10 +4,10 @@
 On-screen preview of each line item's Breakdown document exactly as it will print, plus Word/PDF downloads. The preview *is* the trust-builder: what Misty sees here is byte-for-byte what the City receives inside the packet.
 
 ## Scope
-Route `/r/cover-sheets`. Line item selector (each + All), faithful preview per `02-outputs/cover-sheet-spec.md`, `Download Word` / `Download PDF` buttons, gate handling.
+Route `/r/cover-sheets`, scoped to the header's selected funding source (§14, D-93) — this screen requires one source picked, and shows `PickFundingSource` when "All" is selected. Line item selector (each + All, from that source only), faithful preview per `02-outputs/cover-sheet-spec.md`, `Download Word` / `Download PDF` buttons, gate handling.
 
 ## Data
-Reads expenses + documents per (month, line item); calls the cover-sheet generator for downloads. Rules R6.*, R4.3.
+Reads that source's expenses + documents per (month, line item); calls the cover-sheet generator for downloads, passing the source id. Rules R6.*, R4.3, §14.
 
 ## Behavior
 - Preview renders the document 1:1: title, yellow-header Name/Role/Amount table (all cells centered), yellow total cell, canonical see-below line, bold `{Name}:` headings with yellow inline notes (custom + tax note per R6.5), narrative paragraphs, proof images (real thumbnails from S3, contained, full column width). Preview images re-presign automatically on load error (expired URLs) — or are served via the authenticated thumbnail proxy.
@@ -16,7 +16,7 @@ Reads expenses + documents per (month, line item); calls the cover-sheet generat
 - Empty line item: dashed empty state, downloads disabled.
 
 ## Server surface
-`downloadCoverSheet(lineItemId, month, format: docx|pdf)` → generated per spec, cached per R10.4, pinned on download per R10.6.
+`GET /api/downloads/cover-sheet?month=&lineItem=&source=&format=docx|pdf` (D-93, Phase 6) — `source` is required and verified server-side via `findFundingSource`, a 404 for a missing/foreign id. Generated per spec, cached per R10.4 (scoped, not hashed, by source), pinned on download per R10.6. Filename gains the source name once the org has more than one source (R10.3).
 
 ## Acceptance
 Preview visually matches the generated PDF for the same data; Word file opens in Word/Google Docs; February Analytical Support reproduction passes (cover-sheet-spec acceptance); gate blocks and lists correctly; per-sheet buttons appear in All mode.

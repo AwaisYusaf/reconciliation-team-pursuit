@@ -76,6 +76,7 @@ export default async function PacketPage() {
         actions={
           <SubmittedMarker
             month={month}
+            fundingSourceId={fundingSourceId}
             // The organisation's calendar date, not UTC's: a packet submitted at 9 pm in
             // Detroit would otherwise be stamped with tomorrow's date (R2.5, D-26).
             submittedAt={
@@ -195,11 +196,17 @@ export default async function PacketPage() {
             Page counts are estimated within about two pages of the final document.
           </p>
 
-          <PacketDownloadButtons month={month} blocked={blocked} deletedItems={deletedItems} />
+          <PacketDownloadButtons
+            month={month}
+            fundingSourceId={fundingSourceId}
+            blocked={blocked}
+            deletedItems={deletedItems}
+          />
         </Card>
 
         <MonthDocuments
           month={month}
+          fundingSourceId={fundingSourceId}
           documents={readiness.documents}
           monthLabel={label}
           hasBankStatement={readiness.hasBankStatement}

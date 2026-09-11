@@ -34,11 +34,13 @@ const DEFAULT_CATEGORY = "bank_statement";
  */
 export function MonthDocuments({
   month,
+  fundingSourceId,
   documents,
   monthLabel,
   hasBankStatement,
 }: {
   month: string;
+  fundingSourceId: string;
   documents: MonthDocumentRow[];
   monthLabel: string;
   hasBankStatement: boolean;
@@ -77,7 +79,7 @@ export function MonthDocuments({
 
   function remove(id: string) {
     startTransition(async () => {
-      if (reportResult(await removeMonthDocumentAction(id), "Document removed.")) {
+      if (reportResult(await removeMonthDocumentAction(id, fundingSourceId), "Document removed.")) {
         router.refresh();
       }
     });
@@ -154,6 +156,7 @@ export function MonthDocuments({
       >
         <input type="hidden" name="target" value="month" />
         <input type="hidden" name="month" value={month} />
+        <input type="hidden" name="fundingSourceId" value={fundingSourceId} />
 
         <div className="flex flex-col gap-1.5">
           <label id="month-doc-category-label" htmlFor="month-doc-category" className="text-[13px] font-medium text-muted">

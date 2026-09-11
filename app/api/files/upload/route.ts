@@ -3,6 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { isValidMonthKey } from "@/src/domain/dates";
 import { consume } from "@/src/services/rate-limit";
 import { getSession } from "@/src/services/auth/session";
+import { findFundingSource } from "@/src/modules/funding-sources/queries";
 import { ingestExpenseDocument, ingestMonthDocument } from "@/src/services/storage/documents";
 import { MAX_UPLOAD_BYTES, type DocumentScope } from "@/src/services/storage/keys";
 import type { MonthDocumentCategory } from "@/src/db/schema";
@@ -77,8 +78,13 @@ export async function POST(request: NextRequest) {
     if (!isValidMonthKey(month)) {
       return NextResponse.json({ ok: false, error: "That is not a valid month." }, { status: 400 });
     }
+    const fundingSourceId = String(form.get("fundingSourceId") ?? "");
+    if (!(await findFundingSource(session.orgId, fundingSourceId))) {
+      return NextResponse.json({ ok: false, error: "Choose a funding source." }, { status: 400 });
+    }
     const result = await ingestMonthDocument({
       orgId: session.orgId,
+      fundingSourceId,
       month,
       category,
       title: form.get("title") ? String(form.get("title")) : null,

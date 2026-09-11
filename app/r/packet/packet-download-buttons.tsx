@@ -30,10 +30,12 @@ type PendingKind = "packet" | "summary" | null;
 
 export function PacketDownloadButtons({
   month,
+  fundingSourceId,
   blocked,
   deletedItems,
 }: {
   month: string;
+  fundingSourceId: string;
   blocked: boolean;
   deletedItems: DeletedItem[];
 }) {
@@ -49,7 +51,7 @@ export function PacketDownloadButtons({
   // param gets the same 409 refusal the dialog exists to avoid.
   function hrefFor(kind: "packet" | "summary", confirmed: boolean) {
     const base = kind === "packet" ? "/api/downloads/packet" : "/api/downloads/summary";
-    return `${base}?month=${month}${confirmed ? "&confirmedDeletions=1" : ""}`;
+    return `${base}?month=${month}&source=${fundingSourceId}${confirmed ? "&confirmedDeletions=1" : ""}`;
   }
 
   function requestDownload(kind: "packet" | "summary") {

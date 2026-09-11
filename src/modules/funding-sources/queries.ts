@@ -16,10 +16,14 @@ import { isUuid } from "@/src/lib/ids";
  */
 type Executor = Database | Parameters<Parameters<Database["transaction"]>[0]>[0];
 
-// ponytail: bridge until Phase 2 passes the selected source; delete in Phase 4
 /**
  * The organisation's default funding source: lowest `sort_order`, then oldest, non-archived.
- * Every Phase 1 insert path that hasn't yet been taught to take an explicit source uses this.
+ *
+ * Was a stopgap for every Phase 1 insert path until each was taught to take an explicit
+ * source (Phases 2 and 4 retired all of those). What's left is its correct permanent use:
+ * `signUpAction`/`saveOnboardingLineItemsAction`/`completeOnboardingAction` in
+ * `src/modules/auth/actions.ts`, where there is by construction exactly one source — the one
+ * just created — so "the default" and "the only one" are the same thing.
  */
 export async function primaryFundingSourceId(orgId: string, reader: Executor = db): Promise<string> {
   const [row] = await reader

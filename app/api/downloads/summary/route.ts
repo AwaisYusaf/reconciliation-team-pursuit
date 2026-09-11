@@ -8,7 +8,7 @@ import { gateExpenses, loadMonthSnapshot } from "@/src/generation/month-snapshot
 import { buildSummaryWorkbook, summaryWorkbookName } from "@/src/generation/summary-xlsx";
 import { attachmentHeader } from "@/src/lib/http";
 import { deletedItemsRefusal, loadTrashedExpenses } from "@/src/modules/expenses/queries";
-import { loadSourceContext } from "@/src/modules/funding-sources/queries";
+import { findFundingSource, loadSourceContext } from "@/src/modules/funding-sources/queries";
 import { getSession } from "@/src/services/auth/session";
 import { consume } from "@/src/services/rate-limit";
 
@@ -59,12 +59,11 @@ export async function GET(request: Request) {
   const month = url.searchParams.get("month") ?? "";
   if (!isValidMonthKey(month)) return new NextResponse("Unknown month", { status: 400 });
 
-  // ponytail: session-scoped until Phase 6 takes ?source=
-  const { selectedId: fundingSourceId } = await loadSourceContext(
-    session.orgId,
-    session.activeFundingSourceId,
-  );
-  if (!fundingSourceId) return new NextResponse("Choose a funding source.", { status: 400 });
+  // The `source` query parameter is required and verified server-side; a missing, malformed or
+  // foreign id is the same 404, so a probe learns nothing.
+  const source = await findFundingSource(session.orgId, url.searchParams.get("source") ?? "");
+  if (!source) return new NextResponse("Unknown funding source", { status: 404 });
+  const fundingSourceId = source.id;
 
   // Re-checked here, not just in the packet screen's dialog — see the packet route's own
   // comment on this same gate. A promise enforced only in the browser is not enforced.
@@ -78,6 +77,9 @@ export async function GET(request: Request) {
   }
 
   const snapshot = await loadMonthSnapshot(session.orgId, fundingSourceId, month as MonthKey);
+
+  // Filenames gain the source name only once the organisation has more than one source (R10.3).
+  const { single } = await loadSourceContext(session.orgId, session.activeFundingSourceId);
 
   const blocking = blockingRecords(gateExpenses(snapshot.expenses));
   if (blocking.length > 0) {
@@ -120,7 +122,7 @@ export async function GET(request: Request) {
       "Content-Type": contentType,
       "Content-Length": String(body.byteLength),
       "Content-Disposition": attachmentHeader(
-        summaryWorkbookName(snapshot.docName, month as MonthKey),
+        summaryWorkbookName(snapshot.docName, month as MonthKey, single ? undefined : source.name),
       ),
       // A pinned artifact is immutable, but the URL is not: it serves whatever the current
       // data hashes to, so a shared cache must never answer for it.

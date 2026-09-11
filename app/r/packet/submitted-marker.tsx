@@ -18,9 +18,11 @@ import { clearMonthSubmittedAction, markMonthSubmittedAction } from "@/src/modul
 export function SubmittedMarker({
   month,
   submittedAt,
+  fundingSourceId,
 }: {
   month: string;
   submittedAt: string | null;
+  fundingSourceId: string;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -47,7 +49,7 @@ export function SubmittedMarker({
               the month as it stands then, not as it stood before.
             </>
           }
-          onConfirm={() => run(() => clearMonthSubmittedAction(month), "Submission mark removed.")}
+          onConfirm={() => run(() => clearMonthSubmittedAction(month, fundingSourceId), "Submission mark removed.")}
         >
           Undo
         </ConfirmButton>
@@ -58,7 +60,7 @@ export function SubmittedMarker({
   return (
     <button
       type="button"
-      onClick={() => run(() => markMonthSubmittedAction(month), "Month marked as submitted.")}
+      onClick={() => run(() => markMonthSubmittedAction(month, fundingSourceId), "Month marked as submitted.")}
       disabled={pending}
       className="text-sm text-muted underline disabled:opacity-60"
     >

@@ -10,7 +10,7 @@ import { buildDeliverablePacket } from "@/src/generation/packet-build";
 import { PacketError } from "@/src/generation/packet-pdf";
 import { attachmentHeader } from "@/src/lib/http";
 import { deletedItemsRefusal, loadTrashedExpenses } from "@/src/modules/expenses/queries";
-import { loadSourceContext } from "@/src/modules/funding-sources/queries";
+import { findFundingSource, loadSourceContext } from "@/src/modules/funding-sources/queries";
 import { getSession } from "@/src/services/auth/session";
 import { consume } from "@/src/services/rate-limit";
 
@@ -63,12 +63,11 @@ export async function GET(request: Request) {
   const month = url.searchParams.get("month") ?? "";
   if (!isValidMonthKey(month)) return new NextResponse("Unknown month", { status: 400 });
 
-  // ponytail: session-scoped until Phase 6 takes ?source=
-  const { selectedId: fundingSourceId } = await loadSourceContext(
-    session.orgId,
-    session.activeFundingSourceId,
-  );
-  if (!fundingSourceId) return new NextResponse("Choose a funding source.", { status: 400 });
+  // The `source` query parameter is required and verified server-side; a missing, malformed or
+  // foreign id is the same 404, so a probe learns nothing.
+  const source = await findFundingSource(session.orgId, url.searchParams.get("source") ?? "");
+  if (!source) return new NextResponse("Unknown funding source", { status: 404 });
+  const fundingSourceId = source.id;
 
   // The packet screen's dialog is the only place this confirmation is asked for — re-checked
   // here so a direct hit on this URL cannot skip the review a UI-only gate would only pretend
@@ -84,6 +83,9 @@ export async function GET(request: Request) {
 
   const snapshot = await loadMonthSnapshot(session.orgId, fundingSourceId, month as MonthKey);
   const label = monthLabel(month as MonthKey);
+
+  // Filenames gain the source name only once the organisation has more than one source (R10.3).
+  const { single } = await loadSourceContext(session.orgId, session.activeFundingSourceId);
 
   // A month with no expenses is downloadable — summary and month documents only — so the
   // organisation can still submit a period in which nothing was spent.
@@ -125,7 +127,9 @@ export async function GET(request: Request) {
     headers: {
       "Content-Type": contentType,
       "Content-Length": String(body.byteLength),
-      "Content-Disposition": attachmentHeader(packetFilename(snapshot.docName, label)),
+      "Content-Disposition": attachmentHeader(
+        packetFilename(snapshot.docName, label, single ? undefined : source.name),
+      ),
       "X-Content-Type-Options": "nosniff",
       "Cache-Control": "private, no-store",
     },

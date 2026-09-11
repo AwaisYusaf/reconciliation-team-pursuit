@@ -1,6 +1,8 @@
 # Output Spec — Cover Sheet ("Breakdown" document)
 
-One per line item per month, generated as **.docx** (canonical) and **.pdf** (converted from the docx — see architecture §generation). Golden references: `context/manual packet/*.docx` and packet pages 31–32, 43–44, 71–72, 94, 99. We match their look while applying the standardizations in domain-rules (R1.2, R6.3, no filler rows). Typography below was verified against the golden docx internals (docDefaults → theme minorHAnsi = Aptos; all table cells `jc=center`) — see review-2026-08-16 A2.
+One per line item per month **per funding source** (D-93, Phase 6) — the source's own line items only, never another source's — generated as **.docx** (canonical) and **.pdf** (converted from the docx — see architecture §generation). Golden references: `context/manual packet/*.docx` and packet pages 31–32, 43–44, 71–72, 94, 99. We match their look while applying the standardizations in domain-rules (R1.2, R6.3, no filler rows). Typography below was verified against the golden docx internals (docDefaults → theme minorHAnsi = Aptos; all table cells `jc=center`) — see review-2026-08-16 A2.
+
+`docName` in the title and filename below is the source's own `doc_name`, falling back to the organisation's if the source has none (R10.3, §14) — the printed **title** never gains a separate source-name segment, only the **filename** does, and only once the organisation has more than one source (R10.3, decision 2.12).
 
 ## Page & typography
 
@@ -48,7 +50,7 @@ The on-screen preview shows `No expenses recorded for {Month YYYY} in {Line Item
 
 ## File naming (R10.3)
 
-`{docName} {Month} {YYYY} {Line Item} Breakdown.docx` / `.pdf` — e.g. `Team Pursuit February 2026 Salary Breakdown.docx`. All parts pass the data-model sanitizer.
+`{docName} {Month} {YYYY} {Line Item} Breakdown.docx` / `.pdf` — e.g. `Team Pursuit February 2026 Salary Breakdown.docx`. Once the organisation has more than one funding source (archived included, D-93 decision 2.12): `{docName} {SourceName} {Month} {YYYY} {Line Item} Breakdown.docx` — e.g. `Team Pursuit Foundation grant February 2026 Salary Breakdown.docx`. All parts pass the data-model sanitizer.
 
 ## Gate
 

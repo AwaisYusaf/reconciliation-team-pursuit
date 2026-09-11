@@ -143,6 +143,7 @@ describe.skipIf(!canRun)("packet traceability (integration)", async () => {
     // fixture had none, which is why nothing caught a bank statement sitting at the front.
     const monthDoc = await ingestMonthDocument({
       orgId,
+      fundingSourceId,
       month: MONTH,
       category: "bank_statement",
       title: "February statement",

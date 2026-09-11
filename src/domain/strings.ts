@@ -177,26 +177,42 @@ export function sanitiseForFilename(value: string): string {
     .slice(0, 80);
 }
 
-/** `Team Pursuit February 2026 Salary Breakdown.docx` (R10.3). */
+/**
+ * `Team Pursuit February 2026 Salary Breakdown.docx` (R10.3). With a `sourceName` (given only
+ * when the organisation has more than one funding source), the source name is inserted between
+ * the document name and the month: `Team Pursuit Foundation grant February 2026 Salary
+ * Breakdown.docx`. Absent/empty `sourceName` is byte-identical to before.
+ */
 export function coverSheetFilename(
   docName: string,
   monthLabel: string,
   lineItemName: string,
   extension: "docx" | "pdf",
+  sourceName?: string | null,
 ): string {
-  return `${sanitiseForFilename(coverSheetTitle(docName, monthLabel, lineItemName))}.${extension}`;
+  const title = sourceName && sourceName.trim()
+    ? [docName, sourceName, monthLabel, lineItemName, "Breakdown"].filter((part) => part && part.trim()).join(" ")
+    : coverSheetTitle(docName, monthLabel, lineItemName);
+  return `${sanitiseForFilename(title)}.${extension}`;
 }
 
-/** `Team_Pursuit_February_2026_Summary.xlsx` (R10.3). */
-export function summaryFilename(docName: string, monthLabel: string): string {
-  return `${underscored(docName, monthLabel)}_Summary.xlsx`;
+/**
+ * `Team_Pursuit_February_2026_Summary.xlsx` (R10.3), or with a `sourceName`,
+ * `Team_Pursuit_Foundation_grant_February_2026_Summary.xlsx`.
+ */
+export function summaryFilename(docName: string, monthLabel: string, sourceName?: string | null): string {
+  return `${underscored(docName, sourceName, monthLabel)}_Summary.xlsx`;
 }
 
-/** `Team_Pursuit_February_2026_Packet.pdf` (R10.3). */
-export function packetFilename(docName: string, monthLabel: string): string {
-  return `${underscored(docName, monthLabel)}_Packet.pdf`;
+/**
+ * `Team_Pursuit_February_2026_Packet.pdf` (R10.3), or with a `sourceName`,
+ * `Team_Pursuit_Foundation_grant_February_2026_Packet.pdf`.
+ */
+export function packetFilename(docName: string, monthLabel: string, sourceName?: string | null): string {
+  return `${underscored(docName, sourceName, monthLabel)}_Packet.pdf`;
 }
 
-function underscored(docName: string, monthLabel: string): string {
-  return sanitiseForFilename(`${docName} ${monthLabel}`).replace(/ /g, "_");
+function underscored(docName: string, sourceName: string | null | undefined, monthLabel: string): string {
+  const parts = [docName, sourceName, monthLabel].filter((part) => part && part.trim());
+  return sanitiseForFilename(parts.join(" ")).replace(/ /g, "_");
 }

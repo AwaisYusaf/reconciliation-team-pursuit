@@ -4,10 +4,10 @@
 On-screen mirror of the Excel summary: contract-to-date position per line item + advance reconciliation, for the active month.
 
 ## Scope
-Route `/r/contract-summary`. Read-only table + reconciliation card + Excel download (same generator as m06).
+Route `/r/contract-summary`, scoped to the header's selected funding source (§14, D-93) — requires one source picked, shows `PickFundingSource` when "All" is selected. Read-only table + reconciliation card + Excel download (same generator as m06, for that source).
 
 ## Data
-Calculation service (R3, R7); `contract_settings`, `line_items` + `line_item_performances` (R9.5). No writes.
+Calculation service (R3, R7); the selected source's own row via `loadFundingSourceSettings` (D-93 — no longer `contract_settings`, which is deprecated), `line_items` + `line_item_performances` (R9.5), all scoped to that source. No writes.
 
 ## Behavior
 - Context strip: `Contract {number}` · `Contract total: {amount}` · `Base PO {n}` · `Performance PO {n}` · `Invoice period: {M/1/YYYY to M/lastday/YYYY}` (R7.3, R2.4). Items with empty settings are hidden. (The Performance PO field is metadata only — unrelated to R9.5's performances, which are amounts on individual line items.) `Contract total` is the configured contract value **plus every *new* line item performance total** when a value is configured (R7.3, D-82) — new meaning added since m08 shipped, real budget the org hasn't caught up to in Settings yet. A migrated performance (the Performance Grant included) is excluded: that money was already inside the configured value before it had a line item of its own, so adding it again would double it. Falls back to the sum of scheduled values (which already includes every performance, migrated or new) when unset.

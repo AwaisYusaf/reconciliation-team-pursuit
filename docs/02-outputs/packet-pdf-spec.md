@@ -1,6 +1,6 @@
 # Output Spec — Month-End Packet PDF
 
-The single merged, ordered, page-numbered PDF the org uploads to DocuSign. `{DocName}_{Month}_{YYYY}_Packet.pdf`. US Letter portrait throughout. Golden reference: the approved 133-page February packet — we keep its substance, replace its hand-assembled ordering with the canonical order below (client approved defining our own layout).
+The single merged, ordered, page-numbered PDF the org uploads to DocuSign, generated **per funding source per month** (D-93, Phase 6) — never containing another source's expenses, line items or month documents (Appendix A of `docs/PHASE-6.md`). `{DocName}_{Month}_{YYYY}_Packet.pdf`, or once the organisation has more than one funding source, `{DocName}_{SourceName}_{Month}_{YYYY}_Packet.pdf` (R10.3, decision 2.12). US Letter portrait throughout. Golden reference: the approved 133-page February packet — we keep its substance, replace its hand-assembled ordering with the canonical order below (client approved defining our own layout).
 
 ## Canonical section order
 

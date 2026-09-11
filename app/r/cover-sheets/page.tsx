@@ -105,6 +105,7 @@ export default async function CoverSheetsPage({
             docName={session.docName}
             monthLabelText={label}
             month={month}
+            fundingSourceId={fundingSourceId}
             lineItem={lineItem}
             expenses={expenses.filter((expense) => expense.lineItemId === lineItem.id)}
           />
@@ -119,12 +120,14 @@ function CoverSheetSection({
   docName,
   monthLabelText,
   month,
+  fundingSourceId,
   lineItem,
   expenses,
 }: {
   docName: string;
   monthLabelText: string;
   month: string;
+  fundingSourceId: string;
   lineItem: { id: string; name: string };
   expenses: ExpenseDetail[];
 }) {
@@ -169,7 +172,7 @@ function CoverSheetSection({
     };
   });
 
-  const href = `/api/downloads/cover-sheet?month=${month}&lineItem=${lineItem.id}`;
+  const href = `/api/downloads/cover-sheet?month=${month}&lineItem=${lineItem.id}&source=${fundingSourceId}`;
 
   return (
     <section>

@@ -115,4 +115,34 @@ describe("filenames (R10.3)", () => {
       "Team Pursuit March 2026 SocialServices Breakdown.docx",
     );
   });
+
+  it("inserts the source name between the doc name and the month when given (D-93 decision 2.12)", () => {
+    expect(
+      coverSheetFilename("Team Pursuit", "February 2026", "Salary", "docx", "Foundation grant"),
+    ).toBe("Team Pursuit Foundation grant February 2026 Salary Breakdown.docx");
+    expect(summaryFilename("Team Pursuit", "February 2026", "Foundation grant")).toBe(
+      "Team_Pursuit_Foundation_grant_February_2026_Summary.xlsx",
+    );
+    expect(packetFilename("Team Pursuit", "February 2026", "Foundation grant")).toBe(
+      "Team_Pursuit_Foundation_grant_February_2026_Packet.pdf",
+    );
+  });
+
+  it("omits the source segment for an empty, blank or absent sourceName — byte-identical to the single-source filename", () => {
+    expect(coverSheetFilename("Team Pursuit", "February 2026", "Salary", "docx", null)).toBe(
+      "Team Pursuit February 2026 Salary Breakdown.docx",
+    );
+    expect(coverSheetFilename("Team Pursuit", "February 2026", "Salary", "docx", "")).toBe(
+      "Team Pursuit February 2026 Salary Breakdown.docx",
+    );
+    expect(coverSheetFilename("Team Pursuit", "February 2026", "Salary", "docx", "   ")).toBe(
+      "Team Pursuit February 2026 Salary Breakdown.docx",
+    );
+    expect(summaryFilename("Team Pursuit", "February 2026", null)).toBe(
+      "Team_Pursuit_February_2026_Summary.xlsx",
+    );
+    expect(packetFilename("Team Pursuit", "February 2026", undefined)).toBe(
+      "Team_Pursuit_February_2026_Packet.pdf",
+    );
+  });
 });
