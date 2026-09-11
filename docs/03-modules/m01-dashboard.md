@@ -4,20 +4,21 @@
 Month-at-a-glance budget health per line item; the screen staff live on between entries.
 
 ## Scope
-Route `/r` (authenticated). Table of line items with derived figures for the active month; low-budget emphasis; primary actions to Add Expense and Month-End Packet.
+Route `/r` (authenticated). One `SourceBudgetSection` per funding source shown, each a table of line items with derived figures for the active month; low-budget emphasis; primary actions to Add Expense and Month-End Packet.
 
 ## Data
-Reads `line_items` + calculation service (R3.1–R3.6). No writes.
+Per source: reads that source's `line_items` + calculation service (R3.1–R3.6). No writes.
 
 ## Behavior
-- **Two views, never one table (R3.8).** A grant strip at the top — Original approved budget / Total spent to date / Total remaining, cumulative and with no month in it. Below it the month on its own: `Line Item | Opening Balance | Spent in {Mon} | Closing Balance`, which reconciles by subtraction and opens where the previous month closed (R3 definitions; money per R1.2).
-- When the month has been submitted and its figures have since changed, a notice names every category that moved and by how much (R3.9). The submitted packet is unchanged and still downloadable; both figures are true.
+- **Per-source sections (Phase 5, D-93).** One source selected (or a single-source org): one section, titled with the source name only when the org has more than one source — a single-source org sees exactly what it saw before this feature. With "All" selected: one section per **active** funding source, in `sort_order`, each with its own approved/spent/remaining cards, its own drift notice and its own line-item table. **There is no combined total across sources, anywhere** — different funders' money is not one budget (Appendix A §5).
+- **Two views per section, never one table (R3.8).** A grant strip at the top — Original approved budget / Total spent to date / Total remaining, cumulative and with no month in it. Below it the month on its own: `Line Item | Opening Balance | Spent in {Mon} | Closing Balance`, which reconciles by subtraction and opens where the previous month closed (R3 definitions; money per R1.2).
+- When the month has been submitted for a source and its figures have since changed, that section's notice names every category that moved and by how much (R3.9), scoped to that source's own submitted snapshot only. The submitted packet is unchanged and still downloadable; both figures are true.
 - Remaining cell when `remaining/budget < 0.10`: bold `#8A2A22` on `#F6E7E4` (R3.6). Negative remaining shows the same treatment.
-- Subtext: `Budget status for {Month YYYY}.` Buttons: primary `Add Expense`, secondary `View Month-End Packet`.
-- First-run banner + empty state come from m00.
+- Page subtext: `Budget status for {Month YYYY}.` Per-section buttons: primary `Add Expense`, secondary `View Month-End Packet` (with "All", `/r/packet` asks the visitor to pick a source).
+- First-run banner + empty state come from m00; the welcome banner stays page-level, not per section.
 
 ## Server surface
-One read: dashboard rows for (org, month).
+`loadSourceBudget(orgId, fundingSourceId, month)` (`src/modules/dashboard/queries.ts`): dashboard rows for one (org, source, month). Called once per section shown.
 
 ## Acceptance
 Figures match Excel sheet 1 for the same data (R10.2); switching month re-renders instantly; low-budget styling triggers at exactly <10%.
