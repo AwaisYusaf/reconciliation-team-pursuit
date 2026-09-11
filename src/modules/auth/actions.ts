@@ -12,15 +12,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 
 import { db } from "@/src/db";
-import {
-  contractSettings,
-  fundingSources,
-  lineItems,
-  organizations,
-  paymentSources,
-  supportingDocTypes,
-  users,
-} from "@/src/db/schema";
+import { fundingSources, lineItems, organizations, paymentSources, supportingDocTypes, users } from "@/src/db/schema";
 import { currentMonthKey, isValidMonthKey } from "@/src/domain/dates";
 import { parseMoneyToCents } from "@/src/domain/money";
 import { UI } from "@/src/domain/strings";
@@ -384,15 +376,8 @@ export async function completeOnboardingAction(
       };
 
   await db.transaction(async (tx) => {
-    // ponytail: dual-write until Phase 3 moves every reader to the funding source; delete this upsert then.
-    await tx
-      .insert(contractSettings)
-      .values({ orgId: session.orgId, ...values })
-      .onConflictDoUpdate({ target: contractSettings.orgId, set: values });
-
-    // Deviation from the Phase 1 plan text (which said "instead of contract_settings"):
-    // write the same fields to the source row too, so a newly-onboarded org's contract
-    // summary is never empty once Phase 3 stops reading contract_settings.
+    // Writes the contract fields straight to the org's (only, at onboarding time) funding
+    // source row — the sole reader of contract details as of Phase 3.
     const fundingSourceId = await primaryFundingSourceId(session.orgId, tx);
     await tx.update(fundingSources).set(values).where(eq(fundingSources.id, fundingSourceId));
 

@@ -1,28 +1,27 @@
 # m09 — Settings
 
 ## Purpose
-Everything the prototype hardcoded: org identity, contract/PO figures that print on documents, advances, the configurable label lists (D-19), vendor library management, account password.
+Everything the prototype hardcoded: org identity, one or more funding sources' contract/PO figures and reimbursement rules (D-93, Phase 6), the configurable label lists (D-19), vendor library management, account password.
 
 ## Scope
-Route `/r/settings`, sectioned single page (anchor nav or stacked cards). No month scoping.
+Route `/r/settings`, sidebar-sectioned single page (D-91). No month scoping.
 
 ## Data
-`organizations` (name, doc_name), `contract_settings` (all fields), `payment_sources` + `supporting_doc_types` CRUD (R5.1/R11.1), `vendor_defaults` CRUD, `users` (password change). Rules R7.3–R7.4 consume the figures. (The Performance Grant, R7.2, is retired — D-80 — replaced by per-line-item performances, m08.)
+`organizations` (name, doc_name), `funding_sources` (all contract/PO/advances/reimbursement fields — D-93; superseded `contract_settings`, which is kept in the database but no longer read or written), `payment_sources` + `supporting_doc_types` CRUD (R5.1/R11.1), `vendor_defaults` CRUD, `users` (password change). Rules R1.3, R7.3–R7.4 consume the figures. (The Performance Grant, R7.2, is retired — D-80 — replaced by per-line-item performances, m08.)
 
 ## Sections
 1. **Organisation** — Organisation name; Document display name (`doc_name`, non-empty, helper: "Printed on cover sheets and the packet — e.g. 'Team Pursuit'").
-2. **Contract** — Project name; Contract number; Base PO number; Performance PO number; Total contract value (optional, else derived); Contract start/end; Fiduciary name.
-3. **Advances** — Total advances received (helper: "Appears in the reconciliation section of the summary"). (The Performance Grant that used to live here is retired — R7.2, D-80 — add performances to a line item on m08 instead.)
-4. **Lists** — two editors side by side (D-19, SOW §1 configurability):
-   - *Payment sources:* rows `label | active toggle | Edit`, `+ Add payment source`. Deactivating hides from pickers; history keeps its snapshot (R5.1). At least one active source required.
+2. **Funding Sources** (D-93, replaces the old Contract and Advances sections) — a list of the organisation's funding sources (name, type, archived badge, Edit, Archive/Unarchive), and an add/edit form: name (required, unique per org), type (Grant/Donation/Line of credit/Other), document name (optional — placeholder shows the organisation's own doc name, used when blank), Project name, Contract number, Base PO number, Performance PO number, Total contract value (optional, else derived), Contract start/end, Fiduciary name, Advances received, and two checkboxes — "Does this funder reimburse sales tax?" / "…fees?" (moved here from payment sources, R1.3). Admins and managers may both create/edit/archive. Archiving requires at least one other active source remaining, and clears the organisation's active selection if it pointed at the archived source.
+3. **Lists** — two editors side by side (D-19, SOW §1 configurability):
+   - *Payment sources:* rows `label | active toggle | Edit`, `+ Add payment source`. Deactivating hides from pickers; history keeps its snapshot (R5.1). At least one active source required. As of D-93, a payment source means only *how* something was paid — it no longer carries tax/fee reimbursement rules.
    - *Supporting document types:* same editor, seeded six (R11.1).
-5. **Vendor library** — searchable table `Name | Default line item | Default description | Edit · Delete`; note: "The library learns automatically every time you save an expense."
-6. **Account** — email (read-only MVP), change password (current + new ×2, min 12 chars; changing it signs out other sessions — D-06).
+4. **Vendor library** — searchable table `Name | Default line item | Default description | Edit · Delete`; note: "The library learns automatically every time you save an expense."
+5. **Account** — email (read-only MVP), change password (current + new ×2, min 12 chars; changing it signs out other sessions — D-06).
 
 Each section saves independently with inline confirmation ("Saved").
 
 ## Server surface
-`updateOrganization`, `updateContractSettings`, `updateAdvancesReceived`, `savePaymentSource`, `deletePaymentSource` (deactivate-only when used), `saveSupportingDocType`, `deleteSupportingDocType` (same), `saveVendorDefault`, `deleteVendorDefault`, `changePassword`.
+`updateOrganisationAction`, `createFundingSourceAction`, `updateFundingSourceAction`, `archiveFundingSourceAction`, `unarchiveFundingSourceAction` (all in `src/modules/funding-sources/actions.ts`, `actionSession()` not `requireAdmin()` — D-93), `saveLabelAction`, `setLabelActiveAction`, `saveVendorAction`, `deleteVendorAction`, `changePasswordAction`.
 
 ## Acceptance
 Doc name flows into all generated filenames/titles; PO/advance edits change m07 + Excel immediately; list edits flow into m02 pickers and m03 cards while history keeps old labels; vendor edits affect autofill; password change re-hashes, keeps the current session, and invalidates others.

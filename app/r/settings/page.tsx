@@ -35,19 +35,24 @@ export default async function SettingsPage() {
       <SettingsSections
         email={session.email}
         organisation={{ name: data.org.name, docName: data.org.docName }}
-        contract={{
-          projectName: data.settings?.projectName ?? "",
-          contractNumber: data.settings?.contractNumber ?? "",
-          basePoNumber: data.settings?.basePoNumber ?? "",
-          performancePoNumber: data.settings?.performancePoNumber ?? "",
-          contractValue: money(data.settings?.contractValueCents ?? 0),
-          contractStart: data.settings?.contractStart ?? "",
-          contractEnd: data.settings?.contractEnd ?? "",
-          fiduciaryName: data.settings?.fiduciaryName ?? "",
-        }}
-        grant={{
-          advancesReceived: money(data.settings?.advancesReceivedCents ?? 0),
-        }}
+        fundingSources={data.fundingSources.map((source) => ({
+          id: source.id,
+          name: source.name,
+          type: source.type,
+          docName: source.docName ?? "",
+          projectName: source.projectName,
+          contractNumber: source.contractNumber,
+          basePoNumber: source.basePoNumber,
+          performancePoNumber: source.performancePoNumber,
+          contractValue: money(source.contractValueCents),
+          contractStart: source.contractStart ?? "",
+          contractEnd: source.contractEnd ?? "",
+          fiduciaryName: source.fiduciaryName,
+          advancesReceived: money(source.advancesReceivedCents),
+          taxReimbursable: source.taxReimbursable,
+          feesReimbursable: source.feesReimbursable,
+          archived: source.archivedAt !== null,
+        }))}
         paymentSources={data.sources.map((row) => ({
           id: row.id,
           label: row.label,

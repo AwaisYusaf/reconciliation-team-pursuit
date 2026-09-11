@@ -6,18 +6,22 @@ import { useState, useTransition } from "react";
 
 import { Button, buttonClassName } from "@/src/components/ui/button";
 import { Helper, Input, Label, MoneyInput } from "@/src/components/ui/field";
+import { Select } from "@/src/components/ui/select";
 import { Card, CARD_PADDING, DangerPanel, SectionTitle } from "@/src/components/ui/surfaces";
 import { reportResult } from "@/src/components/ui/toast";
 import { cn } from "@/src/lib/cn";
 import type { ActionResult } from "@/src/lib/action-result";
 import {
+  archiveFundingSourceAction,
+  createFundingSourceAction,
+  unarchiveFundingSourceAction,
+  updateFundingSourceAction,
+} from "@/src/modules/funding-sources/actions";
+import {
   changePasswordAction,
   saveLabelAction,
   setLabelActiveAction,
-  updateAdvancesReceivedAction,
-  updateContractAction,
   updateOrganisationAction,
-  updateReimbursementRulesAction,
 } from "@/src/modules/settings/actions";
 import { VendorTable, type LabelRow, type Vendor } from "./vendor-table";
 import { UsersManager, type OrgUser } from "./users/users-manager";
@@ -26,8 +30,7 @@ import { UsersManager, type OrgUser } from "./users/users-manager";
  *  the same content, just one section shown at a time instead of stacked. */
 const SECTION_IDS = [
   "organization",
-  "contract",
-  "advances",
+  "fundingSources",
   "labels",
   "vendors",
   "users",
@@ -37,12 +40,54 @@ type SectionId = (typeof SECTION_IDS)[number];
 
 const SECTION_LABELS: Record<SectionId, string> = {
   organization: "Organization",
-  contract: "Contract",
-  advances: "Advances",
+  fundingSources: "Funding Sources",
   labels: "Lists",
   vendors: "Vendor Library",
   users: "Users",
   account: "Account",
+};
+
+export type FundingSourceRow = {
+  id: string;
+  name: string;
+  type: string;
+  docName: string;
+  projectName: string;
+  contractNumber: string;
+  basePoNumber: string;
+  performancePoNumber: string;
+  contractValue: string;
+  contractStart: string;
+  contractEnd: string;
+  fiduciaryName: string;
+  advancesReceived: string;
+  taxReimbursable: boolean;
+  feesReimbursable: boolean;
+  archived: boolean;
+};
+
+const FUNDING_SOURCE_TYPES = [
+  ["grant", "Grant"],
+  ["donation", "Donation"],
+  ["line_of_credit", "Line of credit"],
+  ["other", "Other"],
+] as const;
+
+const EMPTY_FUNDING_SOURCE_DRAFT = {
+  name: "",
+  type: "grant" as string,
+  docName: "",
+  projectName: "",
+  contractNumber: "",
+  basePoNumber: "",
+  performancePoNumber: "",
+  contractValue: "0.00",
+  contractStart: "",
+  contractEnd: "",
+  fiduciaryName: "",
+  advancesReceived: "0.00",
+  taxReimbursable: false,
+  feesReimbursable: true,
 };
 
 /** One small stroke icon per section, matching the plain geometric style already used
@@ -56,16 +101,10 @@ function SectionIcon({ id }: { id: SectionId }) {
         <path d="M7.5 7h1.5M11 7h1.5M7.5 10h1.5M11 10h1.5M7.5 13h1.5M11 13h1.5" />
       </>
     ),
-    contract: (
+    fundingSources: (
       <>
         <path d="M6 3h6l3 3v11a1 1 0 01-1 1H6a1 1 0 01-1-1V4a1 1 0 011-1z" />
         <path d="M7.5 9h5M7.5 12h5M7.5 15h3" />
-      </>
-    ),
-    advances: (
-      <>
-        <circle cx="10" cy="10" r="7" />
-        <path d="M10 6.5v7M12 8.25c0-.97-.9-1.75-2-1.75s-2 .78-2 1.75.9 1.5 2 1.5 2 .78 2 1.75-.9 1.75-2 1.75-2-.78-2-1.75" />
       </>
     ),
     labels: (
@@ -116,8 +155,7 @@ function SectionIcon({ id }: { id: SectionId }) {
 export function SettingsSections({
   email,
   organisation,
-  contract,
-  grant,
+  fundingSources,
   paymentSources,
   supportingDocTypes,
   vendors,
@@ -129,8 +167,7 @@ export function SettingsSections({
 }: {
   email: string;
   organisation: { name: string; docName: string };
-  contract: Record<string, string>;
-  grant: Record<string, string>;
+  fundingSources: FundingSourceRow[];
   paymentSources: LabelRow[];
   supportingDocTypes: LabelRow[];
   /** A short preview only — the full, searchable, paginated library lives at /settings/vendors. */
@@ -149,8 +186,6 @@ export function SettingsSections({
   const [active, setActive] = useState<SectionId>("organization");
 
   const [org, setOrg] = useState(organisation);
-  const [contractDraft, setContractDraft] = useState(contract);
-  const [grantDraft, setGrantDraft] = useState(grant);
 
   function run(work: () => Promise<ActionResult<unknown>>, successMessage: string) {
     startTransition(async () => {
@@ -228,120 +263,15 @@ export function SettingsSections({
           </Card>
         )}
 
-        {active === "contract" && (
+        {active === "fundingSources" && (
           <Card className={CARD_PADDING}>
-            <SectionTitle className="mb-5">Contract</SectionTitle>
-            <div className="grid gap-5 lg:grid-cols-2">
-              {[
-                ["projectName", "Project name"],
-                ["contractNumber", "Contract number"],
-                ["basePoNumber", "Base PO number"],
-                ["performancePoNumber", "Performance PO number"],
-                ["fiduciaryName", "Fiduciary name"],
-              ].map(([key, label]) => (
-                <div key={key}>
-                  <Label htmlFor={key}>{label}</Label>
-                  <Input
-                    id={key}
-                    value={contractDraft[key] ?? ""}
-                    onChange={(event) =>
-                      setContractDraft({ ...contractDraft, [key]: event.target.value })
-                    }
-                  />
-                </div>
-              ))}
-              <div>
-                <Label htmlFor="contractValue">Total contract value</Label>
-                <MoneyInput
-                  id="contractValue"
-                  value={contractDraft.contractValue ?? ""}
-                  onChange={(event) =>
-                    setContractDraft({ ...contractDraft, contractValue: event.target.value })
-                  }
-                />
-                <Helper>Leave at 0.00 to use the sum of scheduled values.</Helper>
-              </div>
-              <div>
-                <Label htmlFor="contractStart">Contract start</Label>
-                <Input
-                  id="contractStart"
-                  type="date"
-                  value={contractDraft.contractStart ?? ""}
-                  onChange={(event) =>
-                    setContractDraft({ ...contractDraft, contractStart: event.target.value })
-                  }
-                />
-              </div>
-              <div>
-                <Label htmlFor="contractEnd">Contract end</Label>
-                <Input
-                  id="contractEnd"
-                  type="date"
-                  value={contractDraft.contractEnd ?? ""}
-                  onChange={(event) =>
-                    setContractDraft({ ...contractDraft, contractEnd: event.target.value })
-                  }
-                />
-              </div>
-            </div>
-            <div className="flex justify-end mt-6">
-              <Button
-                disabled={pending}
-                onClick={() =>
-                  run(
-                    () =>
-                      updateContractAction({
-                        projectName: contractDraft.projectName ?? "",
-                        contractNumber: contractDraft.contractNumber ?? "",
-                        basePoNumber: contractDraft.basePoNumber ?? "",
-                        performancePoNumber: contractDraft.performancePoNumber ?? "",
-                        contractValue: contractDraft.contractValue ?? "",
-                        contractStart: contractDraft.contractStart ?? "",
-                        contractEnd: contractDraft.contractEnd ?? "",
-                        fiduciaryName: contractDraft.fiduciaryName ?? "",
-                      }),
-                    "Contract saved",
-                  )
-                }
-              >
-                Save
-              </Button>
-            </div>
-          </Card>
-        )}
-
-        {active === "advances" && (
-          <Card className={CARD_PADDING}>
-            <SectionTitle className="mb-5">Advances</SectionTitle>
-            <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-              <div>
-                <Label htmlFor="advances">Total advances received</Label>
-                <MoneyInput
-                  id="advances"
-                  value={grantDraft.advancesReceived ?? ""}
-                  onChange={(event) =>
-                    setGrantDraft({ ...grantDraft, advancesReceived: event.target.value })
-                  }
-                />
-                <Helper>Appears in the reconciliation section of the summary.</Helper>
-              </div>
-            </div>
-            <div className="flex justify-end mt-6">
-              <Button
-                disabled={pending}
-                onClick={() =>
-                  run(
-                    () =>
-                      updateAdvancesReceivedAction({
-                        advancesReceived: grantDraft.advancesReceived ?? "",
-                      }),
-                    "Advances saved",
-                  )
-                }
-              >
-                Save
-              </Button>
-            </div>
+            <SectionTitle className="mb-5">Funding Sources</SectionTitle>
+            <FundingSourcesSection
+              fundingSources={fundingSources}
+              orgDocName={org.docName}
+              pending={pending}
+              run={run}
+            />
           </Card>
         )}
 
@@ -364,64 +294,14 @@ export function SettingsSections({
                 run={run}
               />
             </div>
-            <div className="mt-8 pt-7 border-t border-line">
-              <div className="text-[17px] font-serif font-bold text-ink mb-1.5">
-                What each funder reimburses
-              </div>
-              <Helper className="mb-4 max-w-[62ch]">
-                Funders differ: one pays the base expense but not sales tax, another allows the
-                whole receipt. This sets the starting point for new expenses on each source —
-                every expense keeps its own copy, so changing a rule here never restates anything
-                already claimed.
-              </Helper>
-              <div className="flex flex-col gap-2.5">
-                {paymentSources
-                  .filter((row) => row.active)
-                  .map((row) => (
-                    <div
-                      key={row.id}
-                      className="flex flex-wrap items-center gap-x-6 gap-y-2 border border-line rounded-[3px] px-4 py-3 bg-surface"
-                    >
-                      <div className="text-base text-ink flex-1 min-w-[220px]">{row.label}</div>
-                      {(
-                        [
-                          ["taxReimbursable", "Reimburses tax"],
-                          ["feesReimbursable", "Reimburses fees"],
-                        ] as const
-                      ).map(([field, label]) => (
-                        <label
-                          key={field}
-                          className="flex items-center gap-2.5 text-[15px] text-ink cursor-pointer"
-                        >
-                          <input
-                            type="checkbox"
-                            className="w-[18px] h-[18px] accent-accent"
-                            disabled={pending}
-                            checked={row[field] ?? false}
-                            onChange={(event) =>
-                              run(
-                                () =>
-                                  updateReimbursementRulesAction({
-                                    id: row.id,
-                                    taxReimbursable: row.taxReimbursable ?? false,
-                                    feesReimbursable: row.feesReimbursable ?? true,
-                                    [field]: event.target.checked,
-                                  }),
-                                "Reimbursement rules saved",
-                              )
-                            }
-                          />
-                          {label}
-                        </label>
-                      ))}
-                    </div>
-                  ))}
-              </div>
-            </div>
 
             <Helper className="mt-5">
-              Renames apply to menus going forward; saved expenses keep the label they were
-              entered with, which is what keeps their documents reproducible.
+              Payment sources are only how something was paid &mdash; &ldquo;Paid by
+              us&rdquo;, &ldquo;Paid directly by fiduciary&rdquo;. Tax and fee reimbursement
+              rules now live on each funding source, in
+              the Funding Sources section. Renames apply to menus going forward; saved expenses
+              keep the label they were entered with, which is what keeps their documents
+              reproducible.
             </Helper>
           </Card>
         )}
@@ -458,6 +338,267 @@ export function SettingsSections({
           </Card>
         )}
       </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------- funding sources */
+
+/** Sentinel `editingId` value meaning "the add form, not an edit". */
+const NEW_FUNDING_SOURCE = "new";
+
+function FundingSourcesSection({
+  fundingSources,
+  orgDocName,
+  pending,
+  run,
+}: {
+  fundingSources: FundingSourceRow[];
+  orgDocName: string;
+  pending: boolean;
+  run: (work: () => Promise<ActionResult<unknown>>, successMessage: string) => void;
+}) {
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [draft, setDraft] = useState(EMPTY_FUNDING_SOURCE_DRAFT);
+
+  function startAdd() {
+    setDraft(EMPTY_FUNDING_SOURCE_DRAFT);
+    setEditingId(NEW_FUNDING_SOURCE);
+  }
+
+  function startEdit(source: FundingSourceRow) {
+    setDraft({
+      name: source.name,
+      type: source.type,
+      docName: source.docName,
+      projectName: source.projectName,
+      contractNumber: source.contractNumber,
+      basePoNumber: source.basePoNumber,
+      performancePoNumber: source.performancePoNumber,
+      contractValue: source.contractValue,
+      contractStart: source.contractStart,
+      contractEnd: source.contractEnd,
+      fiduciaryName: source.fiduciaryName,
+      advancesReceived: source.advancesReceived,
+      taxReimbursable: source.taxReimbursable,
+      feesReimbursable: source.feesReimbursable,
+    });
+    setEditingId(source.id);
+  }
+
+  function save() {
+    const work =
+      editingId === NEW_FUNDING_SOURCE
+        ? () => createFundingSourceAction(draft)
+        : () => updateFundingSourceAction({ ...draft, id: editingId! });
+    run(work, editingId === NEW_FUNDING_SOURCE ? "Funding source added" : "Funding source saved");
+    setEditingId(null);
+  }
+
+  const activeCount = fundingSources.filter((s) => !s.archived).length;
+
+  return (
+    <div>
+      <div className="flex flex-col gap-3 mb-6">
+        {fundingSources.map((source) => (
+          <div
+            key={source.id}
+            className="flex flex-wrap items-center gap-3.5 justify-between border border-line rounded-[3px] px-4 py-3 bg-surface"
+          >
+            <div className="flex items-center gap-2.5 flex-1 min-w-[220px]">
+              <span className="text-base text-ink font-medium">{source.name}</span>
+              <span className="text-[13px] text-sub uppercase tracking-[0.04em]">
+                {FUNDING_SOURCE_TYPES.find(([value]) => value === source.type)?.[1] ?? source.type}
+              </span>
+              {source.archived && (
+                <span className="text-[13px] text-sub bg-section px-2 py-0.5 rounded-full">
+                  Archived
+                </span>
+              )}
+            </div>
+            <div className="flex items-center gap-3.5">
+              <Button variant="quiet" disabled={pending} onClick={() => startEdit(source)}>
+                Edit
+              </Button>
+              {source.archived ? (
+                <Button
+                  variant="quiet"
+                  disabled={pending}
+                  onClick={() =>
+                    run(() => unarchiveFundingSourceAction(source.id), "Funding source unarchived")
+                  }
+                >
+                  Unarchive
+                </Button>
+              ) : (
+                <Button
+                  variant="quiet"
+                  disabled={pending || activeCount <= 1}
+                  onClick={() =>
+                    run(() => archiveFundingSourceAction(source.id), "Funding source archived")
+                  }
+                >
+                  Archive
+                </Button>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {editingId === null ? (
+        <Button variant="secondary" disabled={pending} onClick={startAdd}>
+          Add funding source
+        </Button>
+      ) : (
+        <div className="border-t border-line pt-6">
+          <div className="grid gap-5 lg:grid-cols-2">
+            <div>
+              <Label htmlFor="fsName">Name</Label>
+              <Input
+                id="fsName"
+                value={draft.name}
+                onChange={(event) => setDraft({ ...draft, name: event.target.value })}
+              />
+            </div>
+            <div>
+              <Label htmlFor="fsType">Type</Label>
+              <Select
+                id="fsType"
+                value={draft.type}
+                onValueChange={(value) => setDraft({ ...draft, type: value })}
+              >
+                {FUNDING_SOURCE_TYPES.map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </Select>
+            </div>
+            <div>
+              <Label htmlFor="fsDocName">Document name</Label>
+              <Input
+                id="fsDocName"
+                placeholder={orgDocName}
+                value={draft.docName}
+                onChange={(event) => setDraft({ ...draft, docName: event.target.value })}
+              />
+              <Helper>Leave blank to use the organization&apos;s document name.</Helper>
+            </div>
+            <div>
+              <Label htmlFor="fsProjectName">Project name</Label>
+              <Input
+                id="fsProjectName"
+                value={draft.projectName}
+                onChange={(event) => setDraft({ ...draft, projectName: event.target.value })}
+              />
+            </div>
+            <div>
+              <Label htmlFor="fsContractNumber">Contract number</Label>
+              <Input
+                id="fsContractNumber"
+                value={draft.contractNumber}
+                onChange={(event) => setDraft({ ...draft, contractNumber: event.target.value })}
+              />
+            </div>
+            <div>
+              <Label htmlFor="fsBasePoNumber">Base PO number</Label>
+              <Input
+                id="fsBasePoNumber"
+                value={draft.basePoNumber}
+                onChange={(event) => setDraft({ ...draft, basePoNumber: event.target.value })}
+              />
+            </div>
+            <div>
+              <Label htmlFor="fsPerformancePoNumber">Performance PO number</Label>
+              <Input
+                id="fsPerformancePoNumber"
+                value={draft.performancePoNumber}
+                onChange={(event) =>
+                  setDraft({ ...draft, performancePoNumber: event.target.value })
+                }
+              />
+            </div>
+            <div>
+              <Label htmlFor="fsFiduciaryName">Fiduciary name</Label>
+              <Input
+                id="fsFiduciaryName"
+                value={draft.fiduciaryName}
+                onChange={(event) => setDraft({ ...draft, fiduciaryName: event.target.value })}
+              />
+            </div>
+            <div>
+              <Label htmlFor="fsContractValue">Total contract value</Label>
+              <MoneyInput
+                id="fsContractValue"
+                value={draft.contractValue}
+                onChange={(event) => setDraft({ ...draft, contractValue: event.target.value })}
+              />
+              <Helper>Leave at 0.00 to use the sum of scheduled values.</Helper>
+            </div>
+            <div>
+              <Label htmlFor="fsAdvancesReceived">Advances received</Label>
+              <MoneyInput
+                id="fsAdvancesReceived"
+                value={draft.advancesReceived}
+                onChange={(event) =>
+                  setDraft({ ...draft, advancesReceived: event.target.value })
+                }
+              />
+            </div>
+            <div>
+              <Label htmlFor="fsContractStart">Contract start</Label>
+              <Input
+                id="fsContractStart"
+                type="date"
+                value={draft.contractStart}
+                onChange={(event) => setDraft({ ...draft, contractStart: event.target.value })}
+              />
+            </div>
+            <div>
+              <Label htmlFor="fsContractEnd">Contract end</Label>
+              <Input
+                id="fsContractEnd"
+                type="date"
+                value={draft.contractEnd}
+                onChange={(event) => setDraft({ ...draft, contractEnd: event.target.value })}
+              />
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-2.5 mt-5">
+            <label className="flex items-center gap-2.5 text-[15px] text-ink cursor-pointer">
+              <input
+                type="checkbox"
+                className="w-[18px] h-[18px] accent-accent"
+                checked={draft.taxReimbursable}
+                onChange={(event) => setDraft({ ...draft, taxReimbursable: event.target.checked })}
+              />
+              Does this funder reimburse sales tax?
+            </label>
+            <label className="flex items-center gap-2.5 text-[15px] text-ink cursor-pointer">
+              <input
+                type="checkbox"
+                className="w-[18px] h-[18px] accent-accent"
+                checked={draft.feesReimbursable}
+                onChange={(event) =>
+                  setDraft({ ...draft, feesReimbursable: event.target.checked })
+                }
+              />
+              Does this funder reimburse fees?
+            </label>
+          </div>
+
+          <div className="flex justify-end gap-3 mt-6">
+            <Button variant="quiet" disabled={pending} onClick={() => setEditingId(null)}>
+              Cancel
+            </Button>
+            <Button disabled={pending} onClick={save}>
+              Save
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -122,8 +122,6 @@ async function main() {
       advancesReceivedCents: 66500000,
     };
 
-    await db.insert(schema.contractSettings).values({ orgId, ...CONTRACT }).onConflictDoNothing();
-
     // Every organisation's first funding source (Phase 6, D-93) — everything below attaches
     // to it. Rules hardcoded rather than imported from reimbursement.ts: that module carries
     // the `server-only` marker, which throws when this plain node script imports it (unlike
