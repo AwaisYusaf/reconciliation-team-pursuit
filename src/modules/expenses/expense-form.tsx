@@ -504,7 +504,7 @@ export function ExpenseForm({
         }}
       >
         <Card className="p-7 flex flex-col gap-[22px]">
-          <div className="relative">
+          <div className="relative" data-tour="add-expense-name">
             <Label htmlFor="name">Name</Label>
             <Input
               id="name"
@@ -675,7 +675,7 @@ export function ExpenseForm({
             </div>
           </div>
 
-          <div>
+          <div data-tour="add-expense-description">
             <Label htmlFor="description">
               Description / role — this exact text will print on the cover sheet
             </Label>
@@ -688,7 +688,7 @@ export function ExpenseForm({
             />
           </div>
 
-          <div className="flex flex-wrap gap-3.5">
+          <div className="flex flex-wrap gap-3.5" data-tour="add-expense-amounts">
             {(["subtotal", "tax", "fees"] as const).map((field) => (
               <div key={field} className="flex-1 min-w-[150px]">
                 <Label htmlFor={field} className="capitalize">
@@ -755,7 +755,10 @@ export function ExpenseForm({
             </div>
           )}
 
-          <div className="border-2 border-ink rounded-[3px] bg-surface px-[22px] py-5">
+          <div
+            className="border-2 border-ink rounded-[3px] bg-surface px-[22px] py-5"
+            data-tour="add-expense-reimbursable"
+          >
             <div className="text-2xl font-bold tabular-nums">
               Reimbursable amount: {formatMoney(reimbursableCents)}
             </div>
@@ -784,30 +787,32 @@ export function ExpenseForm({
             </div>
           )}
 
-          <UploadField
-            label="Proof of payment"
-            scope="proof"
-            queued={queued}
-            setQueued={setQueued}
-            attached={
-              existing?.documents.filter((doc) => doc.kind === "proof") ?? []
-            }
-            disabled={pending}
-            onRemoveAttached={(id) =>
-              startTransition(async () => {
-                if (
-                  reportResult(
-                    await removeExpenseDocumentAction(id),
-                    "File removed",
-                  )
-                ) {
-                  router.refresh();
-                }
-              })
-            }
-          />
+          <div data-tour="add-expense-proof">
+            <UploadField
+              label="Proof of payment"
+              scope="proof"
+              queued={queued}
+              setQueued={setQueued}
+              attached={
+                existing?.documents.filter((doc) => doc.kind === "proof") ?? []
+              }
+              disabled={pending}
+              onRemoveAttached={(id) =>
+                startTransition(async () => {
+                  if (
+                    reportResult(
+                      await removeExpenseDocumentAction(id),
+                      "File removed",
+                    )
+                  ) {
+                    router.refresh();
+                  }
+                })
+              }
+            />
+          </div>
 
-          <div className="border-t border-line pt-[22px]">
+          <div className="border-t border-line pt-[22px]" data-tour="add-expense-receipt">
             <UploadField
               label="Receipt / justification (receipt, invoice, or timesheet)"
               scope="receipt"

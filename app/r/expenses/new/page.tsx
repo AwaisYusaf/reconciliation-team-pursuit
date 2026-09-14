@@ -2,12 +2,15 @@ import { redirect } from "next/navigation";
 
 import { PickFundingSource } from "@/src/components/app-shell/pick-funding-source";
 import { PageTitle, Subtext } from "@/src/components/ui/surfaces";
+import { TourGuide } from "@/src/components/ui/tour";
 import { loadExpenseAmounts, loadLineItemBudgets } from "@/src/db/queries";
 import { allLineItemStats } from "@/src/domain/budget-math";
 import { monthLabel, monthWindow, todayIso } from "@/src/domain/dates";
 import { ExpenseForm } from "@/src/modules/expenses/expense-form";
 import { loadExpenseFormOptions } from "@/src/modules/expenses/queries";
 import { loadSourceContext } from "@/src/modules/funding-sources/queries";
+import { ADD_EXPENSE_TOUR_STEPS } from "@/src/modules/tours/add-expense-tour";
+import { hasSeenTour } from "@/src/modules/tours/queries";
 import { getSession } from "@/src/services/auth/session";
 
 export const metadata = { title: "Add Expense — Grant Expense Reconciliation" };
@@ -38,6 +41,7 @@ export default async function NewExpensePage() {
   const initialFundingSourceId =
     activeSources.find((source) => source.id === selectedId)?.id ?? activeSources[0].id;
   const month = session.activeMonth;
+  const seenAddExpenseTour = await hasSeenTour(session.userId, "add_expense");
   const options = await loadExpenseFormOptions(session.orgId, null);
 
   // Remaining per line item drives the live projection as the user types (R3.7). Line item
@@ -58,6 +62,12 @@ export default async function NewExpensePage() {
 
   return (
     <div>
+      {/* New-expense route only — never mounted on the edit page (spec: "not when editing"). */}
+      <TourGuide
+        tour="add_expense"
+        steps={ADD_EXPENSE_TOUR_STEPS}
+        alreadySeen={seenAddExpenseTour}
+      />
       <PageTitle className="mb-2">Add Expense</PageTitle>
       <Subtext className="mb-[30px] max-w-[60ch]">
         Enter one expense for {monthLabel(month)}. It will appear on the Expenses list and the
