@@ -177,11 +177,18 @@ export function sanitiseForFilename(value: string): string {
     .slice(0, 80);
 }
 
+/** The character budget `sanitiseForFilename` enforces on the stem (before the extension). */
+const STEM_MAX = 80;
+
 /**
  * `Team Pursuit February 2026 Salary Breakdown.docx` (R10.3). With a `sourceName` (given only
  * when the organisation has more than one funding source), the source name is inserted between
  * the document name and the month: `Team Pursuit Foundation grant February 2026 Salary
  * Breakdown.docx`. Absent/empty `sourceName` is byte-identical to before.
+ *
+ * The month, "Breakdown", and the **full** line item name are never shortened — two line
+ * items differing only in name must never collapse onto the same file (review fix). Only the
+ * source name gives way if the combined title would exceed the stem budget.
  */
 export function coverSheetFilename(
   docName: string,
@@ -190,16 +197,31 @@ export function coverSheetFilename(
   extension: "docx" | "pdf",
   sourceName?: string | null,
 ): string {
-  const source = filenameSourcePart(sourceName);
+  // Budget estimate only — sanitised copies never reach the output. `docName`/`monthLabel`/
+  // `lineItemName` are joined raw below and sanitised once, together, exactly like the no-
+  // source path: sanitising a part in isolation trims characters (a trailing period, say)
+  // that would have survived in the middle of the full joined string, which is not the same
+  // filename as before (a real regression this fix introduced and then caught: "Team/Pursuit
+  // & Co." must still keep its period).
+  const budgetParts = [
+    sanitiseForFilename(docName),
+    sanitiseForFilename(monthLabel),
+    sanitiseForFilename(lineItemName),
+    "Breakdown",
+  ].filter(Boolean);
+  const source = fitSourceName(sourceName, budgetParts);
   const title = source
-    ? [docName, source, monthLabel, lineItemName, "Breakdown"].filter((part) => part && part.trim()).join(" ")
+    ? [docName, source, monthLabel, lineItemName, "Breakdown"]
+        .filter((part) => part && `${part}`.trim())
+        .join(" ")
     : coverSheetTitle(docName, monthLabel, lineItemName);
-  return `${sanitiseForFilename(title)}.${extension}`;
+  return `${sanitiseForFilename(title).slice(0, STEM_MAX)}.${extension}`;
 }
 
 /**
  * `Team_Pursuit_February_2026_Summary.xlsx` (R10.3), or with a `sourceName`,
- * `Team_Pursuit_Foundation_grant_February_2026_Summary.xlsx`.
+ * `Team_Pursuit_Foundation_grant_February_2026_Summary.xlsx`. The month is never shortened;
+ * only the source name gives way (review fix — see `coverSheetFilename`).
  */
 export function summaryFilename(docName: string, monthLabel: string, sourceName?: string | null): string {
   return `${underscored(docName, sourceName, monthLabel)}_Summary.xlsx`;
@@ -207,29 +229,53 @@ export function summaryFilename(docName: string, monthLabel: string, sourceName?
 
 /**
  * `Team_Pursuit_February_2026_Packet.pdf` (R10.3), or with a `sourceName`,
- * `Team_Pursuit_Foundation_grant_February_2026_Packet.pdf`.
+ * `Team_Pursuit_Foundation_grant_February_2026_Packet.pdf`. The month is never shortened;
+ * only the source name gives way (review fix — see `coverSheetFilename`).
  */
 export function packetFilename(docName: string, monthLabel: string, sourceName?: string | null): string {
   return `${underscored(docName, sourceName, monthLabel)}_Packet.pdf`;
 }
 
 function underscored(docName: string, sourceName: string | null | undefined, monthLabel: string): string {
-  const parts = [docName, filenameSourcePart(sourceName), monthLabel].filter((part) => part && part.trim());
-  return sanitiseForFilename(parts.join(" ")).replace(/ /g, "_");
+  // Same reasoning as `coverSheetFilename`: sanitised copies are for the budget estimate
+  // only. The actual title is built from the raw parts and sanitised once, so a boundary
+  // character inside `docName` (a trailing period, say) is not treated as if it sat at the
+  // edge of the whole filename just because it sat at the edge of `docName` alone.
+  const budgetParts = [sanitiseForFilename(docName), sanitiseForFilename(monthLabel)].filter(Boolean);
+  const source = fitSourceName(sourceName, budgetParts);
+  const parts = [docName, source, monthLabel].filter((part) => part && `${part}`.trim());
+  return sanitiseForFilename(parts.join(" ")).slice(0, STEM_MAX).replace(/ /g, "_");
 }
 
-/** Longest source name a filename carries (characters, after sanitising). */
+/** Longest source name a filename carries (characters, after sanitising), even with room to spare. */
 const FILENAME_SOURCE_MAX = 30;
 
 /**
- * The source-name slice of a filename, shortened so it cannot crowd out what follows it.
+ * The source-name slice of a filename, shortened only as far as it has to be so the parts
+ * that must stay whole — `otherParts`, already sanitised — fit within `STEM_MAX` alongside it.
  *
- * `sanitiseForFilename` cuts the whole name at 80 characters, and the source sits in front of
- * the month: an uncapped long source name cut the month off, so February's and March's
- * packets downloaded under one filename. Only multi-source filenames carry a source at all,
- * so single-source filenames are untouched.
+ * Previously the whole assembled title was cut to 80 characters as one blind slice: a long
+ * source name pushed the month or the line item name (or "Breakdown" entirely) past the cut,
+ * so two different line items — or two different months — could download under the exact same
+ * filename. Now only the source shrinks, dropped altogether if there is no room for it at all.
+ * Cuts on a whole word where that does not throw away most of the available room, so a
+ * shortened source name reads as a name and not a mid-word fragment.
  */
-function filenameSourcePart(sourceName: string | null | undefined): string {
+function fitSourceName(sourceName: string | null | undefined, otherParts: readonly string[]): string {
   if (!sourceName || !sourceName.trim()) return "";
-  return sanitiseForFilename(sourceName).slice(0, FILENAME_SOURCE_MAX).trim();
+  const sanitised = sanitiseForFilename(sourceName);
+  if (!sanitised) return "";
+
+  const otherLength = otherParts.reduce((sum, part) => sum + part.length, 0);
+  // One space between every part once the source is inserted among them.
+  const budget = STEM_MAX - otherLength - otherParts.length;
+  if (budget <= 0) return "";
+
+  const cap = Math.min(budget, FILENAME_SOURCE_MAX);
+  if (sanitised.length <= cap) return sanitised;
+
+  const cut = sanitised.slice(0, cap);
+  const lastSpace = cut.lastIndexOf(" ");
+  const wholeWords = lastSpace > cap * 0.6 ? cut.slice(0, lastSpace) : cut;
+  return wholeWords.trim();
 }

@@ -11,6 +11,7 @@ import { formatDateUS, todayIso } from "@/src/domain/dates";
 import { reimbursableCents } from "@/src/domain/money";
 import { ExpenseForm } from "@/src/modules/expenses/expense-form";
 import { loadExpense, loadExpenseFormOptions } from "@/src/modules/expenses/queries";
+import { loadSourceContext } from "@/src/modules/funding-sources/queries";
 import { getSession } from "@/src/services/auth/session";
 
 export const metadata = { title: "Edit Expense — Grant Expense Reconciliation" };
@@ -31,6 +32,13 @@ export default async function EditExpensePage({
   // Scoped to the expense's OWN source, not the header selection: an expense on a
   // non-selected (or archived) source must still be editable (§6).
   const fundingSourceId = expense.fundingSourceId;
+
+  // The header's *current* selection — separate from the expense's own source above — so the
+  // form can tell after saving whether it needs to follow the header there (review fix).
+  const { selectedId: headerSelectedSourceId } = await loadSourceContext(
+    session.orgId,
+    session.activeFundingSourceId,
+  );
 
   const [options, months, submittedRows] = await Promise.all([
     loadExpenseFormOptions(session.orgId, fundingSourceId),
@@ -99,6 +107,7 @@ export default async function EditExpensePage({
         today={todayIso()}
         activeMonth={expense.month}
         initialFundingSourceId={expense.fundingSourceId}
+        headerSelectedSourceId={headerSelectedSourceId}
         existing={{
           id: expense.id,
           documents: expense.documents,

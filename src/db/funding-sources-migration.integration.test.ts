@@ -21,12 +21,14 @@ const hasDatabase = Boolean(process.env.DATABASE_URL);
 
 describe.skipIf(!hasDatabase)("funding sources migration (integration)", async () => {
   const { db } = await import("@/src/db");
-  const { expenses, lineItems, organizations } = await import("@/src/db/schema");
+  const { expenses, fundingSources, lineItems, organizations } = await import("@/src/db/schema");
   const { createTestOrg } = await import("@/src/db/test-org");
 
   let orgA: { orgId: string; fundingSourceId: string };
   let orgB: { orgId: string; fundingSourceId: string };
   let lineItemA: string;
+  /** A second source in orgA — distinct from orgA's own first source. */
+  let sourceA2: string;
 
   beforeAll(async () => {
     orgA = await createTestOrg({ name: "Migration Org A", docName: "MigA", activeMonth: "2099-01" });
@@ -37,6 +39,19 @@ describe.skipIf(!hasDatabase)("funding sources migration (integration)", async (
       .values({ orgId: orgA.orgId, fundingSourceId: orgA.fundingSourceId, name: "A's item", scheduledValueCents: 100_000, sortOrder: 0 })
       .returning({ id: lineItems.id });
     lineItemA = itemA.id;
+
+    const [source2] = await db
+      .insert(fundingSources)
+      .values({
+        orgId: orgA.orgId,
+        name: "A's second source",
+        type: "grant",
+        sortOrder: 1,
+        taxReimbursable: false,
+        feesReimbursable: true,
+      })
+      .returning({ id: fundingSources.id });
+    sourceA2 = source2.id;
   });
 
   afterAll(async () => {
@@ -46,13 +61,17 @@ describe.skipIf(!hasDatabase)("funding sources migration (integration)", async (
   });
 
   it("refuses an expense whose line item belongs to a different source (23503)", async () => {
-    // A's line item paired with B's source — the composite FK
-    // expenses(line_item_id, funding_source_id) → line_items(id, funding_source_id) must fire.
+    // A's line item paired with A's OWN second source — same organisation, so the
+    // (funding_source_id, org_id) FK passes and only the FK under test,
+    // expenses(line_item_id, funding_source_id) → line_items(id, funding_source_id), can fire.
+    // Review fix: this previously paired the line item with org B's source instead, so the
+    // (funding_source_id, org_id) cross-org FK failed first and the two same-org sources case
+    // was never actually exercised.
     const rejection = await db
       .insert(expenses)
       .values({
         orgId: orgA.orgId,
-        fundingSourceId: orgB.fundingSourceId,
+        fundingSourceId: sourceA2,
         lineItemId: lineItemA,
         month: "2099-01",
         date: "2099-01-10",

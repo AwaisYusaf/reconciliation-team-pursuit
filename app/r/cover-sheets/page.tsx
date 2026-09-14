@@ -49,7 +49,10 @@ export default async function CoverSheetsPage({
           title="Cover Sheets"
           subtext={`Breakdown documents for ${monthLabel(session.activeMonth)}.`}
         />
-        <PickFundingSource sources={activeSources} />
+        <PickFundingSource
+          sources={activeSources}
+          archivedSources={sources.filter((s) => s.archivedAt !== null)}
+        />
       </div>
     );
   }

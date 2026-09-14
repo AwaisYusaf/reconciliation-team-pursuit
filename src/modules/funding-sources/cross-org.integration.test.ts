@@ -74,6 +74,7 @@ describe.skipIf(!hasDatabase)("cross-organisation funding source sweep (P7.2)", 
   let orgB: string;
   let sourceA: string;
   let itemA: string;
+  let userA: string;
   let userB: string;
   let monthDocumentA: string;
   let recurringItemA: string;
@@ -117,11 +118,17 @@ describe.skipIf(!hasDatabase)("cross-organisation funding source sweep (P7.2)", 
     getSessionMock.mockResolvedValue(sessionContext(orgB, userB));
   }
 
+  /** A legitimate session in org A, for the missing-`source`-param tests below — those are
+   *  not an attack scenario, just a malformed request from A's own signed-in user. */
+  function routeSessionAsOrgA() {
+    getSessionMock.mockResolvedValue(sessionContext(orgA, userA));
+  }
+
   beforeAll(async () => {
     const a = await createTestOrg({ name: "P7.2 Org A", activeMonth: MONTH });
     orgA = a.orgId;
     sourceA = a.fundingSourceId;
-    await insertUser(orgA);
+    userA = await insertUser(orgA);
 
     const b = await createTestOrg({ name: "P7.2 Org B", activeMonth: MONTH });
     orgB = b.orgId;
@@ -377,6 +384,30 @@ describe.skipIf(!hasDatabase)("cross-organisation funding source sweep (P7.2)", 
     routeSessionAsOrgB();
     const response = await coverSheetGet(
       downloadRequest("/api/downloads/cover-sheet", { month: MONTH, lineItem: itemA, source: sourceA }),
+    );
+    expect(response.status).toBe(404);
+  });
+
+  // Review-requested coverage: a `source` query parameter is required on every download
+  // route (Phase 6 step 1) — this was already true in code (the route treats a missing param
+  // the same as an unowned one: `findFundingSource` gets `""`, finds nothing, 404s) but had
+  // no test proving it, under a legitimate same-org session rather than a cross-org attacker.
+  it("the packet download route 404s when the source param is missing entirely", async () => {
+    routeSessionAsOrgA();
+    const response = await packetGet(downloadRequest("/api/downloads/packet", { month: MONTH }));
+    expect(response.status).toBe(404);
+  });
+
+  it("the summary download route 404s when the source param is missing entirely", async () => {
+    routeSessionAsOrgA();
+    const response = await summaryGet(downloadRequest("/api/downloads/summary", { month: MONTH }));
+    expect(response.status).toBe(404);
+  });
+
+  it("the cover sheet download route 404s when the source param is missing entirely", async () => {
+    routeSessionAsOrgA();
+    const response = await coverSheetGet(
+      downloadRequest("/api/downloads/cover-sheet", { month: MONTH, lineItem: itemA }),
     );
     expect(response.status).toBe(404);
   });

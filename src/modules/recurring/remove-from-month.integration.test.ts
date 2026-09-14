@@ -259,4 +259,92 @@ describe.skipIf(!hasDatabase)("removeRecurringFromMonthAction (integration)", as
     const trashed = await loadTrashedExpenses(orgId, fundingSourceId);
     expect(trashed.map((entry) => entry.id)).toContain(createdExpense.id);
   });
+
+  it("review fix: Remove on the old template cannot reach an expense that was since moved to another source", async () => {
+    // Exact reported scenario: a recurring template on source A creates an expense in August.
+    // Someone edits that expense and moves it to source B — but it was still linked to
+    // source A's template (recurringItemId untouched by the move). Clicking Remove on the
+    // template in source A for August then trashed the expense sitting in source B.
+    asOrg(orgId);
+
+    const { fundingSources } = await import("@/src/db/schema");
+    const [sourceB] = await db
+      .insert(fundingSources)
+      .values({
+        orgId,
+        name: "Other Source",
+        type: "grant",
+        sortOrder: 1,
+        taxReimbursable: false,
+        feesReimbursable: true,
+      })
+      .returning({ id: fundingSources.id });
+    const [itemB] = await db
+      .insert(lineItems)
+      .values({ orgId, fundingSourceId: sourceB.id, name: "Other Item", scheduledValueCents: 100_000, sortOrder: 1 })
+      .returning({ id: lineItems.id });
+
+    await saveRecurringItemAction({
+      name: "Moved After Add",
+      amount: "40.00",
+      lineItemId,
+      defaultDescription: "",
+      defaultNarrative: "",
+      defaultPaymentSource: "Cash",
+      defaultTax: "",
+      defaultFees: "",
+    });
+    const [template] = await db
+      .select({ id: recurringItems.id })
+      .from(recurringItems)
+      .where(and(eq(recurringItems.orgId, orgId), eq(recurringItems.name, "Moved After Add")));
+
+    const { addRecurringToMonthAction } = await import("./actions");
+    const added = await addRecurringToMonthAction(template.id, MONTH);
+    expect(added.ok).toBe(true);
+
+    const [createdExpense] = await db
+      .select()
+      .from(expenses)
+      .where(and(eq(expenses.orgId, orgId), eq(expenses.name, "Moved After Add")));
+    expect(createdExpense.recurringItemId).toBe(template.id);
+    expect(createdExpense.fundingSourceId).toBe(fundingSourceId);
+
+    // Move it to source B by editing it — this is what should clear recurringItemId.
+    const { updateExpenseAction } = await import("@/src/modules/expenses/actions");
+    const moved = await updateExpenseAction({
+      id: createdExpense.id,
+      name: createdExpense.name,
+      fundingSourceId: sourceB.id,
+      lineItemId: itemB.id,
+      paymentSource: createdExpense.paymentSource,
+      taxReimbursable: createdExpense.taxReimbursable,
+      feesReimbursable: createdExpense.feesReimbursable,
+      month: MONTH,
+      date: createdExpense.date,
+      description: createdExpense.description,
+      subtotal: (createdExpense.subtotalCents / 100).toFixed(2),
+      tax: "0.00",
+      fees: "0.00",
+      note: "",
+      narrative: "Moved to the other source.",
+      noReceipt: true,
+      noReceiptReason: "n/a",
+    });
+    expect(moved.ok).toBe(true);
+
+    const [afterMove] = await db.select().from(expenses).where(eq(expenses.id, createdExpense.id));
+    expect(afterMove.fundingSourceId).toBe(sourceB.id);
+    // The link to the old template is gone — this is the actual fix, not just the query scope
+    // below, which is defence in depth for exactly the case where this ever regressed.
+    expect(afterMove.recurringItemId).toBeNull();
+
+    // Remove on the OLD template, for the SAME month, must not touch the moved expense.
+    const removeResult = await removeRecurringFromMonthAction(template.id, MONTH, true);
+    expect(removeResult.ok).toBe(false);
+
+    const [untouched] = await db.select().from(expenses).where(eq(expenses.id, createdExpense.id));
+    expect(untouched.deletedAt).toBeNull();
+    expect(untouched.fundingSourceId).toBe(sourceB.id);
+  });
 });

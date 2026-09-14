@@ -79,8 +79,17 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ ok: false, error: "That is not a valid month." }, { status: 400 });
     }
     const fundingSourceId = String(form.get("fundingSourceId") ?? "");
-    if (!(await findFundingSource(session.orgId, fundingSourceId))) {
+    const source = await findFundingSource(session.orgId, fundingSourceId);
+    if (!source) {
       return NextResponse.json({ ok: false, error: "Choose a funding source." }, { status: 400 });
+    }
+    // Review fix: an archived source refuses new records everywhere else (line items,
+    // expenses) — month documents were the one create path that slipped through.
+    if (source.archivedAt) {
+      return NextResponse.json(
+        { ok: false, error: "That funding source is archived." },
+        { status: 400 },
+      );
     }
     const result = await ingestMonthDocument({
       orgId: session.orgId,

@@ -245,8 +245,17 @@ export async function removeRecurringFromMonthAction(
   if (!isValidMonthKey(month)) return fail("That is not a valid month.");
 
   const rows = await db
-    .select({ name: recurringItems.name, lineItemId: recurringItems.lineItemId })
+    .select({
+      name: recurringItems.name,
+      lineItemId: recurringItems.lineItemId,
+      // The template's funding source, through its line item (recurring items have no
+      // funding_source_id column of their own — m05). Review fix: an expense created from
+      // this template, then moved to another source by editing it, must not be reachable by
+      // Remove here — it belongs to a different source's month now.
+      fundingSourceId: lineItems.fundingSourceId,
+    })
     .from(recurringItems)
+    .innerJoin(lineItems, eq(lineItems.id, recurringItems.lineItemId))
     .where(and(eq(recurringItems.id, id), eq(recurringItems.orgId, current.orgId)))
     .limit(1);
   const item = rows[0];
@@ -264,7 +273,12 @@ export async function removeRecurringFromMonthAction(
     .from(expenses)
     .leftJoin(expenseDocuments, eq(expenseDocuments.expenseId, expenses.id))
     .where(
-      and(eq(expenses.orgId, current.orgId), eq(expenses.month, month), isNull(expenses.deletedAt)),
+      and(
+        eq(expenses.orgId, current.orgId),
+        eq(expenses.fundingSourceId, item.fundingSourceId),
+        eq(expenses.month, month),
+        isNull(expenses.deletedAt),
+      ),
     )
     .groupBy(expenses.id);
 

@@ -40,7 +40,7 @@ export default async function PacketPage() {
   const session = await getSession();
   if (!session) redirect("/login");
 
-  const { selectedId: fundingSourceId, activeSources } = await loadSourceContext(
+  const { selectedId: fundingSourceId, activeSources, sources } = await loadSourceContext(
     session.orgId,
     session.activeFundingSourceId,
   );
@@ -51,7 +51,10 @@ export default async function PacketPage() {
     return (
       <div>
         <PageHeader title="Month-End Packet" subtext={`Everything the funder receives for ${label}.`} />
-        <PickFundingSource sources={activeSources} />
+        <PickFundingSource
+          sources={activeSources}
+          archivedSources={sources.filter((s) => s.archivedAt !== null)}
+        />
       </div>
     );
   }

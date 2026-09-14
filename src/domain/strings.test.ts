@@ -149,6 +149,47 @@ describe("filenames (R10.3)", () => {
     expect(coverName).toBe(`Team Pursuit ${cappedSource} February 2026 Salary Breakdown.docx`);
   });
 
+  it("keeps the month, the document type and the full line item name with real long org/source/line-item names (review fix)", () => {
+    // The exact shape that shipped broken: a real org name, a real long source name and a
+    // real long line item name together pushed past 80 chars, and the blind slice cut
+    // "Breakdown" and half the line item name instead of only the source.
+    const docName = "Team Pursuit";
+    const sourceName = "Community Violence Intervention Grant";
+    const month = "September 2026";
+    const lineItem = "Professional Development And Training";
+
+    const cover = coverSheetFilename(docName, month, lineItem, "docx", sourceName);
+    expect(cover.endsWith(`${lineItem} Breakdown.docx`)).toBe(true);
+    expect(cover).toContain(month);
+
+    const packet = packetFilename(docName, month, sourceName);
+    expect(packet.endsWith(`${month.replace(/ /g, "_")}_Packet.pdf`)).toBe(true);
+
+    const summary = summaryFilename(docName, month, sourceName);
+    expect(summary.endsWith(`${month.replace(/ /g, "_")}_Summary.xlsx`)).toBe(true);
+  });
+
+  it("never gives two line items differing only in name the same cover sheet filename, even under a long source name", () => {
+    const longSource = "Community Engagement and Outreach Programming Grant";
+    const a = coverSheetFilename(
+      "Team Pursuit",
+      "September 2026",
+      "Community Engagement Events A",
+      "docx",
+      longSource,
+    );
+    const b = coverSheetFilename(
+      "Team Pursuit",
+      "September 2026",
+      "Community Engagement Events B",
+      "docx",
+      longSource,
+    );
+    expect(a).not.toBe(b);
+    expect(a.endsWith("Community Engagement Events A Breakdown.docx")).toBe(true);
+    expect(b.endsWith("Community Engagement Events B Breakdown.docx")).toBe(true);
+  });
+
   it("gives two different months two different filenames even with a long source name", () => {
     const longName = "B".repeat(60);
     const february = packetFilename("Team Pursuit", "February 2026", longName);

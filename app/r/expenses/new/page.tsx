@@ -80,6 +80,7 @@ export default async function NewExpensePage() {
         today={todayIso()}
         activeMonth={month}
         initialFundingSourceId={initialFundingSourceId}
+        headerSelectedSourceId={selectedId}
       />
     </div>
   );

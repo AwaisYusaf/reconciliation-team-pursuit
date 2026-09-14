@@ -17,6 +17,7 @@ import { Card, DangerPanel } from "@/src/components/ui/surfaces";
 import toast from "react-hot-toast";
 
 import { reportResult } from "@/src/components/ui/toast";
+import { setActiveFundingSourceAction } from "@/src/modules/auth/actions";
 import { projectedRemainingCents } from "@/src/domain/budget-math";
 import { compareMonthKeys, monthLabel } from "@/src/domain/dates";
 import { formatMoney } from "@/src/domain/format";
@@ -80,6 +81,13 @@ export type ExpenseFormProps = {
   activeMonth: string;
   /** New = the header's selection or the org's first active source; edit = the expense's own. */
   initialFundingSourceId: string;
+  /**
+   * The organisation's current header selection — `null` when "All" is active. Distinct from
+   * `initialFundingSourceId`: on edit, that is the expense's *own* source, which need not be
+   * what the header is showing. Used only to decide, after a successful save, whether the
+   * header needs to follow the source actually saved to (review fix — see the submit handler).
+   */
+  headerSelectedSourceId: string | null;
   /** Present in edit mode. */
   existing?: {
     id: string;
@@ -122,6 +130,7 @@ export function ExpenseForm({
   today,
   activeMonth,
   initialFundingSourceId,
+  headerSelectedSourceId,
   existing,
 }: ExpenseFormProps) {
   const router = useRouter();
@@ -433,6 +442,19 @@ export function ExpenseForm({
     return null;
   }
 
+  /**
+   * If the header is showing one specific source and the expense was just saved under a
+   * *different* one, follow it there before landing on the list — otherwise the header kept
+   * pointing at the old source, the list filtered to it, and a just-saved expense looked like
+   * it had never been saved at all (review fix). Left alone when the header is on "All": the
+   * list already shows every source, so nothing there would hide the new expense.
+   */
+  async function switchHeaderSourceIfNeeded() {
+    if (headerSelectedSourceId !== null && headerSelectedSourceId !== values.fundingSourceId) {
+      await setActiveFundingSourceAction(values.fundingSourceId);
+    }
+  }
+
   function save() {
     setError(null);
     setStatus(null);
@@ -457,6 +479,7 @@ export function ExpenseForm({
         // The expense's own month, not wherever the org's shared active month happens to be
         // (R2.2 lets them differ) — otherwise landing on the active month's list after saving
         // into a different one made the just-saved record look like it had vanished.
+        await switchHeaderSourceIfNeeded();
         router.push(`/r/expenses?month=${values.month}`);
         router.refresh();
         return;
@@ -480,6 +503,7 @@ export function ExpenseForm({
         return;
       }
       toast.success(savedMessage());
+      await switchHeaderSourceIfNeeded();
       router.push(`/r/expenses?month=${values.month}`);
       router.refresh();
     });

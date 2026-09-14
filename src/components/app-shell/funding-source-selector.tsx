@@ -23,13 +23,12 @@ export function FundingSourceSelector({
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
-  // Archived sources are finished, so the header offers only active ones. The one exception is
-  // an archived source that is *currently* selected: without its option the control would show
-  // a value it cannot display. Archiving the selected source already resets it to All, so this
-  // only covers a selection stored before archiving existed.
-  const options = sources.filter(
-    (source) => source.archivedAt === null || source.id === selectedId,
-  );
+  // Review fix: history and documents stay after archiving (spec §1), and that only holds if
+  // an archived source is still reachable to view them — omitting it here is what made an
+  // old packet undownloadable the moment its source was archived. Active sources list first;
+  // archived ones stay selectable, grouped separately, view-only (no new expenses/line items).
+  const active = sources.filter((source) => source.archivedAt === null);
+  const archived = sources.filter((source) => source.archivedAt !== null);
 
   function apply(value: string) {
     setError(null);
@@ -61,11 +60,20 @@ export function FundingSourceSelector({
         className="w-[220px]"
       >
         <option value={ALL}>All funding sources</option>
-        {options.map((source) => (
+        {active.map((source) => (
           <option key={source.id} value={source.id}>
             {source.name}
           </option>
         ))}
+        {archived.length > 0 && (
+          <optgroup label="Archived">
+            {archived.map((source) => (
+              <option key={source.id} value={source.id}>
+                {source.name}
+              </option>
+            ))}
+          </optgroup>
+        )}
       </Select>
 
       {error && <div className="text-[15px] text-danger">{error}</div>}

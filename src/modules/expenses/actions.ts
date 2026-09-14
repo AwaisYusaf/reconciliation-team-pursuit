@@ -417,6 +417,12 @@ export async function updateExpenseAction(input: ExpenseInput): Promise<ActionRe
         ...row,
         sortOrder,
         ...(nextReferenceSeq !== undefined ? { referenceSeq: nextReferenceSeq } : {}),
+        // Review fix: a recurring template's Remove targets expenses by this link (m05). Once
+        // the expense has moved to another source, it is no longer the one the template's
+        // month page is looking at — keeping the link let Remove on the *old* source's
+        // template reach into the *new* source's month and trash an expense that had already
+        // moved on.
+        ...(sourceChanged ? { recurringItemId: null } : {}),
       })
       .where(
         and(eq(expenses.id, expenseId), eq(expenses.orgId, current.orgId), isNull(expenses.deletedAt)),
@@ -444,11 +450,18 @@ export async function updateExpenseAction(input: ExpenseInput): Promise<ActionRe
   // Only from an expense that came from the template, and only when there is something to
   // carry: a blank narrative here means "not written yet", not "delete the paragraph". The
   // template's own field on the Recurring screen is where clearing is done, deliberately.
-  await carryNarrativeToTemplate({
-    orgId: current.orgId,
-    recurringItemId: existing.recurringItemId,
-    narrative: row.narrative,
-  });
+  //
+  // Skipped once the source has changed (review fix): the link to the old template was just
+  // cleared above, and the wording that applies now belongs to whichever source this expense
+  // sits on today — writing it back would restate a source-A correction onto a source-A
+  // template from what is now a source-B expense.
+  if (!sourceChanged) {
+    await carryNarrativeToTemplate({
+      orgId: current.orgId,
+      recurringItemId: existing.recurringItemId,
+      narrative: row.narrative,
+    });
+  }
 
   // "No receipt available" and attached receipts are mutually exclusive (R4.2): saving
   // with the box ticked removes the receipt files the user confirmed away. This runs only

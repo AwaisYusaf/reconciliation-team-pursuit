@@ -26,6 +26,7 @@ describe.skipIf(!hasDatabase)("expense create/update and funding sources (integr
   const { hashPassword } = await import("@/src/services/auth/passwords");
   const { actionSession } = await import("@/src/lib/action-session");
   const { createExpenseAction, updateExpenseAction } = await import("./actions");
+  const { loadExpenseFormOptions } = await import("./queries");
 
   const session = vi.mocked(actionSession);
 
@@ -230,24 +231,72 @@ describe.skipIf(!hasDatabase)("expense create/update and funding sources (integr
   });
 
   it("a new expense's default reimbursement rules match its funding source's rules", async () => {
+    // Review fix: the previous version of this test hardcoded taxReimbursable/feesReimbursable
+    // in the input and then asserted the saved row matched — that would still pass even if the
+    // source's rules were ignored entirely, since createExpenseAction never derives the flags
+    // itself (the form pre-fills them; the server just persists whatever it is given). This
+    // version instead reads source B's rules from `loadExpenseFormOptions` — the same query the
+    // form calls to pre-fill the checkboxes — and only then uses *those* values, so a bug that
+    // broke the source-to-form link (e.g. always returning ORIGINAL_RULES, or another source's
+    // rules) would make this test fail rather than silently agree with itself.
     const { orgId, userId, sourceB, itemB } = await twoSourceOrg("Source Defaults Org");
     asOrg(orgId, userId);
 
-    // Source B's rules (seeded above) are tax=true, fees=false — mirroring what the form
-    // pre-fills from `loadExpenseFormOptions`'s `fundingSources` entry for source B.
+    // Ground truth: what source B was actually seeded with (tax=true, fees=false).
+    const [seeded] = await db
+      .select({ taxReimbursable: fundingSources.taxReimbursable, feesReimbursable: fundingSources.feesReimbursable })
+      .from(fundingSources)
+      .where(eq(fundingSources.id, sourceB));
+    expect(seeded.taxReimbursable).toBe(true);
+    expect(seeded.feesReimbursable).toBe(false);
+
+    // The form's own data source for the pre-fill must report the same rules for source B.
+    const options = await loadExpenseFormOptions(orgId, null);
+    const sourceBOption = options.fundingSources.find((source) => source.id === sourceB);
+    expect(sourceBOption?.taxReimbursable).toBe(seeded.taxReimbursable);
+    expect(sourceBOption?.feesReimbursable).toBe(seeded.feesReimbursable);
+
+    // A save carrying exactly what the form would have pre-filled persists unchanged.
     const created = await createExpenseAction(
       baseInput({
         fundingSourceId: sourceB,
         lineItemId: itemB,
-        taxReimbursable: true,
-        feesReimbursable: false,
+        taxReimbursable: sourceBOption!.taxReimbursable,
+        feesReimbursable: sourceBOption!.feesReimbursable,
       }),
     );
     expect(created.ok).toBe(true);
     if (!created.ok) return;
 
     const [row] = await db.select().from(expenses).where(eq(expenses.id, created.data.id));
-    expect(row.taxReimbursable).toBe(true);
-    expect(row.feesReimbursable).toBe(false);
+    expect(row.taxReimbursable).toBe(seeded.taxReimbursable);
+    expect(row.feesReimbursable).toBe(seeded.feesReimbursable);
+  });
+
+  it("creating a line item against an archived funding source is refused", async () => {
+    const { orgId, userId, sourceA } = await twoSourceOrg("Archived Line Item Create Org");
+    await db.update(fundingSources).set({ archivedAt: new Date() }).where(eq(fundingSources.id, sourceA));
+    asOrg(orgId, userId);
+
+    const { saveLineItemAction } = await import("@/src/modules/line-items/actions");
+    const result = await saveLineItemAction({
+      fundingSourceId: sourceA,
+      name: "New line item on archived source",
+      scheduledValue: "100.00",
+      openingBilled: "0.00",
+    });
+    expect(result.ok).toBe(false);
+  });
+
+  it("creating an expense against an archived funding source is refused", async () => {
+    const { orgId, userId, sourceA, itemA } = await twoSourceOrg("Archived Expense Create Org");
+    await db.update(fundingSources).set({ archivedAt: new Date() }).where(eq(fundingSources.id, sourceA));
+    asOrg(orgId, userId);
+
+    const result = await createExpenseAction(baseInput({ fundingSourceId: sourceA, lineItemId: itemA }));
+    expect(result.ok).toBe(false);
+
+    const rows = await db.select().from(expenses).where(eq(expenses.fundingSourceId, sourceA));
+    expect(rows).toHaveLength(0);
   });
 });
