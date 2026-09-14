@@ -67,6 +67,7 @@ export function AppNav() {
             href={item.href}
             aria-current={active ? "page" : undefined}
             ref={active ? scrollActiveIntoView : undefined}
+            data-tour={item.href === "/r/expenses/new" ? "add-expense-nav" : undefined}
             className={cn(
               "pt-2.5 pb-3 sm:pt-3 sm:pb-[13px] text-[15px] sm:text-base border-b-[3px] transition-colors whitespace-nowrap",
               active

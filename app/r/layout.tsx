@@ -57,8 +57,14 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             stacked on top of each other instead of one continuous header surface. */}
         <div className="bg-surface px-4 sm:px-6 pt-3 sm:pt-4">
           <div className="max-w-[1220px] mx-auto flex flex-wrap gap-4">
-            <MonthSelector months={months} activeMonth={activeMonth} />
-            {!single && <FundingSourceSelector sources={sources} selectedId={selectedId} />}
+            <div data-tour="month-selector">
+              <MonthSelector months={months} activeMonth={activeMonth} />
+            </div>
+            {!single && (
+              <div data-tour="funding-source-selector">
+                <FundingSourceSelector sources={sources} selectedId={selectedId} />
+              </div>
+            )}
           </div>
         </div>
       </header>

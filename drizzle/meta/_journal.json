@@ -169,6 +169,13 @@
       "when": 1789123847775,
       "tag": "0023_faulty_tyrannus",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1789365358856,
+      "tag": "0024_pretty_brood",
+      "breakpoints": true
     }
   ]
 }

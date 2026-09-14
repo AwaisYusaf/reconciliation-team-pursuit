@@ -94,6 +94,9 @@ export const expenseAuditAction = pgEnum("expense_audit_action", [
   "permanently_deleted",
 ]);
 
+/** user_tour_progress.tour — the four first-run walkthroughs (Phase 7, D-94). */
+export const tourKey = pgEnum("tour_key", ["dashboard", "add_expense", "recurring", "packet"]);
+
 /* ----------------------------------------------------------- organizations */
 
 export const organizations = pgTable("organizations", {
@@ -942,6 +945,31 @@ export const generatedArtifacts = pgTable(
   ],
 );
 
+/* ------------------------------------------------------- tour progress */
+
+/**
+ * Per-user "have they seen this tour" record (Phase 7, D-94). One row per tour actually
+ * finished or skipped — both count as seen, so a user isn't shown it again. No row means not
+ * yet shown. Per-user rather than per-org: a teammate added later has no rows of their own and
+ * sees every tour once, same as a brand-new sign-up. Deleting a user's rows ("Show the app
+ * guide again" in Settings) re-arms every tour on their next visit to each tab.
+ */
+export const userTourProgress = pgTable(
+  "user_tour_progress",
+  {
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    tour: tourKey().notNull(),
+    /** When this tour was marked seen — by finishing or by Skip, which count the same. Named
+     *  explicitly rather than reusing the shared `createdAt()` builder: that would work (the
+     *  row is only ever inserted, never updated), but it locks the SQL column to `created_at`
+     *  when what it actually records is completion, which reads oddly in a raw query. */
+    completedAt: timestamp("completed_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.tour] })],
+);
+
 /* -------------------------------------------------------------------- types */
 
 export type Organization = typeof organizations.$inferSelect;
@@ -960,6 +988,7 @@ export type MonthStatus = typeof monthStatuses.$inferSelect;
 export type VendorDefault = typeof vendorDefaults.$inferSelect;
 export type RecurringItem = typeof recurringItems.$inferSelect;
 export type GeneratedArtifact = typeof generatedArtifacts.$inferSelect;
+export type UserTourProgress = typeof userTourProgress.$inferSelect;
 export type MonthSnapshotRow = typeof monthSnapshots.$inferSelect;
 export type MonthSnapshotTotals = typeof monthSnapshotTotals.$inferSelect;
 
@@ -968,5 +997,6 @@ export type DocumentStatus = (typeof documentStatus.enumValues)[number];
 export type MonthDocumentCategory = (typeof monthDocumentCategory.enumValues)[number];
 export type ArtifactType = (typeof artifactType.enumValues)[number];
 export type FundingSourceType = (typeof fundingSourceType.enumValues)[number];
+export type TourKey = (typeof tourKey.enumValues)[number];
 export type UserRole = (typeof userRole.enumValues)[number];
 export type ExpenseAuditActionType = (typeof expenseAuditAction.enumValues)[number];

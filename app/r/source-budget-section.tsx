@@ -118,7 +118,9 @@ export async function SourceBudgetSection({
                 <Th sticky>Line Item</Th>
                 <Th align="right">Opening Balance</Th>
                 <Th align="right">Spent in {monthShortLabel(month)}</Th>
-                <Th align="right">Closing Balance</Th>
+                <Th align="right" data-tour="dashboard-closing-balance">
+                  Closing Balance
+                </Th>
               </tr>
             </thead>
             <tbody>

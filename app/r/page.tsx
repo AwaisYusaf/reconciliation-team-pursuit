@@ -3,8 +3,11 @@ import { redirect } from "next/navigation";
 
 import { WelcomeBanner } from "@/src/components/app-shell/welcome-banner";
 import { EmptyState, PageTitle, Subtext } from "@/src/components/ui/surfaces";
+import { TourGuide } from "@/src/components/ui/tour";
 import { monthLabel } from "@/src/domain/dates";
 import { loadSourceContext } from "@/src/modules/funding-sources/queries";
+import { DASHBOARD_TOUR_STEPS } from "@/src/modules/tours/dashboard-tour";
+import { hasSeenTour } from "@/src/modules/tours/queries";
 import { getSession } from "@/src/services/auth/session";
 import { SourceBudgetSection } from "./source-budget-section";
 
@@ -26,6 +29,7 @@ export default async function DashboardPage() {
     session.activeFundingSourceId,
   );
   const month = session.activeMonth;
+  const seenDashboardTour = await hasSeenTour(session.userId, "dashboard");
   const selected = selectedId ? sources.find((s) => s.id === selectedId) : undefined;
   // One source selected (or a single-source org, where `selectedId` is always that source):
   // render just that one section. With "All" selected, render one section per ACTIVE source,
@@ -36,6 +40,7 @@ export default async function DashboardPage() {
 
   return (
     <div>
+      <TourGuide tour="dashboard" steps={DASHBOARD_TOUR_STEPS} alreadySeen={seenDashboardTour} />
       <PageTitle className="mb-1.5">Dashboard</PageTitle>
       <Subtext className="mb-[26px]">Budget status for {monthLabel(month)}.</Subtext>
 
