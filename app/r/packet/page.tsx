@@ -11,6 +11,7 @@ import {
   SectionTitle,
 } from "@/src/components/ui/surfaces";
 import { TableCard, Td, Th } from "@/src/components/ui/table";
+import { TourGuide } from "@/src/components/ui/tour";
 import { formatDateUS, monthLabel, todayIso } from "@/src/domain/dates";
 import { formatMoney } from "@/src/domain/format";
 import { UI } from "@/src/domain/strings";
@@ -18,6 +19,8 @@ import { packetContents } from "@/src/generation/packet-order";
 import { loadTrashedExpenses } from "@/src/modules/expenses/queries";
 import { loadSourceContext } from "@/src/modules/funding-sources/queries";
 import { loadPacketReadiness } from "@/src/modules/packet/queries";
+import { PACKET_TOUR_STEPS } from "@/src/modules/tours/packet-tour";
+import { hasSeenTour } from "@/src/modules/tours/queries";
 import { getSession } from "@/src/services/auth/session";
 
 import { MonthDocuments } from "./month-documents";
@@ -53,9 +56,10 @@ export default async function PacketPage() {
     );
   }
 
-  const [readiness, deletedInMonth] = await Promise.all([
+  const [readiness, deletedInMonth, seenPacketTour] = await Promise.all([
     loadPacketReadiness(session.orgId, fundingSourceId, month),
     loadTrashedExpenses(session.orgId, fundingSourceId, month),
+    hasSeenTour(session.userId, "packet"),
   ]);
 
   const blocked = readiness.blocking.length > 0;
@@ -70,6 +74,10 @@ export default async function PacketPage() {
 
   return (
     <div>
+      {/* Only ever mounted here, on the branch that resolved an actual single source — the
+          PickFundingSource branch above returns before this point, so "don't start the tour
+          until a source is chosen" (spec) needs no separate check. */}
+      <TourGuide tour="packet" steps={PACKET_TOUR_STEPS} alreadySeen={seenPacketTour} />
       <PageHeader
         title="Month-End Packet"
         subtext={`Everything the funder receives for ${label}.`}
@@ -87,22 +95,24 @@ export default async function PacketPage() {
       />
 
       {blocked && (
-        <DangerPanel title={UI.blockedTitle} className="mb-7 max-w-[820px]">
-          <p className="mt-1.5">{UI.blockedIntro}</p>
-          <ul className="mt-2 flex flex-col gap-1">
-            {readiness.blocking.map((record) => (
-              <li key={record.expenseId} className="flex flex-wrap items-baseline gap-2">
-                <span>{record.label}</span>
-                <Link
-                  href={`/r/expenses/${record.expenseId}/edit`}
-                  className="underline text-danger font-medium"
-                >
-                  Open expense
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </DangerPanel>
+        <div data-tour="packet-blocking-alert">
+          <DangerPanel title={UI.blockedTitle} className="mb-7 max-w-[820px]">
+            <p className="mt-1.5">{UI.blockedIntro}</p>
+            <ul className="mt-2 flex flex-col gap-1">
+              {readiness.blocking.map((record) => (
+                <li key={record.expenseId} className="flex flex-wrap items-baseline gap-2">
+                  <span>{record.label}</span>
+                  <Link
+                    href={`/r/expenses/${record.expenseId}/edit`}
+                    className="underline text-danger font-medium"
+                  >
+                    Open expense
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </DangerPanel>
+        </div>
       )}
 
       {readiness.totalRecords === 0 && (
@@ -124,7 +134,9 @@ export default async function PacketPage() {
               <Th sticky>Line Item</Th>
               <Th align="right">Amount This Month</Th>
               <Th align="right">Records</Th>
-              <Th align="right">Documentation Complete</Th>
+              <Th align="right" data-tour="packet-doc-complete">
+                Documentation Complete
+              </Th>
             </tr>
           </thead>
           <tbody>
@@ -204,13 +216,15 @@ export default async function PacketPage() {
           />
         </Card>
 
-        <MonthDocuments
-          month={month}
-          fundingSourceId={fundingSourceId}
-          documents={readiness.documents}
-          monthLabel={label}
-          hasBankStatement={readiness.hasBankStatement}
-        />
+        <div data-tour="packet-month-documents">
+          <MonthDocuments
+            month={month}
+            fundingSourceId={fundingSourceId}
+            documents={readiness.documents}
+            monthLabel={label}
+            hasBankStatement={readiness.hasBankStatement}
+          />
+        </div>
       </div>
     </div>
   );

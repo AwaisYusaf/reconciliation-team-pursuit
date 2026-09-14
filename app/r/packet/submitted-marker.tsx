@@ -63,6 +63,7 @@ export function SubmittedMarker({
       onClick={() => run(() => markMonthSubmittedAction(month, fundingSourceId), "Month marked as submitted.")}
       disabled={pending}
       className="text-sm text-muted underline disabled:opacity-60"
+      data-tour="packet-submit"
     >
       Mark as submitted
     </button>

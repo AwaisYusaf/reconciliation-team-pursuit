@@ -78,7 +78,7 @@ export function PacketDownloadButtons({
 
   return (
     <>
-      <div className="flex flex-wrap gap-3 mt-6">
+      <div className="flex flex-wrap gap-3 mt-6" data-tour="packet-downloads">
         <button
           type="button"
           className={buttonClassName("primary")}
