@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 
 import { buttonClassName } from "@/src/components/ui/button";
 import { DangerPanel, PageTitle, Subtext } from "@/src/components/ui/surfaces";
+import { TourGuide } from "@/src/components/ui/tour";
 import { db } from "@/src/db";
 import { paymentSources } from "@/src/db/schema";
 import { isValidMonthKey, monthLabel } from "@/src/domain/dates";
@@ -12,6 +13,8 @@ import { documentationStatus, type GateExpense } from "@/src/domain/gate";
 import { reimbursableCents } from "@/src/domain/money";
 import { loadMonthExpenses } from "@/src/modules/expenses/queries";
 import { findFundingSource, loadSourceContext } from "@/src/modules/funding-sources/queries";
+import { EXPENSES_TOUR_STEPS } from "@/src/modules/tours/expenses-tour";
+import { hasSeenTour } from "@/src/modules/tours/queries";
 import { getSession } from "@/src/services/auth/session";
 
 import { ExpensesTable, type ExpenseRow, type RowDocument } from "./expenses-table";
@@ -63,13 +66,14 @@ export default async function ExpensesPage({
         ? (await findFundingSource(session.orgId, requestedSource))?.id ?? null
         : null;
 
-  const [expenses, paySources] = await Promise.all([
+  const [expenses, paySources, seenExpensesTour] = await Promise.all([
     loadMonthExpenses(session.orgId, scope, month),
     db
       .select({ label: paymentSources.label })
       .from(paymentSources)
       .where(and(eq(paymentSources.orgId, session.orgId), eq(paymentSources.active, true)))
       .orderBy(asc(paymentSources.sortOrder)),
+    hasSeenTour(session.userId, "expenses"),
   ]);
 
   const sourceNameById = new Map(sources.map((source) => [source.id, source.name]));
@@ -134,6 +138,7 @@ export default async function ExpensesPage({
 
   return (
     <div>
+      <TourGuide tour="expenses" steps={EXPENSES_TOUR_STEPS} alreadySeen={seenExpensesTour} />
       <div className="flex flex-wrap items-start justify-between gap-3 mb-6">
         <div>
           <PageTitle className="mb-1.5">Expenses This Month</PageTitle>

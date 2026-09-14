@@ -36,7 +36,9 @@ function scrollActiveIntoView(node: HTMLAnchorElement | null): void {
   node?.scrollIntoView({ block: "nearest", inline: "nearest" });
 }
 
-function matches(pathname: string, href: string): boolean {
+/** Exported for `tour-replay-button.tsx`, which resolves the current tab's tour the same way
+ *  this nav resolves its own active tab — same "longest href wins" rule, same edge cases. */
+export function matches(pathname: string, href: string): boolean {
   if (href === "/r") return pathname === "/r";
   return pathname === href || pathname.startsWith(`${href}/`);
 }

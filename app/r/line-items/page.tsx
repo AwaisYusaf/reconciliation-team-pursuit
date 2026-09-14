@@ -2,8 +2,11 @@ import { redirect } from "next/navigation";
 
 import { PickFundingSource } from "@/src/components/app-shell/pick-funding-source";
 import { PageTitle, Subtext } from "@/src/components/ui/surfaces";
+import { TourGuide } from "@/src/components/ui/tour";
 import { loadSourceContext } from "@/src/modules/funding-sources/queries";
 import { loadLineItemRows } from "@/src/modules/line-items/queries";
+import { LINE_ITEMS_TOUR_STEPS } from "@/src/modules/tours/line-items-tour";
+import { hasSeenTour } from "@/src/modules/tours/queries";
 import { getSession } from "@/src/services/auth/session";
 
 import { LineItemsManager } from "./line-items-manager";
@@ -30,7 +33,11 @@ export default async function LineItemsPage() {
       {selectedId === null ? (
         <PickFundingSource sources={activeSources} />
       ) : (
-        <LineItemsManagerFor orgId={session.orgId} fundingSourceId={selectedId} />
+        <LineItemsManagerFor
+          orgId={session.orgId}
+          userId={session.userId}
+          fundingSourceId={selectedId}
+        />
       )}
     </div>
   );
@@ -38,11 +45,21 @@ export default async function LineItemsPage() {
 
 async function LineItemsManagerFor({
   orgId,
+  userId,
   fundingSourceId,
 }: {
   orgId: string;
+  userId: string;
   fundingSourceId: string;
 }) {
-  const rows = await loadLineItemRows(orgId, fundingSourceId);
-  return <LineItemsManager rows={rows} fundingSourceId={fundingSourceId} />;
+  const [rows, seenLineItemsTour] = await Promise.all([
+    loadLineItemRows(orgId, fundingSourceId),
+    hasSeenTour(userId, "line_items"),
+  ]);
+  return (
+    <>
+      <TourGuide tour="line_items" steps={LINE_ITEMS_TOUR_STEPS} alreadySeen={seenLineItemsTour} />
+      <LineItemsManager rows={rows} fundingSourceId={fundingSourceId} />
+    </>
+  );
 }

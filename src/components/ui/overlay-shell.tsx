@@ -91,7 +91,15 @@ export function OverlayShell({
     const marked: HTMLElement[] = [];
     for (const child of Array.from(document.body.children)) {
       if (!(child instanceof HTMLElement)) continue;
-      if (child === root || child.hasAttribute("inert")) continue;
+      // `data-tour-overlay`: the app-guide tour (`tour.tsx`) can open a Modal itself mid-step
+      // (Line Items' "Manage" panel, via `autoOpen` — D-95) while its own portal is *already*
+      // an existing `document.body` child by the time this runs. Without this exemption, a
+      // Modal opened that way would inert the tour's own card out from under itself, making
+      // its Skip/Back/Done unresponsive — two independent "quarantine everything else but me"
+      // systems, each unaware of the other.
+      if (child === root || child.hasAttribute("inert") || child.hasAttribute("data-tour-overlay")) {
+        continue;
+      }
       child.setAttribute("inert", "");
       marked.push(child);
     }

@@ -264,7 +264,7 @@ export function LineItemsManager({
             <div className="text-[13px] uppercase tracking-[0.06em] text-sub font-bold mt-5 mb-2">
               Performances
             </div>
-            <TableCard minWidth={560}>
+            <TableCard minWidth={560} data-tour="line-items-performances">
               <thead>
                 <tr>
                   <Th>Name</Th>
@@ -489,7 +489,7 @@ export function LineItemsManager({
           {rows.map((row, index) => (
             <tr key={row.id}>
               <Td className="pl-4 pr-2 text-sub select-none">
-                <div className="flex flex-col leading-none">
+                <div className="flex flex-col leading-none" data-tour="line-items-reorder">
                   <button
                     type="button"
                     aria-label={`Move ${row.name} up`}
@@ -522,7 +522,12 @@ export function LineItemsManager({
               </Td>
               <Td align="right">
                 <div className="flex gap-4 justify-end">
-                  <Button variant="quiet" onClick={() => openManage(row)} disabled={pending}>
+                  <Button
+                    variant="quiet"
+                    onClick={() => openManage(row)}
+                    disabled={pending}
+                    data-tour="line-items-manage"
+                  >
                     Manage
                   </Button>
                   <Button variant="quiet" onClick={() => remove(row)} disabled={pending}>

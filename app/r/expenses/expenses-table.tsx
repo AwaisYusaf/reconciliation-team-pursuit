@@ -415,7 +415,7 @@ export function ExpensesTable({
           `${confirming.name} — ${formatMoney(confirming.reimbursableCents)}. It moves to the trash with its files, and can be restored.`}
       </Dialog>
 
-      <div className="flex flex-wrap gap-[18px] mb-5">
+      <div className="flex flex-wrap gap-[18px] mb-5" data-tour="expenses-filters">
         <div className="flex-1 min-w-[240px] max-w-[340px]">
           <Label id="expenseSearch-label" htmlFor="expenseSearch">Search</Label>
           <Input
@@ -512,6 +512,7 @@ export function ExpensesTable({
                     onClick={() => openDocuments(row.allDocuments, 0)}
                     title={`Open the ${row.allDocuments.length} document(s) filed under ${row.reference}`}
                     className="tabular-nums text-[15px] underline decoration-line underline-offset-2 hover:opacity-80 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent rounded-[2px]"
+                    data-tour="expenses-reference-viewer"
                   >
                     {row.reference}
                   </button>
@@ -573,6 +574,8 @@ export function ExpensesTable({
                   <Menu
                     label={`Actions for ${row.reference}`}
                     triggerClassName="px-2 py-2.5 text-lg leading-none text-sub hover:text-ink rounded-[2px] focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
+                    triggerDataTour="expenses-row-menu-trigger"
+                    panelDataTour="expenses-row-menu-panel"
                   >
                     <MenuLink href={`/r/expenses/${row.id}/edit`}>Edit</MenuLink>
                     <MenuItem disabled={pending} onClick={() => setConfirming(row)}>

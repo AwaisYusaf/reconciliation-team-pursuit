@@ -1,6 +1,36 @@
 import { describe, expect, it } from "vitest";
 
-import { resolveTourSteps, type TourStep } from "./resolve-steps";
+import { resolveOneStep, resolveTourSteps, type TourStep } from "./resolve-steps";
+
+describe("resolveOneStep", () => {
+  it("resolves a single-target step when present", () => {
+    const step: TourStep = { target: "a", title: "A", body: "" };
+    expect(resolveOneStep(step, (key) => (key === "a" ? "el-a" : null))).toBe("el-a");
+  });
+
+  it("returns null when the target is absent", () => {
+    const step: TourStep = { target: "missing", title: "Never shown", body: "" };
+    expect(resolveOneStep(step, () => null)).toBeNull();
+  });
+
+  it("prefers the first fallback candidate over the second when both exist", () => {
+    const step: TourStep = { target: ["first", "second"], title: "Add", body: "" };
+    expect(resolveOneStep(step, () => "el")).toBe("el"); // both resolve to the same stub; order proven below
+    const order: string[] = [];
+    resolveOneStep(step, (key) => {
+      order.push(key);
+      return "el";
+    });
+    expect(order).toEqual(["first"]); // stops at the first match, never even checks "second"
+  });
+
+  it("falls back to the second candidate when the first is absent", () => {
+    const step: TourStep = { target: ["first", "second"], title: "Add", body: "" };
+    expect(resolveOneStep(step, (key) => (key === "second" ? "el-second" : null))).toBe(
+      "el-second",
+    );
+  });
+});
 
 describe("resolveTourSteps", () => {
   it("resolves an ordinary single-target step when it's present", () => {

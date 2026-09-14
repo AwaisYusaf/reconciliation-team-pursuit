@@ -218,13 +218,14 @@ export function SettingsSections({
           own sticky tab bar (~71px tall at lg, app/r/layout.tsx), which would otherwise draw
           over the top of this list once the page scrolls. */}
       <div className="w-full lg:w-[220px] lg:flex-none lg:sticky lg:top-24 bg-section border-2 border-line rounded-[10px] p-2">
-        <nav aria-label="Settings sections" className="flex flex-col gap-0.5">
+        <nav aria-label="Settings sections" className="flex flex-col gap-0.5" data-tour="settings-sidebar">
           {visibleSections.map((id) => (
             <button
               key={id}
               type="button"
               onClick={() => setActive(id)}
               aria-current={active === id ? "page" : undefined}
+              data-tour={`settings-tab-${id}`}
               className={cn(
                 "flex items-center gap-2.5 text-left px-3.5 py-2.5 rounded-[8px] text-[15px] font-medium transition-colors",
                 active === id
@@ -253,7 +254,7 @@ export function SettingsSections({
                   onChange={(event) => setOrg({ ...org, name: event.target.value })}
                 />
               </div>
-              <div>
+              <div data-tour="settings-doc-name">
                 <Label htmlFor="docName">Document display name</Label>
                 <Input
                   id="docName"
@@ -275,7 +276,7 @@ export function SettingsSections({
         )}
 
         {active === "fundingSources" && (
-          <Card className={CARD_PADDING}>
+          <Card className={CARD_PADDING} data-tour="settings-funding-sources-list">
             <SectionTitle className="mb-5">Funding Sources</SectionTitle>
             <FundingSourcesSection
               fundingSources={fundingSources}
@@ -287,7 +288,7 @@ export function SettingsSections({
         )}
 
         {active === "labels" && (
-          <Card className={CARD_PADDING}>
+          <Card className={CARD_PADDING} data-tour="settings-labels">
             <SectionTitle className="mb-5">Lists</SectionTitle>
             <div className="grid gap-8 lg:grid-cols-2">
               <LabelList
@@ -318,7 +319,7 @@ export function SettingsSections({
         )}
 
         {active === "vendors" && (
-          <Card className={CARD_PADDING}>
+          <Card className={CARD_PADDING} data-tour="settings-vendors">
             <SectionTitle className="mb-5">Vendor library</SectionTitle>
             <VendorLibrary
               vendors={vendors}
@@ -334,13 +335,15 @@ export function SettingsSections({
           </Card>
         )}
 
-        {active === "users" &&
-          isAdmin &&
-          (usersError ? (
-            <p className="text-[15px] text-danger">{usersError}</p>
-          ) : (
-            <UsersManager users={users} />
-          ))}
+        {active === "users" && isAdmin && (
+          <div data-tour="settings-users">
+            {usersError ? (
+              <p className="text-[15px] text-danger">{usersError}</p>
+            ) : (
+              <UsersManager users={users} />
+            )}
+          </div>
+        )}
 
         {active === "account" && (
           <>
@@ -349,12 +352,12 @@ export function SettingsSections({
               <AccountSection email={email} pending={pending} startTransition={startTransition} />
             </Card>
 
-            <Card className={cn(CARD_PADDING, "mt-6")}>
+            <Card className={cn(CARD_PADDING, "mt-6")} data-tour="settings-app-guide">
               <SectionTitle className="mb-2">App guide</SectionTitle>
               <Helper>
-                The short walkthroughs on Dashboard, Add Expense, Recurring and Month-End
-                Packet show once each and then stay out of the way. Bring them all back if
-                you&apos;d like to see them again.
+                The short walkthroughs across the app show once each and then stay out of the
+                way. Bring them all back if you&apos;d like to see them again, or use the (i)
+                button next to Log out to replay just the one for the screen you&apos;re on.
               </Helper>
               <div className="flex justify-end mt-4">
                 <Button

@@ -243,17 +243,18 @@ Same processing/status fields as expense_documents, plus:
 
 Unique index `(org_id, funding_source_id, month, type, line_item_id)` **where downloaded_at is null** — one live cache entry per source; pinned rows accumulate as history.
 
-### user_tour_progress (Phase 7, D-94)
+### user_tour_progress (Phase 7, D-94/D-95)
 | Field | Type | Notes |
 |---|---|---|
 | user_id | uuid FK | **cascade delete** with user |
-| tour | enum PK | `dashboard` \| `add_expense` \| `recurring` \| `packet` |
+| tour | enum PK | `dashboard` \| `add_expense` \| `recurring` \| `packet` \| `expenses` \| `cover_sheets` \| `contract_summary` \| `line_items` \| `settings` (D-95 added the last five) |
 | completed_at | timestamptz | Set on Skip or Finish, never on mid-tour navigation away |
 
 Composite PK `(user_id, tour)`. Keyed by user, not organization or browser — a tour shown once
 must not reappear for that user on another device, but must show once each for every other user
 of the org, including staff added later. "Show the app guide again" in Settings deletes all of a
-user's own rows (`resetToursAction`), which re-arms all four tours on next visit.
+user's own rows (`resetToursAction`), which re-arms all nine tours on next visit; the header's
+(i) button (`replayTourAction`, D-95) does the same for just the current screen's tour.
 
 ## Relationships summary
 

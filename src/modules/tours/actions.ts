@@ -4,7 +4,7 @@
  * First-run tour progress (Phase 7, D-94). Per user, not per organisation: a teammate added
  * later has no rows of their own and sees every tour once, same as a brand-new sign-up.
  */
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
 import { db } from "@/src/db";
@@ -48,5 +48,23 @@ export async function resetToursAction(): Promise<ActionResult> {
   // Settings itself has no tour, but the next tab this user opens needs a fresh server read of
   // "have I seen this" rather than a cached one.
   revalidatePath("/", "layout");
+  return ok();
+}
+
+/**
+ * The header's "replay this screen's tour" (i) button — deletes only the one tour's row, not
+ * every tour like `resetToursAction`, so the caller stays on the current tab and the tour
+ * that belongs there simply re-arms. `router.refresh()` (called by the client component right
+ * after this resolves) is what actually re-shows it: the server component above `TourGuide`
+ * re-reads `hasSeenTour` and passes `alreadySeen: false` down again.
+ */
+export async function replayTourAction(tour: TourKey): Promise<ActionResult> {
+  const current = await actionSession();
+  if ("expired" in current) return current.expired;
+
+  await db
+    .delete(userTourProgress)
+    .where(and(eq(userTourProgress.userId, current.userId), eq(userTourProgress.tour, tour)));
+
   return ok();
 }

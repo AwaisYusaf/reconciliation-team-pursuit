@@ -94,8 +94,20 @@ export const expenseAuditAction = pgEnum("expense_audit_action", [
   "permanently_deleted",
 ]);
 
-/** user_tour_progress.tour — the four first-run walkthroughs (Phase 7, D-94). */
-export const tourKey = pgEnum("tour_key", ["dashboard", "add_expense", "recurring", "packet"]);
+/** user_tour_progress.tour — the nine first-run walkthroughs (Phase 7, D-94; D-95 added the
+ *  five past the original four). Order here is cosmetic (enum values, not `TOUR_SEQUENCE`'s
+ *  navigation order — see `src/modules/tours/sequence.ts`). */
+export const tourKey = pgEnum("tour_key", [
+  "dashboard",
+  "add_expense",
+  "recurring",
+  "packet",
+  "expenses",
+  "cover_sheets",
+  "contract_summary",
+  "line_items",
+  "settings",
+]);
 
 /* ----------------------------------------------------------- organizations */
 

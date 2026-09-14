@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__playwright__browser_fill_form",
+      "mcp__playwright__browser_take_screenshot",
+      "mcp__playwright__browser_evaluate",
+      "mcp__playwright__browser_file_upload",
+      "mcp__playwright__browser_resize",
+      "PowerShell(npx vitest run src/modules/tours/add-expense-tour.test.ts 2>&1)",
+      "PowerShell(npx vitest run 2>&1)",
+      "PowerShell(npm run typecheck 2>&1)"
+    ]
+  }
+}

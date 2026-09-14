@@ -1,9 +1,12 @@
 import { redirect } from "next/navigation";
 
 import { PageTitle } from "@/src/components/ui/surfaces";
+import { TourGuide } from "@/src/components/ui/tour";
 import { loadSettings } from "@/src/modules/settings/queries";
 import { getSession } from "@/src/services/auth/session";
 import { listOrgUsersAction } from "@/src/modules/users/actions";
+import { SETTINGS_TOUR_STEPS } from "@/src/modules/tours/settings-tour";
+import { hasSeenTour } from "@/src/modules/tours/queries";
 import type { OrgUser } from "./users/users-manager";
 
 import { SettingsSections } from "./settings-sections";
@@ -22,7 +25,10 @@ export default async function SettingsPage() {
   // The action itself re-checks the role — this is only what decides whether the Users tab
   // has anything to show, not the security boundary. Skipped entirely for a manager, so
   // there's never a moment where their RSC payload could carry another user's data.
-  const usersResult = isAdmin ? await listOrgUsersAction() : null;
+  const [usersResult, seenSettingsTour] = await Promise.all([
+    isAdmin ? listOrgUsersAction() : Promise.resolve(null),
+    hasSeenTour(session.userId, "settings"),
+  ]);
   const users: OrgUser[] = usersResult?.ok ? usersResult.data : [];
   const usersError = usersResult && !usersResult.ok ? usersResult.error : undefined;
 
@@ -30,6 +36,7 @@ export default async function SettingsPage() {
 
   return (
     <div>
+      <TourGuide tour="settings" steps={SETTINGS_TOUR_STEPS} alreadySeen={seenSettingsTour} />
       <PageTitle className="mb-6">Settings</PageTitle>
 
       <SettingsSections

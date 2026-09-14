@@ -67,11 +67,19 @@ const FLIP_THRESHOLD = 160;
 export function Menu({
   label,
   triggerClassName,
+  triggerDataTour,
+  panelDataTour,
   children,
 }: {
   /** Accessible name for the trigger button — the row/item this menu acts on. */
   label: string;
   triggerClassName?: string;
+  /** `data-tour` anchor for the trigger — what a tour step's `autoOpen` clicks to pop the
+   *  menu open (Phase 7, D-95). */
+  triggerDataTour?: string;
+  /** `data-tour` anchor for the opened panel itself — the tour then spotlights *this*, not the
+   *  small trigger button, so the cutout lands around the actual menu items. */
+  panelDataTour?: string;
   children: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
@@ -218,6 +226,7 @@ export function Menu({
           openedByKeyboard.current = event.detail === 0;
           openMenu();
         }}
+        data-tour={triggerDataTour}
         className={triggerClassName}
       >
         ⋮
@@ -231,6 +240,7 @@ export function Menu({
             id={menuId}
             role="menu"
             aria-label={label}
+            data-tour={panelDataTour}
             style={{
               position: "fixed",
               right: position.right,
