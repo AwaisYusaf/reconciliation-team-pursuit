@@ -51,3 +51,4 @@ context/
 
 # Playwright MCP session output (screenshots, snapshots, downloaded test files)
 .playwright-mcp/
+.claude/
