@@ -243,9 +243,21 @@ Same processing/status fields as expense_documents, plus:
 
 Unique index `(org_id, funding_source_id, month, type, line_item_id)` **where downloaded_at is null** — one live cache entry per source; pinned rows accumulate as history.
 
+### user_tour_progress (Phase 7, D-94)
+| Field | Type | Notes |
+|---|---|---|
+| user_id | uuid FK | **cascade delete** with user |
+| tour | enum PK | `dashboard` \| `add_expense` \| `recurring` \| `packet` |
+| completed_at | timestamptz | Set on Skip or Finish, never on mid-tour navigation away |
+
+Composite PK `(user_id, tour)`. Keyed by user, not organization or browser — a tour shown once
+must not reappear for that user on another device, but must show once each for every other user
+of the org, including staff added later. "Show the app guide again" in Settings deletes all of a
+user's own rows (`resetToursAction`), which re-arms all four tours on next visit.
+
 ## Relationships summary
 
-organizations 1—1 contract_settings (deprecated) · 1—n users, payment_sources, supporting_doc_types, funding_sources, line_items, expenses, month_documents, month_statuses, vendor_defaults, recurring_items, generated_artifacts. funding_sources 1—n line_items, expenses, month_documents, month_statuses, generated_artifacts. expenses 1—n expense_documents. line_items 1—n expenses (restrict), recurring_items (cascade after confirm), vendor_defaults (set null).
+organizations 1—1 contract_settings (deprecated) · 1—n users, payment_sources, supporting_doc_types, funding_sources, line_items, expenses, month_documents, month_statuses, vendor_defaults, recurring_items, generated_artifacts. funding_sources 1—n line_items, expenses, month_documents, month_statuses, generated_artifacts. expenses 1—n expense_documents. line_items 1—n expenses (restrict), recurring_items (cascade after confirm), vendor_defaults (set null). users 1—n user_tour_progress (cascade delete).
 
 ## S3 layout (private bucket)
 

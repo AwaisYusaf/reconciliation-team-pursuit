@@ -289,6 +289,52 @@ applies here). One commit per phase, matching this repo's commit style (`git log
 
 ---
 
+## Results (2026-09-14)
+
+All five phases shipped, one commit each (`2fbff03`…Phase 4). Open questions settled as built,
+recorded as **D-94** in `docs/04-engineering/decisions.md`:
+
+1. **Bespoke engine** (§7 Q1) — built, no dependency added. The mobile positioning work did not
+   need more than the recommendation anticipated; one real bug was found and fixed along the way
+   (see below), not a sign the approach was wrong.
+2. **Blocks interaction** (§7 Q2) — built as recommended: `inert` on everything but the
+   highlighted target and the tour's own controls, Skip always available.
+3. **Existing users see all four tours** (§7 Q3) — yes, confirmed: `hasSeenTour` has no
+   sign-up-date gate, so anyone without a `user_tour_progress` row sees the tour on next visit to
+   that tab, existing users included.
+4. **Navigating away mid-tour starts over** (§7 Q4) — built as recommended; nothing is written
+   until Skip or Finish.
+5. **Recurring step 1's fallback copy** (§7 Q5) — kept exactly as spec'd, unchanged, for both the
+   literal empty-list case and the "every item already added" case (the fallback triggers
+   whenever no per-row "Add to month" button is present, which is a slightly wider condition than
+   "list empty" — see D-94).
+
+**A real bug, caught and fixed (Phase 2):** the card-positioning logic's "place below" heuristic
+required only 180px of space, but the card itself runs 220–260px tall; on Recurring's short,
+mostly-empty page this let the card render off the bottom of the viewport. Fixed with an
+`ESTIMATED_CARD_HEIGHT` constant driving both the below/above choice and a hard viewport clamp,
+plus a `max-h`/`overflow-y-auto` backstop on the card itself. Reproduced before the fix,
+reverified after, with a screenshot showing the card and both buttons fully on-screen.
+
+**Verified live, end to end** (2026-09-14, fresh browser session): completed/skipped all four
+tours as one user, confirmed via direct DB query that all four `user_tour_progress` rows existed
+for that user only; clicked "Show the app guide again" in Settings, confirmed via DB query that
+all four rows were deleted; revisited Dashboard and confirmed the tour re-armed at step 1 of 4.
+Also re-verified the Packet tour does not mount while "All funding sources" is selected, and that
+it starts cleanly once a single source is chosen. Full mobile pass (390×844) across all 21 steps
+of the four tours (Dashboard's 4, Add Expense's 6, Recurring's 2, Packet's 5) — every card stayed
+on-screen with no overflow, Skip/Back/Next/Done all reachable at that width.
+
+**Not independently proven:** a genuine multi-device scenario (two real separate sessions/browser
+profiles for the same user) — the "stays gone on another device" guarantee rests on the tour
+being a plain server-rendered read keyed by `user_id`, which the Phase 0 integration test
+exercises via two independently-resolved sessions for the same user, but no literal second
+physical device was used.
+
+Test suite: 802 passed, 20 skipped, one unrelated pre-existing failure
+(`packet-trace.integration.test.ts`, caused by a local `pdftotext` version mismatch producing its
+usage help instead of running — an environment/tooling issue, not a regression from this work).
+
 ## 9. Acceptance criteria → where each is proven
 
 | Criterion (Appendix A "Done when") | Proven by |

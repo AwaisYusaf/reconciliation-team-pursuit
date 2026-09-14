@@ -13,6 +13,7 @@ import { formatDateUS } from "@/src/domain/dates";
 import { formatMoney } from "@/src/domain/format";
 import { parseMoneyToCents } from "@/src/domain/money";
 import { cn } from "@/src/lib/cn";
+import { resetToursAction } from "@/src/modules/tours/actions";
 import type { ActionResult } from "@/src/lib/action-result";
 import {
   archiveFundingSourceAction,
@@ -342,10 +343,30 @@ export function SettingsSections({
           ))}
 
         {active === "account" && (
-          <Card className={CARD_PADDING}>
-            <SectionTitle className="mb-5">Account</SectionTitle>
-            <AccountSection email={email} pending={pending} startTransition={startTransition} />
-          </Card>
+          <>
+            <Card className={CARD_PADDING}>
+              <SectionTitle className="mb-5">Account</SectionTitle>
+              <AccountSection email={email} pending={pending} startTransition={startTransition} />
+            </Card>
+
+            <Card className={cn(CARD_PADDING, "mt-6")}>
+              <SectionTitle className="mb-2">App guide</SectionTitle>
+              <Helper>
+                The short walkthroughs on Dashboard, Add Expense, Recurring and Month-End
+                Packet show once each and then stay out of the way. Bring them all back if
+                you&apos;d like to see them again.
+              </Helper>
+              <div className="flex justify-end mt-4">
+                <Button
+                  variant="secondary"
+                  disabled={pending}
+                  onClick={() => run(() => resetToursAction(), "App guide will show again")}
+                >
+                  Show the app guide again
+                </Button>
+              </div>
+            </Card>
+          </>
         )}
       </div>
     </div>
