@@ -22,17 +22,9 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Button, buttonClassName } from "@/src/components/ui/button";
 import type { TourKey } from "@/src/db/schema";
 import { completeTourAction } from "@/src/modules/tours/actions";
+import { resolveTourSteps, type ResolvedStep, type TourStep } from "@/src/modules/tours/resolve-steps";
 
-export type TourStep = {
-  /**
-   * One or more `data-tour` values, tried in order — the first one present in the DOM wins.
-   * A single string for an ordinary step; an array for Recurring's "prefer this button, else
-   * fall back to that one" case.
-   */
-  target: string | readonly string[];
-  title: string;
-  body: string;
-};
+export type { TourStep };
 
 const GAP = 12;
 const MARGIN = 12;
@@ -41,8 +33,13 @@ const MARGIN = 12;
  *  under, or right against, the very top of a short phone viewport (docs/PHASE-7.md §3.10). */
 const MOBILE_BREAKPOINT = 640;
 const DOCK_THRESHOLD_TOP = 140;
+/** A conservative upper bound for the step card's own height (label + title + a few lines of
+ *  body + buttons + padding), used to keep it fully on-screen without a second measurement
+ *  pass. `max-h` + `overflow-y-auto` on the card itself is the backstop if real content ever
+ *  runs taller than this. */
+const ESTIMATED_CARD_HEIGHT = 260;
 
-type Resolved = { el: HTMLElement; step: TourStep };
+type Resolved = ResolvedStep<HTMLElement>;
 
 export function TourGuide({
   tour,
@@ -74,16 +71,9 @@ export function TourGuide({
   useEffect(() => {
     if (alreadySeen) return;
     const frame = window.requestAnimationFrame(() => {
-      const list = steps
-        .map((step): Resolved | null => {
-          const candidates = Array.isArray(step.target) ? step.target : [step.target];
-          for (const key of candidates) {
-            const el = document.querySelector<HTMLElement>(`[data-tour="${key}"]`);
-            if (el) return { el, step };
-          }
-          return null;
-        })
-        .filter((row): row is Resolved => row !== null);
+      const list = resolveTourSteps(steps, (key) =>
+        document.querySelector<HTMLElement>(`[data-tour="${key}"]`),
+      );
       // Nothing this tour could show right now (every target absent): don't mark it seen —
       // there was nothing to skip or finish, so it should still try again on the next visit.
       setResolved(list);
@@ -168,8 +158,24 @@ export function TourGuide({
     cardLeft = viewportWidth / 2;
   } else {
     const spaceBelow = viewportHeight - rect.bottom;
-    const placeBelow = spaceBelow > 180 || spaceBelow > rect.top;
-    cardTop = placeBelow ? rect.bottom + GAP : rect.top - GAP;
+    // Needs at least a card's worth of room below to actually fit there, not just "some" —
+    // the original 180px threshold was smaller than a real card (title + a few lines of body
+    // + buttons, easily 220-250px), so a target sitting low on a short, mostly-empty page
+    // (Recurring's own empty state, hit live) chose "below" anyway and pushed Skip/Done off
+    // the bottom of the viewport, unreachable by mouse — Escape still worked, but that's not
+    // good enough (Open Question 2: Skip is meant to be the visible way out).
+    const placeBelow = spaceBelow > ESTIMATED_CARD_HEIGHT || spaceBelow > rect.top;
+    cardTop = placeBelow
+      ? rect.bottom + GAP
+      // Anchored by its own estimated bottom edge, not its top — placing "above" by moving
+      // only the top edge (the original code) left the card hanging mostly *under* the
+      // target instead of above it.
+      : rect.top - GAP - ESTIMATED_CARD_HEIGHT;
+    // Final hard clamp regardless of branch: whatever the heuristic picked, the card must
+    // still fit inside the viewport. `max-h` + `overflow-y-auto` below is the safety net for
+    // the rare case where the real rendered height exceeds this estimate anyway (unusually
+    // long copy, a large zoom level).
+    cardTop = Math.max(MARGIN, Math.min(cardTop, viewportHeight - ESTIMATED_CARD_HEIGHT - MARGIN));
     cardLeft = Math.min(
       Math.max(rect.left, MARGIN),
       viewportWidth - cardWidth - MARGIN,
@@ -191,9 +197,11 @@ export function TourGuide({
 
       <div
         className={
-          dockToBottom
-            ? "absolute -translate-x-1/2 -translate-y-full bg-surface border border-line rounded-[3px] shadow-xl p-4 sm:p-5"
-            : "absolute bg-surface border border-line rounded-[3px] shadow-xl p-4 sm:p-5"
+          (dockToBottom
+            ? "absolute -translate-x-1/2 -translate-y-full "
+            : "absolute ") +
+          "bg-surface border border-line rounded-[3px] shadow-xl p-4 sm:p-5 " +
+          "max-h-[calc(100dvh-24px)] overflow-y-auto"
         }
         style={{ top: cardTop, left: cardLeft, width: cardWidth }}
       >

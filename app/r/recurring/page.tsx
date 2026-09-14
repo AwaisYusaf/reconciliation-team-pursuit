@@ -2,11 +2,14 @@ import { and, asc, count, eq, isNull } from "drizzle-orm";
 import { redirect } from "next/navigation";
 
 import { PageTitle, Subtext } from "@/src/components/ui/surfaces";
+import { TourGuide } from "@/src/components/ui/tour";
 import { db } from "@/src/db";
 import { expenseDocuments, expenses, lineItems, paymentSources, recurringItems } from "@/src/db/schema";
 import { monthLabel, monthShortLabel } from "@/src/domain/dates";
 import { addedState } from "@/src/domain/recurring-rules";
 import { loadSourceContext } from "@/src/modules/funding-sources/queries";
+import { RECURRING_TOUR_STEPS } from "@/src/modules/tours/recurring-tour";
+import { hasSeenTour } from "@/src/modules/tours/queries";
 import { getSession } from "@/src/services/auth/session";
 
 import { RecurringManager, type RecurringRow } from "./recurring-manager";
@@ -18,6 +21,7 @@ export default async function RecurringPage() {
   if (!session) redirect("/login");
 
   const month = session.activeMonth;
+  const seenRecurringTour = await hasSeenTour(session.userId, "recurring");
 
   const { sources: fundingSources, selectedId: fundingSourceId } = await loadSourceContext(
     session.orgId,
@@ -141,6 +145,7 @@ export default async function RecurringPage() {
 
   return (
     <div>
+      <TourGuide tour="recurring" steps={RECURRING_TOUR_STEPS} alreadySeen={seenRecurringTour} />
       <PageTitle className="mb-2">Recurring Items</PageTitle>
       <Subtext className="mb-[26px] max-w-[70ch]">
         Vendors and salaries billed every month. Nothing is added automatically — confirm each

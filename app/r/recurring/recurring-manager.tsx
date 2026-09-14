@@ -503,7 +503,7 @@ export function RecurringManager({
                     </Button>
 
                     {row.added ? (
-                      <div className="flex items-center gap-3.5">
+                      <div className="flex items-center gap-3.5" data-tour="recurring-added-item">
                         <span className="text-sm font-bold text-success whitespace-nowrap">
                           ✓ Added to {monthLabel}
                         </span>
@@ -522,6 +522,7 @@ export function RecurringManager({
                         className="min-h-11 px-4 text-[15px] whitespace-nowrap"
                         disabled={pending}
                         onClick={() => add(row)}
+                        data-tour="recurring-add-to-month"
                       >
                         Add to {monthShort}
                       </Button>
@@ -574,7 +575,11 @@ export function RecurringManager({
 
       {!draft ? (
         <div className="mt-6">
-          <Button variant="secondary" onClick={() => setDraft({ ...EMPTY_DRAFT })}>
+          <Button
+            variant="secondary"
+            onClick={() => setDraft({ ...EMPTY_DRAFT })}
+            data-tour="recurring-add-item"
+          >
             + Add recurring item
           </Button>
         </div>
