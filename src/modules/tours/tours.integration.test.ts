@@ -26,7 +26,7 @@ describe.skipIf(!hasDatabase)("tour progress (integration)", async () => {
   const { createTestOrg } = await import("@/src/db/test-org");
   const { actionSession } = await import("@/src/lib/action-session");
   const { fail, SESSION_EXPIRED } = await import("@/src/lib/action-result");
-  const { completeTourAction, resetToursAction } = await import("./actions");
+  const { completeTourAction, replayTourAction, resetToursAction } = await import("./actions");
   const { hasSeenTour } = await import("./queries");
 
   const session = vi.mocked(actionSession);
@@ -137,17 +137,64 @@ describe.skipIf(!hasDatabase)("tour progress (integration)", async () => {
     expect(await hasSeenTour(userB, "dashboard")).toBe(true);
   });
 
-  it("an expired session refuses both actions and writes nothing", async () => {
+  it("replaying one tour clears only that tour, for only that user", async () => {
+    const { orgId } = await createTestOrg({ name: "Tour Org 6" });
+    createdOrgIds.push(orgId);
+    const userA = await createUser(orgId);
+    const userB = await createUser(orgId);
+
+    asUser(orgId, userA);
+    await completeTourAction("settings");
+    await completeTourAction("packet");
+
+    asUser(orgId, userB);
+    await completeTourAction("settings");
+
+    asUser(orgId, userA);
+    const replay = await replayTourAction("settings");
+    expect(replay.ok).toBe(true);
+
+    // The named tour re-arms...
+    expect(await hasSeenTour(userA, "settings")).toBe(false);
+    // ...and nothing else does. This is the whole difference from `resetToursAction`: the
+    // (i) button must not quietly reset all nine tours.
+    expect(await hasSeenTour(userA, "packet")).toBe(true);
+    // Another user's copy of the same tour is untouched, same invariant as everywhere else.
+    expect(await hasSeenTour(userB, "settings")).toBe(true);
+  });
+
+  it("replaying a tour that was never seen is a no-op, not an error", async () => {
+    const { orgId } = await createTestOrg({ name: "Tour Org 7" });
+    createdOrgIds.push(orgId);
+    const userId = await createUser(orgId);
+    asUser(orgId, userId);
+
+    const result = await replayTourAction("line_items");
+    expect(result.ok).toBe(true);
+    expect(await hasSeenTour(userId, "line_items")).toBe(false);
+  });
+
+  it("an expired session refuses every action and writes nothing", async () => {
     const { orgId } = await createTestOrg({ name: "Tour Org 5" });
     createdOrgIds.push(orgId);
     const userId = await createUser(orgId);
 
+    // Seeded through a live session first, so the refusals below have something they could
+    // have destroyed if the guard weren't there.
+    asUser(orgId, userId);
+    await completeTourAction("dashboard");
+
     session.mockResolvedValue({ expired: fail(SESSION_EXPIRED) });
 
-    const complete = await completeTourAction("dashboard");
+    const complete = await completeTourAction("packet");
     const reset = await resetToursAction();
+    const replay = await replayTourAction("dashboard");
     expect(complete).toMatchObject({ ok: false });
     expect(reset).toMatchObject({ ok: false });
-    expect(await hasSeenTour(userId, "dashboard")).toBe(false);
+    expect(replay).toMatchObject({ ok: false });
+
+    expect(await hasSeenTour(userId, "packet")).toBe(false);
+    // Still seen — neither the reset nor the replay deleted anything.
+    expect(await hasSeenTour(userId, "dashboard")).toBe(true);
   });
 });

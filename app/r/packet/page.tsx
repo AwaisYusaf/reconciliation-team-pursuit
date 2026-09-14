@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { PickFundingSource } from "@/src/components/app-shell/pick-funding-source";
+import { TourSequenceSkip } from "@/src/components/app-shell/tour-sequence-skip";
 import {
   Card,
   CARD_PADDING,
@@ -50,6 +51,10 @@ export default async function PacketPage() {
   if (fundingSourceId === null) {
     return (
       <div>
+        {/* Nothing here for the packet tour to point at, so a running walkthrough is handed on
+            rather than stopping at this screen. The tour itself stays unseen and plays on the
+            next visit with a source chosen. */}
+        <TourSequenceSkip tour="packet" />
         <PageHeader title="Month-End Packet" subtext={`Everything the funder receives for ${label}.`} />
         <PickFundingSource
           sources={activeSources}
@@ -65,6 +70,11 @@ export default async function PacketPage() {
     hasSeenTour(session.userId, "packet"),
   ]);
 
+  // Archived sources stay selectable so their history and documents remain reachable, which
+  // means this page now renders for one — and month documents can't be added to or removed
+  // from it (`modules/packet/actions.ts`, `api/files/upload`). Offering those controls anyway
+  // meant the only thing an archived source's upload form could produce was an error toast.
+  const sourceIsArchived = sources.some((s) => s.id === fundingSourceId && s.archivedAt !== null);
   const blocked = readiness.blocking.length > 0;
   const nonEmpty = readiness.rows.filter((row) => row.recordCount > 0);
   const deletedItems: DeletedItem[] = deletedInMonth.map((expense) => ({
@@ -97,8 +107,11 @@ export default async function PacketPage() {
         }
       />
 
+      {/* The tour wrapper below is the same width as the panel inside it: the spotlight lights
+          that element's box, so a full-width wrapper around a narrower panel lit a wide empty
+          strip beside it. */}
       {blocked && (
-        <div data-tour="packet-blocking-alert">
+        <div data-tour="packet-blocking-alert" className="max-w-[820px]">
           <DangerPanel title={UI.blockedTitle} className="mb-7 max-w-[820px]">
             <p className="mt-1.5">{UI.blockedIntro}</p>
             <ul className="mt-2 flex flex-col gap-1">
@@ -219,13 +232,15 @@ export default async function PacketPage() {
           />
         </Card>
 
-        <div data-tour="packet-month-documents">
+        {/* Matches the Card's own width inside `MonthDocuments` — same reason as above. */}
+        <div data-tour="packet-month-documents" className="max-w-[720px]">
           <MonthDocuments
             month={month}
             fundingSourceId={fundingSourceId}
             documents={readiness.documents}
             monthLabel={label}
             hasBankStatement={readiness.hasBankStatement}
+            readOnly={sourceIsArchived}
           />
         </div>
       </div>

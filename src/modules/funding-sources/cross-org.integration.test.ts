@@ -113,6 +113,14 @@ describe.skipIf(!hasDatabase)("cross-organisation funding source sweep (P7.2)", 
     requireSessionMock.mockResolvedValue(sessionContext(orgB, userB));
   }
 
+  /** A legitimate action-facing session in org A — for the tests that aren't about crossing an
+   *  organisation boundary at all, but about what A's own user may do to A's own archived
+   *  source. */
+  function asOrgA() {
+    actionSessionMock.mockResolvedValue(sessionContext(orgA, userA));
+    requireSessionMock.mockResolvedValue(sessionContext(orgA, userA));
+  }
+
   /** Route handlers read `getSession()` directly rather than `actionSession()`. */
   function routeSessionAsOrgB() {
     getSessionMock.mockResolvedValue(sessionContext(orgB, userB));
@@ -316,6 +324,33 @@ describe.skipIf(!hasDatabase)("cross-organisation funding source sweep (P7.2)", 
       .from(monthDocuments)
       .where(eq(monthDocuments.id, monthDocumentA));
     expect(row.status).toBe("attached");
+  });
+
+  it("removeMonthDocumentAction refuses an archived source, keeping its history intact", async () => {
+    // Archiving is meant to preserve a source's documents, not just hide the source. Uploading
+    // into an archived source is already refused; deleting out of one is the same record from
+    // the other end.
+    asOrgA();
+    await db
+      .update(fundingSources)
+      .set({ archivedAt: new Date() })
+      .where(eq(fundingSources.id, sourceA));
+
+    try {
+      const result = await removeMonthDocumentAction(monthDocumentA, sourceA);
+      expect(result.ok).toBe(false);
+
+      const [row] = await db
+        .select({ status: monthDocuments.status })
+        .from(monthDocuments)
+        .where(eq(monthDocuments.id, monthDocumentA));
+      expect(row.status).toBe("attached");
+    } finally {
+      await db
+        .update(fundingSources)
+        .set({ archivedAt: null })
+        .where(eq(fundingSources.id, sourceA));
+    }
   });
 
   it("saveLineItemAction refuses to create or edit against another organisation's source", async () => {

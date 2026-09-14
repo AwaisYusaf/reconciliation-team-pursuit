@@ -155,6 +155,53 @@ html:has(.lp) { scroll-behavior: smooth; overflow-x: hidden; }
   }
 }
 
+/* App guide (the first-run tour, src/components/ui/tour.tsx).
+
+   The spotlight, its accent ring and the step card are three separately-positioned elements
+   that all describe one thing: where to look. Without a shared transition each one snapped to
+   its new step on its own, while `scrollIntoView` smoothly slid the page underneath them — so
+   a step that needed no scrolling cut instantly and a step that did appeared to drift, which
+   is the inconsistency this fixes. One duration and one curve on all three makes them move as
+   a single unit, and makes every step move the same way whether the page scrolled or not.
+
+   Easing matches the landing page's above deliberately: one motion language for the product. */
+.tour-box {
+  transition:
+    top 0.28s cubic-bezier(0.16, 1, 0.3, 1),
+    left 0.28s cubic-bezier(0.16, 1, 0.3, 1),
+    width 0.28s cubic-bezier(0.16, 1, 0.3, 1),
+    height 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* On the overlay itself, not the card: the dimming, the ring and the card then arrive
+   together rather than the card fading in over an already-dark page. Runs once per mount, so
+   it plays when a tour starts and again when the (i) button replays it, but not between
+   steps — the elements persist across steps and only their positions change. Opacity only:
+   the card carries a `translate` of its own in the docked mobile layout, and animating
+   `transform` here would fight it. */
+.tour-overlay {
+  animation: tour-overlay-in 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes tour-overlay-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* Same reasoning as the landing page's guard: someone who asked their OS for less motion gets
+   the end state immediately. The tour still works identically — only the travel is removed. */
+@media (prefers-reduced-motion: reduce) {
+  .tour-box,
+  .tour-overlay {
+    transition-duration: 0.001ms !important;
+    animation-duration: 0.001ms !important;
+  }
+}
+
 /* Landing page only — grant-ledger's glassy CTA buttons/tiles. Class names are globally
    unique (destination has none of them), so no `.lp` scoping is needed on the selectors
    themselves. */

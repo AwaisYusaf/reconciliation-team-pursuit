@@ -27,6 +27,11 @@ export async function removeMonthDocumentAction(
 
   const owned = await requireOwnedFundingSource(current, fundingSourceId);
   if ("denied" in owned) return owned.denied;
+  // Archiving a source is meant to leave its history and documents intact and viewable — the
+  // whole reason archived sources stay selectable at all. Uploading a month document to one is
+  // already refused (`app/api/files/upload/route.ts`); deleting one out of it is the same
+  // record, from the other end, so it is refused here too.
+  if (owned.archivedAt) return fail("That funding source is archived.");
 
   // Scoped by organisation and funding source inside the service, so another org's or another
   // source's id simply finds nothing.

@@ -14,6 +14,7 @@ import { formatMoney } from "@/src/domain/format";
 import { parseMoneyToCents } from "@/src/domain/money";
 import { cn } from "@/src/lib/cn";
 import { resetToursAction } from "@/src/modules/tours/actions";
+import { TOUR_SEQUENCE } from "@/src/modules/tours/sequence";
 import type { ActionResult } from "@/src/lib/action-result";
 import {
   archiveFundingSourceAction,
@@ -363,7 +364,19 @@ export function SettingsSections({
                 <Button
                   variant="secondary"
                   disabled={pending}
-                  onClick={() => run(() => resetToursAction(), "App guide will show again")}
+                  onClick={() =>
+                    run(
+                      () => resetToursAction(),
+                      "App guide will show again",
+                      // Straight to the Dashboard rather than leaving the user on Settings.
+                      // This button brings back *every* walkthrough, and the walkthrough has an
+                      // order: the Dashboard tour is `TOUR_SEQUENCE`'s first stop and the one
+                      // that arms the self-chaining run through the rest. Staying put instead
+                      // restarted the guide from its last screen and skipped the chaining
+                      // entirely, so "show the app guide again" showed only Settings' own tour.
+                      () => router.push(TOUR_SEQUENCE[0].href),
+                    )
+                  }
                 >
                   Show the app guide again
                 </Button>

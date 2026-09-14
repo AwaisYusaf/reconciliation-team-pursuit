@@ -8,9 +8,21 @@ import { and, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
 import { db } from "@/src/db";
-import { userTourProgress, type TourKey } from "@/src/db/schema";
-import { ok, type ActionResult } from "@/src/lib/action-result";
+import { tourKey, userTourProgress, type TourKey } from "@/src/db/schema";
+import { fail, ok, type ActionResult } from "@/src/lib/action-result";
 import { actionSession } from "@/src/lib/action-session";
+
+/**
+ * A server action's parameter types are erased at runtime, so `tour: TourKey` is a promise the
+ * caller makes, not one the runtime keeps — a crafted request can pass any string. Postgres
+ * would reject an unknown value at the enum, but as a thrown error rather than a refusal, and
+ * both callers here fire without awaiting a result. Checking against the enum's own values
+ * keeps this a normal `fail()` and keeps the list in one place: adding a tour to the schema
+ * extends this automatically.
+ */
+function isTourKey(value: unknown): value is TourKey {
+  return typeof value === "string" && (tourKey.enumValues as readonly string[]).includes(value);
+}
 
 /**
  * Mark one tour seen — called on Finish **and** on Skip, which count the same for storage
@@ -25,6 +37,7 @@ import { actionSession } from "@/src/lib/action-session";
 export async function completeTourAction(tour: TourKey): Promise<ActionResult> {
   const current = await actionSession();
   if ("expired" in current) return current.expired;
+  if (!isTourKey(tour)) return fail("That is not a walkthrough.");
 
   await db
     .insert(userTourProgress)
@@ -61,6 +74,7 @@ export async function resetToursAction(): Promise<ActionResult> {
 export async function replayTourAction(tour: TourKey): Promise<ActionResult> {
   const current = await actionSession();
   if ("expired" in current) return current.expired;
+  if (!isTourKey(tour)) return fail("That is not a walkthrough.");
 
   await db
     .delete(userTourProgress)

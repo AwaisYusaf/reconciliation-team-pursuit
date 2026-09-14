@@ -11,13 +11,19 @@ import type { TourStep } from "@/src/components/ui/tour";
  * itself is admin-only), so it's dropped like any other "not relevant right now" step.
  */
 export const SETTINGS_TOUR_STEPS: readonly TourStep[] = [
+  // Both Organization-section steps carry an `autoOpen` of their own, even though that is the
+  // section Settings already opens on: without it, stepping Back here from a later step left
+  // the page on whichever section that step had switched to, so `settings-doc-name` was no
+  // longer in the DOM and the step was dropped instead of shown (review fix).
   {
     target: "settings-sidebar",
+    autoOpen: "settings-tab-organization",
     title: "Settings sections",
     body: "Six sections, switched instantly without changing the page — refreshing or sharing a link won't keep the same one open.",
   },
   {
     target: "settings-doc-name",
+    autoOpen: "settings-tab-organization",
     title: "Document display name",
     body: "This name, not the organization name above it, is what prints on cover sheets and the packet — unless a funding source overrides it.",
   },

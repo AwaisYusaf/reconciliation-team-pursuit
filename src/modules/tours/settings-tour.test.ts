@@ -42,11 +42,19 @@ describe("Settings tour wiring", () => {
     }
   });
 
-  it("only the Organization tab's two steps have no autoOpen — it's the default landing tab", () => {
+  it("every step names the section it belongs to, the two Organization ones included", () => {
+    // The Organization steps used to rely on it being the tab Settings already lands on. That
+    // only holds going forward: stepping Back from a later step left the page on whichever
+    // section that step had switched to, so `settings-doc-name` was no longer in the DOM and
+    // the step was dropped rather than shown. Every step now restores its own section, which
+    // is what makes Back work in both directions (review fix).
     const withoutAutoOpen = SETTINGS_TOUR_STEPS.filter((step) => !step.autoOpen);
-    expect(withoutAutoOpen.map((step) => step.target)).toEqual([
-      "settings-sidebar",
-      "settings-doc-name",
-    ]);
+    expect(withoutAutoOpen).toEqual([]);
+
+    expect(
+      SETTINGS_TOUR_STEPS.filter((step) => step.autoOpen === "settings-tab-organization").map(
+        (step) => step.target,
+      ),
+    ).toEqual(["settings-sidebar", "settings-doc-name"]);
   });
 });

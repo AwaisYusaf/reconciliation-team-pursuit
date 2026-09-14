@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { PickFundingSource } from "@/src/components/app-shell/pick-funding-source";
+import { TourSequenceSkip } from "@/src/components/app-shell/tour-sequence-skip";
 import { DownloadButton } from "@/src/components/ui/download-button";
 import { Card, EmptyState, PageTitle, Subtext } from "@/src/components/ui/surfaces";
 import { SectionRow, TableCard, Td, Th } from "@/src/components/ui/table";
@@ -45,6 +46,9 @@ export default async function ContractSummaryPage() {
   if (fundingSourceId === null) {
     return (
       <div>
+        {/* Nothing here for the contract summary tour to point at, so a running walkthrough is
+            handed on rather than stopping at this screen. */}
+        <TourSequenceSkip tour="contract_summary" />
         <PageTitle className="mb-1.5">Contract Summary</PageTitle>
         <Subtext className="mb-[26px]">Contract position for {monthLabel(month)}.</Subtext>
         <PickFundingSource

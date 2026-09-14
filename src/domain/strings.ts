@@ -167,18 +167,38 @@ export function packetSummaryTitle(docName: string, monthLabel: string): string 
  * slashes but keep its dots, producing a key that the `keyBelongsToOrg` guard would then
  * reject — the builder and the validator have to agree.
  */
-export function sanitiseForFilename(value: string): string {
-  return value
-    .replace(/[\\/:*?"<>|]/g, "")
-    .replace(/[^A-Za-z0-9._ -]/g, "")
-    .replace(/\.{2,}/g, ".")
-    .replace(/\s+/g, " ")
-    .replace(/^[.\s]+|[.\s]+$/g, "")
-    .slice(0, 80);
+export function sanitiseForFilename(value: string, maxLength = S3_COMPONENT_MAX): string {
+  return (
+    value
+      .replace(/[\\/:*?"<>|]/g, "")
+      .replace(/[^A-Za-z0-9._ -]/g, "")
+      .replace(/\.{2,}/g, ".")
+      .replace(/\s+/g, " ")
+      .replace(/^[.\s]+|[.\s]+$/g, "")
+      .slice(0, maxLength)
+      // The trim above runs before the slice, so the slice itself can land on a space or a dot
+      // and put one back on the end. Harmless in a display string, not in an S3 key.
+      .replace(/[.\s]+$/g, "")
+  );
 }
 
-/** The character budget `sanitiseForFilename` enforces on the stem (before the extension). */
-const STEM_MAX = 80;
+/** Default cap, and the one S3 key components keep (`services/storage/keys.ts`). */
+const S3_COMPONENT_MAX = 80;
+
+/**
+ * The budget a *document* filename's stem gets, which is deliberately larger than the S3
+ * component cap above.
+ *
+ * At 80 the protection `fitSourceName` gives is conditional: it guarantees the month, the
+ * document type and the full line item name survive only while those three already fit, and
+ * with a real organisation name and month that leaves barely 35 characters for a line item
+ * name — so two long line items sharing a prefix still collided, just without the source name
+ * being the part that gave way. 150 leaves ~75 for the line item name against realistic
+ * inputs, which also drowns out the few characters the budget estimate can undercount by
+ * (it measures parts sanitised individually, while the title is sanitised joined). Well under
+ * the 255-character limit filesystems and S3 actually impose.
+ */
+const STEM_MAX = 150;
 
 /**
  * `Team Pursuit February 2026 Salary Breakdown.docx` (R10.3). With a `sourceName` (given only
@@ -204,9 +224,9 @@ export function coverSheetFilename(
   // filename as before (a real regression this fix introduced and then caught: "Team/Pursuit
   // & Co." must still keep its period).
   const budgetParts = [
-    sanitiseForFilename(docName),
-    sanitiseForFilename(monthLabel),
-    sanitiseForFilename(lineItemName),
+    sanitiseForFilename(docName, STEM_MAX),
+    sanitiseForFilename(monthLabel, STEM_MAX),
+    sanitiseForFilename(lineItemName, STEM_MAX),
     "Breakdown",
   ].filter(Boolean);
   const source = fitSourceName(sourceName, budgetParts);
@@ -215,7 +235,7 @@ export function coverSheetFilename(
         .filter((part) => part && `${part}`.trim())
         .join(" ")
     : coverSheetTitle(docName, monthLabel, lineItemName);
-  return `${sanitiseForFilename(title).slice(0, STEM_MAX)}.${extension}`;
+  return `${sanitiseForFilename(title, STEM_MAX)}.${extension}`;
 }
 
 /**
@@ -241,41 +261,47 @@ function underscored(docName: string, sourceName: string | null | undefined, mon
   // only. The actual title is built from the raw parts and sanitised once, so a boundary
   // character inside `docName` (a trailing period, say) is not treated as if it sat at the
   // edge of the whole filename just because it sat at the edge of `docName` alone.
-  const budgetParts = [sanitiseForFilename(docName), sanitiseForFilename(monthLabel)].filter(Boolean);
+  const budgetParts = [
+    sanitiseForFilename(docName, STEM_MAX),
+    sanitiseForFilename(monthLabel, STEM_MAX),
+  ].filter(Boolean);
   const source = fitSourceName(sourceName, budgetParts);
   const parts = [docName, source, monthLabel].filter((part) => part && `${part}`.trim());
-  return sanitiseForFilename(parts.join(" ")).slice(0, STEM_MAX).replace(/ /g, "_");
+  return sanitiseForFilename(parts.join(" "), STEM_MAX).replace(/ /g, "_");
 }
 
-/** Longest source name a filename carries (characters, after sanitising), even with room to spare. */
-const FILENAME_SOURCE_MAX = 30;
-
 /**
- * The source-name slice of a filename, shortened only as far as it has to be so the parts
- * that must stay whole — `otherParts`, already sanitised — fit within `STEM_MAX` alongside it.
+ * The source-name slice of a filename, shortened only as far as it has to be so the parts that
+ * must stay whole — `otherParts`, already sanitised — fit within `STEM_MAX` alongside it.
  *
- * Previously the whole assembled title was cut to 80 characters as one blind slice: a long
- * source name pushed the month or the line item name (or "Breakdown" entirely) past the cut,
- * so two different line items — or two different months — could download under the exact same
- * filename. Now only the source shrinks, dropped altogether if there is no room for it at all.
+ * Originally the whole assembled title was cut to 80 characters as one blind slice: a long
+ * source name pushed the month or the line item name (or "Breakdown" entirely) past the cut, so
+ * two different line items — or two different months — could download under the same filename.
+ * Only the source gives way now, dropped altogether if there is no room for it at all.
+ *
+ * There is deliberately no fixed maximum on top of that budget. A flat 30-character cap used to
+ * apply "even with room to spare", and it is what actually produced the reported
+ * `…Community Violence Interventio September 2026…`: a 31-character source name lost its last
+ * letter with 100 characters of the stem still unused. The budget above already guarantees what
+ * that cap was reaching for — the protected parts always fit — so it bounds the source name on
+ * its own, without cutting one that fits.
+ *
  * Cuts on a whole word where that does not throw away most of the available room, so a
- * shortened source name reads as a name and not a mid-word fragment.
+ * genuinely over-long name still reads as a name and not a mid-word fragment.
  */
 function fitSourceName(sourceName: string | null | undefined, otherParts: readonly string[]): string {
   if (!sourceName || !sourceName.trim()) return "";
-  const sanitised = sanitiseForFilename(sourceName);
+  const sanitised = sanitiseForFilename(sourceName, STEM_MAX);
   if (!sanitised) return "";
 
   const otherLength = otherParts.reduce((sum, part) => sum + part.length, 0);
   // One space between every part once the source is inserted among them.
   const budget = STEM_MAX - otherLength - otherParts.length;
   if (budget <= 0) return "";
+  if (sanitised.length <= budget) return sanitised;
 
-  const cap = Math.min(budget, FILENAME_SOURCE_MAX);
-  if (sanitised.length <= cap) return sanitised;
-
-  const cut = sanitised.slice(0, cap);
+  const cut = sanitised.slice(0, budget);
   const lastSpace = cut.lastIndexOf(" ");
-  const wholeWords = lastSpace > cap * 0.6 ? cut.slice(0, lastSpace) : cut;
+  const wholeWords = lastSpace > budget * 0.6 ? cut.slice(0, lastSpace) : cut;
   return wholeWords.trim();
 }

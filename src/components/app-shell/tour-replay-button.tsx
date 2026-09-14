@@ -13,13 +13,19 @@
  * re-arms for the next real visit to that tab rather than replaying immediately. Not special-
  * cased further: it's the same ambiguity `AppNav` already accepts when highlighting a tab as
  * active from a sub-route.
+ *
+ * Clears `TOUR_SEQUENCE_KEY` before refreshing: the guided walkthrough's own "carry me to the
+ * next tab" flag (`tour.tsx`) lives in `sessionStorage` for the whole tab, not just the one
+ * navigation that set it — if it were still `"1"` from an earlier full walkthrough, replaying a
+ * single tour here and clicking Done would silently chain into every other tab's tour too. This
+ * button is always a one-off, standalone view of one screen's tour, never a resumed sequence.
  */
 import { usePathname, useRouter } from "next/navigation";
 import { useTransition } from "react";
 
 import { matches } from "@/src/components/app-shell/app-nav";
 import { replayTourAction } from "@/src/modules/tours/actions";
-import { TOUR_SEQUENCE } from "@/src/modules/tours/sequence";
+import { TOUR_REPLAY_EVENT, TOUR_SEQUENCE, TOUR_SEQUENCE_KEY } from "@/src/modules/tours/sequence";
 
 export function TourReplayButton() {
   const pathname = usePathname();
@@ -42,11 +48,21 @@ export function TourReplayButton() {
       disabled={pending}
       onClick={() =>
         startTransition(async () => {
+          try {
+            sessionStorage.removeItem(TOUR_SEQUENCE_KEY);
+          } catch {
+            // Nothing to clean up if storage isn't available in the first place.
+          }
           await replayTourAction(current.tour);
+          // Re-arms the `TourGuide` already mounted on this page. `refresh()` alone only
+          // freshens the server's own "seen" read for the *next* navigation — it cannot
+          // restart a tour that already ran during this page visit, since its `alreadySeen`
+          // prop is unchanged either way (review fix — see `TOUR_REPLAY_EVENT`).
+          window.dispatchEvent(new CustomEvent(TOUR_REPLAY_EVENT, { detail: current.tour }));
           router.refresh();
         })
       }
-      className="shrink-0 min-h-11 min-w-11 sm:min-h-12 sm:min-w-12 flex items-center justify-center rounded-full border border-line text-accent font-serif font-bold italic hover:bg-section disabled:opacity-60"
+      className="shrink-0 h-7 w-7 text-[12px] leading-none flex items-center justify-center rounded-full border border-line text-accent font-serif font-bold italic hover:bg-section disabled:opacity-60"
     >
       i
     </button>

@@ -128,25 +128,36 @@ describe("filenames (R10.3)", () => {
     );
   });
 
-  it("caps a very long source name so it cannot crowd the month out of the filename", () => {
-    // FILENAME_SOURCE_MAX is 30; anything longer is truncated rather than pushing the month
-    // (and, on the cover sheet, the line item name) past sanitiseForFilename's 80-char cut.
-    const longName = "A".repeat(60);
-    const cappedSource = "A".repeat(30);
+  it("shortens a source name that genuinely doesn't fit, keeping the month and line item whole", () => {
+    // The guarantee, not the mechanism: whatever happens to the source name, the month, the
+    // document type and the line item name survive intact. A 300-character source cannot fit
+    // any budget, so it gives way — but only it. (There is no fixed source cap any more; a
+    // name that fits is printed in full. See `fitSourceName`.)
+    const longName = "A".repeat(300);
 
     const packetName = packetFilename("Team Pursuit", "February 2026", longName);
-    expect(packetName).toContain("February_2026");
-    expect(packetName).toBe(`Team_Pursuit_${cappedSource}_February_2026_Packet.pdf`);
+    expect(packetName.startsWith("Team_Pursuit_")).toBe(true);
+    expect(packetName.endsWith("_February_2026_Packet.pdf")).toBe(true);
 
     const summaryName = summaryFilename("Team Pursuit", "February 2026", longName);
-    expect(summaryName).toContain("February_2026");
-    expect(summaryName).toBe(`Team_Pursuit_${cappedSource}_February_2026_Summary.xlsx`);
+    expect(summaryName.endsWith("_February_2026_Summary.xlsx")).toBe(true);
 
     const coverName = coverSheetFilename("Team Pursuit", "February 2026", "Salary", "docx", longName);
-    expect(coverName).toContain("February 2026");
-    expect(coverName).toContain("Salary");
-    expect(coverName).toContain("Breakdown");
-    expect(coverName).toBe(`Team Pursuit ${cappedSource} February 2026 Salary Breakdown.docx`);
+    expect(coverName.startsWith("Team Pursuit ")).toBe(true);
+    expect(coverName.endsWith(" February 2026 Salary Breakdown.docx")).toBe(true);
+  });
+
+  it("prints a source name that fits in full, rather than cutting it mid-word", () => {
+    // "Community Violence Intervention" is 31 characters. The old flat 30-character cap sliced
+    // its last letter off with most of the stem still unused, which is exactly the reported
+    // `…Community Violence Interventio September 2026…`.
+    const source = "Community Violence Intervention";
+    expect(coverSheetFilename("Team Pursuit", "September 2026", "Salary", "docx", source)).toContain(
+      source,
+    );
+    expect(packetFilename("Team Pursuit", "September 2026", source)).toContain(
+      source.replace(/ /g, "_"),
+    );
   });
 
   it("keeps the month, the document type and the full line item name with real long org/source/line-item names (review fix)", () => {
@@ -188,6 +199,39 @@ describe("filenames (R10.3)", () => {
     expect(a).not.toBe(b);
     expect(a.endsWith("Community Engagement Events A Breakdown.docx")).toBe(true);
     expect(b.endsWith("Community Engagement Events B Breakdown.docx")).toBe(true);
+  });
+
+  it("keeps two long line item names apart even with no source name in play at all", () => {
+    // The residual hole after the first review fix: shortening the *source* name only protects
+    // the rest while the rest already fits. With a real org name, a real month and "Breakdown"
+    // eating ~45 characters, an 80-character stem left barely 35 for the line item name — so
+    // two long names sharing a prefix still collided, the source simply wasn't the part giving
+    // way any more. Both names below are 46 characters; they fit whole now.
+    const docName = "Team Pursuit Global";
+    const month = "September 2026";
+    const a = coverSheetFilename(docName, month, "Community Violence Intervention Program Staff A", "docx");
+    const b = coverSheetFilename(docName, month, "Community Violence Intervention Program Staff B", "docx");
+
+    expect(a).not.toBe(b);
+    expect(a.endsWith("Community Violence Intervention Program Staff A Breakdown.docx")).toBe(true);
+    expect(b.endsWith("Community Violence Intervention Program Staff B Breakdown.docx")).toBe(true);
+  });
+
+  it("reproduces the reported truncation with Team Pursuit's own source name, in full", () => {
+    // Reported verbatim as:
+    //   Team Pursuit Community Violence Interventio September 2026 Professional Developm.docx
+    // — "Intervention" cut mid-word, "Breakdown" gone entirely, line item name cut.
+    const filename = coverSheetFilename(
+      "Team Pursuit",
+      "September 2026",
+      "Professional Development",
+      "docx",
+      "Community Violence Intervention",
+    );
+
+    expect(filename).toBe(
+      "Team Pursuit Community Violence Intervention September 2026 Professional Development Breakdown.docx",
+    );
   });
 
   it("gives two different months two different filenames even with a long source name", () => {

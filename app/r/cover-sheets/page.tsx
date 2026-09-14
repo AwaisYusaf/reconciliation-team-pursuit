@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { PickFundingSource } from "@/src/components/app-shell/pick-funding-source";
+import { TourSequenceSkip } from "@/src/components/app-shell/tour-sequence-skip";
 import { DownloadButton } from "@/src/components/ui/download-button";
 import {
   DangerPanel,
@@ -48,6 +49,10 @@ export default async function CoverSheetsPage({
   if (fundingSourceId === null) {
     return (
       <div>
+        {/* Nothing here for the cover sheets tour to point at, so a running walkthrough is
+            handed on rather than stopping at this screen — this is the first of the three
+            "choose a source" tabs it reaches, so stopping here cost five tours, not one. */}
+        <TourSequenceSkip tour="cover_sheets" />
         <PageHeader
           title="Cover Sheets"
           subtext={`Breakdown documents for ${monthLabel(session.activeMonth)}.`}
@@ -191,8 +196,9 @@ function CoverSheetSection({
     <section>
       <SectionHeading title={lineItem.name} />
 
+      {/* Wrapper matches the panel's own width — see the same note on the packet page. */}
       {blocking.length > 0 && (
-        <div data-tour="cover-sheet-blocked">
+        <div data-tour="cover-sheet-blocked" className="max-w-[820px]">
           <DangerPanel title={UI.blockedTitleLineItem} className="mb-5 max-w-[820px]">
             <p className="mt-1.5">{UI.blockedIntro}</p>
             <ul className="mt-2 flex flex-col gap-1">
