@@ -9,7 +9,7 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/src/db";
 import { monthDocuments, monthLockEvents, monthStatuses } from "@/src/db/schema";
 import { isValidMonthKey, monthLabel } from "@/src/domain/dates";
-import { UI } from "@/src/domain/strings";
+import { UI, UNLOCK_REASON_MAX_LENGTH } from "@/src/domain/strings";
 import { isUuid } from "@/src/lib/ids";
 import { fail, ok, type ActionResult } from "@/src/lib/action-result";
 import { actionSession } from "@/src/lib/action-session";
@@ -17,10 +17,6 @@ import { requireOwnedFundingSource } from "@/src/modules/funding-sources/queries
 import { monthLocked } from "./month-guard";
 import { captureMonthSnapshot, discardMonthSnapshot } from "./snapshot";
 import { deleteStoredObjects } from "@/src/services/storage/documents";
-
-/** Friendly cap on an unlock reason — long enough for a real explanation, short enough that
- *  nobody pastes a whole email into it. */
-const MAX_UNLOCK_REASON_LENGTH = 500;
 
 /** Remove one month document (immediate; the row's Remove button warns first). */
 export async function removeMonthDocumentAction(
@@ -197,8 +193,8 @@ export async function unlockMonthAction(
   if ("denied" in owned) return owned.denied;
 
   const trimmed = reason.trim();
-  if (trimmed.length > MAX_UNLOCK_REASON_LENGTH) {
-    return fail(`Keep the reason under ${MAX_UNLOCK_REASON_LENGTH} characters.`);
+  if (trimmed.length > UNLOCK_REASON_MAX_LENGTH) {
+    return fail(UI.unlockReasonTooLong(UNLOCK_REASON_MAX_LENGTH));
   }
 
   const unlocked = await db.transaction(async (tx) => {

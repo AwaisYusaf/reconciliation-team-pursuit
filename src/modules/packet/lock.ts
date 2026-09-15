@@ -8,7 +8,7 @@ import "server-only";
  * write's own transaction (the upload route, and — from Phase 1b on — the expense/recurring
  * modules), not from the client.
  */
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, isNotNull } from "drizzle-orm";
 import { v7 as uuidv7 } from "uuid";
 
 import { db } from "@/src/db";
@@ -32,11 +32,17 @@ export type LockResult = { ok: true } | { ok: false; error: string };
 
 /**
  * Lock a month: store the signed copy, then in one transaction lock the row, refuse if already
- * locked or if the month has blocking (missing-document) records, mark it submitted if it
- * wasn't, and record the lock event (plan §3.6–§3.7). Archived funding sources are allowed to
- * lock (plan §7 Q3) — this is intentionally not checked here, matching `ingestMonthDocument`
- * leaving that refusal to its caller (the upload route already refuses archived sources for
- * `target=month`; `target=signed-packet` deliberately does not, per the plan).
+ * locked or if the month has blocking (missing-document) records, and record the lock event
+ * (plan §3.6–§3.7). Archived funding sources are allowed to lock (plan §7 Q3) — this is
+ * intentionally not checked here, matching `ingestMonthDocument` leaving that refusal to its
+ * caller (the upload route already refuses archived sources for `target=month`;
+ * `target=signed-packet` deliberately does not, per the plan).
+ *
+ * `submitted_at` and the "as submitted" snapshot move together (PR #16 review — they used to
+ * disagree, since the date was only set on first submission but the snapshot was re-captured on
+ * every lock): a first lock of a month already submitted leaves BOTH alone; a first lock of a
+ * month not yet submitted, or a lock after an unlock (a prior lock event exists), sets
+ * `submitted_at` to now AND re-captures.
  */
 export async function lockMonth(input: {
   orgId: string;
@@ -55,6 +61,10 @@ export async function lockMonth(input: {
   const inspection = await inspectUpload({
     body: Buffer.from(await input.file.arrayBuffer()),
     declaredMimeType: input.file.type,
+    // The signed packet is only stored and served back, never embedded into generated
+    // documents — an owner-password-only PDF (which every viewer opens unprompted) is safe to
+    // accept here even though it would not be for an expense/month upload.
+    allowOwnerPasswordPdf: true,
   });
   if (!inspection.ok) return { ok: false, error: inspection.error };
   if (inspection.mimeType !== "application/pdf") {
@@ -79,30 +89,63 @@ export async function lockMonth(input: {
   const store = storage();
   await store.put({ key, body: inspection.body, contentType: inspection.mimeType });
 
-  const refusal = await db.transaction(async (tx) =>
-    withOrgUploadLock(tx, input.orgId, async (): Promise<string | null> => {
+  type LockOutcome = { refusal: string; recapture?: never } | { refusal?: never; recapture: boolean };
+
+  const outcome = await db.transaction(async (tx) =>
+    withOrgUploadLock(tx, input.orgId, async (): Promise<LockOutcome> => {
       const locked = await monthLocked(tx, input.orgId, [
         { fundingSourceId: input.fundingSourceId, month: input.month },
       ]);
-      if (locked) return UI.monthAlreadyLocked;
+      if (locked) return { refusal: UI.monthAlreadyLocked };
 
       // Prefer passing `tx` here rather than the bare connection: `loadPacketReadiness` runs
       // several selects, and reading them on a second pool connection while this transaction
       // already holds one risks the same pool-exhaustion deadlock `claimReferenceSeq` warns
       // about (`src/modules/expenses/references.ts:39-43`) if enough locks run concurrently.
       const readiness = await loadPacketReadiness(input.orgId, input.fundingSourceId, input.month, tx);
-      if (readiness.blocking.length > 0) return UI.lockNeedsDocuments;
+      if (readiness.blocking.length > 0) return { refusal: UI.lockNeedsDocuments };
 
       const quotaError = await orgStorageError(tx, input.orgId, incomingBytes);
-      if (quotaError) return quotaError;
+      if (quotaError) return { refusal: quotaError };
+
+      // Decide submitted_at and whether to re-capture BEFORE inserting this lock's own event
+      // below, since a prior-lock-event check has to see prior events only (PR #16 review):
+      // - not yet submitted: this is a first submission — set submitted_at to now and capture.
+      // - already submitted, first lock (no prior lock event exists): leave both alone — the
+      //   figures and the date it was submitted must keep agreeing (plan §7 Q1/Q2).
+      // - a lock after an unlock (a prior lock event exists, i.e. was locked before): treat it
+      //   as a fresh submission too — set submitted_at to now and re-capture.
+      const [row] = await tx
+        .select({ submittedAt: monthStatuses.submittedAt })
+        .from(monthStatuses)
+        .where(
+          and(
+            eq(monthStatuses.orgId, input.orgId),
+            eq(monthStatuses.fundingSourceId, input.fundingSourceId),
+            eq(monthStatuses.month, input.month),
+          ),
+        )
+        .limit(1);
+      const [priorLock] = await tx
+        .select({ id: monthLockEvents.id })
+        .from(monthLockEvents)
+        .where(
+          and(
+            eq(monthLockEvents.orgId, input.orgId),
+            eq(monthLockEvents.fundingSourceId, input.fundingSourceId),
+            eq(monthLockEvents.month, input.month),
+            isNotNull(monthLockEvents.s3Key),
+          ),
+        )
+        .limit(1);
+      const recapture = row?.submittedAt == null || priorLock !== undefined;
 
       const now = new Date();
       await tx
         .update(monthStatuses)
         .set({
           lockedAt: now,
-          // Only if it wasn't already submitted — re-locking keeps the original date (plan §7 Q2).
-          submittedAt: sql`coalesce(${monthStatuses.submittedAt}, ${now})`,
+          ...(recapture ? { submittedAt: now } : {}),
         })
         .where(
           and(
@@ -123,27 +166,32 @@ export async function lockMonth(input: {
         sizeBytes: incomingBytes,
       });
 
-      return null;
+      return { recapture };
     }),
   );
 
-  if (refusal) {
+  if (outcome.refusal) {
     await discardStored(key, false);
-    return { ok: false, error: refusal };
+    return { ok: false, error: outcome.refusal };
   }
 
-  // Re-captures the "as submitted" figures — what the City approved (plan §7 Q1). Its own
-  // transaction, so it cannot run inside the one above.
+  // Re-captures the "as submitted" figures — what the City approved (plan §7 Q1) — only when
+  // this lock is a fresh submission (see the comment above): the first lock of a month already
+  // submitted deliberately leaves the existing snapshot alone, so its figures keep agreeing
+  // with the submitted_at date that also wasn't touched. Its own transaction, so it cannot run
+  // inside the one above.
   //
   // The lock has already committed by this point. Letting a failure here escape would answer
   // the upload with "That file could not be saved", although the month is locked with its copy
   // stored — and retrying would then be refused as already locked. The cost of swallowing it is
   // only a stale comparison: the Dashboard's "changed since submitted" notice keeps comparing
   // against the previous capture until the month is next locked or submitted.
-  try {
-    await captureMonthSnapshot(input.orgId, input.fundingSourceId, input.month);
-  } catch {
-    console.error("lock snapshot failed", { orgId: input.orgId, month: input.month });
+  if (outcome.recapture) {
+    try {
+      await captureMonthSnapshot(input.orgId, input.fundingSourceId, input.month);
+    } catch {
+      console.error("lock snapshot failed", { orgId: input.orgId, month: input.month });
+    }
   }
 
   return { ok: true };

@@ -155,7 +155,11 @@ const EXPENSE_SNAPSHOT_COLUMNS = {
 /** Signals a row that existed at the read inside a transaction but was gone by the write — a
  *  concurrent delete raced this one. Caught at the call site and turned into the normal
  *  "no longer exists" failure; never leaks past the action that throws it. */
-class ExpenseRaceLost extends Error {}
+class ExpenseRaceLost extends Error {
+  constructor(message = "That expense no longer exists.") {
+    super(message);
+  }
+}
 
 /** Signals a locked-month refusal out of `permanentlyDeleteExpenseAction`'s transaction, which
  *  otherwise only returns via `db.transaction`'s resolved value — thrown so it rolls back
@@ -452,9 +456,36 @@ export async function updateExpenseAction(input: ExpenseInput): Promise<ActionRe
         ...(sourceChanged ? { recurringItemId: null } : {}),
       })
       .where(
-        and(eq(expenses.id, expenseId), eq(expenses.orgId, current.orgId), isNull(expenses.deletedAt)),
+        and(
+          eq(expenses.id, expenseId),
+          eq(expenses.orgId, current.orgId),
+          isNull(expenses.deletedAt),
+          // Matches only the row the guard above just checked — a move that commits between
+          // the read at the top of this action and the guard would otherwise leave the guard
+          // having checked the wrong month while this WHERE still finds (and updates) the row.
+          eq(expenses.month, existing.month),
+          eq(expenses.fundingSourceId, existing.fundingSourceId),
+        ),
       )
       .returning({ id: expenses.id });
+
+    // The WHERE above can match nothing either because the row is genuinely gone, or because
+    // it moved out from under the guard (same race the comment above describes). Re-read by id
+    // alone to tell them apart — "moved" gets a distinct message so the user knows to reload
+    // rather than assume the expense was deleted.
+    if (updated_.length === 0) {
+      const [stillThere] = await tx
+        .select({ id: expenses.id })
+        .from(expenses)
+        .where(and(eq(expenses.id, expenseId), eq(expenses.orgId, current.orgId), isNull(expenses.deletedAt)))
+        .limit(1);
+      return {
+        ok: true as const,
+        rows: updated_,
+        removedDocs: [],
+        raceMessage: stillThere ? "That expense just changed. Try again." : "That expense no longer exists.",
+      };
+    }
 
     if (updated_.length > 0) {
       await tx.insert(expenseAuditEvents).values({
@@ -487,10 +518,10 @@ export async function updateExpenseAction(input: ExpenseInput): Promise<ActionRe
             .returning({ key: expenseDocuments.s3Key })
         : [];
 
-    return { ok: true as const, rows: updated_, removedDocs };
+    return { ok: true as const, rows: updated_, removedDocs, raceMessage: undefined as string | undefined };
   });
   if (!updated.ok) return fail(UI.monthLocked(monthLabel(updated.locked.month)));
-  if (updated.rows.length === 0) return fail("That expense no longer exists.");
+  if (updated.rows.length === 0) return fail(updated.raceMessage ?? "That expense no longer exists.");
 
   // Carry a corrected narrative back to the template it came from, so next month's one-click
   // add arrives with the current text and nobody reopens an old month to copy it (R8.3, D-66).
@@ -552,10 +583,25 @@ export async function deleteExpenseAction(id: string): Promise<ActionResult> {
       .update(expenses)
       .set({ deletedAt: new Date() })
       .where(
-        and(eq(expenses.id, id), eq(expenses.orgId, current.orgId), isNull(expenses.deletedAt)),
+        and(
+          eq(expenses.id, id),
+          eq(expenses.orgId, current.orgId),
+          isNull(expenses.deletedAt),
+          // Matches only the row the guard above just checked (see the same comment in
+          // updateExpenseAction) — a move landing between the read and the guard would
+          // otherwise still match here on id alone.
+          ...(found
+            ? [eq(expenses.month, found.month), eq(expenses.fundingSourceId, found.fundingSourceId)]
+            : []),
+        ),
       )
       .returning(EXPENSE_SNAPSHOT_COLUMNS);
-    if (trashed_.length === 0) return { ok: true as const, rows: trashed_ };
+    if (trashed_.length === 0) {
+      // `found` null already means "gone" (ordinary case); `found` set but nothing updated
+      // means it moved between the read and this write.
+      const raceMessage = found ? "That expense just changed. Try again." : "That expense no longer exists.";
+      return { ok: true as const, rows: trashed_, raceMessage };
+    }
     const [row] = trashed_;
 
     // RETURNING cannot reach a joined table, so the line item's (and its source's) name — the
@@ -577,10 +623,10 @@ export async function deleteExpenseAction(id: string): Promise<ActionResult> {
       afterData: null,
     });
 
-    return { ok: true as const, rows: trashed_ };
+    return { ok: true as const, rows: trashed_, raceMessage: undefined as string | undefined };
   });
   if (!trashed.ok) return fail(UI.monthLocked(monthLabel(trashed.locked.month)));
-  if (trashed.rows.length === 0) return fail("That expense no longer exists.");
+  if (trashed.rows.length === 0) return fail(trashed.raceMessage ?? "That expense no longer exists.");
 
   revalidatePath("/", "layout");
   return ok();
@@ -614,10 +660,22 @@ export async function restoreExpenseAction(id: string): Promise<ActionResult> {
       .update(expenses)
       .set({ deletedAt: null })
       .where(
-        and(eq(expenses.id, id), eq(expenses.orgId, current.orgId), isNotNull(expenses.deletedAt)),
+        and(
+          eq(expenses.id, id),
+          eq(expenses.orgId, current.orgId),
+          isNotNull(expenses.deletedAt),
+          // Same reasoning as deleteExpenseAction's WHERE — matches only the row the guard
+          // above just checked.
+          ...(found
+            ? [eq(expenses.month, found.month), eq(expenses.fundingSourceId, found.fundingSourceId)]
+            : []),
+        ),
       )
       .returning(EXPENSE_SNAPSHOT_COLUMNS);
-    if (restored_.length === 0) return { ok: true as const, rows: restored_ };
+    if (restored_.length === 0) {
+      const raceMessage = found ? "That expense just changed. Try again." : "That expense no longer exists.";
+      return { ok: true as const, rows: restored_, raceMessage };
+    }
     const [row] = restored_;
 
     // RETURNING cannot reach a joined table, so the line item's (and its source's) name costs
@@ -638,10 +696,10 @@ export async function restoreExpenseAction(id: string): Promise<ActionResult> {
       afterData: snapshotOf(row, lineItem?.name ?? "", lineItem?.fundingSourceName ?? ""),
     });
 
-    return { ok: true as const, rows: restored_ };
+    return { ok: true as const, rows: restored_, raceMessage: undefined as string | undefined };
   });
   if (!restored.ok) return fail(UI.monthLocked(monthLabel(restored.locked.month)));
-  if (restored.rows.length === 0) return fail("That expense no longer exists.");
+  if (restored.rows.length === 0) return fail(restored.raceMessage ?? "That expense no longer exists.");
 
   revalidatePath("/", "layout");
   return ok();
@@ -712,13 +770,33 @@ export async function permanentlyDeleteExpenseAction(id: string): Promise<Action
       const deleted = await tx
         .delete(expenses)
         .where(
-          and(eq(expenses.id, id), eq(expenses.orgId, current.orgId), isNotNull(expenses.deletedAt)),
+          and(
+            eq(expenses.id, id),
+            eq(expenses.orgId, current.orgId),
+            isNotNull(expenses.deletedAt),
+            // Matches only the row the guard above just checked (same reasoning as
+            // updateExpenseAction's WHERE) — a move committing between the outer read and the
+            // guard would otherwise still match here on id alone.
+            eq(expenses.month, existsRow.month),
+            eq(expenses.fundingSourceId, existsRow.fundingSourceId),
+          ),
         )
         .returning({ id: expenses.id });
-      if (deleted.length === 0) throw new ExpenseRaceLost();
+      if (deleted.length === 0) {
+        // Re-select by id alone (still inside this transaction, about to roll back either
+        // way) to tell "moved" from "gone" for the message below.
+        const [stillThere] = await tx
+          .select({ id: expenses.id })
+          .from(expenses)
+          .where(and(eq(expenses.id, id), eq(expenses.orgId, current.orgId), isNotNull(expenses.deletedAt)))
+          .limit(1);
+        throw new ExpenseRaceLost(
+          stillThere ? "That expense just changed. Try again." : "That expense no longer exists.",
+        );
+      }
     });
   } catch (error) {
-    if (error instanceof ExpenseRaceLost) return fail("That expense no longer exists.");
+    if (error instanceof ExpenseRaceLost) return fail(error.message);
     if (error instanceof MonthLockedRefusal) return fail(UI.monthLocked(monthLabel(error.locked.month)));
     throw error;
   }
@@ -760,16 +838,30 @@ export async function removeExpenseDocumentAction(documentId: string): Promise<A
         { fundingSourceId: owner.fundingSourceId, month: owner.month },
       ]);
       if (locked) return { ok: false as const, locked };
+
+      // The pre-transaction read above is a fast lookup only — a move landing between it and
+      // the guard would leave `owner` stale. Re-read the document's owning expense here, inside
+      // the transaction and after the guard, and refuse if it no longer matches — same reasoning
+      // as `ingestExpenseDocument`'s re-read (src/services/storage/documents.ts).
+      const [after] = await tx
+        .select({ fundingSourceId: expenses.fundingSourceId, month: expenses.month })
+        .from(expenseDocuments)
+        .innerJoin(expenses, eq(expenses.id, expenseDocuments.expenseId))
+        .where(and(eq(expenseDocuments.id, documentId), eq(expenseDocuments.orgId, current.orgId)))
+        .limit(1);
+      if (!after || after.month !== owner.month || after.fundingSourceId !== owner.fundingSourceId) {
+        return { ok: true as const, rows: [], raceMessage: "That expense just changed. Try again." };
+      }
     }
 
     const rows = await tx
       .delete(expenseDocuments)
       .where(and(eq(expenseDocuments.id, documentId), eq(expenseDocuments.orgId, current.orgId)))
       .returning({ key: expenseDocuments.s3Key });
-    return { ok: true as const, rows };
+    return { ok: true as const, rows, raceMessage: undefined as string | undefined };
   });
   if (!removed.ok) return fail(UI.monthLocked(monthLabel(removed.locked.month)));
-  if (removed.rows.length === 0) return fail("That file is already gone.");
+  if (removed.rows.length === 0) return fail(removed.raceMessage ?? "That file is already gone.");
 
   await deleteStoredObjects(removed.rows[0].key);
 

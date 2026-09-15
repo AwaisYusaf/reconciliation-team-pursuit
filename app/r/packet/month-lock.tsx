@@ -16,9 +16,9 @@ import { Button, buttonClassName } from "@/src/components/ui/button";
 import { Dialog } from "@/src/components/ui/dialog";
 import { Label, Textarea } from "@/src/components/ui/field";
 import { Card, SubsectionTitle } from "@/src/components/ui/surfaces";
-import { reportResult } from "@/src/components/ui/toast";
+import { reportResult, toast } from "@/src/components/ui/toast";
 import { formatDateUS, todayIso } from "@/src/domain/dates";
-import { UI } from "@/src/domain/strings";
+import { UI, UNLOCK_REASON_MAX_LENGTH } from "@/src/domain/strings";
 import { cn } from "@/src/lib/cn";
 import { unlockMonthAction } from "@/src/modules/packet/actions";
 import type { LockEventRow } from "@/src/modules/packet/queries";
@@ -88,6 +88,7 @@ export function MonthLockControls({
       // Not `closeLock()`: `uploading` in its closure is still the stale `true`.
       setLocking(false);
       setFile(null);
+      toast.success("Month locked.");
       router.refresh();
     } catch {
       setUploading(false);
@@ -113,7 +114,9 @@ export function MonthLockControls({
   }
 
   return (
-    <div className="flex flex-col items-end gap-2">
+    // The tour's submit-and-lock step anchors on this whole block, not the "Mark as submitted"
+    // button: that button is gone once a month is submitted, which silently dropped the step.
+    <div className="flex flex-col items-end gap-2" data-tour="packet-submit">
       {locked && lockedEvent && (
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2 justify-end">
           <span className="text-sm">
@@ -222,6 +225,7 @@ export function MonthLockControls({
         dismissDisabled={pending}
         onDismiss={() => {
           setUnlocking(false);
+          setReason("");
           setError(null);
         }}
         confirm={{ label: UI.unlockButtonLabel, disabled: pending, onConfirm: unlock }}
@@ -233,6 +237,7 @@ export function MonthLockControls({
         <Textarea
           id="unlock-reason"
           rows={2}
+          maxLength={UNLOCK_REASON_MAX_LENGTH}
           value={reason}
           onChange={(event) => setReason(event.target.value)}
           placeholder={UI.unlockReasonPlaceholder}

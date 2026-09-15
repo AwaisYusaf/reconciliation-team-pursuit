@@ -46,6 +46,7 @@ const hasDatabase = Boolean(process.env.DATABASE_URL);
 describe.skipIf(!hasDatabase)("every write path refuses a locked month (integration, R10.7)", async () => {
   const { db } = await import("@/src/db");
   const {
+    expenseAuditEvents,
     expenseDocuments,
     expenses,
     fundingSources,
@@ -911,5 +912,193 @@ describe.skipIf(!hasDatabase)("every write path refuses a locked month (integrat
       validExpenseInput({ id, month: openMonth, date: `${openMonth}-06`, fundingSourceId: sourceB, lineItemId: itemB }),
     );
     expect(bypassed.ok).toBe(true);
+  });
+
+  /**
+   * Fix 2 (PR #16 review): every guarded write's own WHERE now pins the (month, fundingSourceId)
+   * the guard just checked, so a move that commits between the guard's row lock and the write
+   * matches nothing — the row moved out from under it — rather than the write going through on
+   * an id-only match. Each test below arranges that exact race with `guardSpy`: it runs the
+   * REAL guard (so "not locked" is the genuine answer, not a stub), then, still inside the
+   * guard's own transaction (`tx`), moves the target expense to a different month before
+   * returning. Old code (id-only WHERE) let the write through anyway — the three explicitly
+   * marked below were confirmed to fail on the pre-fix code by hand-reverting the relevant hunk.
+   */
+  it("update: raced by a move between the guard and the write — refused as 'just changed', name unchanged, no audit event (fail-before confirmed)", async () => {
+    const month = freshMonth();
+    const otherMonth = freshMonth();
+    const id = await insertExpenseDirect(sourceA, itemA, month, { name: "Original" });
+    asUser();
+
+    const actualGuard = await vi.importActual<typeof import("@/src/modules/packet/month-guard")>(
+      "@/src/modules/packet/month-guard",
+    );
+    guardSpy.mockImplementationOnce(async (tx, org, entries) => {
+      const result = await actualGuard.monthLocked(tx, org, entries);
+      await tx.update(expenses).set({ month: otherMonth }).where(eq(expenses.id, id));
+      return result;
+    });
+
+    const result = await updateExpenseAction(
+      validExpenseInput({ id, month, date: `${month}-06`, name: "Renamed" }),
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toBe("That expense just changed. Try again.");
+
+    const row = await expenseRow(id);
+    expect(row.name).toBe("Original");
+
+    const events = await db.select().from(expenseAuditEvents).where(eq(expenseAuditEvents.expenseId, id));
+    expect(events).toHaveLength(0);
+  });
+
+  it("delete: raced by a move between the guard and the write — refused as 'just changed', not trashed, no audit event (fail-before confirmed)", async () => {
+    const month = freshMonth();
+    const otherMonth = freshMonth();
+    const id = await insertExpenseDirect(sourceA, itemA, month);
+    asUser();
+
+    const actualGuard = await vi.importActual<typeof import("@/src/modules/packet/month-guard")>(
+      "@/src/modules/packet/month-guard",
+    );
+    guardSpy.mockImplementationOnce(async (tx, org, entries) => {
+      const result = await actualGuard.monthLocked(tx, org, entries);
+      await tx.update(expenses).set({ month: otherMonth }).where(eq(expenses.id, id));
+      return result;
+    });
+
+    const result = await deleteExpenseAction(id);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toBe("That expense just changed. Try again.");
+
+    const row = await expenseRow(id);
+    expect(row.deletedAt).toBeNull();
+
+    const events = await db.select().from(expenseAuditEvents).where(eq(expenseAuditEvents.expenseId, id));
+    expect(events).toHaveLength(0);
+  });
+
+  it("restore: raced by a move between the guard and the write — refused as 'just changed', stays trashed, no audit event", async () => {
+    const month = freshMonth();
+    const otherMonth = freshMonth();
+    const id = await insertExpenseDirect(sourceA, itemA, month, { deletedAt: new Date() });
+    asUser();
+
+    const actualGuard = await vi.importActual<typeof import("@/src/modules/packet/month-guard")>(
+      "@/src/modules/packet/month-guard",
+    );
+    guardSpy.mockImplementationOnce(async (tx, org, entries) => {
+      const result = await actualGuard.monthLocked(tx, org, entries);
+      await tx.update(expenses).set({ month: otherMonth }).where(eq(expenses.id, id));
+      return result;
+    });
+
+    const result = await restoreExpenseAction(id);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toBe("That expense just changed. Try again.");
+
+    const row = await expenseRow(id);
+    expect(row.deletedAt).not.toBeNull();
+
+    const events = await db.select().from(expenseAuditEvents).where(eq(expenseAuditEvents.expenseId, id));
+    expect(events).toHaveLength(0);
+  });
+
+  it("permanently delete: raced by a move between the guard and the write — refused as 'just changed', row still exists, no audit event (transaction rolled back)", async () => {
+    const month = freshMonth();
+    const otherMonth = freshMonth();
+    const id = await insertExpenseDirect(sourceA, itemA, month, { deletedAt: new Date() });
+    asUser();
+
+    const actualGuard = await vi.importActual<typeof import("@/src/modules/packet/month-guard")>(
+      "@/src/modules/packet/month-guard",
+    );
+    guardSpy.mockImplementationOnce(async (tx, org, entries) => {
+      const result = await actualGuard.monthLocked(tx, org, entries);
+      await tx.update(expenses).set({ month: otherMonth }).where(eq(expenses.id, id));
+      return result;
+    });
+
+    const result = await permanentlyDeleteExpenseAction(id);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toBe("That expense just changed. Try again.");
+
+    const row = await expenseRow(id);
+    expect(row).toBeDefined();
+
+    // The audit event was inserted before the WHERE found nothing, inside the same transaction
+    // that then threw and rolled back — it must not survive that rollback.
+    const events = await db.select().from(expenseAuditEvents).where(eq(expenseAuditEvents.expenseId, id));
+    expect(events).toHaveLength(0);
+  });
+
+  it("remove an expense file: raced by a move between the guard and the re-read — refused as 'just changed', file and row remain", async () => {
+    const month = freshMonth();
+    const otherMonth = freshMonth();
+    const id = await insertExpenseDirect(sourceA, itemA, month);
+    const jpeg = await sharp({ create: { width: 40, height: 40, channels: 3, background: { r: 1, g: 2, b: 3 } } })
+      .jpeg()
+      .toBuffer();
+    const attached = await ingestExpenseDocument({
+      orgId,
+      expenseId: id,
+      scope: "proof",
+      file: new File([new Uint8Array(jpeg)], "proof.jpg", { type: "image/jpeg" }),
+    });
+    if (!attached.ok) throw new Error(attached.error);
+    asUser();
+
+    const actualGuard = await vi.importActual<typeof import("@/src/modules/packet/month-guard")>(
+      "@/src/modules/packet/month-guard",
+    );
+    guardSpy.mockImplementationOnce(async (tx, org, entries) => {
+      const result = await actualGuard.monthLocked(tx, org, entries);
+      await tx.update(expenses).set({ month: otherMonth }).where(eq(expenses.id, id));
+      return result;
+    });
+
+    const result = await removeExpenseDocumentAction(attached.documentId);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toBe("That expense just changed. Try again.");
+
+    const [doc] = await db
+      .select({ id: expenseDocuments.id, key: expenseDocuments.s3Key })
+      .from(expenseDocuments)
+      .where(eq(expenseDocuments.id, attached.documentId));
+    expect(doc).toBeDefined();
+    expect(await storage().exists(doc.key)).toBe(true);
+  });
+
+  it("recurring 'Remove': raced by a move between the guard and the write — refused as 'just changed', expense stays (fail-before confirmed: old code returned ok on zero rows updated)", async () => {
+    const month = freshMonth();
+    const otherMonth = freshMonth();
+    const [item] = await db
+      .insert(recurringItems)
+      .values({ orgId, name: "Recurring race test", amountCents: 500, lineItemId: itemA, sortOrder: 0 })
+      .returning({ id: recurringItems.id });
+    asUser();
+    const added = await addRecurringToMonthAction(item.id, month);
+    expect(added.ok).toBe(true);
+
+    const [createdRow] = await db
+      .select({ id: expenses.id })
+      .from(expenses)
+      .where(and(eq(expenses.orgId, orgId), eq(expenses.month, month), eq(expenses.recurringItemId, item.id)));
+
+    const actualGuard = await vi.importActual<typeof import("@/src/modules/packet/month-guard")>(
+      "@/src/modules/packet/month-guard",
+    );
+    guardSpy.mockImplementationOnce(async (tx, org, entries) => {
+      const result = await actualGuard.monthLocked(tx, org, entries);
+      await tx.update(expenses).set({ month: otherMonth }).where(eq(expenses.id, createdRow.id));
+      return result;
+    });
+
+    const result = await removeRecurringFromMonthAction(item.id, month, true);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toBe("That expense just changed. Try again.");
+
+    const row = await expenseRow(createdRow.id);
+    expect(row.deletedAt).toBeNull();
   });
 });

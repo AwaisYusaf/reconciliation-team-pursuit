@@ -37,6 +37,8 @@ describe.skipIf(!hasDatabase)("month locking (integration, R10.7)", async () => 
     fundingSources,
     lineItems,
     monthLockEvents,
+    monthSnapshots,
+    monthSnapshotTotals,
     monthStatuses,
     organizations,
     paymentSources,
@@ -44,13 +46,13 @@ describe.skipIf(!hasDatabase)("month locking (integration, R10.7)", async () => 
   const { createTestOrg } = await import("@/src/db/test-org");
   const { hashPassword } = await import("@/src/services/auth/passwords");
   const { monthLabel } = await import("@/src/domain/dates");
-  const { UI } = await import("@/src/domain/strings");
+  const { UI, UNLOCK_REASON_MAX_LENGTH } = await import("@/src/domain/strings");
   const { claimReferenceSeq } = await import("@/src/modules/expenses/references");
   const { actionSession } = await import("@/src/lib/action-session");
   const { getSession, requireSession } = await import("@/src/services/auth/session");
 
   const { lockMonth } = await import("./lock");
-  const { unlockMonthAction, clearMonthSubmittedAction } = await import("./actions");
+  const { unlockMonthAction, clearMonthSubmittedAction, markMonthSubmittedAction } = await import("./actions");
   const { loadLockEvents, loadLockedMonths, loadReportingPeriods } = await import("./queries");
   const { ingestExpenseDocument } = await import("@/src/services/storage/documents");
   const { storage } = await import("@/src/services/storage/driver");
@@ -263,6 +265,35 @@ describe.skipIf(!hasDatabase)("month locking (integration, R10.7)", async () => 
     return row;
   }
 
+  async function snapshotTotalsOf(sourceId: string, month: string) {
+    const [row] = await db
+      .select({ capturedAt: monthSnapshotTotals.capturedAt })
+      .from(monthSnapshotTotals)
+      .where(
+        and(
+          eq(monthSnapshotTotals.orgId, orgId),
+          eq(monthSnapshotTotals.fundingSourceId, sourceId),
+          eq(monthSnapshotTotals.month, month),
+        ),
+      )
+      .limit(1);
+    return row ?? null;
+  }
+
+  async function snapshotBilledCentsOf(sourceId: string, month: string): Promise<number> {
+    const rows = await db
+      .select({ totalBilledCents: monthSnapshots.totalBilledCents })
+      .from(monthSnapshots)
+      .where(
+        and(
+          eq(monthSnapshots.orgId, orgId),
+          eq(monthSnapshots.fundingSourceId, sourceId),
+          eq(monthSnapshots.month, month),
+        ),
+      );
+    return rows.reduce((sum, r) => sum + r.totalBilledCents, 0);
+  }
+
   it("locks an empty month: sets locked_at, records one lock event, object is fetchable", async () => {
     const month = freshMonth();
     const file = await pdfFile("packet-a.pdf");
@@ -321,27 +352,128 @@ describe.skipIf(!hasDatabase)("month locking (integration, R10.7)", async () => 
     expect(events).toHaveLength(1); // the refused attempt left no second event
   });
 
-  it("locking an unsubmitted month marks it submitted; re-locking keeps the original submitted date", async () => {
+  it("locking an unsubmitted month marks it submitted and captures the snapshot; a lock after an unlock is a fresh submission that re-captures", async () => {
     const month = freshMonth();
     const before = await lockedAtOf(sourceA, month);
     expect(before?.submittedAt ?? null).toBeNull();
+    expect(await snapshotTotalsOf(sourceA, month)).toBeNull();
 
+    const expenseId = await completeExpense(sourceA, month, itemA);
+
+    // (b) first lock of a NOT-submitted month: submitted_at is set AND the snapshot is captured.
     const locked = await lockMonth({ orgId, userId, fundingSourceId: sourceA, month, file: await pdfFile() });
     expect(locked.ok).toBe(true);
     const afterLock = await lockedAtOf(sourceA, month);
     expect(afterLock?.submittedAt).not.toBeNull();
     const firstSubmittedAt = afterLock!.submittedAt!.getTime();
+    const firstTotals = await snapshotTotalsOf(sourceA, month);
+    expect(firstTotals).not.toBeNull();
+    const firstBilled = await snapshotBilledCentsOf(sourceA, month);
+    expect(firstBilled).toBeGreaterThan(0);
 
-    // Unlock and re-lock with a new copy — submitted date must not move.
+    // (c) Unlock, change the amount while unlocked, and re-lock with a new copy. PR #16 review:
+    // a lock after an unlock is treated as a fresh submission (a prior lock event already
+    // exists), so submitted_at moves to now AND the snapshot is re-captured — the old behaviour
+    // (submitted_at frozen at the first lock forever, snapshot always re-captured) let the
+    // figures and the printed date disagree after an unlock/re-lock cycle.
     asUser(orgId, userId);
     const unlocked = await unlockMonthAction(month, sourceA, "");
     expect(unlocked.ok).toBe(true);
 
-    await new Promise((r) => setTimeout(r, 5)); // ensure a distinguishable timestamp if the bug existed
+    await db.update(expenses).set({ subtotalCents: 40_000 }).where(eq(expenses.id, expenseId));
+
+    await new Promise((r) => setTimeout(r, 5)); // ensure a distinguishable timestamp
     const relocked = await lockMonth({ orgId, userId, fundingSourceId: sourceA, month, file: await pdfFile() });
     expect(relocked.ok).toBe(true);
     const afterRelock = await lockedAtOf(sourceA, month);
-    expect(afterRelock!.submittedAt!.getTime()).toBe(firstSubmittedAt);
+    expect(afterRelock!.submittedAt!.getTime()).toBeGreaterThan(firstSubmittedAt);
+    const relockTotals = await snapshotTotalsOf(sourceA, month);
+    expect(relockTotals!.capturedAt.getTime()).toBeGreaterThan(firstTotals!.capturedAt.getTime());
+    // Re-captured: the snapshot now reflects the amount changed while unlocked, not the old one.
+    expect(await snapshotBilledCentsOf(sourceA, month)).not.toBe(firstBilled);
+  });
+
+  it("first lock of an already-submitted month leaves submitted_at and the snapshot untouched (fail-before: old code unconditionally re-captured)", async () => {
+    const month = freshMonth();
+    const expenseId = await completeExpense(sourceA, month, itemA);
+
+    asUser(orgId, userId);
+    const submitted = await markMonthSubmittedAction(month, sourceA);
+    expect(submitted.ok).toBe(true);
+
+    const beforeLock = await lockedAtOf(sourceA, month);
+    expect(beforeLock?.submittedAt).not.toBeNull();
+    const submittedAtBeforeLock = beforeLock!.submittedAt!.getTime();
+    const totalsBeforeLock = await snapshotTotalsOf(sourceA, month);
+    expect(totalsBeforeLock).not.toBeNull();
+    const billedBeforeLock = await snapshotBilledCentsOf(sourceA, month);
+    expect(billedBeforeLock).toBeGreaterThan(0);
+
+    // Change the amount AFTER submitting but BEFORE the first lock — a first lock of an
+    // already-submitted month must not pick this up: the figures and the date it was submitted
+    // must keep agreeing (plan §7 Q1/Q2).
+    await new Promise((r) => setTimeout(r, 5)); // distinguishable timestamp if the bug existed
+    await db.update(expenses).set({ subtotalCents: 99_999 }).where(eq(expenses.id, expenseId));
+
+    const locked = await lockMonth({ orgId, userId, fundingSourceId: sourceA, month, file: await pdfFile() });
+    expect(locked.ok).toBe(true);
+
+    const afterLock = await lockedAtOf(sourceA, month);
+    // (a) submitted_at unchanged, exact timestamp.
+    expect(afterLock!.submittedAt!.getTime()).toBe(submittedAtBeforeLock);
+    // (a) snapshot not re-captured: same captured_at, contents unchanged despite the amount
+    // change made between submit and lock.
+    const totalsAfterLock = await snapshotTotalsOf(sourceA, month);
+    expect(totalsAfterLock!.capturedAt.getTime()).toBe(totalsBeforeLock!.capturedAt.getTime());
+    expect(await snapshotBilledCentsOf(sourceA, month)).toBe(billedBeforeLock);
+  });
+
+  it("unlockMonthAction accepts a 700-character reason and refuses 701 with UI.unlockReasonTooLong(700)", async () => {
+    const month = freshMonth();
+    await lockMonth({ orgId, userId, fundingSourceId: sourceA, month, file: await pdfFile() });
+    asUser(orgId, userId);
+
+    const tooLong = "x".repeat(UNLOCK_REASON_MAX_LENGTH + 1);
+    const refused = await unlockMonthAction(month, sourceA, tooLong);
+    expect(refused.ok).toBe(false);
+    if (!refused.ok) expect(refused.error).toBe(UI.unlockReasonTooLong(UNLOCK_REASON_MAX_LENGTH));
+    // Refused before touching the row: still locked.
+    const stillLocked = await lockedAtOf(sourceA, month);
+    expect(stillLocked?.lockedAt).not.toBeNull();
+
+    const exact = "y".repeat(UNLOCK_REASON_MAX_LENGTH);
+    const accepted = await unlockMonthAction(month, sourceA, exact);
+    expect(accepted.ok).toBe(true);
+    const events = await loadLockEvents(orgId, sourceA, month);
+    const unlockEvent = events.find((e) => !e.isLock)!;
+    expect(unlockEvent.reason).toBe(exact);
+  });
+
+  it("loadLockedMonths reflects locked_at even when the newest event is still a lock (PR #16 review: page derives 'locked' from locked_at, not the newest event)", async () => {
+    const month = freshMonth();
+    const locked = await lockMonth({ orgId, userId, fundingSourceId: sourceA, month, file: await pdfFile() });
+    expect(locked.ok).toBe(true);
+
+    let lockedSet = await loadLockedMonths(orgId, sourceA);
+    expect(lockedSet.has(`${sourceA}:${month}`)).toBe(true);
+
+    // Clear locked_at directly, without going through unlockMonthAction (so no unlock event is
+    // recorded) — the newest lock event on file is still a lock, but the month is open.
+    await db
+      .update(monthStatuses)
+      .set({ lockedAt: null })
+      .where(
+        and(
+          eq(monthStatuses.orgId, orgId),
+          eq(monthStatuses.fundingSourceId, sourceA),
+          eq(monthStatuses.month, month),
+        ),
+      );
+    const events = await loadLockEvents(orgId, sourceA, month);
+    expect(events[events.length - 1].isLock).toBe(true); // newest event is still a lock
+
+    lockedSet = await loadLockedMonths(orgId, sourceA);
+    expect(lockedSet.has(`${sourceA}:${month}`)).toBe(false); // locked_at, not the event, decides
   });
 
   it("locking source A's month leaves source B's same month unlocked and editable", async () => {

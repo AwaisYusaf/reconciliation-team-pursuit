@@ -120,6 +120,33 @@ export async function pdfPageCount(pdf: Buffer): Promise<number> {
 }
 
 /**
+ * Whether an encrypted PDF opens with no password at all — true for owner-password-only PDFs
+ * (permissions restrictions, empty user password, which every viewer opens unprompted), false
+ * for PDFs that genuinely need a password to open.
+ *
+ * `pdfinfo` (poppler) exits 0 and prints the document's info for the former, and fails with
+ * "Incorrect password" for the latter — both Windows Poppler and the container's poppler-utils
+ * behave this way; Xpdf's `pdfinfo` was not available to verify locally (only its `pdftotext`
+ * was on PATH here), so an Xpdf-only host is unverified.
+ */
+export async function pdfOpensWithoutPassword(pdf: Buffer): Promise<boolean> {
+  const dir = await mkdtemp(path.join(tmpdir(), "ngo-pdfinfo-pw-"));
+  try {
+    const file = path.join(dir, "input.pdf");
+    await writeFile(file, pdf);
+    try {
+      await run("pdfinfo", [file], 30_000);
+      return true;
+    } catch (error) {
+      if (error instanceof RasterError && /password/i.test(error.message)) return false;
+      throw error;
+    }
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+}
+
+/**
  * Rasterise every page of a PDF, handing them to `onPage` in order.
  *
  * The callback is awaited before the next page is read, so a caller that streams pages into

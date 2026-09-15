@@ -19,7 +19,7 @@ import { UI } from "@/src/domain/strings";
 import { packetContents } from "@/src/generation/packet-order";
 import { loadTrashedExpenses } from "@/src/modules/expenses/queries";
 import { loadSourceContext } from "@/src/modules/funding-sources/queries";
-import { loadLockEvents, loadPacketReadiness } from "@/src/modules/packet/queries";
+import { loadLockedMonths, loadLockEvents, loadPacketReadiness } from "@/src/modules/packet/queries";
 import { PACKET_TOUR_STEPS } from "@/src/modules/tours/packet-tour";
 import { hasSeenTour } from "@/src/modules/tours/queries";
 import { getSession } from "@/src/services/auth/session";
@@ -64,16 +64,20 @@ export default async function PacketPage() {
     );
   }
 
-  const [readiness, deletedInMonth, seenPacketTour, events] = await Promise.all([
+  const [readiness, deletedInMonth, seenPacketTour, events, lockedMonths] = await Promise.all([
     loadPacketReadiness(session.orgId, fundingSourceId, month),
     loadTrashedExpenses(session.orgId, fundingSourceId, month),
     hasSeenTour(session.userId, "packet"),
     loadLockEvents(session.orgId, fundingSourceId, month),
+    loadLockedMonths(session.orgId, fundingSourceId),
   ]);
 
-  // The month is locked exactly when its most recent event is a lock (plan §3.1).
+  // Locked state comes from `month_statuses.locked_at`, not from the newest event (PR #16
+  // review): the newest event being a lock does not by itself mean the month is still locked —
+  // only `locked_at` is what every write's guard (`monthLocked`) actually checks. The newest
+  // event is still used below, for its date/name/link, but only once `locked` says to show it.
+  const locked = lockedMonths.has(`${fundingSourceId}:${month}`);
   const lastEvent = events.length > 0 ? events[events.length - 1] : null;
-  const locked = lastEvent?.isLock === true;
   const lockedEvent =
     locked && lastEvent
       ? {

@@ -325,7 +325,7 @@ export async function removeRecurringFromMonthAction(
     ]);
     if (locked) return { ok: false as const, locked };
 
-    await tx
+    const trashed = await tx
       .update(expenses)
       .set({ deletedAt: new Date() })
       .where(
@@ -333,11 +333,18 @@ export async function removeRecurringFromMonthAction(
           eq(expenses.id, targetExpenseId),
           eq(expenses.orgId, current.orgId),
           isNull(expenses.deletedAt),
+          // Matches only the row the guard above just checked — a move committing between the
+          // reads above and the guard would otherwise still match here on id alone (R10.7,
+          // D-96, PR #16 review).
+          eq(expenses.month, month),
+          eq(expenses.fundingSourceId, item.fundingSourceId),
         ),
-      );
-    return { ok: true as const };
+      )
+      .returning({ id: expenses.id });
+    return { ok: true as const, trashed };
   });
   if (!result.ok) return fail(UI.monthLocked(monthLabel(result.locked.month)));
+  if (result.trashed.length === 0) return fail("That expense just changed. Try again.");
 
   revalidatePath("/", "layout");
   return ok({});

@@ -202,8 +202,8 @@ Same processing/status fields as expense_documents, plus:
 | Field | Type | Notes |
 |---|---|---|
 | org_id + funding_source_id + month | PK | Reference counter per (source, month) (D-93 2.6) |
-| submitted_at | timestamptz null | Set via "Mark as submitted" on the packet screen; drives the R10.6 edit warning |
-| locked_at | timestamptz null | Reconciled (R10.7, D-96) — set/cleared by `lockMonth`/`unlockMonthAction`; the fast guard flag every protected write checks inside its own transaction (`monthLocked`). Unlocking never touches `submitted_at` |
+| submitted_at | timestamptz null | Set via "Mark as submitted" on the packet screen, or by `lockMonth` on a fresh submission (not yet submitted, or a lock following an unlock — R10.7, D-96 amendment); drives the R10.6 edit warning |
+| locked_at | timestamptz null | Reconciled (R10.7, D-96) — set/cleared by `lockMonth`/`unlockMonthAction`; the fast guard flag every protected write checks inside its own transaction (`monthLocked`). Unlocking never touches `submitted_at`. The first lock of an already-submitted month also leaves `submitted_at` alone — only a fresh submission moves it, kept paired with whether `lockMonth` re-captures the `month_snapshots` figures so the two never disagree |
 
 ### month_lock_events (R10.7, D-96)
 Append-only lock/unlock history per (source, month). A row with `s3_key` set is a lock (the

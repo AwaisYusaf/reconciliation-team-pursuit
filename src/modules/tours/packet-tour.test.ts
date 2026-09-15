@@ -39,6 +39,9 @@ describe("Month-End Packet tour wiring", () => {
       readFileSync(`${repoRoot}app/r/packet/page.tsx`, "utf8"),
       readFileSync(`${repoRoot}app/r/packet/packet-download-buttons.tsx`, "utf8"),
       readFileSync(`${repoRoot}app/r/packet/submitted-marker.tsx`, "utf8"),
+      // "packet-submit" moved here from submitted-marker.tsx once month locking (R10.7) gave
+      // the packet screen its own submit/lock controls.
+      readFileSync(`${repoRoot}app/r/packet/month-lock.tsx`, "utf8"),
     ].join("\n");
     for (const step of PACKET_TOUR_STEPS) {
       const targets = Array.isArray(step.target) ? step.target : [step.target];

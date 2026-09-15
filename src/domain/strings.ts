@@ -148,12 +148,18 @@ export const UI = {
   unlockDialogText:
     "Its expenses can be changed again. The signed copy stays saved. Lock the month again when the new signed copy arrives.",
   unlockReasonPlaceholder: "e.g. City asked us to remove the duplicate Staples invoice.",
+  /** Unlock refusal past `UNLOCK_REASON_MAX_LENGTH` — the box's `maxLength` stops typing first. */
+  unlockReasonTooLong: (max: number) => `Keep the reason under ${max} characters.`,
   statusOpen: "Open",
   statusSubmitted: "Submitted",
   reportingPeriodsTitle: "Reporting periods",
   /** Contract Summary's Reporting periods, and the Packet page's own Submitted marker (Appendix A §4). */
   submittedOn: (date: string) => `Submitted ${date}`,
 } as const;
+
+/** Longest unlock reason — long enough for a real explanation, short enough that nobody pastes a
+ *  whole email. Shared so the box's `maxLength` and the server's refusal can't drift apart. */
+export const UNLOCK_REASON_MAX_LENGTH = 700;
 
 /** Inline explanation beside a disabled download button (m07, R4.3). */
 export function downloadBlockedReason(count: number): string {

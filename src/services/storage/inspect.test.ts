@@ -4,11 +4,23 @@
  * Fixtures are generated in-process rather than committed, so the suite carries no binary
  * blobs and no client documents.
  */
+import { execFileSync } from "node:child_process";
+
 import { PDFDocument } from "pdf-lib";
 import sharp from "sharp";
 import { beforeAll, describe, expect, it } from "vitest";
 
 import { inspectUpload } from "./inspect";
+import { makeEncryptedPdf } from "./pdf-fixtures.test-helper";
+
+function hasPoppler(): boolean {
+  try {
+    execFileSync("pdfinfo", ["-v"], { stdio: "ignore" });
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 let jpeg: Buffer;
 let png: Buffer;
@@ -90,6 +102,56 @@ describe("PDFs", () => {
     const result = await inspectUpload({ body: corrupt, declaredMimeType: "application/pdf" });
     expect(result.ok).toBe(false);
     expect(result.ok === false && result.error).toMatch(/damaged/i);
+  });
+
+  it("rejects a password-protected PDF (an ordinary upload, no owner-password allowance)", async () => {
+    const userLocked = makeEncryptedPdf({ ownerPassword: "ownersecret", userPassword: "opensesame" });
+    const result = await inspectUpload({ body: userLocked, declaredMimeType: "application/pdf" });
+    expect(result.ok).toBe(false);
+    expect(result.ok === false && result.error).toMatch(/password-protected/i);
+  });
+});
+
+/**
+ * Owner-password-only PDFs (permissions restrictions, empty user password) open in every
+ * viewer without a password, so `allowOwnerPasswordPdf` — used only by the signed-packet lock
+ * upload — accepts them while a genuinely password-protected PDF is still refused. Both cases
+ * go through `pdfinfo`, which is what tells the two apart, so these skip cleanly when poppler
+ * is not on PATH (the application container always ships it).
+ */
+describe.skipIf(!hasPoppler())("owner-password-only PDFs", () => {
+  it("accepts an owner-password-only PDF when allowOwnerPasswordPdf is set", async () => {
+    const ownerOnly = makeEncryptedPdf({ ownerPassword: "ownersecret", userPassword: "" });
+    const result = await inspectUpload({
+      body: ownerOnly,
+      declaredMimeType: "application/pdf",
+      allowOwnerPasswordPdf: true,
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.pageCount).toBe(1);
+    expect(result.widthPx).toBe(200);
+    expect(result.heightPx).toBe(200);
+    // The stored bytes are the original encrypted file, not a decrypted copy.
+    expect(result.body).toBe(ownerOnly);
+  });
+
+  it("still refuses a PDF that genuinely needs a password, even with allowOwnerPasswordPdf", async () => {
+    const userLocked = makeEncryptedPdf({ ownerPassword: "ownersecret", userPassword: "opensesame" });
+    const result = await inspectUpload({
+      body: userLocked,
+      declaredMimeType: "application/pdf",
+      allowOwnerPasswordPdf: true,
+    });
+    expect(result.ok).toBe(false);
+    expect(result.ok === false && result.error).toMatch(/password-protected/i);
+  });
+
+  it("still refuses an owner-password-only PDF for an ordinary (non-signed-packet) upload", async () => {
+    const ownerOnly = makeEncryptedPdf({ ownerPassword: "ownersecret", userPassword: "" });
+    const result = await inspectUpload({ body: ownerOnly, declaredMimeType: "application/pdf" });
+    expect(result.ok).toBe(false);
+    expect(result.ok === false && result.error).toMatch(/password-protected/i);
   });
 });
 

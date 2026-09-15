@@ -80,7 +80,7 @@ as it is; **Reconciled** is the new state on top of it. Recorded as **D-96**.
 | 3.3 | **The guard creates the month's row if it doesn't exist yet**, before locking it. | A `SELECT … FOR UPDATE` that finds no row does not wait for another transaction's uncommitted insert of it, so without this a lock on a month with no row yet (an empty month, §7 Q4) and that month's first expense saved at the same instant could both succeed. `INSERT … ON CONFLICT DO NOTHING` *does* wait on a conflicting uncommitted insert, so the `FOR UPDATE` after it always sees the lock's committed result. Two statements, in one helper. |
 | 3.4 | **The few writes not in a transaction get one**, because a check outside a transaction is check-then-act: recurring add (insert + reference claim, which also fixes their existing non-atomicity), recurring remove, remove expense file, remove month document. `updateExpenseAction` claims its reference inside the transaction after the guard, not before it. | Required for the guarantee, and fixes a real burn: today a refused move would still spend the target month's reference number. |
 | 3.5 | **Undo "Submitted" needs no transaction**: its update gains `AND locked_at IS NULL` (the lock is on that same row, so one conditional statement is atomic). `markMonthSubmittedAction` is left alone — its button is hidden on a locked month and re-marking changes no expense. | Smallest correct change for both. |
-| 3.6 | **Lock = one upload request** (`target=signed-packet` on the existing upload route), not a Server Action: inspect (must be PDF), store, then one transaction — lock the row, refuse if already locked or if the month has blocking records (§3.7), set `submitted_at` if null, set `locked_at`, insert the lock event, re-capture the snapshot (§7 Q1). Refusal cleans up the stored object the way quota refusals already do. **Unlock = a Server Action**: `UPDATE … SET locked_at = NULL WHERE … AND locked_at IS NOT NULL` + insert the unlock event, one transaction. Signed copies are never deleted. | Server Actions can't take a 25 MB body. One request means a lock can't exist without its copy. |
+| 3.6 | **Lock = one upload request** (`target=signed-packet` on the existing upload route), not a Server Action: inspect (must be PDF), store, then one transaction — lock the row, refuse if already locked or if the month has blocking records (§3.7), set `locked_at`, insert the lock event, and — only on a fresh submission (§7 Q1 amendment: not yet submitted, or a lock after an unlock) — set `submitted_at` to now and, after commit, re-capture the snapshot. Refusal cleans up the stored object the way quota refusals already do. **Unlock = a Server Action**: `UPDATE … SET locked_at = NULL WHERE … AND locked_at IS NOT NULL` + insert the unlock event, one transaction. Signed copies are never deleted. | Server Actions can't take a 25 MB body. One request means a lock can't exist without its copy. |
 | 3.7 | **"Missing documents" = the existing blocking list** (`loadPacketReadiness(...).blocking`, R4.3), checked inside the lock's transaction after the row lock is held. | One definition; button and server can't disagree. |
 | 3.8 | **Signed copy = an ordinary upload**: the existing inspection (must come back `application/pdf`), ≤ 25 MB, counted in the quota, key `org/{orgId}/months/{YYYY-MM}/signed-packets/{fundingSourceId}/{eventId}.pdf`, served by `/api/files/[id]`. | Reuses the upload, quota and download paths; no new route. |
 | 3.9 | **Admins and managers** (`actionSession()`). | Ticket. |
@@ -173,10 +173,17 @@ All in the existing packet module, which already owns month-level actions and qu
 
 ## 7. Open questions — defaults applied unless told otherwise
 
-1. **Locking re-captures the "as submitted" figures.** The signed copy is what the City approved;
-   without this, unlock → fix → lock leaves the Dashboard's drift notice on forever. It is one call
-   to the existing function, the same rule re-submitting already follows.
-2. **Re-locking keeps the original Submitted date.**
+1. **Locking re-captures the "as submitted" figures, but only on a fresh submission — amended by
+   PR #16 review.** The signed copy is what the City approved; without re-capturing at all,
+   unlock → fix → lock would leave the Dashboard's drift notice on forever. But the original rule
+   below (item 2) re-captured on *every* lock while leaving `submitted_at` frozen at the first
+   lock, so the figures and the printed submitted date could disagree. Fixed by tying the two
+   together (R10.7, D-96 amendment): a first lock of a month already submitted leaves both
+   `submitted_at` and the snapshot alone; a first lock of a month not yet submitted, or a lock
+   after an unlock (a prior lock event exists), sets `submitted_at` to now and re-captures.
+2. **Re-locking keeps the original Submitted date — superseded, see item 1.** This held only for
+   the "first lock of an already-submitted month" case; a lock that follows an unlock now moves
+   the date instead, so it stays paired with the snapshot it re-captures.
 3. **Archived sources can lock and unlock** — R14.3 already allows finishing their last months.
 4. **A month with no expenses can be locked** — nothing blocks its download either.
 5. **Reporting periods ignores months whose only expenses are in the Trash.**
