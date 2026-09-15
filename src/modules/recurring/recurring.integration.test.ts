@@ -19,25 +19,24 @@ const hasDatabase = Boolean(process.env.DATABASE_URL);
 
 describe.skipIf(!hasDatabase)("recurring narratives (integration)", async () => {
   const { db } = await import("@/src/db");
-  const { expenses, lineItems, organizations, paymentSources, recurringItems } = await import(
-    "@/src/db/schema"
-  );
+  const { expenses, fundingSources, lineItems, organizations, paymentSources, recurringItems } =
+    await import("@/src/db/schema");
+  const { createTestOrg } = await import("@/src/db/test-org");
   const { claimReferenceSeq } = await import("@/src/modules/expenses/references");
   const { carryNarrativeToTemplate } = await import("./narrative");
-  const { reimbursementRulesFor } = await import("@/src/modules/expenses/reimbursement");
+  const { rulesForFundingSource } = await import("@/src/modules/expenses/reimbursement");
 
   let orgId: string;
+  let fundingSourceId: string;
   let lineItemId: string;
   let itemId: string;
 
   const NARRATIVE = "Monthly design subscription used for outreach flyers.";
 
   beforeAll(async () => {
-    const [org] = await db
-      .insert(organizations)
-      .values({ name: "Recurring Org", docName: "Rec", activeMonth: "2099-01" })
-      .returning({ id: organizations.id });
-    orgId = org.id;
+    const org = await createTestOrg({ name: "Recurring Org", docName: "Rec", activeMonth: "2099-01" });
+    orgId = org.orgId;
+    fundingSourceId = org.fundingSourceId;
 
     await db
       .insert(paymentSources)
@@ -45,7 +44,7 @@ describe.skipIf(!hasDatabase)("recurring narratives (integration)", async () => 
 
     const [item] = await db
       .insert(lineItems)
-      .values({ orgId, name: "Promotional", scheduledValueCents: 500_000, sortOrder: 0 })
+      .values({ orgId, fundingSourceId, name: "Promotional", scheduledValueCents: 500_000, sortOrder: 0 })
       .returning({ id: lineItems.id });
     lineItemId = item.id;
 
@@ -79,10 +78,18 @@ describe.skipIf(!hasDatabase)("recurring narratives (integration)", async () => 
       .where(eq(recurringItems.id, itemId))
       .limit(1);
 
+    // The expense's source is its line item's source (Phase 6, D-93) — resolved here so the
+    // call sites stay unchanged; this is setup, not an assertion.
+    const [lineItem] = await db
+      .select({ fundingSourceId: lineItems.fundingSourceId })
+      .from(lineItems)
+      .where(eq(lineItems.id, item.lineItemId));
+
     const [created] = await db
       .insert(expenses)
       .values({
         orgId,
+        fundingSourceId: lineItem.fundingSourceId,
         lineItemId: item.lineItemId,
         month,
         date: `${month}-01`,
@@ -93,10 +100,11 @@ describe.skipIf(!hasDatabase)("recurring narratives (integration)", async () => 
         subtotalCents: item.amountCents,
         taxCents: item.defaultTaxCents ?? 0,
         feesCents: item.defaultFeesCents ?? 0,
-        // Resolved from the payment source, exactly as addRecurringToMonthAction does (D-67).
-        ...(await reimbursementRulesFor(orgId, item.defaultPaymentSource)),
+        // Resolved from the funding source, exactly as addRecurringToMonthAction does (D-67,
+        // Phase 4/D-93 — no longer the payment source).
+        ...(await rulesForFundingSource(orgId, lineItem.fundingSourceId)),
         sortOrder: 0,
-        referenceSeq: await claimReferenceSeq(orgId, month),
+        referenceSeq: await claimReferenceSeq(orgId, lineItem.fundingSourceId, month),
         recurringItemId: itemId,
       })
       .returning({ id: expenses.id });
@@ -129,26 +137,27 @@ describe.skipIf(!hasDatabase)("recurring narratives (integration)", async () => 
     expect(rows.map((row) => row.referenceSeq).sort()).toEqual([1, 2]);
   });
 
+  // ASSERTION CHANGE (Phase 4, authorised): `reimbursementRulesFor` (keyed by payment source
+  // label) is deleted this phase — rules now come from the funding source (D-93). Rewritten
+  // against `rulesForFundingSource`, preserving the original intent exactly: the one-click add
+  // resolves the same rules the form does, so a source configured to reimburse everything
+  // makes the generated expense claim the whole receipt.
   it("claims the same amount however the expense was entered (D-71)", async () => {
     // The defect this test exists for: the form inherited the funder's rules while the
     // one-click add fell through to the column defaults, so the identical expense under the
     // identical funder claimed a different amount depending on how it was created — the
     // organisation quietly under-claiming on every recurring line.
-    const { reimbursementRulesFor } = await import("@/src/modules/expenses/reimbursement");
     const { reimbursableCents } = await import("@/src/domain/money");
 
     await db
-      .insert(paymentSources)
-      .values({ orgId, label: "Whole receipt funder", sortOrder: 1, taxReimbursable: true, feesReimbursable: true });
-    await db
-      .update(recurringItems)
-      .set({ defaultPaymentSource: "Whole receipt funder" })
-      .where(eq(recurringItems.id, itemId));
+      .update(fundingSources)
+      .set({ taxReimbursable: true, feesReimbursable: true })
+      .where(eq(fundingSources.id, fundingSourceId));
 
     const id = await addToMonth("2099-07");
     const [generated] = await db.select().from(expenses).where(eq(expenses.id, id));
 
-    const rules = await reimbursementRulesFor(orgId, "Whole receipt funder");
+    const rules = await rulesForFundingSource(orgId, fundingSourceId);
     expect(generated.taxReimbursable).toBe(rules.taxReimbursable);
     expect(generated.feesReimbursable).toBe(rules.feesReimbursable);
 
@@ -157,21 +166,23 @@ describe.skipIf(!hasDatabase)("recurring narratives (integration)", async () => 
       generated.subtotalCents + generated.taxCents + generated.feesCents,
     );
 
-    // Restore, so the later tests see the template they expect.
+    // Restore, so the later tests see the rules they expect.
     await db
-      .update(recurringItems)
-      .set({ defaultPaymentSource: "Paid by us, reimbursement requested" })
-      .where(eq(recurringItems.id, itemId));
+      .update(fundingSources)
+      .set({ taxReimbursable: false, feesReimbursable: true })
+      .where(eq(fundingSources.id, fundingSourceId));
   });
 
+  // ASSERTION CHANGE (Phase 4, authorised): same rewrite as above — an unresolvable source id
+  // falls back to `ORIGINAL_RULES` and never over-claims.
   it("falls back to the original rule for an unknown source, never over-claiming", async () => {
-    const { reimbursementRulesFor, ORIGINAL_RULES } = await import(
-      "@/src/modules/expenses/reimbursement"
-    );
+    const { ORIGINAL_RULES } = await import("@/src/modules/expenses/reimbursement");
     // An unresolvable source can only under-claim — over-claiming is what costs the
     // organisation credibility with the funder.
-    expect(await reimbursementRulesFor(orgId, "No such source")).toEqual(ORIGINAL_RULES);
-    expect(await reimbursementRulesFor(orgId, null)).toEqual(ORIGINAL_RULES);
+    expect(await rulesForFundingSource(orgId, "00000000-0000-0000-0000-000000000000")).toEqual(
+      ORIGINAL_RULES,
+    );
+    expect(await rulesForFundingSource(orgId, null)).toEqual(ORIGINAL_RULES);
     expect(ORIGINAL_RULES.taxReimbursable).toBe(false);
   });
 
@@ -236,20 +247,17 @@ describe.skipIf(!hasDatabase)("recurring narratives (integration)", async () => 
 
   it("cannot write to another organisation's template", async () => {
     // The org filter is the guard; without it a guessed id would be writable.
-    const [other] = await db
-      .insert(organizations)
-      .values({ name: "Other Org", docName: "Other", activeMonth: "2099-01" })
-      .returning({ id: organizations.id });
+    const other = await createTestOrg({ name: "Other Org", docName: "Other", activeMonth: "2099-01" });
     try {
       expect(
         await carryNarrativeToTemplate({
-          orgId: other.id,
+          orgId: other.orgId,
           recurringItemId: itemId,
           narrative: "Should not land.",
         }),
       ).toBe(false);
     } finally {
-      await db.delete(organizations).where(eq(organizations.id, other.id));
+      await db.delete(organizations).where(eq(organizations.id, other.orgId));
     }
   });
 });

@@ -18,24 +18,24 @@ const hasDatabase = Boolean(process.env.DATABASE_URL);
 describe.skipIf(!hasDatabase)("loadPacketReadiness and trash (integration)", async () => {
   const { db } = await import("@/src/db");
   const { expenses, lineItems, organizations } = await import("@/src/db/schema");
+  const { createTestOrg } = await import("@/src/db/test-org");
   const { claimReferenceSeq } = await import("@/src/modules/expenses/references");
   const { loadPacketReadiness } = await import("./queries");
 
   let orgId: string;
+  let fundingSourceId: string;
   let lineItemId: string;
 
   const MONTH = "2099-09";
 
   beforeAll(async () => {
-    const [org] = await db
-      .insert(organizations)
-      .values({ name: "Packet Trash Org", docName: "PktTrash", activeMonth: MONTH })
-      .returning({ id: organizations.id });
-    orgId = org.id;
+    const org = await createTestOrg({ name: "Packet Trash Org", docName: "PktTrash", activeMonth: MONTH });
+    orgId = org.orgId;
+    fundingSourceId = org.fundingSourceId;
 
     const [item] = await db
       .insert(lineItems)
-      .values({ orgId, name: "Consulting", scheduledValueCents: 300_000, sortOrder: 0 })
+      .values({ orgId, fundingSourceId, name: "Consulting", scheduledValueCents: 300_000, sortOrder: 0 })
       .returning({ id: lineItems.id });
     lineItemId = item.id;
   });
@@ -52,6 +52,7 @@ describe.skipIf(!hasDatabase)("loadPacketReadiness and trash (integration)", asy
       .insert(expenses)
       .values({
         orgId,
+        fundingSourceId,
         lineItemId,
         month: MONTH,
         date: `${MONTH}-08`,
@@ -65,11 +66,11 @@ describe.skipIf(!hasDatabase)("loadPacketReadiness and trash (integration)", asy
         feesReimbursable: false,
         noReceipt: false,
         sortOrder: 0,
-        referenceSeq: await claimReferenceSeq(orgId, MONTH),
+        referenceSeq: await claimReferenceSeq(orgId, fundingSourceId, MONTH),
       })
       .returning({ id: expenses.id });
 
-    const before = await loadPacketReadiness(orgId, MONTH);
+    const before = await loadPacketReadiness(orgId, fundingSourceId, MONTH);
     expect(before.totalAmountCents).toBe(6_000);
     expect(before.totalRecords).toBe(1);
     expect(before.blocking.map((row) => row.expenseId)).toContain(expense.id);
@@ -81,7 +82,7 @@ describe.skipIf(!hasDatabase)("loadPacketReadiness and trash (integration)", asy
 
     await db.update(expenses).set({ deletedAt: new Date() }).where(eq(expenses.id, expense.id));
 
-    const trashed = await loadPacketReadiness(orgId, MONTH);
+    const trashed = await loadPacketReadiness(orgId, fundingSourceId, MONTH);
     expect(trashed.totalAmountCents).toBe(0);
     expect(trashed.totalRecords).toBe(0);
     expect(trashed.blocking).toHaveLength(0);
@@ -93,7 +94,7 @@ describe.skipIf(!hasDatabase)("loadPacketReadiness and trash (integration)", asy
 
     await db.update(expenses).set({ deletedAt: null }).where(eq(expenses.id, expense.id));
 
-    const restored = await loadPacketReadiness(orgId, MONTH);
+    const restored = await loadPacketReadiness(orgId, fundingSourceId, MONTH);
     expect(restored.totalAmountCents).toBe(6_000);
     expect(restored.totalRecords).toBe(1);
     expect(restored.blocking.map((row) => row.expenseId)).toContain(expense.id);

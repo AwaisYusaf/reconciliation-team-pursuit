@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
+import { PickFundingSource } from "@/src/components/app-shell/pick-funding-source";
+import { TourSequenceSkip } from "@/src/components/app-shell/tour-sequence-skip";
 import { DownloadButton } from "@/src/components/ui/download-button";
 import {
   DangerPanel,
@@ -8,12 +10,16 @@ import {
   PageHeader,
   SectionTitle,
 } from "@/src/components/ui/surfaces";
+import { TourGuide } from "@/src/components/ui/tour";
 import { loadLineItemBudgets } from "@/src/db/queries";
 import { coverSheetRows } from "@/src/domain/cover-sheet";
 import { monthLabel } from "@/src/domain/dates";
 import { blockingRecords, type GateExpense } from "@/src/domain/gate";
 import { coverSheetTitle, UI } from "@/src/domain/strings";
 import { loadMonthExpenses, type ExpenseDetail } from "@/src/modules/expenses/queries";
+import { loadSourceContext } from "@/src/modules/funding-sources/queries";
+import { COVER_SHEETS_TOUR_STEPS } from "@/src/modules/tours/cover-sheets-tour";
+import { hasSeenTour } from "@/src/modules/tours/queries";
 import { getSession } from "@/src/services/auth/session";
 
 import { CoverSheetPreview, type PreviewRow } from "./cover-sheet-preview";
@@ -36,10 +42,34 @@ export default async function CoverSheetsPage({
   const session = await getSession();
   if (!session) redirect("/login");
 
+  const { selectedId: fundingSourceId, activeSources, sources } = await loadSourceContext(
+    session.orgId,
+    session.activeFundingSourceId,
+  );
+  if (fundingSourceId === null) {
+    return (
+      <div>
+        {/* Nothing here for the cover sheets tour to point at, so a running walkthrough is
+            handed on rather than stopping at this screen — this is the first of the three
+            "choose a source" tabs it reaches, so stopping here cost five tours, not one. */}
+        <TourSequenceSkip tour="cover_sheets" />
+        <PageHeader
+          title="Cover Sheets"
+          subtext={`Breakdown documents for ${monthLabel(session.activeMonth)}.`}
+        />
+        <PickFundingSource
+          sources={activeSources}
+          archivedSources={sources.filter((s) => s.archivedAt !== null)}
+        />
+      </div>
+    );
+  }
+
   const month = session.activeMonth;
-  const [lineItems, expenses] = await Promise.all([
-    loadLineItemBudgets(session.orgId),
-    loadMonthExpenses(session.orgId, month),
+  const [lineItems, expenses, seenCoverSheetsTour] = await Promise.all([
+    loadLineItemBudgets(session.orgId, fundingSourceId),
+    loadMonthExpenses(session.orgId, fundingSourceId, month),
+    hasSeenTour(session.userId, "cover_sheets"),
   ]);
 
   const { lineItem: requested } = await searchParams;
@@ -72,10 +102,15 @@ export default async function CoverSheetsPage({
 
   return (
     <div>
+      <TourGuide tour="cover_sheets" steps={COVER_SHEETS_TOUR_STEPS} alreadySeen={seenCoverSheetsTour} />
       <PageHeader
         title="Cover Sheets"
         subtext={`Breakdown documents for ${label}.`}
-        actions={<LineItemSelect lineItems={lineItems} selected={selected} />}
+        actions={
+          <div data-tour="cover-sheet-line-item-picker">
+            <LineItemSelect lineItems={lineItems} selected={selected} />
+          </div>
+        }
       />
 
       <div className="flex flex-col gap-10">
@@ -83,10 +118,12 @@ export default async function CoverSheetsPage({
           <CoverSheetSection
             key={lineItem.id}
             // The name printed on documents, not the legal name (R6.1) — the preview's whole
-            // purpose is to show exactly what the generated file will say.
-            docName={session.docName}
+            // purpose is to show exactly what the generated file will say, so it resolves the
+            // way the snapshot does: the source's own document name, else the org's (D-93).
+            docName={sources.find((source) => source.id === fundingSourceId)?.docName ?? session.docName}
             monthLabelText={label}
             month={month}
+            fundingSourceId={fundingSourceId}
             lineItem={lineItem}
             expenses={expenses.filter((expense) => expense.lineItemId === lineItem.id)}
           />
@@ -101,12 +138,14 @@ function CoverSheetSection({
   docName,
   monthLabelText,
   month,
+  fundingSourceId,
   lineItem,
   expenses,
 }: {
   docName: string;
   monthLabelText: string;
   month: string;
+  fundingSourceId: string;
   lineItem: { id: string; name: string };
   expenses: ExpenseDetail[];
 }) {
@@ -151,31 +190,34 @@ function CoverSheetSection({
     };
   });
 
-  const href = `/api/downloads/cover-sheet?month=${month}&lineItem=${lineItem.id}`;
+  const href = `/api/downloads/cover-sheet?month=${month}&lineItem=${lineItem.id}&source=${fundingSourceId}`;
 
   return (
     <section>
       <SectionHeading title={lineItem.name} />
 
+      {/* Wrapper matches the panel's own width — see the same note on the packet page. */}
       {blocking.length > 0 && (
-        <DangerPanel title={UI.blockedTitleLineItem} className="mb-5 max-w-[820px]">
-          <p className="mt-1.5">{UI.blockedIntro}</p>
-          <ul className="mt-2 flex flex-col gap-1">
-            {blocking.map((record) => (
-              <li key={record.expenseId} className="flex flex-wrap items-baseline gap-2">
-                <span>{record.label}</span>
-                {/* R4.4: each record links straight to the expense that needs fixing. This
-                    screen is where the gap is most often discovered. */}
-                <Link
-                  href={`/r/expenses/${record.expenseId}/edit`}
-                  className="underline text-danger font-medium"
-                >
-                  Open expense
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </DangerPanel>
+        <div data-tour="cover-sheet-blocked" className="max-w-[820px]">
+          <DangerPanel title={UI.blockedTitleLineItem} className="mb-5 max-w-[820px]">
+            <p className="mt-1.5">{UI.blockedIntro}</p>
+            <ul className="mt-2 flex flex-col gap-1">
+              {blocking.map((record) => (
+                <li key={record.expenseId} className="flex flex-wrap items-baseline gap-2">
+                  <span>{record.label}</span>
+                  {/* R4.4: each record links straight to the expense that needs fixing. This
+                      screen is where the gap is most often discovered. */}
+                  <Link
+                    href={`/r/expenses/${record.expenseId}/edit`}
+                    className="underline text-danger font-medium"
+                  >
+                    Open expense
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </DangerPanel>
+        </div>
       )}
 
       {/* Buttons live on each sheet, so they are still reachable in All Line Items mode. */}
@@ -192,13 +234,15 @@ function CoverSheetSection({
         </DownloadButton>
       </div>
 
-      <CoverSheetPreview
-        title={title}
-        rows={rows}
-        totalCents={composed.totalCents}
-        // Placeholders are a screen-only affordance; the gate keeps them out of any file.
-        showMissingProofPlaceholders
-      />
+      <div data-tour="cover-sheet-preview">
+        <CoverSheetPreview
+          title={title}
+          rows={rows}
+          totalCents={composed.totalCents}
+          // Placeholders are a screen-only affordance; the gate keeps them out of any file.
+          showMissingProofPlaceholders
+        />
+      </div>
     </section>
   );
 }

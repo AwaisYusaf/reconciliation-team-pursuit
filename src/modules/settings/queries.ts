@@ -10,14 +10,8 @@ import "server-only";
 import { and, asc, eq, sql } from "drizzle-orm";
 
 import { db } from "@/src/db";
-import {
-  contractSettings,
-  lineItems,
-  organizations,
-  paymentSources,
-  supportingDocTypes,
-  vendorDefaults,
-} from "@/src/db/schema";
+import { lineItems, organizations, paymentSources, supportingDocTypes, vendorDefaults } from "@/src/db/schema";
+import { listFundingSources } from "@/src/modules/funding-sources/queries";
 
 /** Rows on the Settings page's vendor preview — the full library is its own paginated screen. */
 const VENDOR_PREVIEW_SIZE = 3;
@@ -34,40 +28,41 @@ const VENDOR_COLUMNS = {
 };
 
 export async function loadSettings(orgId: string) {
-  const [org, settings, sources, docTypes, vendors, vendorCount, items] = await Promise.all([
-    db.select().from(organizations).where(eq(organizations.id, orgId)).limit(1),
-    db.select().from(contractSettings).where(eq(contractSettings.orgId, orgId)).limit(1),
-    db
-      .select()
-      .from(paymentSources)
-      .where(eq(paymentSources.orgId, orgId))
-      .orderBy(asc(paymentSources.sortOrder)),
-    db
-      .select()
-      .from(supportingDocTypes)
-      .where(eq(supportingDocTypes.orgId, orgId))
-      .orderBy(asc(supportingDocTypes.sortOrder)),
-    db
-      .select(VENDOR_COLUMNS)
-      .from(vendorDefaults)
-      .where(eq(vendorDefaults.orgId, orgId))
-      .orderBy(asc(vendorDefaults.name))
-      .limit(VENDOR_PREVIEW_SIZE),
-    db
-      .select({ count: sql<number>`count(*)::int` })
-      .from(vendorDefaults)
-      .where(eq(vendorDefaults.orgId, orgId)),
-    db
-      .select({ id: lineItems.id, name: lineItems.name })
-      .from(lineItems)
-      .where(eq(lineItems.orgId, orgId))
-      .orderBy(asc(lineItems.sortOrder)),
-  ]);
+  const [org, fundingSourceRows, paymentSourceRows, docTypes, vendors, vendorCount, items] =
+    await Promise.all([
+      db.select().from(organizations).where(eq(organizations.id, orgId)).limit(1),
+      listFundingSources(orgId),
+      db
+        .select()
+        .from(paymentSources)
+        .where(eq(paymentSources.orgId, orgId))
+        .orderBy(asc(paymentSources.sortOrder)),
+      db
+        .select()
+        .from(supportingDocTypes)
+        .where(eq(supportingDocTypes.orgId, orgId))
+        .orderBy(asc(supportingDocTypes.sortOrder)),
+      db
+        .select(VENDOR_COLUMNS)
+        .from(vendorDefaults)
+        .where(eq(vendorDefaults.orgId, orgId))
+        .orderBy(asc(vendorDefaults.name))
+        .limit(VENDOR_PREVIEW_SIZE),
+      db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(vendorDefaults)
+        .where(eq(vendorDefaults.orgId, orgId)),
+      db
+        .select({ id: lineItems.id, name: lineItems.name })
+        .from(lineItems)
+        .where(eq(lineItems.orgId, orgId))
+        .orderBy(asc(lineItems.sortOrder)),
+    ]);
 
   return {
     org: org[0],
-    settings: settings[0] ?? null,
-    sources,
+    fundingSources: fundingSourceRows,
+    sources: paymentSourceRows,
     docTypes,
     vendors,
     vendorCount: vendorCount[0]?.count ?? 0,

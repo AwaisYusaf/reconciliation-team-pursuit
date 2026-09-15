@@ -1,11 +1,14 @@
 import { redirect } from "next/navigation";
 
 import { AppNav } from "@/src/components/app-shell/app-nav";
+import { FundingSourceSelector } from "@/src/components/app-shell/funding-source-selector";
 import { MonthSelector } from "@/src/components/app-shell/month-selector";
+import { TourReplayButton } from "@/src/components/app-shell/tour-replay-button";
 import { Button } from "@/src/components/ui/button";
 import { AppToaster } from "@/src/components/ui/toast";
 import { loadSelectableMonths } from "@/src/db/months";
 import { signOutAction } from "@/src/modules/auth/actions";
+import { loadSourceContext } from "@/src/modules/funding-sources/queries";
 import { getSession } from "@/src/services/auth/session";
 
 /**
@@ -19,9 +22,14 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   if (!session) redirect("/login");
   if (!session.onboarded) redirect("/onboarding/line-items");
 
+  const { sources, selectedId, single } = await loadSourceContext(
+    session.orgId,
+    session.activeFundingSourceId,
+  );
+
   // One list, shared with the expense form: a month the header can select must also be a
   // month an expense can be moved into.
-  const months = await loadSelectableMonths(session.orgId, [session.activeMonth]);
+  const months = await loadSelectableMonths(session.orgId, selectedId, [session.activeMonth]);
   const activeMonth = session.activeMonth;
 
   return (
@@ -38,19 +46,29 @@ export default async function AppLayout({ children }: { children: React.ReactNod
               Grant Expense Reconciliation
             </div>
           </div>
-          <form action={signOutAction} className="shrink-0">
-            <Button type="submit" variant="secondary" className="min-h-11 sm:min-h-12 text-[15px]">
-              Log out
-            </Button>
-          </form>
+          <div className="shrink-0 flex items-center gap-2.5">
+            <TourReplayButton />
+            <form action={signOutAction}>
+              <Button type="submit" variant="secondary" className="min-h-11 sm:min-h-12 text-[15px]">
+                Log out
+              </Button>
+            </form>
+          </div>
         </div>
 
         {/* No border-b here — this row and the sticky tab row right below it are both
             bg-surface, and a line between them made two white boxes read as separate bars
             stacked on top of each other instead of one continuous header surface. */}
         <div className="bg-surface px-4 sm:px-6 pt-3 sm:pt-4">
-          <div className="max-w-[1220px] mx-auto">
-            <MonthSelector months={months} activeMonth={activeMonth} />
+          <div className="max-w-[1220px] mx-auto flex flex-wrap gap-4">
+            <div data-tour="month-selector">
+              <MonthSelector months={months} activeMonth={activeMonth} />
+            </div>
+            {!single && (
+              <div data-tour="funding-source-selector">
+                <FundingSourceSelector sources={sources} selectedId={selectedId} />
+              </div>
+            )}
           </div>
         </div>
       </header>

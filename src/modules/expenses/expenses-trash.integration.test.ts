@@ -30,6 +30,7 @@ describe.skipIf(!hasDatabase)("expense trash (integration)", async () => {
     paymentSources,
     users,
   } = await import("@/src/db/schema");
+  const { createTestOrg } = await import("@/src/db/test-org");
   const { hashPassword } = await import("@/src/services/auth/passwords");
   const { claimReferenceSeq } = await import("./references");
   const { actionSession } = await import("@/src/lib/action-session");
@@ -48,6 +49,7 @@ describe.skipIf(!hasDatabase)("expense trash (integration)", async () => {
   const session = vi.mocked(actionSession);
 
   let orgId: string;
+  let fundingSourceId: string;
   let lineItemId: string;
   let otherOrgId: string;
   let otherLineItemId: string;
@@ -79,6 +81,7 @@ describe.skipIf(!hasDatabase)("expense trash (integration)", async () => {
       orgName: "Org",
       docName: "Doc",
       activeMonth: MONTH,
+      activeFundingSourceId: null,
       onboarded: true,
       welcomeDismissed: true,
     });
@@ -93,10 +96,17 @@ describe.skipIf(!hasDatabase)("expense trash (integration)", async () => {
     name?: string;
   }) {
     const month = overrides.month ?? MONTH;
+    // The expense's source is its line item's source (Phase 6, D-93) — resolved here so the
+    // call sites stay unchanged; this is setup, not an assertion.
+    const [item] = await db
+      .select({ fundingSourceId: lineItems.fundingSourceId })
+      .from(lineItems)
+      .where(eq(lineItems.id, overrides.lineItemId));
     const [row] = await db
       .insert(expenses)
       .values({
         orgId: overrides.orgId,
+        fundingSourceId: item.fundingSourceId,
         lineItemId: overrides.lineItemId,
         month,
         date: `${month}-10`,
@@ -104,7 +114,7 @@ describe.skipIf(!hasDatabase)("expense trash (integration)", async () => {
         paymentSource: "Cash",
         subtotalCents: 1000,
         sortOrder: sortCounter++,
-        referenceSeq: await claimReferenceSeq(overrides.orgId, month),
+        referenceSeq: await claimReferenceSeq(overrides.orgId, item.fundingSourceId, month),
         taxReimbursable: false,
         feesReimbursable: true,
       })
@@ -118,29 +128,24 @@ describe.skipIf(!hasDatabase)("expense trash (integration)", async () => {
   }
 
   beforeAll(async () => {
-    const [org] = await db
-      .insert(organizations)
-      .values({ name: "Trash Org", docName: "Trash", activeMonth: MONTH })
-      .returning({ id: organizations.id });
-    orgId = org.id;
+    const org = await createTestOrg({ name: "Trash Org", docName: "Trash", activeMonth: MONTH });
+    orgId = org.orgId;
+    fundingSourceId = org.fundingSourceId;
 
     const [item] = await db
       .insert(lineItems)
-      .values({ orgId, name: "Travel", scheduledValueCents: 500_000, sortOrder: 0 })
+      .values({ orgId, fundingSourceId, name: "Travel", scheduledValueCents: 500_000, sortOrder: 0 })
       .returning({ id: lineItems.id });
     lineItemId = item.id;
 
     await db.insert(paymentSources).values({ orgId, label: "Cash", sortOrder: 0 });
 
-    const [other] = await db
-      .insert(organizations)
-      .values({ name: "Other Org", docName: "Other", activeMonth: MONTH })
-      .returning({ id: organizations.id });
-    otherOrgId = other.id;
+    const other = await createTestOrg({ name: "Other Org", docName: "Other", activeMonth: MONTH });
+    otherOrgId = other.orgId;
 
     const [otherItem] = await db
       .insert(lineItems)
-      .values({ orgId: otherOrgId, name: "Other Travel", scheduledValueCents: 500_000, sortOrder: 0 })
+      .values({ orgId: otherOrgId, fundingSourceId: other.fundingSourceId, name: "Other Travel", scheduledValueCents: 500_000, sortOrder: 0 })
       .returning({ id: lineItems.id });
     otherLineItemId = otherItem.id;
 
@@ -387,6 +392,7 @@ describe.skipIf(!hasDatabase)("expense trash (integration)", async () => {
       // production code path, not a re-implementation of it.
       const created = await createExpenseAction({
         name: "New while sibling trashed",
+        fundingSourceId,
         lineItemId,
         paymentSource: "Cash",
         taxReimbursable: false,
@@ -448,11 +454,11 @@ describe.skipIf(!hasDatabase)("expense trash (integration)", async () => {
       const trashId = await insertExpense({ orgId, lineItemId, month, name: "Trashed" });
 
       await deleteExpenseAction(trashId);
-      let rows = await loadMonthExpenses(orgId, month);
+      let rows = await loadMonthExpenses(orgId, fundingSourceId, month);
       expect(rows.map((row) => row.id).sort()).toEqual([keepId].sort());
 
       await restoreExpenseAction(trashId);
-      rows = await loadMonthExpenses(orgId, month);
+      rows = await loadMonthExpenses(orgId, fundingSourceId, month);
       expect(rows.map((row) => row.id).sort()).toEqual([keepId, trashId].sort());
     });
   });
@@ -477,7 +483,7 @@ describe.skipIf(!hasDatabase)("expense trash (integration)", async () => {
       const otherId = await insertExpense({ orgId: otherOrgId, lineItemId: otherLineItemId, month });
       await deleteExpenseAction(otherId);
 
-      const trashed = await loadTrashedExpenses(orgId);
+      const trashed = await loadTrashedExpenses(orgId, fundingSourceId);
       const ids = trashed.map((row) => row.id);
 
       expect(ids).not.toContain(active);
@@ -501,20 +507,20 @@ describe.skipIf(!hasDatabase)("expense trash (integration)", async () => {
       const inB = await insertExpense({ orgId, lineItemId, month: monthB, name: "Deleted in B" });
       await deleteExpenseAction(inB);
 
-      const scopedToA = await loadTrashedExpenses(orgId, monthA);
+      const scopedToA = await loadTrashedExpenses(orgId, fundingSourceId, monthA);
       expect(scopedToA.map((row) => row.id)).toEqual([inA]);
 
-      const scopedToB = await loadTrashedExpenses(orgId, monthB);
+      const scopedToB = await loadTrashedExpenses(orgId, fundingSourceId, monthB);
       expect(scopedToB.map((row) => row.id)).toEqual([inB]);
 
       // No month given still means every month, unchanged from before this parameter existed.
-      const unscoped = await loadTrashedExpenses(orgId);
+      const unscoped = await loadTrashedExpenses(orgId, fundingSourceId);
       const unscopedIds = unscoped.map((row) => row.id);
       expect(unscopedIds).toContain(inA);
       expect(unscopedIds).toContain(inB);
 
       // A month with nothing deleted in it returns empty, not every month's rows.
-      expect(await loadTrashedExpenses(orgId, "2099-07")).toEqual([]);
+      expect(await loadTrashedExpenses(orgId, fundingSourceId, "2099-07")).toEqual([]);
     });
   });
 
@@ -522,14 +528,14 @@ describe.skipIf(!hasDatabase)("expense trash (integration)", async () => {
     it("a trashed expense still counts toward loadLineItemRows and blocks the delete plan", async () => {
       const [item] = await db
         .insert(lineItems)
-        .values({ orgId, name: "Blocked by trash", scheduledValueCents: 1000, sortOrder: 5 })
+        .values({ orgId, fundingSourceId, name: "Blocked by trash", scheduledValueCents: 1000, sortOrder: 5 })
         .returning({ id: lineItems.id });
 
       asOrg(orgId);
       const id = await insertExpense({ orgId, lineItemId: item.id, name: "Will be trashed" });
       await deleteExpenseAction(id);
 
-      const rows = await loadLineItemRows(orgId);
+      const rows = await loadLineItemRows(orgId, fundingSourceId);
       const row = rows.find((r) => r.id === item.id)!;
       expect(row.expenseCount).toBe(1);
       expect(planLineItemDelete({ ...row, performanceTotalCents: 0 }).allowed).toBe(false);

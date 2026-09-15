@@ -4,6 +4,7 @@
  * async Server Action — a plain synchronous function like this one is a build error there.
  */
 import { isValidIsoDate, isValidMonthKey } from "@/src/domain/dates";
+import { isUuid } from "@/src/lib/ids";
 import { parseMoneyToCents } from "@/src/domain/money";
 import { UI } from "@/src/domain/strings";
 
@@ -25,6 +26,7 @@ export function validate(input: ExpenseInput): string | null {
   if (!input.name.trim() || !input.lineItemId || !input.paymentSource) {
     return UI.expenseMissingFields;
   }
+  if (!isUuid(input.fundingSourceId)) return "Choose a funding source.";
   if (!isValidMonthKey(input.month)) return "Choose a month.";
   if (!isValidIsoDate(input.date)) return "Enter a valid date.";
   if (invalidMoneyField(input.subtotal)) return "Enter a valid subtotal, like 1234.56.";

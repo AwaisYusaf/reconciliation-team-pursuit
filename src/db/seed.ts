@@ -14,7 +14,7 @@ import { config } from "dotenv";
 config({ path: ".env.local", quiet: true });
 
 import { hash } from "@node-rs/argon2";
-import { eq, sql } from "drizzle-orm";
+import { asc, eq, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
 import { v7 as uuidv7 } from "uuid";
@@ -110,27 +110,57 @@ async function main() {
       console.log(`Created organisation ${orgId} for ${SEED_EMAIL}`);
     }
 
-    await db
-      .insert(schema.contractSettings)
-      .values({
-        orgId,
-        projectName: "Community Violence Intervention",
-        contractNumber: "6007211",
-        basePoNumber: "3086984",
-        performancePoNumber: "3089749",
-        contractValueCents: 94000000,
-        contractStart: "2025-07-01",
-        contractEnd: "2026-06-30",
-        fiduciaryName: "Detroit Crime Commission",
-        advancesReceivedCents: 66500000,
-      })
-      .onConflictDoNothing();
+    const CONTRACT = {
+      projectName: "Community Violence Intervention",
+      contractNumber: "6007211",
+      basePoNumber: "3086984",
+      performancePoNumber: "3089749",
+      contractValueCents: 94000000,
+      contractStart: "2025-07-01",
+      contractEnd: "2026-06-30",
+      fiduciaryName: "Detroit Crime Commission",
+      advancesReceivedCents: 66500000,
+    };
+
+    // Every organisation's first funding source (Phase 6, D-93) — everything below attaches
+    // to it. Rules hardcoded rather than imported from reimbursement.ts: that module carries
+    // the `server-only` marker, which throws when this plain node script imports it (unlike
+    // dev-fixture.ts, seed.ts does not run under the `react-server` condition).
+    let fundingSourceId: string;
+    const existingSource = await db
+      .select({ id: schema.fundingSources.id })
+      .from(schema.fundingSources)
+      .where(eq(schema.fundingSources.orgId, orgId))
+      .orderBy(asc(schema.fundingSources.sortOrder), asc(schema.fundingSources.createdAt))
+      .limit(1);
+    if (existingSource.length > 0) {
+      fundingSourceId = existingSource[0].id;
+      await db
+        .update(schema.fundingSources)
+        .set(CONTRACT)
+        .where(eq(schema.fundingSources.id, fundingSourceId));
+    } else {
+      const [source] = await db
+        .insert(schema.fundingSources)
+        .values({
+          orgId,
+          name: "Source 1",
+          type: "grant",
+          sortOrder: 0,
+          taxReimbursable: false,
+          feesReimbursable: true,
+          ...CONTRACT,
+        })
+        .returning({ id: schema.fundingSources.id });
+      fundingSourceId = source.id;
+    }
 
     for (const [index, item] of LINE_ITEMS.entries()) {
       await db
         .insert(schema.lineItems)
         .values({
           orgId,
+          fundingSourceId,
           name: item.name,
           scheduledValueCents: item.scheduled,
           openingBilledCents: item.opening,

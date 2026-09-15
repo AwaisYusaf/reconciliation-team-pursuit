@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
+import { PickFundingSource } from "@/src/components/app-shell/pick-funding-source";
+import { TourSequenceSkip } from "@/src/components/app-shell/tour-sequence-skip";
 import {
   Card,
   CARD_PADDING,
@@ -10,12 +12,16 @@ import {
   SectionTitle,
 } from "@/src/components/ui/surfaces";
 import { TableCard, Td, Th } from "@/src/components/ui/table";
+import { TourGuide } from "@/src/components/ui/tour";
 import { formatDateUS, monthLabel, todayIso } from "@/src/domain/dates";
 import { formatMoney } from "@/src/domain/format";
 import { UI } from "@/src/domain/strings";
 import { packetContents } from "@/src/generation/packet-order";
 import { loadTrashedExpenses } from "@/src/modules/expenses/queries";
+import { loadSourceContext } from "@/src/modules/funding-sources/queries";
 import { loadPacketReadiness } from "@/src/modules/packet/queries";
+import { PACKET_TOUR_STEPS } from "@/src/modules/tours/packet-tour";
+import { hasSeenTour } from "@/src/modules/tours/queries";
 import { getSession } from "@/src/services/auth/session";
 
 import { MonthDocuments } from "./month-documents";
@@ -35,13 +41,40 @@ export default async function PacketPage() {
   const session = await getSession();
   if (!session) redirect("/login");
 
+  const { selectedId: fundingSourceId, activeSources, sources } = await loadSourceContext(
+    session.orgId,
+    session.activeFundingSourceId,
+  );
   const month = session.activeMonth;
   const label = monthLabel(month);
-  const [readiness, deletedInMonth] = await Promise.all([
-    loadPacketReadiness(session.orgId, month),
-    loadTrashedExpenses(session.orgId, month),
+
+  if (fundingSourceId === null) {
+    return (
+      <div>
+        {/* Nothing here for the packet tour to point at, so a running walkthrough is handed on
+            rather than stopping at this screen. The tour itself stays unseen and plays on the
+            next visit with a source chosen. */}
+        <TourSequenceSkip tour="packet" />
+        <PageHeader title="Month-End Packet" subtext={`Everything the funder receives for ${label}.`} />
+        <PickFundingSource
+          sources={activeSources}
+          archivedSources={sources.filter((s) => s.archivedAt !== null)}
+        />
+      </div>
+    );
+  }
+
+  const [readiness, deletedInMonth, seenPacketTour] = await Promise.all([
+    loadPacketReadiness(session.orgId, fundingSourceId, month),
+    loadTrashedExpenses(session.orgId, fundingSourceId, month),
+    hasSeenTour(session.userId, "packet"),
   ]);
 
+  // Archived sources stay selectable so their history and documents remain reachable, which
+  // means this page now renders for one — and month documents can't be added to or removed
+  // from it (`modules/packet/actions.ts`, `api/files/upload`). Offering those controls anyway
+  // meant the only thing an archived source's upload form could produce was an error toast.
+  const sourceIsArchived = sources.some((s) => s.id === fundingSourceId && s.archivedAt !== null);
   const blocked = readiness.blocking.length > 0;
   const nonEmpty = readiness.rows.filter((row) => row.recordCount > 0);
   const deletedItems: DeletedItem[] = deletedInMonth.map((expense) => ({
@@ -54,12 +87,17 @@ export default async function PacketPage() {
 
   return (
     <div>
+      {/* Only ever mounted here, on the branch that resolved an actual single source — the
+          PickFundingSource branch above returns before this point, so "don't start the tour
+          until a source is chosen" (spec) needs no separate check. */}
+      <TourGuide tour="packet" steps={PACKET_TOUR_STEPS} alreadySeen={seenPacketTour} />
       <PageHeader
         title="Month-End Packet"
         subtext={`Everything the funder receives for ${label}.`}
         actions={
           <SubmittedMarker
             month={month}
+            fundingSourceId={fundingSourceId}
             // The organisation's calendar date, not UTC's: a packet submitted at 9 pm in
             // Detroit would otherwise be stamped with tomorrow's date (R2.5, D-26).
             submittedAt={
@@ -69,23 +107,28 @@ export default async function PacketPage() {
         }
       />
 
+      {/* The tour wrapper below is the same width as the panel inside it: the spotlight lights
+          that element's box, so a full-width wrapper around a narrower panel lit a wide empty
+          strip beside it. */}
       {blocked && (
-        <DangerPanel title={UI.blockedTitle} className="mb-7 max-w-[820px]">
-          <p className="mt-1.5">{UI.blockedIntro}</p>
-          <ul className="mt-2 flex flex-col gap-1">
-            {readiness.blocking.map((record) => (
-              <li key={record.expenseId} className="flex flex-wrap items-baseline gap-2">
-                <span>{record.label}</span>
-                <Link
-                  href={`/r/expenses/${record.expenseId}/edit`}
-                  className="underline text-danger font-medium"
-                >
-                  Open expense
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </DangerPanel>
+        <div data-tour="packet-blocking-alert" className="max-w-[820px]">
+          <DangerPanel title={UI.blockedTitle} className="mb-7 max-w-[820px]">
+            <p className="mt-1.5">{UI.blockedIntro}</p>
+            <ul className="mt-2 flex flex-col gap-1">
+              {readiness.blocking.map((record) => (
+                <li key={record.expenseId} className="flex flex-wrap items-baseline gap-2">
+                  <span>{record.label}</span>
+                  <Link
+                    href={`/r/expenses/${record.expenseId}/edit`}
+                    className="underline text-danger font-medium"
+                  >
+                    Open expense
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </DangerPanel>
+        </div>
       )}
 
       {readiness.totalRecords === 0 && (
@@ -107,7 +150,9 @@ export default async function PacketPage() {
               <Th sticky>Line Item</Th>
               <Th align="right">Amount This Month</Th>
               <Th align="right">Records</Th>
-              <Th align="right">Documentation Complete</Th>
+              <Th align="right" data-tour="packet-doc-complete">
+                Documentation Complete
+              </Th>
             </tr>
           </thead>
           <tbody>
@@ -179,15 +224,25 @@ export default async function PacketPage() {
             Page counts are estimated within about two pages of the final document.
           </p>
 
-          <PacketDownloadButtons month={month} blocked={blocked} deletedItems={deletedItems} />
+          <PacketDownloadButtons
+            month={month}
+            fundingSourceId={fundingSourceId}
+            blocked={blocked}
+            deletedItems={deletedItems}
+          />
         </Card>
 
-        <MonthDocuments
-          month={month}
-          documents={readiness.documents}
-          monthLabel={label}
-          hasBankStatement={readiness.hasBankStatement}
-        />
+        {/* Matches the Card's own width inside `MonthDocuments` — same reason as above. */}
+        <div data-tour="packet-month-documents" className="max-w-[720px]">
+          <MonthDocuments
+            month={month}
+            fundingSourceId={fundingSourceId}
+            documents={readiness.documents}
+            monthLabel={label}
+            hasBankStatement={readiness.hasBankStatement}
+            readOnly={sourceIsArchived}
+          />
+        </div>
       </div>
     </div>
   );

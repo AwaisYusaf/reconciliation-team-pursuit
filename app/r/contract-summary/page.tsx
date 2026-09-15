@@ -1,12 +1,15 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
+import { PickFundingSource } from "@/src/components/app-shell/pick-funding-source";
+import { TourSequenceSkip } from "@/src/components/app-shell/tour-sequence-skip";
 import { DownloadButton } from "@/src/components/ui/download-button";
 import { Card, EmptyState, PageTitle, Subtext } from "@/src/components/ui/surfaces";
 import { SectionRow, TableCard, Td, Th } from "@/src/components/ui/table";
-import { loadContractSettings, loadExpenseAmounts, loadLineItemBudgets } from "@/src/db/queries";
+import { TourGuide } from "@/src/components/ui/tour";
+import { loadExpenseAmounts, loadFundingSourceSettings, loadLineItemBudgets } from "@/src/db/queries";
 import { db } from "@/src/db";
-import { contractSettings } from "@/src/db/schema";
+import { fundingSources } from "@/src/db/schema";
 import { contractContextItems } from "@/src/domain/contract-context";
 import { monthLabel } from "@/src/domain/dates";
 import { formatMoney, formatPercent, summaryRowLabel } from "@/src/domain/format";
@@ -14,8 +17,11 @@ import { blockingRecords, type GateExpense } from "@/src/domain/gate";
 import { downloadBlockedReason } from "@/src/domain/strings";
 import { contractSummary, type SummaryRow } from "@/src/domain/summary";
 import { loadMonthExpenses } from "@/src/modules/expenses/queries";
+import { loadSourceContext } from "@/src/modules/funding-sources/queries";
+import { CONTRACT_SUMMARY_TOUR_STEPS } from "@/src/modules/tours/contract-summary-tour";
+import { hasSeenTour } from "@/src/modules/tours/queries";
 import { getSession } from "@/src/services/auth/session";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 
 export const metadata = { title: "Contract Summary — Grant Expense Reconciliation" };
 
@@ -31,22 +37,45 @@ export default async function ContractSummaryPage() {
   const session = await getSession();
   if (!session) redirect("/login");
 
+  const { selectedId: fundingSourceId, activeSources, sources } = await loadSourceContext(
+    session.orgId,
+    session.activeFundingSourceId,
+  );
   const month = session.activeMonth;
-  const [lineItems, amounts, settings, identifiers, monthExpenses] = await Promise.all([
-    loadLineItemBudgets(session.orgId),
-    loadExpenseAmounts(session.orgId, month),
-    loadContractSettings(session.orgId),
-    db
-      .select({
-        contractNumber: contractSettings.contractNumber,
-        basePoNumber: contractSettings.basePoNumber,
-        performancePoNumber: contractSettings.performancePoNumber,
-      })
-      .from(contractSettings)
-      .where(eq(contractSettings.orgId, session.orgId))
-      .limit(1),
-    loadMonthExpenses(session.orgId, month),
-  ]);
+
+  if (fundingSourceId === null) {
+    return (
+      <div>
+        {/* Nothing here for the contract summary tour to point at, so a running walkthrough is
+            handed on rather than stopping at this screen. */}
+        <TourSequenceSkip tour="contract_summary" />
+        <PageTitle className="mb-1.5">Contract Summary</PageTitle>
+        <Subtext className="mb-[26px]">Contract position for {monthLabel(month)}.</Subtext>
+        <PickFundingSource
+          sources={activeSources}
+          archivedSources={sources.filter((s) => s.archivedAt !== null)}
+        />
+      </div>
+    );
+  }
+
+  const [lineItems, amounts, settings, identifiers, monthExpenses, seenContractSummaryTour] =
+    await Promise.all([
+      loadLineItemBudgets(session.orgId, fundingSourceId),
+      loadExpenseAmounts(session.orgId, fundingSourceId, month),
+      loadFundingSourceSettings(session.orgId, fundingSourceId),
+      db
+        .select({
+          contractNumber: fundingSources.contractNumber,
+          basePoNumber: fundingSources.basePoNumber,
+          performancePoNumber: fundingSources.performancePoNumber,
+        })
+        .from(fundingSources)
+        .where(and(eq(fundingSources.id, fundingSourceId), eq(fundingSources.orgId, session.orgId)))
+        .limit(1),
+      loadMonthExpenses(session.orgId, fundingSourceId, month),
+      hasSeenTour(session.userId, "contract_summary"),
+    ]);
 
   if (lineItems.length === 0) {
     return (
@@ -96,6 +125,11 @@ export default async function ContractSummaryPage() {
 
   return (
     <div>
+      <TourGuide
+        tour="contract_summary"
+        steps={CONTRACT_SUMMARY_TOUR_STEPS}
+        alreadySeen={seenContractSummaryTour}
+      />
       <PageTitle className="mb-1.5">Contract Summary</PageTitle>
       <Subtext className="mb-3.5">Contract position for {monthLabel(month)}.</Subtext>
 
@@ -105,7 +139,7 @@ export default async function ContractSummaryPage() {
         ))}
       </div>
 
-      <TableCard minWidth={900}>
+      <TableCard minWidth={900} data-tour="contract-summary-table">
         <thead>
           <tr>
             <Th sticky>Description of Work</Th>
@@ -133,7 +167,7 @@ export default async function ContractSummaryPage() {
         </tbody>
       </TableCard>
 
-      <Card className="max-w-[460px] mt-7">
+      <Card className="max-w-[460px] mt-7" data-tour="contract-summary-reconciliation">
         <ReconciliationRow
           label="Total advances received"
           value={formatMoney(summary.reconciliation.advancesCents)}
@@ -155,7 +189,7 @@ export default async function ContractSummaryPage() {
 
       <div className="mt-7">
         <DownloadButton
-          href={`/api/downloads/summary?month=${month}`}
+          href={`/api/downloads/summary?month=${month}&source=${fundingSourceId}`}
           disabled={refusal !== null}
         >
           Download Summary (Excel)

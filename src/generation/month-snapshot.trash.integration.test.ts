@@ -18,25 +18,29 @@ const hasDatabase = Boolean(process.env.DATABASE_URL);
 describe.skipIf(!hasDatabase)("loadMonthSnapshot and trash (integration)", async () => {
   const { db } = await import("@/src/db");
   const { expenses, lineItems, organizations } = await import("@/src/db/schema");
+  const { createTestOrg } = await import("@/src/db/test-org");
   const { claimReferenceSeq } = await import("@/src/modules/expenses/references");
   const { loadMonthSnapshot } = await import("./month-snapshot");
 
   let orgId: string;
+  let fundingSourceId: string;
   let lineItemId: string;
 
   const PRIOR_MONTH = "2099-07";
   const CURRENT_MONTH = "2099-08";
 
   beforeAll(async () => {
-    const [org] = await db
-      .insert(organizations)
-      .values({ name: "Snapshot Trash Org", docName: "SnapTrash", activeMonth: CURRENT_MONTH })
-      .returning({ id: organizations.id });
-    orgId = org.id;
+    const org = await createTestOrg({
+      name: "Snapshot Trash Org",
+      docName: "SnapTrash",
+      activeMonth: CURRENT_MONTH,
+    });
+    orgId = org.orgId;
+    fundingSourceId = org.fundingSourceId;
 
     const [item] = await db
       .insert(lineItems)
-      .values({ orgId, name: "Equipment", scheduledValueCents: 200_000, sortOrder: 0 })
+      .values({ orgId, fundingSourceId, name: "Equipment", scheduledValueCents: 200_000, sortOrder: 0 })
       .returning({ id: lineItems.id });
     lineItemId = item.id;
   });
@@ -50,6 +54,7 @@ describe.skipIf(!hasDatabase)("loadMonthSnapshot and trash (integration)", async
       .insert(expenses)
       .values({
         orgId,
+        fundingSourceId,
         lineItemId,
         month: PRIOR_MONTH,
         date: `${PRIOR_MONTH}-12`,
@@ -59,7 +64,7 @@ describe.skipIf(!hasDatabase)("loadMonthSnapshot and trash (integration)", async
         taxReimbursable: false,
         feesReimbursable: true,
         sortOrder: 0,
-        referenceSeq: await claimReferenceSeq(orgId, PRIOR_MONTH),
+        referenceSeq: await claimReferenceSeq(orgId, fundingSourceId, PRIOR_MONTH),
       })
       .returning({ id: expenses.id });
 
@@ -67,6 +72,7 @@ describe.skipIf(!hasDatabase)("loadMonthSnapshot and trash (integration)", async
       .insert(expenses)
       .values({
         orgId,
+        fundingSourceId,
         lineItemId,
         month: CURRENT_MONTH,
         date: `${CURRENT_MONTH}-03`,
@@ -76,11 +82,11 @@ describe.skipIf(!hasDatabase)("loadMonthSnapshot and trash (integration)", async
         taxReimbursable: false,
         feesReimbursable: true,
         sortOrder: 0,
-        referenceSeq: await claimReferenceSeq(orgId, CURRENT_MONTH),
+        referenceSeq: await claimReferenceSeq(orgId, fundingSourceId, CURRENT_MONTH),
       })
       .returning({ id: expenses.id });
 
-    const before = await loadMonthSnapshot(orgId, CURRENT_MONTH);
+    const before = await loadMonthSnapshot(orgId, fundingSourceId, CURRENT_MONTH);
     expect(before.expenses.map((row) => row.id)).toContain(currentExpense.id);
     expect(before.amounts.filter((row) => row.month === PRIOR_MONTH)).toHaveLength(1);
     expect(before.amounts.find((row) => row.month === PRIOR_MONTH)?.subtotalCents).toBe(9_000);
@@ -94,14 +100,14 @@ describe.skipIf(!hasDatabase)("loadMonthSnapshot and trash (integration)", async
       .set({ deletedAt: new Date() })
       .where(eq(expenses.id, currentExpense.id));
 
-    const trashed = await loadMonthSnapshot(orgId, CURRENT_MONTH);
+    const trashed = await loadMonthSnapshot(orgId, fundingSourceId, CURRENT_MONTH);
     expect(trashed.expenses.map((row) => row.id)).not.toContain(currentExpense.id);
     expect(trashed.amounts.filter((row) => row.month === PRIOR_MONTH)).toHaveLength(0);
 
     await db.update(expenses).set({ deletedAt: null }).where(eq(expenses.id, priorExpense.id));
     await db.update(expenses).set({ deletedAt: null }).where(eq(expenses.id, currentExpense.id));
 
-    const restored = await loadMonthSnapshot(orgId, CURRENT_MONTH);
+    const restored = await loadMonthSnapshot(orgId, fundingSourceId, CURRENT_MONTH);
     expect(restored.expenses.map((row) => row.id)).toContain(currentExpense.id);
     expect(restored.amounts.filter((row) => row.month === PRIOR_MONTH)).toHaveLength(1);
     expect(restored.amounts.find((row) => row.month === PRIOR_MONTH)?.subtotalCents).toBe(9_000);

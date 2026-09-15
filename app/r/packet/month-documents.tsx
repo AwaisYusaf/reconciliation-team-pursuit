@@ -34,14 +34,24 @@ const DEFAULT_CATEGORY = "bank_statement";
  */
 export function MonthDocuments({
   month,
+  fundingSourceId,
   documents,
   monthLabel,
   hasBankStatement,
+  readOnly = false,
 }: {
   month: string;
+  fundingSourceId: string;
   documents: MonthDocumentRow[];
   monthLabel: string;
   hasBankStatement: boolean;
+  /**
+   * The source is archived. Its documents stay listed and downloadable — that is the point of
+   * archiving rather than deleting — but adding and removing them is refused server-side, so
+   * the controls that would do either are not offered. Without this the page showed a working
+   * upload form whose only possible outcome was an error toast.
+   */
+  readOnly?: boolean;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -77,7 +87,7 @@ export function MonthDocuments({
 
   function remove(id: string) {
     startTransition(async () => {
-      if (reportResult(await removeMonthDocumentAction(id), "Document removed.")) {
+      if (reportResult(await removeMonthDocumentAction(id, fundingSourceId), "Document removed.")) {
         router.refresh();
       }
     });
@@ -122,23 +132,24 @@ export function MonthDocuments({
                         <span className="text-muted"> · {document.pageCount} page(s)</span>
                       ) : null}
                     </span>
-                    <ConfirmButton
-                      variant="quiet"
-                      disabled={pending}
-                      title="Remove this document?"
-                      confirmLabel="Remove document"
-                      body={
-                        <>
-                          <strong>{document.title || document.filename}</strong> is deleted from
-                          {" "}
-                          {monthLabel} and will no longer appear in the packet. You would have to
-                          upload it again.
-                        </>
-                      }
-                      onConfirm={() => remove(document.id)}
-                    >
-                      Remove
-                    </ConfirmButton>
+                    {readOnly ? null : (
+                      <ConfirmButton
+                        variant="quiet"
+                        disabled={pending}
+                        title="Remove this document?"
+                        confirmLabel="Remove document"
+                        body={
+                          <>
+                            <strong>{document.title || document.filename}</strong> is deleted
+                            from {monthLabel} and will no longer appear in the packet. You would
+                            have to upload it again.
+                          </>
+                        }
+                        onConfirm={() => remove(document.id)}
+                      >
+                        Remove
+                      </ConfirmButton>
+                    )}
                   </li>
                 ))}
               </ul>
@@ -147,6 +158,12 @@ export function MonthDocuments({
         </div>
       )}
 
+      {readOnly ? (
+        <p className="text-sm text-muted border-t border-line pt-4">
+          This funding source is archived. Its documents stay available to open and download,
+          but nothing can be added or removed.
+        </p>
+      ) : (
       <form
         ref={formRef}
         action={upload}
@@ -154,6 +171,7 @@ export function MonthDocuments({
       >
         <input type="hidden" name="target" value="month" />
         <input type="hidden" name="month" value={month} />
+        <input type="hidden" name="fundingSourceId" value={fundingSourceId} />
 
         <div className="flex flex-col gap-1.5">
           <label id="month-doc-category-label" htmlFor="month-doc-category" className="text-[13px] font-medium text-muted">
@@ -226,6 +244,7 @@ export function MonthDocuments({
           </div>
         </div>
       </form>
+      )}
     </Card>
   );
 }

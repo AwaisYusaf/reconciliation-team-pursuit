@@ -58,13 +58,14 @@ export type PacketReadiness = {
 /** Readiness, blocking list, month documents and live page counts for one month. */
 export async function loadPacketReadiness(
   orgId: string,
+  fundingSourceId: string,
   month: string,
 ): Promise<PacketReadiness> {
   const [items, rows, documents, docs, status] = await Promise.all([
     db
       .select({ id: lineItems.id, name: lineItems.name })
       .from(lineItems)
-      .where(eq(lineItems.orgId, orgId))
+      .where(and(eq(lineItems.orgId, orgId), eq(lineItems.fundingSourceId, fundingSourceId)))
       .orderBy(asc(lineItems.sortOrder), asc(lineItems.name), asc(lineItems.id)),
     db
       .select({
@@ -87,7 +88,12 @@ export async function loadPacketReadiness(
       .from(expenses)
       .innerJoin(lineItems, eq(lineItems.id, expenses.lineItemId))
       .where(
-        and(eq(expenses.orgId, orgId), eq(expenses.month, month), isNull(expenses.deletedAt)),
+        and(
+          eq(expenses.orgId, orgId),
+          eq(expenses.fundingSourceId, fundingSourceId),
+          eq(expenses.month, month),
+          isNull(expenses.deletedAt),
+        ),
       )
       .orderBy(asc(expenses.sortOrder), asc(expenses.id)),
     db
@@ -104,6 +110,7 @@ export async function loadPacketReadiness(
       .where(
         and(
           eq(expenseDocuments.orgId, orgId),
+          eq(expenses.fundingSourceId, fundingSourceId),
           eq(expenses.month, month),
           isNull(expenses.deletedAt),
         ),
@@ -120,12 +127,24 @@ export async function loadPacketReadiness(
         sortOrder: monthDocuments.sortOrder,
       })
       .from(monthDocuments)
-      .where(and(eq(monthDocuments.orgId, orgId), eq(monthDocuments.month, month)))
+      .where(
+        and(
+          eq(monthDocuments.orgId, orgId),
+          eq(monthDocuments.fundingSourceId, fundingSourceId),
+          eq(monthDocuments.month, month),
+        ),
+      )
       .orderBy(asc(monthDocuments.sortOrder), asc(monthDocuments.id)),
     db
       .select({ submittedAt: monthStatuses.submittedAt })
       .from(monthStatuses)
-      .where(and(eq(monthStatuses.orgId, orgId), eq(monthStatuses.month, month)))
+      .where(
+        and(
+          eq(monthStatuses.orgId, orgId),
+          eq(monthStatuses.fundingSourceId, fundingSourceId),
+          eq(monthStatuses.month, month),
+        ),
+      )
       .limit(1),
   ]);
 

@@ -31,6 +31,7 @@ export type RecurringRow = {
   amountCents: number;
   lineItemId: string;
   lineItemName: string;
+  fundingSourceName: string;
   defaultDescription: string;
   defaultNarrative: string;
   defaultPaymentSource: string;
@@ -75,13 +76,18 @@ export function RecurringManager({
   month,
   monthLabel,
   monthShort,
+  multiSource,
 }: {
   rows: RecurringRow[];
-  lineItems: Array<{ id: string; name: string }>;
+  /** `label` is what the picker shows (source-qualified when the org has several sources);
+   *  `name` is the bare line item name the filters match on. */
+  lineItems: Array<{ id: string; name: string; label: string }>;
   paymentSources: string[];
   month: string;
   monthLabel: string;
   monthShort: string;
+  /** True when the org has more than one funding source; shows the Funding Source column. */
+  multiSource: boolean;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -241,7 +247,7 @@ export function RecurringManager({
               <option value="">Choose a line item</option>
               {lineItems.map((item) => (
                 <option key={item.id} value={item.id}>
-                  {item.name}
+                  {item.label}
                 </option>
               ))}
             </Select>
@@ -460,6 +466,7 @@ export function RecurringManager({
                 Amount
               </Th>
               <Th>Line Item</Th>
+              {multiSource && <Th>Funding Source</Th>}
               <Th align="right" className="w-[320px]" />
             </tr>
           </thead>
@@ -472,6 +479,7 @@ export function RecurringManager({
                   {formatMoney(row.amountCents)}
                 </Td>
                 <Td>{row.lineItemName}</Td>
+                {multiSource && <Td className="text-[15px] text-sub leading-snug">{row.fundingSourceName}</Td>}
                 <Td align="right">
                   <div className="flex items-center justify-end gap-4 flex-wrap">
                     <Button
@@ -495,7 +503,7 @@ export function RecurringManager({
                     </Button>
 
                     {row.added ? (
-                      <div className="flex items-center gap-3.5">
+                      <div className="flex items-center gap-3.5" data-tour="recurring-added-item">
                         <span className="text-sm font-bold text-success whitespace-nowrap">
                           ✓ Added to {monthLabel}
                         </span>
@@ -514,6 +522,7 @@ export function RecurringManager({
                         className="min-h-11 px-4 text-[15px] whitespace-nowrap"
                         disabled={pending}
                         onClick={() => add(row)}
+                        data-tour="recurring-add-to-month"
                       >
                         Add to {monthShort}
                       </Button>
@@ -523,7 +532,7 @@ export function RecurringManager({
               </tr>
               {draft?.id === row.id && (
                 <tr>
-                  <td colSpan={4} className="p-0 border-b border-line">
+                  <td colSpan={multiSource ? 5 : 4} className="p-0 border-b border-line">
                     <div className="p-4 sm:p-6">{renderDraftForm(draft)}</div>
                   </td>
                 </tr>
@@ -566,7 +575,11 @@ export function RecurringManager({
 
       {!draft ? (
         <div className="mt-6">
-          <Button variant="secondary" onClick={() => setDraft({ ...EMPTY_DRAFT })}>
+          <Button
+            variant="secondary"
+            onClick={() => setDraft({ ...EMPTY_DRAFT })}
+            data-tour="recurring-add-item"
+          >
             + Add recurring item
           </Button>
         </div>

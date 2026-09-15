@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 
 import { buttonClassName } from "@/src/components/ui/button";
 import { DangerPanel, PageTitle, Subtext } from "@/src/components/ui/surfaces";
+import { TourGuide } from "@/src/components/ui/tour";
 import { db } from "@/src/db";
 import { paymentSources } from "@/src/db/schema";
 import { isValidMonthKey, monthLabel } from "@/src/domain/dates";
@@ -11,6 +12,9 @@ import { expenseReference } from "@/src/domain/strings";
 import { documentationStatus, type GateExpense } from "@/src/domain/gate";
 import { reimbursableCents } from "@/src/domain/money";
 import { loadMonthExpenses } from "@/src/modules/expenses/queries";
+import { findFundingSource, loadSourceContext } from "@/src/modules/funding-sources/queries";
+import { EXPENSES_TOUR_STEPS } from "@/src/modules/tours/expenses-tour";
+import { hasSeenTour } from "@/src/modules/tours/queries";
 import { getSession } from "@/src/services/auth/session";
 
 import { ExpensesTable, type ExpenseRow, type RowDocument } from "./expenses-table";
@@ -30,7 +34,7 @@ export const metadata = { title: "Expenses — Grant Expense Reconciliation" };
 export default async function ExpensesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ month?: string }>;
+  searchParams: Promise<{ month?: string; source?: string }>;
 }) {
   const session = await getSession();
   if (!session) redirect("/login");
@@ -42,19 +46,37 @@ export default async function ExpensesPage({
   // shown here instead of (never persisted as) the org-wide active month, which stays exactly
   // what it was (R2.3) — one save must not silently redirect the whole organisation's shared
   // reporting period out from under everyone else using it.
-  const { month: requestedMonth } = await searchParams;
+  const { month: requestedMonth, source: requestedSource } = await searchParams;
   const viewingRequestedMonth = Boolean(requestedMonth && isValidMonthKey(requestedMonth));
   const month = viewingRequestedMonth ? requestedMonth! : session.activeMonth;
   const isAdmin = session.role === "admin";
 
-  const [expenses, sources] = await Promise.all([
-    loadMonthExpenses(session.orgId, month),
+  const { sources, selectedId } = await loadSourceContext(
+    session.orgId,
+    session.activeFundingSourceId,
+  );
+  const multiSource = sources.length > 1;
+
+  // The header already scopes a chosen source; with "All" active, an explicit `?source=`
+  // narrows the list further (validated server-side — an unknown/invalid id is just All).
+  const scope =
+    selectedId !== null
+      ? selectedId
+      : requestedSource
+        ? (await findFundingSource(session.orgId, requestedSource))?.id ?? null
+        : null;
+
+  const [expenses, paySources, seenExpensesTour] = await Promise.all([
+    loadMonthExpenses(session.orgId, scope, month),
     db
       .select({ label: paymentSources.label })
       .from(paymentSources)
       .where(and(eq(paymentSources.orgId, session.orgId), eq(paymentSources.active, true)))
       .orderBy(asc(paymentSources.sortOrder)),
+    hasSeenTour(session.userId, "expenses"),
   ]);
+
+  const sourceNameById = new Map(sources.map((source) => [source.id, source.name]));
 
   const rows: ExpenseRow[] = expenses.map((expense) => {
     const gate: GateExpense = {
@@ -75,6 +97,7 @@ export default async function ExpensesPage({
       description: expense.description,
       lineItemName: expense.lineItemName,
       paymentSource: expense.paymentSource,
+      fundingSourceName: sourceNameById.get(expense.fundingSourceId) ?? "",
       reimbursableCents: reimbursableCents(expense),
       // The whole attached set per kind, not a count and a first id: the row opens a viewer
       // that pages through them, and an expense with three receipts could otherwise only ever
@@ -102,12 +125,20 @@ export default async function ExpensesPage({
   });
 
   // Cards cover every source present in the month, including labels since retired (R5.2).
-  const labels = [...new Set([...sources.map((row) => row.label), ...rows.map((row) => row.paymentSource)])];
+  const labels = [...new Set([...paySources.map((row) => row.label), ...rows.map((row) => row.paymentSource)])];
+
+  // Active sources, plus any archived one whose expenses are actually in this month's list —
+  // the filter and the funding source column must still be able to name what they show.
+  const presentSourceIds = new Set(expenses.map((expense) => expense.fundingSourceId));
+  const fundingSources = sources
+    .filter((source) => source.archivedAt === null || presentSourceIds.has(source.id))
+    .map((source) => ({ id: source.id, name: source.name }));
 
   const viewingOtherMonth = viewingRequestedMonth && month !== session.activeMonth;
 
   return (
     <div>
+      <TourGuide tour="expenses" steps={EXPENSES_TOUR_STEPS} alreadySeen={seenExpensesTour} />
       <div className="flex flex-wrap items-start justify-between gap-3 mb-6">
         <div>
           <PageTitle className="mb-1.5">Expenses This Month</PageTitle>
@@ -146,7 +177,13 @@ export default async function ExpensesPage({
         paymentSourceLabels={labels}
         lineItemNames={[...new Set(rows.map((row) => row.lineItemName))].sort()}
         month={monthLabel(month)}
+        monthParam={viewingRequestedMonth ? requestedMonth : undefined}
         isAdmin={isAdmin}
+        multiSource={multiSource}
+        fundingSources={fundingSources}
+        selectedSourceId={scope}
+        sourceFilterOffered={selectedId === null}
+        totalBy={scope === null ? "source" : "payment"}
       />
     </div>
   );

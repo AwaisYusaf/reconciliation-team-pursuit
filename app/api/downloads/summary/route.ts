@@ -8,6 +8,7 @@ import { gateExpenses, loadMonthSnapshot } from "@/src/generation/month-snapshot
 import { buildSummaryWorkbook, summaryWorkbookName } from "@/src/generation/summary-xlsx";
 import { attachmentHeader } from "@/src/lib/http";
 import { deletedItemsRefusal, loadTrashedExpenses } from "@/src/modules/expenses/queries";
+import { findFundingSource, loadSourceContext } from "@/src/modules/funding-sources/queries";
 import { getSession } from "@/src/services/auth/session";
 import { consume } from "@/src/services/rate-limit";
 
@@ -58,10 +59,16 @@ export async function GET(request: Request) {
   const month = url.searchParams.get("month") ?? "";
   if (!isValidMonthKey(month)) return new NextResponse("Unknown month", { status: 400 });
 
+  // The `source` query parameter is required and verified server-side; a missing, malformed or
+  // foreign id is the same 404, so a probe learns nothing.
+  const source = await findFundingSource(session.orgId, url.searchParams.get("source") ?? "");
+  if (!source) return new NextResponse("Unknown funding source", { status: 404 });
+  const fundingSourceId = source.id;
+
   // Re-checked here, not just in the packet screen's dialog — see the packet route's own
   // comment on this same gate. A promise enforced only in the browser is not enforced.
   const confirmedDeletions = url.searchParams.get("confirmedDeletions") === "1";
-  const deletedThisMonth = await loadTrashedExpenses(session.orgId, month);
+  const deletedThisMonth = await loadTrashedExpenses(session.orgId, fundingSourceId, month);
   if (deletedThisMonth.length > 0 && !confirmedDeletions) {
     return new NextResponse(deletedItemsRefusal(deletedThisMonth), {
       status: 409,
@@ -69,7 +76,10 @@ export async function GET(request: Request) {
     });
   }
 
-  const snapshot = await loadMonthSnapshot(session.orgId, month as MonthKey);
+  const snapshot = await loadMonthSnapshot(session.orgId, fundingSourceId, month as MonthKey);
+
+  // Filenames gain the source name only once the organisation has more than one source (R10.3).
+  const { single } = await loadSourceContext(session.orgId, session.activeFundingSourceId);
 
   const blocking = blockingRecords(gateExpenses(snapshot.expenses));
   if (blocking.length > 0) {
@@ -85,6 +95,7 @@ export async function GET(request: Request) {
   try {
     ({ body, contentType } = await resolveArtifact({
       orgId: session.orgId,
+      fundingSourceId,
       month: month as MonthKey,
       type: "summary_xlsx",
       extension: "xlsx",
@@ -111,7 +122,7 @@ export async function GET(request: Request) {
       "Content-Type": contentType,
       "Content-Length": String(body.byteLength),
       "Content-Disposition": attachmentHeader(
-        summaryWorkbookName(snapshot.docName, month as MonthKey),
+        summaryWorkbookName(snapshot.docName, month as MonthKey, single ? undefined : source.name),
       ),
       // A pinned artifact is immutable, but the URL is not: it serves whatever the current
       // data hashes to, so a shared cache must never answer for it.

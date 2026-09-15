@@ -12,17 +12,30 @@ import { isValidMonthKey } from "@/src/domain/dates";
 import { isUuid } from "@/src/lib/ids";
 import { fail, ok, type ActionResult } from "@/src/lib/action-result";
 import { actionSession } from "@/src/lib/action-session";
+import { requireOwnedFundingSource } from "@/src/modules/funding-sources/queries";
 import { captureMonthSnapshot, discardMonthSnapshot } from "./snapshot";
 import { deleteMonthDocument } from "@/src/services/storage/documents";
 
 /** Remove one month document (immediate; the row's Remove button warns first). */
-export async function removeMonthDocumentAction(documentId: string): Promise<ActionResult> {
+export async function removeMonthDocumentAction(
+  documentId: string,
+  fundingSourceId: string,
+): Promise<ActionResult> {
   const current = await actionSession();
   if ("expired" in current) return current.expired;
   if (!isUuid(documentId)) return fail("That file is already gone.");
 
-  // Scoped by organisation inside the service, so another org's id simply finds nothing.
-  const removed = await deleteMonthDocument(current.orgId, documentId);
+  const owned = await requireOwnedFundingSource(current, fundingSourceId);
+  if ("denied" in owned) return owned.denied;
+  // Archiving a source is meant to leave its history and documents intact and viewable — the
+  // whole reason archived sources stay selectable at all. Uploading a month document to one is
+  // already refused (`app/api/files/upload/route.ts`); deleting one out of it is the same
+  // record, from the other end, so it is refused here too.
+  if (owned.archivedAt) return fail("That funding source is archived.");
+
+  // Scoped by organisation and funding source inside the service, so another org's or another
+  // source's id simply finds nothing.
+  const removed = await deleteMonthDocument(current.orgId, owned.id, documentId);
   if (!removed) return fail("That file is already gone.");
 
   revalidatePath("/", "layout");
@@ -36,43 +49,61 @@ export async function removeMonthDocumentAction(documentId: string): Promise<Act
  * pinned. Editing a submitted month stays possible — the flag is what makes the warning
  * elsewhere truthful rather than a lock.
  */
-export async function markMonthSubmittedAction(month: string): Promise<ActionResult> {
+export async function markMonthSubmittedAction(
+  month: string,
+  fundingSourceId: string,
+): Promise<ActionResult> {
   const current = await actionSession();
   if ("expired" in current) return current.expired;
   if (!isValidMonthKey(month)) return fail("That is not a valid month.");
 
+  const owned = await requireOwnedFundingSource(current, fundingSourceId);
+  if ("denied" in owned) return owned.denied;
+
   const now = new Date();
   await db
     .insert(monthStatuses)
-    .values({ orgId: current.orgId, month, submittedAt: now })
+    .values({ orgId: current.orgId, fundingSourceId: owned.id, month, submittedAt: now })
     .onConflictDoUpdate({
-      target: [monthStatuses.orgId, monthStatuses.month],
+      target: [monthStatuses.orgId, monthStatuses.fundingSourceId, monthStatuses.month],
       set: { submittedAt: now },
     });
 
   // Submission is what makes a month's figures official, so it is where they are recorded
   // (D-68). Everything else in the app recomputes from live rows, which means a later
   // correction would otherwise rewrite what this month is said to have closed at.
-  await captureMonthSnapshot(current.orgId, month);
+  await captureMonthSnapshot(current.orgId, owned.id, month);
 
   revalidatePath("/", "layout");
   return ok();
 }
 
 /** Undo the marker, for a month marked by mistake. */
-export async function clearMonthSubmittedAction(month: string): Promise<ActionResult> {
+export async function clearMonthSubmittedAction(
+  month: string,
+  fundingSourceId: string,
+): Promise<ActionResult> {
   const current = await actionSession();
   if ("expired" in current) return current.expired;
   if (!isValidMonthKey(month)) return fail("That is not a valid month.");
 
+  const owned = await requireOwnedFundingSource(current, fundingSourceId);
+  if ("denied" in owned) return owned.denied;
+
   await db
     .update(monthStatuses)
     .set({ submittedAt: null })
-    .where(and(eq(monthStatuses.orgId, current.orgId), eq(monthStatuses.month, month)));
+    .where(
+      and(
+        eq(monthStatuses.orgId, current.orgId),
+        eq(monthStatuses.fundingSourceId, owned.id),
+        eq(monthStatuses.month, month),
+      ),
+    );
 
   // No longer claimed as sent, so figures labelled "as submitted" would assert something
   // untrue. The pinned artifact keeps the bytes that were actually delivered (R10.6).
-  await discardMonthSnapshot(current.orgId, month);
+  await discardMonthSnapshot(current.orgId, owned.id, month);
 
   revalidatePath("/", "layout");
   return ok();

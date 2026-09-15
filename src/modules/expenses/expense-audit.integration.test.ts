@@ -28,6 +28,7 @@ describe.skipIf(!hasDatabase)("expense audit events (integration)", async () => 
   const { db } = await import("@/src/db");
   const { expenseAuditEvents, expenses, lineItems, organizations, paymentSources, users } =
     await import("@/src/db/schema");
+  const { createTestOrg } = await import("@/src/db/test-org");
   const { hashPassword } = await import("@/src/services/auth/passwords");
   const { claimReferenceSeq } = await import("./references");
   const { actionSession, requireAdmin } = await import("@/src/lib/action-session");
@@ -53,6 +54,7 @@ describe.skipIf(!hasDatabase)("expense audit events (integration)", async () => 
   const adminGate = vi.mocked(requireAdmin);
 
   let orgId: string;
+  let fundingSourceId: string;
   let otherOrgId: string;
   let lineItemId: string;
   let lineItemId2: string;
@@ -85,6 +87,7 @@ describe.skipIf(!hasDatabase)("expense audit events (integration)", async () => 
       orgName: "Org",
       docName: "Doc",
       activeMonth: MONTH,
+      activeFundingSourceId: null,
       onboarded: true,
       welcomeDismissed: true,
     };
@@ -97,10 +100,17 @@ describe.skipIf(!hasDatabase)("expense audit events (integration)", async () => 
   let sortCounter = 0;
   async function insertExpense(overrides: { orgId: string; lineItemId: string; month?: string }) {
     const month = overrides.month ?? MONTH;
+    // The expense's source is its line item's source (Phase 6, D-93) — resolved here so the
+    // ~20 call sites stay unchanged; this is setup, not an assertion.
+    const [item] = await db
+      .select({ fundingSourceId: lineItems.fundingSourceId })
+      .from(lineItems)
+      .where(eq(lineItems.id, overrides.lineItemId));
     const [row] = await db
       .insert(expenses)
       .values({
         orgId: overrides.orgId,
+        fundingSourceId: item.fundingSourceId,
         lineItemId: overrides.lineItemId,
         month,
         date: `${month}-10`,
@@ -108,7 +118,7 @@ describe.skipIf(!hasDatabase)("expense audit events (integration)", async () => 
         paymentSource: "Cash",
         subtotalCents: 1000,
         sortOrder: sortCounter++,
-        referenceSeq: await claimReferenceSeq(overrides.orgId, month),
+        referenceSeq: await claimReferenceSeq(overrides.orgId, item.fundingSourceId, month),
         taxReimbursable: false,
         feesReimbursable: true,
       })
@@ -119,6 +129,7 @@ describe.skipIf(!hasDatabase)("expense audit events (integration)", async () => 
   function baseInput(overrides: Partial<Parameters<typeof createExpenseAction>[0]> = {}) {
     return {
       name: "An expense",
+      fundingSourceId,
       lineItemId,
       paymentSource: "Cash",
       taxReimbursable: false,
@@ -146,35 +157,30 @@ describe.skipIf(!hasDatabase)("expense audit events (integration)", async () => 
   }
 
   beforeAll(async () => {
-    const [org] = await db
-      .insert(organizations)
-      .values({ name: "Audit Org", docName: "Audit", activeMonth: MONTH })
-      .returning({ id: organizations.id });
-    orgId = org.id;
+    const org = await createTestOrg({ name: "Audit Org", docName: "Audit", activeMonth: MONTH });
+    orgId = org.orgId;
+    fundingSourceId = org.fundingSourceId;
 
     const [item] = await db
       .insert(lineItems)
-      .values({ orgId, name: "Travel", scheduledValueCents: 500_000, sortOrder: 0 })
+      .values({ orgId, fundingSourceId: org.fundingSourceId, name: "Travel", scheduledValueCents: 500_000, sortOrder: 0 })
       .returning({ id: lineItems.id });
     lineItemId = item.id;
 
     const [item2] = await db
       .insert(lineItems)
-      .values({ orgId, name: "Supplies", scheduledValueCents: 200_000, sortOrder: 1 })
+      .values({ orgId, fundingSourceId: org.fundingSourceId, name: "Supplies", scheduledValueCents: 200_000, sortOrder: 1 })
       .returning({ id: lineItems.id });
     lineItemId2 = item2.id;
 
     await db.insert(paymentSources).values({ orgId, label: "Cash", sortOrder: 0 });
 
-    const [other] = await db
-      .insert(organizations)
-      .values({ name: "Other Audit Org", docName: "Other", activeMonth: MONTH })
-      .returning({ id: organizations.id });
-    otherOrgId = other.id;
+    const other = await createTestOrg({ name: "Other Audit Org", docName: "Other", activeMonth: MONTH });
+    otherOrgId = other.orgId;
 
     const [otherItem] = await db
       .insert(lineItems)
-      .values({ orgId: otherOrgId, name: "Other Travel", scheduledValueCents: 500_000, sortOrder: 0 })
+      .values({ orgId: otherOrgId, fundingSourceId: other.fundingSourceId, name: "Other Travel", scheduledValueCents: 500_000, sortOrder: 0 })
       .returning({ id: lineItems.id });
     otherLineItemId = otherItem.id;
 
@@ -643,11 +649,8 @@ describe.skipIf(!hasDatabase)("expense audit events (integration)", async () => 
     }
 
     beforeAll(async () => {
-      const [org] = await db
-        .insert(organizations)
-        .values({ name: "Pagination Org", docName: "Pagination", activeMonth: MONTH })
-        .returning({ id: organizations.id });
-      pageOrgId = org.id;
+      const org = await createTestOrg({ name: "Pagination Org", docName: "Pagination", activeMonth: MONTH });
+      pageOrgId = org.orgId;
       pageUserId = await insertUser(pageOrgId);
     });
 

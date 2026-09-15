@@ -41,6 +41,7 @@ describe.skipIf(!canRun)("packet traceability (integration)", async () => {
   const { contractSettings, expenses, lineItems, organizations, paymentSources } = await import(
     "@/src/db/schema"
   );
+  const { createTestOrg } = await import("@/src/db/test-org");
   const { ingestExpenseDocument, ingestMonthDocument } = await import(
     "@/src/services/storage/documents"
   );
@@ -49,6 +50,7 @@ describe.skipIf(!canRun)("packet traceability (integration)", async () => {
   const { buildPacketPdf } = await import("./packet-pdf");
 
   let orgId: string;
+  let fundingSourceId: string;
   let lineItemId: string;
   let delivered: Buffer;
   let assembled: Awaited<ReturnType<typeof buildPacketPdf>>;
@@ -56,11 +58,9 @@ describe.skipIf(!canRun)("packet traceability (integration)", async () => {
   let pageCount: number;
 
   beforeAll(async () => {
-    const [org] = await db
-      .insert(organizations)
-      .values({ name: "Trace Org", docName: "Trace", activeMonth: MONTH })
-      .returning({ id: organizations.id });
-    orgId = org.id;
+    const org = await createTestOrg({ name: "Trace Org", docName: "Trace", activeMonth: MONTH });
+    orgId = org.orgId;
+    fundingSourceId = org.fundingSourceId;
 
     await db.insert(contractSettings).values({ orgId, projectName: "CVI" });
     await db
@@ -68,7 +68,7 @@ describe.skipIf(!canRun)("packet traceability (integration)", async () => {
       .values({ orgId, label: "Paid by us, reimbursement requested", sortOrder: 0 });
     const [item] = await db
       .insert(lineItems)
-      .values({ orgId, name: "Transportation", scheduledValueCents: 500_000, sortOrder: 0 })
+      .values({ orgId, fundingSourceId, name: "Transportation", scheduledValueCents: 500_000, sortOrder: 0 })
       .returning({ id: lineItems.id });
     lineItemId = item.id;
 
@@ -83,6 +83,7 @@ describe.skipIf(!canRun)("packet traceability (integration)", async () => {
         .insert(expenses)
         .values({
           orgId,
+          fundingSourceId,
           lineItemId: item.id,
           month: MONTH,
           date: `${MONTH}-1${seq}`,
@@ -92,8 +93,8 @@ describe.skipIf(!canRun)("packet traceability (integration)", async () => {
           subtotalCents: 2_000 * seq,
           sortOrder: seq,
           referenceSeq: seq,
-        taxReimbursable: false,
-        feesReimbursable: true,
+          taxReimbursable: false,
+          feesReimbursable: true,
         })
         .returning({ id: expenses.id });
 
@@ -114,6 +115,7 @@ describe.skipIf(!canRun)("packet traceability (integration)", async () => {
       .insert(expenses)
       .values({
         orgId,
+        fundingSourceId,
         lineItemId: item.id,
         month: MONTH,
         date: `${MONTH}-14`,
@@ -141,6 +143,7 @@ describe.skipIf(!canRun)("packet traceability (integration)", async () => {
     // fixture had none, which is why nothing caught a bank statement sitting at the front.
     const monthDoc = await ingestMonthDocument({
       orgId,
+      fundingSourceId,
       month: MONTH,
       category: "bank_statement",
       title: "February statement",
@@ -148,7 +151,7 @@ describe.skipIf(!canRun)("packet traceability (integration)", async () => {
     });
     if (!monthDoc.ok) throw new Error(monthDoc.error);
 
-    const snapshot = await loadMonthSnapshot(orgId, MONTH);
+    const snapshot = await loadMonthSnapshot(orgId, fundingSourceId, MONTH);
     const packet = await buildDeliverablePacket(snapshot);
     pageCount = packet.pageCount;
     delivered = packet.pdf;

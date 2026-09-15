@@ -16,6 +16,7 @@ import {
 } from "@/src/generation/month-snapshot";
 import { attachmentHeader } from "@/src/lib/http";
 import { isUuid } from "@/src/lib/ids";
+import { findFundingSource, loadSourceContext } from "@/src/modules/funding-sources/queries";
 import { getSession } from "@/src/services/auth/session";
 import { consume } from "@/src/services/rate-limit";
 
@@ -71,7 +72,13 @@ export async function GET(request: Request) {
   // A malformed id would raise a Postgres cast error out of an unguarded handler.
   if (!isUuid(lineItemId)) return new NextResponse("Not found", { status: 404 });
 
-  const snapshot = await loadMonthSnapshot(session.orgId, month as MonthKey);
+  // The `source` query parameter is required and verified server-side; a missing, malformed or
+  // foreign id is the same 404, so a probe learns nothing.
+  const source = await findFundingSource(session.orgId, params.get("source") ?? "");
+  if (!source) return new NextResponse("Unknown funding source", { status: 404 });
+  const fundingSourceId = source.id;
+
+  const snapshot = await loadMonthSnapshot(session.orgId, fundingSourceId, month as MonthKey);
   const lineItem = snapshot.lineItems.find((item) => item.id === lineItemId);
   // Indistinguishable from "belongs to another organisation", so a probe learns nothing.
   if (!lineItem) return new NextResponse("Not found", { status: 404 });
@@ -98,11 +105,15 @@ export async function GET(request: Request) {
   const label = monthLabel(month as MonthKey);
   const title = coverSheetTitle(snapshot.docName, label, lineItem.name);
 
+  // Filenames gain the source name only once the organisation has more than one source (R10.3).
+  const { single } = await loadSourceContext(session.orgId, session.activeFundingSourceId);
+
   let body: Buffer;
   let contentType: string;
   try {
     ({ body, contentType } = await resolveArtifact({
       orgId: session.orgId,
+      fundingSourceId,
       month: month as MonthKey,
       type: format === "pdf" ? "cover_pdf" : "cover_docx",
       lineItemId,
@@ -144,7 +155,7 @@ export async function GET(request: Request) {
       "Content-Type": contentType,
       "Content-Length": String(body.byteLength),
       "Content-Disposition": attachmentHeader(
-        coverSheetFilename(snapshot.docName, label, lineItem.name, format),
+        coverSheetFilename(snapshot.docName, label, lineItem.name, format, single ? undefined : source.name),
       ),
       "X-Content-Type-Options": "nosniff",
       "Cache-Control": "private, no-store",

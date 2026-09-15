@@ -11,11 +11,16 @@ import "server-only";
 import { and, eq, isNull } from "drizzle-orm";
 
 import { db } from "@/src/db";
-import { contractSettings, expenses } from "@/src/db/schema";
+import { expenses, fundingSources } from "@/src/db/schema";
 import { contractMonths, monthWindow, type MonthKey } from "@/src/domain/dates";
 
+/**
+ * `fundingSourceId` scopes both queries below; `null` (All) unions every one of the org's
+ * sources' contract months and expense months, rather than picking one.
+ */
 export async function loadSelectableMonths(
   orgId: string,
+  fundingSourceId: string | null,
   alsoInclude: readonly MonthKey[] = [],
 ): Promise<MonthKey[]> {
   const [monthRows, contractRows] = await Promise.all([
@@ -23,16 +28,26 @@ export async function loadSelectableMonths(
     db
       .selectDistinct({ month: expenses.month })
       .from(expenses)
-      .where(and(eq(expenses.orgId, orgId), isNull(expenses.deletedAt))),
+      .where(
+        and(
+          eq(expenses.orgId, orgId),
+          fundingSourceId ? eq(expenses.fundingSourceId, fundingSourceId) : undefined,
+          isNull(expenses.deletedAt),
+        ),
+      ),
     db
-      .select({ start: contractSettings.contractStart, end: contractSettings.contractEnd })
-      .from(contractSettings)
-      .where(eq(contractSettings.orgId, orgId))
-      .limit(1),
+      .select({ start: fundingSources.contractStart, end: fundingSources.contractEnd })
+      .from(fundingSources)
+      .where(
+        and(
+          eq(fundingSources.orgId, orgId),
+          fundingSourceId ? eq(fundingSources.id, fundingSourceId) : undefined,
+        ),
+      ),
   ]);
 
   return monthWindow([
-    ...contractMonths(contractRows[0]?.start, contractRows[0]?.end),
+    ...contractRows.flatMap((row) => contractMonths(row.start, row.end)),
     ...monthRows.map((row) => row.month),
     ...alsoInclude,
   ]);

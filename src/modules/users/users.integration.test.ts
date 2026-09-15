@@ -57,6 +57,7 @@ describe.skipIf(!hasDatabase)("user management (integration)", async () => {
     orgName: string;
     docName: string;
     activeMonth: string;
+    activeFundingSourceId: string | null;
     onboarded: boolean;
     welcomeDismissed: boolean;
   };
@@ -67,6 +68,7 @@ describe.skipIf(!hasDatabase)("user management (integration)", async () => {
       orgName: "Org",
       docName: "Doc",
       activeMonth: MONTH,
+      activeFundingSourceId: null,
       onboarded: true,
       welcomeDismissed: true,
       ...ctx,

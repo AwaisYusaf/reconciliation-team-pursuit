@@ -2,10 +2,14 @@ import { and, asc, count, eq, isNull } from "drizzle-orm";
 import { redirect } from "next/navigation";
 
 import { PageTitle, Subtext } from "@/src/components/ui/surfaces";
+import { TourGuide } from "@/src/components/ui/tour";
 import { db } from "@/src/db";
 import { expenseDocuments, expenses, lineItems, paymentSources, recurringItems } from "@/src/db/schema";
 import { monthLabel, monthShortLabel } from "@/src/domain/dates";
 import { addedState } from "@/src/domain/recurring-rules";
+import { loadSourceContext } from "@/src/modules/funding-sources/queries";
+import { RECURRING_TOUR_STEPS } from "@/src/modules/tours/recurring-tour";
+import { hasSeenTour } from "@/src/modules/tours/queries";
 import { getSession } from "@/src/services/auth/session";
 
 import { RecurringManager, type RecurringRow } from "./recurring-manager";
@@ -17,6 +21,17 @@ export default async function RecurringPage() {
   if (!session) redirect("/login");
 
   const month = session.activeMonth;
+  const seenRecurringTour = await hasSeenTour(session.userId, "recurring");
+
+  const { sources: fundingSources, selectedId: fundingSourceId } = await loadSourceContext(
+    session.orgId,
+    session.activeFundingSourceId,
+  );
+  const multiSource = fundingSources.length > 1;
+  const sourceNameById = new Map(fundingSources.map((source) => [source.id, source.name]));
+  const archivedSourceIds = new Set(
+    fundingSources.filter((source) => source.archivedAt !== null).map((source) => source.id),
+  );
 
   const [items, options, sources, monthRows] = await Promise.all([
     db
@@ -26,6 +41,7 @@ export default async function RecurringPage() {
         amountCents: recurringItems.amountCents,
         lineItemId: recurringItems.lineItemId,
         lineItemName: lineItems.name,
+        fundingSourceId: lineItems.fundingSourceId,
         defaultDescription: recurringItems.defaultDescription,
         defaultNarrative: recurringItems.defaultNarrative,
         defaultPaymentSource: recurringItems.defaultPaymentSource,
@@ -34,12 +50,23 @@ export default async function RecurringPage() {
       })
       .from(recurringItems)
       .innerJoin(lineItems, eq(lineItems.id, recurringItems.lineItemId))
-      .where(eq(recurringItems.orgId, session.orgId))
+      .where(
+        and(
+          eq(recurringItems.orgId, session.orgId),
+          // "All" (null) loads every source's recurring items; a chosen source scopes as before.
+          fundingSourceId ? eq(lineItems.fundingSourceId, fundingSourceId) : undefined,
+        ),
+      )
       .orderBy(asc(recurringItems.sortOrder)),
     db
-      .select({ id: lineItems.id, name: lineItems.name })
+      .select({ id: lineItems.id, name: lineItems.name, fundingSourceId: lineItems.fundingSourceId })
       .from(lineItems)
-      .where(eq(lineItems.orgId, session.orgId))
+      .where(
+        and(
+          eq(lineItems.orgId, session.orgId),
+          fundingSourceId ? eq(lineItems.fundingSourceId, fundingSourceId) : undefined,
+        ),
+      )
       .orderBy(asc(lineItems.sortOrder)),
     db
       .select({ label: paymentSources.label })
@@ -60,12 +87,28 @@ export default async function RecurringPage() {
       .where(
         and(
           eq(expenses.orgId, session.orgId),
+          // Scoped the same way as `items` above: every source's rows with All selected.
+          fundingSourceId ? eq(expenses.fundingSourceId, fundingSourceId) : undefined,
           eq(expenses.month, month),
           isNull(expenses.deletedAt),
         ),
       )
       .groupBy(expenses.id),
   ]);
+
+  // The picker offers only line items a template can be saved on — an archived source takes no
+  // new expenses, so `saveRecurringItemAction` refuses it — and, when the org has more than one
+  // source, says which source each belongs to: two sources may each have a "Salary". `label`
+  // is display only; `name` stays the bare line item name the filters match on.
+  const pickerLineItems = options
+    .filter((item) => !archivedSourceIds.has(item.fundingSourceId))
+    .map((item) => ({
+      id: item.id,
+      name: item.name,
+      label: multiSource
+        ? `${item.name} (${sourceNameById.get(item.fundingSourceId) ?? ""})`
+        : item.name,
+    }));
 
   const activeSources = sources.map((row) => row.label);
   // Null means never set, which is a different fact from a genuine zero (D-54), so it shows
@@ -86,6 +129,7 @@ export default async function RecurringPage() {
       amountCents: item.amountCents,
       lineItemId: item.lineItemId,
       lineItemName: item.lineItemName,
+      fundingSourceName: sourceNameById.get(item.fundingSourceId) ?? "",
       defaultDescription: item.defaultDescription ?? "",
       defaultNarrative: item.defaultNarrative ?? "",
       // A retired label is not offered again; the item falls back to the org default (R5.2).
@@ -101,6 +145,7 @@ export default async function RecurringPage() {
 
   return (
     <div>
+      <TourGuide tour="recurring" steps={RECURRING_TOUR_STEPS} alreadySeen={seenRecurringTour} />
       <PageTitle className="mb-2">Recurring Items</PageTitle>
       <Subtext className="mb-[26px] max-w-[70ch]">
         Vendors and salaries billed every month. Nothing is added automatically — confirm each
@@ -109,11 +154,12 @@ export default async function RecurringPage() {
 
       <RecurringManager
         rows={rows}
-        lineItems={options}
+        lineItems={pickerLineItems}
         paymentSources={activeSources}
         month={month}
         monthLabel={monthLabel(month)}
         monthShort={monthShortLabel(month)}
+        multiSource={multiSource}
       />
     </div>
   );

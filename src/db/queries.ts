@@ -9,7 +9,7 @@ import "server-only";
 import { and, asc, eq, isNull, lte, sql } from "drizzle-orm";
 
 import { db } from "@/src/db";
-import { contractSettings, expenses, lineItemPerformances, lineItems } from "@/src/db/schema";
+import { expenses, fundingSources, lineItemPerformances, lineItems } from "@/src/db/schema";
 import type { ExpenseAmount, LineItemBudget } from "@/src/domain/budget-math";
 import type { MonthKey } from "@/src/domain/dates";
 import type { ContractSettingsInput } from "@/src/domain/summary";
@@ -42,6 +42,7 @@ export type Reader = Pick<typeof db, "select">;
  */
 export async function loadLineItemBudgets(
   orgId: string,
+  fundingSourceId: string,
   reader: Reader = db,
 ): Promise<LineItemBudget[]> {
   const rows = await reader
@@ -59,7 +60,7 @@ export async function loadLineItemBudgets(
     })
     .from(lineItems)
     .leftJoin(lineItemPerformances, eq(lineItemPerformances.lineItemId, lineItems.id))
-    .where(eq(lineItems.orgId, orgId))
+    .where(and(eq(lineItems.orgId, orgId), eq(lineItems.fundingSourceId, fundingSourceId)))
     .groupBy(lineItems.id)
     // `id` breaks ties deterministically — `loadMonthSnapshot` relies on total ordering for
     // its cache hash (canonicalJson treats array order as data).
@@ -82,6 +83,7 @@ export async function loadLineItemBudgets(
  */
 export async function loadExpenseAmounts(
   orgId: string,
+  fundingSourceId: string,
   uptoMonth: MonthKey,
   reader: Reader = db,
 ): Promise<ExpenseAmount[]> {
@@ -97,22 +99,28 @@ export async function loadExpenseAmounts(
     })
     .from(expenses)
     .where(
-      and(eq(expenses.orgId, orgId), lte(expenses.month, uptoMonth), isNull(expenses.deletedAt)),
+      and(
+        eq(expenses.orgId, orgId),
+        eq(expenses.fundingSourceId, fundingSourceId),
+        lte(expenses.month, uptoMonth),
+        isNull(expenses.deletedAt),
+      ),
     );
 }
 
-/** Contract settings, with zeroed defaults when onboarding skipped them. */
-export async function loadContractSettings(
+/** The funding source's contract settings, with zeroed defaults when the row is missing. */
+export async function loadFundingSourceSettings(
   orgId: string,
+  fundingSourceId: string,
   reader: Reader = db,
 ): Promise<ContractSettingsInput> {
   const rows = await reader
     .select({
-      contractValueCents: contractSettings.contractValueCents,
-      advancesReceivedCents: contractSettings.advancesReceivedCents,
+      contractValueCents: fundingSources.contractValueCents,
+      advancesReceivedCents: fundingSources.advancesReceivedCents,
     })
-    .from(contractSettings)
-    .where(eq(contractSettings.orgId, orgId))
+    .from(fundingSources)
+    .where(and(eq(fundingSources.id, fundingSourceId), eq(fundingSources.orgId, orgId)))
     .limit(1);
 
   return rows[0] ?? { contractValueCents: 0, advancesReceivedCents: 0 };

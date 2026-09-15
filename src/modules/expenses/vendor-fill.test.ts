@@ -5,6 +5,7 @@ import { fillFromClick, fillFromTypedName, moneyField, type VendorFill } from ".
 
 const BLANK: ExpenseInput = {
   name: "",
+  fundingSourceId: "",
   lineItemId: "",
   paymentSource: "",
   taxReimbursable: false,
@@ -33,6 +34,11 @@ const CANVA: VendorFill = {
   feesCents: 125,
 };
 
+/** The current funding source's line item ids — `CANVA.lineItemId` is inside this list unless
+ *  a test says otherwise, since autofill must only ever apply a line item from the current
+ *  source's own list (Phase 4, D-93). */
+const SOURCE_LINE_ITEMS = ["line-promo", "line-salary"];
+
 describe("moneyField", () => {
   it("renders a remembered zero rather than treating it as absent", () => {
     // A vendor that genuinely charges no tax is worth remembering; only null means unknown.
@@ -50,7 +56,7 @@ describe("moneyField", () => {
 
 describe("fillFromTypedName", () => {
   it("fills an untouched form", () => {
-    const result = fillFromTypedName(BLANK, CANVA);
+    const result = fillFromTypedName(BLANK, CANVA, [], SOURCE_LINE_ITEMS);
     expect(result.lineItemId).toBe("line-promo");
     expect(result.description).toBe(CANVA.description);
     expect(result.subtotal).toBe("45.00");
@@ -130,7 +136,7 @@ describe("fillFromClick", () => {
       description: "My own wording",
       name: "Can",
     };
-    const result = fillFromClick(current, CANVA);
+    const result = fillFromClick(current, CANVA, [], SOURCE_LINE_ITEMS);
     expect(result.name).toBe("Canva");
     expect(result.lineItemId).toBe("line-promo");
     expect(result.description).toBe(CANVA.description);
@@ -187,55 +193,29 @@ describe("fillFromClick", () => {
   });
 });
 
-describe("funder rules follow the payment source (D-71)", () => {
-  const RULES = {
-    "Paid by us, reimbursement requested": { taxReimbursable: false, feesReimbursable: true },
-    "Paid directly by fiduciary": { taxReimbursable: true, feesReimbursable: true },
-  };
+describe("line item stays within the current funding source (Phase 4, D-93)", () => {
+  const SOURCE_LINE_ITEMS = ["line-promo"];
 
-  it("applies the funder's rules when a click sets the payment source", () => {
-    // Autofill sets the source programmatically, so the Select's own change handler never
-    // runs — the exact gap that let one expense claim a different amount from an identical
-    // one entered by hand.
-    const filled = fillFromClick(
-      { ...BLANK, taxReimbursable: false, feesReimbursable: true },
-      { ...CANVA, paymentSource: "Paid directly by fiduciary" },
-      ["Paid directly by fiduciary"],
-      RULES,
-    );
-    expect(filled.paymentSource).toBe("Paid directly by fiduciary");
-    expect(filled.taxReimbursable).toBe(true);
+  it("applies a remembered line item that belongs to the current source", () => {
+    const filled = fillFromClick(BLANK, CANVA, [], SOURCE_LINE_ITEMS);
+    expect(filled.lineItemId).toBe("line-promo");
   });
 
-  it("applies them on a typed-name fill too", () => {
-    const filled = fillFromTypedName(
-      { ...BLANK, taxReimbursable: false, feesReimbursable: true },
-      { ...CANVA, paymentSource: "Paid directly by fiduciary" },
-      ["Paid directly by fiduciary"],
-      RULES,
-    );
-    expect(filled.taxReimbursable).toBe(true);
+  it("leaves the line item empty rather than crossing into another source's list", () => {
+    // The remembered line item belongs to a different source than the one now selected — the
+    // spec's "otherwise leaves it empty", not a guess at what the new source's equivalent is.
+    const filled = fillFromClick(BLANK, CANVA, [], ["line-other-source"]);
+    expect(filled.lineItemId).toBe("");
   });
 
-  it("leaves the flags alone for a source it has no rules for", () => {
-    // A retired label already on the record keeps the rules it was claimed under; guessing
-    // would silently restate the claim.
-    const filled = fillFromClick(
-      { ...BLANK, taxReimbursable: true, feesReimbursable: false },
-      { ...CANVA, paymentSource: "Retired source" },
-      ["Retired source"],
-      RULES,
-    );
-    expect(filled.taxReimbursable).toBe(true);
-    expect(filled.feesReimbursable).toBe(false);
+  it("applies it on a typed-name fill too", () => {
+    const filled = fillFromTypedName(BLANK, CANVA, [], SOURCE_LINE_ITEMS);
+    expect(filled.lineItemId).toBe("line-promo");
   });
 
-  it("changes nothing when no rules are supplied at all", () => {
-    const filled = fillFromClick(
-      { ...BLANK, taxReimbursable: true, feesReimbursable: true },
-      CANVA,
-      [],
-    );
-    expect(filled.taxReimbursable).toBe(true);
+  it("does not blank a line item already chosen when the remembered one is out of source", () => {
+    const chosen = { ...BLANK, lineItemId: "line-salary" };
+    const filled = fillFromClick(chosen, CANVA, [], ["line-other-source"]);
+    expect(filled.lineItemId).toBe("line-salary");
   });
 });

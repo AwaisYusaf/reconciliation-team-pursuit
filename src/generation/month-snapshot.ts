@@ -13,9 +13,9 @@ import { and, asc, eq, inArray, isNull, lt } from "drizzle-orm";
 import { db } from "@/src/db";
 import { loadLineItemBudgets } from "@/src/db/queries";
 import {
-  contractSettings,
   expenseDocuments,
   expenses,
+  fundingSources,
   lineItems,
   monthDocuments,
   organizations,
@@ -122,6 +122,7 @@ const EMPTY_SETTINGS = {
  */
 export async function loadMonthSnapshot(
   orgId: string,
+  fundingSourceId: string,
   month: MonthKey,
 ): Promise<MonthSnapshot> {
   return db.transaction(
@@ -135,7 +136,7 @@ export async function loadMonthSnapshot(
       // Shared with the dashboard/Contract Summary/Excel: the one place that folds each line
       // item's performances (m08) into `scheduledValueCents`, so a generator never has to
       // know performances exist.
-      const items = await loadLineItemBudgets(orgId, tx);
+      const items = await loadLineItemBudgets(orgId, fundingSourceId, tx);
 
       const monthExpenses = await tx
         .select({
@@ -163,7 +164,14 @@ export async function loadMonthSnapshot(
           lineItems,
           and(eq(lineItems.id, expenses.lineItemId), eq(lineItems.orgId, orgId)),
         )
-        .where(and(eq(expenses.orgId, orgId), eq(expenses.month, month), isNull(expenses.deletedAt)))
+        .where(
+          and(
+            eq(expenses.orgId, orgId),
+            eq(expenses.fundingSourceId, fundingSourceId),
+            eq(expenses.month, month),
+            isNull(expenses.deletedAt),
+          ),
+        )
         .orderBy(asc(expenses.sortOrder), asc(expenses.id));
 
       // Only prior months are queried; this month's figures are derived from the rows above,
@@ -180,19 +188,32 @@ export async function loadMonthSnapshot(
           feesReimbursable: expenses.feesReimbursable,
         })
         .from(expenses)
-        .where(and(eq(expenses.orgId, orgId), lt(expenses.month, month), isNull(expenses.deletedAt)))
+        .where(
+          and(
+            eq(expenses.orgId, orgId),
+            eq(expenses.fundingSourceId, fundingSourceId),
+            lt(expenses.month, month),
+            isNull(expenses.deletedAt),
+          ),
+        )
         .orderBy(asc(expenses.month), asc(expenses.id));
 
       const settings = await tx
         .select()
-        .from(contractSettings)
-        .where(eq(contractSettings.orgId, orgId))
+        .from(fundingSources)
+        .where(and(eq(fundingSources.id, fundingSourceId), eq(fundingSources.orgId, orgId)))
         .limit(1);
 
       const docs = await tx
         .select()
         .from(monthDocuments)
-        .where(and(eq(monthDocuments.orgId, orgId), eq(monthDocuments.month, month)))
+        .where(
+          and(
+            eq(monthDocuments.orgId, orgId),
+            eq(monthDocuments.fundingSourceId, fundingSourceId),
+            eq(monthDocuments.month, month),
+          ),
+        )
         .orderBy(asc(monthDocuments.sortOrder), asc(monthDocuments.id));
 
       const expenseIds = monthExpenses.map((row) => row.id);
@@ -234,9 +255,12 @@ export async function loadMonthSnapshot(
         byExpense.set(row.expenseId, list);
       }
 
+      // `docName` is nullable on the source (empty string is a real, distinct value from
+      // null), so `??` — not `||` — is what falls through to the org's, with the existing
+      // `?? ""` still the final fallback if neither row exists (decision 2.8).
       return {
         orgId,
-        docName: org[0]?.docName ?? "",
+        docName: settings[0]?.docName ?? org[0]?.docName ?? "",
         month,
         lineItems: items,
         expenses: monthExpenses.map((row) => ({
@@ -281,6 +305,8 @@ export async function loadMonthSnapshot(
               fiduciaryName: settings[0].fiduciaryName,
             }
           : EMPTY_SETTINGS,
+        // (settings row always exists once a funding source is created — EMPTY_SETTINGS is
+        // the same defensive fallback contractSettings used to need.)
       };
     },
     { isolationLevel: "repeatable read", accessMode: "read only" },

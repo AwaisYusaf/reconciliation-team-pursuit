@@ -11,15 +11,7 @@ import { and, eq, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
 import { db } from "@/src/db";
-import {
-  contractSettings,
-  organizations,
-  paymentSources,
-  supportingDocTypes,
-  users,
-  vendorDefaults,
-} from "@/src/db/schema";
-import { isValidIsoDate } from "@/src/domain/dates";
+import { organizations, paymentSources, supportingDocTypes, users, vendorDefaults } from "@/src/db/schema";
 import { parseMoneyToCents } from "@/src/domain/money";
 import { fail, ok, type ActionResult } from "@/src/lib/action-result";
 import { actionSession } from "@/src/lib/action-session";
@@ -53,110 +45,7 @@ export async function updateOrganisationAction(input: {
   return ok();
 }
 
-/* ------------------------------------------------------------ contract */
-
-export async function updateContractAction(input: {
-  projectName: string;
-  contractNumber: string;
-  basePoNumber: string;
-  performancePoNumber: string;
-  contractValue: string;
-  contractStart: string;
-  contractEnd: string;
-  fiduciaryName: string;
-}): Promise<ActionResult> {
-  const current = await actionSession();
-  if ("expired" in current) return current.expired;
-
-  const contractValueCents = parseMoneyToCents(input.contractValue) ?? 0;
-  if (contractValueCents < 0) return fail("Contract value cannot be negative.");
-
-  const start = input.contractStart.trim();
-  const end = input.contractEnd.trim();
-  if (start && !isValidIsoDate(start)) return fail("Enter a valid contract start date.");
-  if (end && !isValidIsoDate(end)) return fail("Enter a valid contract end date.");
-  if (start && end && end < start) return fail("The contract ends before it starts.");
-
-  const values = {
-    projectName: input.projectName.trim(),
-    contractNumber: input.contractNumber.trim(),
-    basePoNumber: input.basePoNumber.trim(),
-    performancePoNumber: input.performancePoNumber.trim(),
-    contractValueCents,
-    contractStart: start || null,
-    contractEnd: end || null,
-    fiduciaryName: input.fiduciaryName.trim(),
-  };
-
-  await db
-    .insert(contractSettings)
-    .values({ orgId: current.orgId, ...values })
-    .onConflictDoUpdate({ target: contractSettings.orgId, set: values });
-
-  revalidatePath("/", "layout");
-  return ok();
-}
-
-/* ------------------------------------------------------------- advances */
-
-/**
- * The Performance Grant figures this action used to update now live per line item as
- * performances (m08) instead — see `addLineItemPerformanceAction` in
- * `modules/line-items/actions.ts`. Only Advances Received is a settings-level figure.
- */
-export async function updateAdvancesReceivedAction(input: {
-  advancesReceived: string;
-}): Promise<ActionResult> {
-  const current = await actionSession();
-  if ("expired" in current) return current.expired;
-
-  const advancesReceivedCents = parseMoneyToCents(input.advancesReceived) ?? 0;
-  if (advancesReceivedCents < 0) return fail("This figure cannot be negative.");
-
-  await db
-    .insert(contractSettings)
-    .values({ orgId: current.orgId, advancesReceivedCents })
-    .onConflictDoUpdate({
-      target: contractSettings.orgId,
-      set: { advancesReceivedCents },
-    });
-
-  revalidatePath("/", "layout");
-  return ok();
-}
-
 /* ------------------------------------------------------------- lists */
-
-/**
- * Set what a funder reimburses (R1.3, D-67).
- *
- * Stored on the payment source because that is the thing that actually decides — the client's
- * own framing was "different funding sources have different reimbursement requirements".
- * Changing it here sets the default for *new* expenses only; every saved expense keeps the
- * rules it was claimed under, so a rule change never silently restates a submitted figure.
- */
-export async function updateReimbursementRulesAction(input: {
-  id: string;
-  taxReimbursable: boolean;
-  feesReimbursable: boolean;
-}): Promise<ActionResult> {
-  const current = await actionSession();
-  if ("expired" in current) return current.expired;
-  if (!isUuid(input.id)) return fail("That payment source no longer exists.");
-
-  const updated = await db
-    .update(paymentSources)
-    .set({
-      taxReimbursable: input.taxReimbursable,
-      feesReimbursable: input.feesReimbursable,
-    })
-    .where(and(eq(paymentSources.id, input.id), eq(paymentSources.orgId, current.orgId)))
-    .returning({ id: paymentSources.id });
-  if (updated.length === 0) return fail("That payment source no longer exists.");
-
-  revalidatePath("/", "layout");
-  return ok();
-}
 
 type ListKind = "paymentSource" | "supportingDocType";
 

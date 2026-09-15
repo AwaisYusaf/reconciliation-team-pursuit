@@ -28,6 +28,7 @@ export const CONTENT_TYPES: Record<string, string> = {
 
 export type ResolveArtifactInput = {
   orgId: string;
+  fundingSourceId: string;
   month: MonthKey;
   type: ArtifactType;
   /** Set for cover sheets; null for the packet and the workbook. */
@@ -58,6 +59,7 @@ export async function resolveArtifact(input: ResolveArtifactInput): Promise<Reso
 
   const scope = and(
     eq(generatedArtifacts.orgId, input.orgId),
+    eq(generatedArtifacts.fundingSourceId, input.fundingSourceId),
     eq(generatedArtifacts.month, input.month),
     eq(generatedArtifacts.type, input.type),
     lineItemId
@@ -95,6 +97,7 @@ export async function resolveArtifact(input: ResolveArtifactInput): Promise<Reso
   const body = await input.build();
   const key = generatedArtifactKey({
     orgId: input.orgId,
+    fundingSourceId: input.fundingSourceId,
     month: input.month,
     type: input.type,
     lineItemName: input.lineItemName ?? null,
@@ -111,6 +114,7 @@ export async function resolveArtifact(input: ResolveArtifactInput): Promise<Reso
     .insert(generatedArtifacts)
     .values({
       orgId: input.orgId,
+      fundingSourceId: input.fundingSourceId,
       month: input.month,
       type: input.type,
       lineItemId,

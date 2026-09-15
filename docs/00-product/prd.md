@@ -39,7 +39,7 @@ Team Pursuit submits a monthly reconciliation packet to the City of Detroit (via
 
 ### Out of scope (MVP) — from SOW §3 + confirmed decisions
 
-Receipt OCR/auto-extraction; bank feed integration; multi-project/multi-grant per org; the City's full continuation-sheet template (per-person salary rows on the summary — **decided:** summary stays line-item level; per-person detail lives on the Salary cover sheet); DocuSign integration (output is a normal PDF the org uploads); email sending; multi-user roles/permissions per org; accounting integrations; in-system billing of performance grants (settings-level figures only).
+Receipt OCR/auto-extraction; bank feed integration; ~~multi-project/multi-grant per org~~ — **now in scope as of Phase 6 (D-93):** an organisation can hold several funding sources, each with its own line items, expenses, packets and rules, never mixed (`docs/PHASE-6.md`; still out of scope: splitting one expense across sources, per-source user permissions, non-calendar reporting periods, combined cross-source reports); the City's full continuation-sheet template (per-person salary rows on the summary — **decided:** summary stays line-item level; per-person detail lives on the Salary cover sheet); DocuSign integration (output is a normal PDF the org uploads); email sending; multi-user roles/permissions per org; accounting integrations; in-system billing of performance grants (settings-level figures only).
 
 ## 5. Core concepts
 

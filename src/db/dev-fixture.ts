@@ -280,7 +280,7 @@ async function main() {
       .select()
       .from(schema.lineItems)
       .where(eq(schema.lineItems.orgId, org.id));
-    const byName = new Map(items.map((item) => [item.name, item.id]));
+    const byName = new Map(items.map((item) => [item.name, item]));
 
     if (docsOnly) {
       await attachDocuments(db, org.id);
@@ -305,6 +305,12 @@ async function main() {
       return;
     }
 
+    // Every fixture expense belongs to the org's first funding source (Phase 6, D-93):
+    // the fixture only ever created one, so its own line items are all on it.
+    const anyItem = items[0];
+    if (!anyItem) throw new Error("Organisation has no line items — run `npm run db:seed` first");
+    const fundingSourceId = anyItem.fundingSourceId;
+
     // Number from wherever the month's counter already stands, not from 1: a month can be
     // empty because its expenses were deleted, and R2.6 says a reference that has been handed
     // out is never handed out again.
@@ -312,7 +318,11 @@ async function main() {
       .select({ next: schema.monthStatuses.nextReferenceSeq })
       .from(schema.monthStatuses)
       .where(
-        and(eq(schema.monthStatuses.orgId, org.id), eq(schema.monthStatuses.month, MONTH)),
+        and(
+          eq(schema.monthStatuses.orgId, org.id),
+          eq(schema.monthStatuses.fundingSourceId, fundingSourceId),
+          eq(schema.monthStatuses.month, MONTH),
+        ),
       )
       .limit(1);
     const firstReference = Number(counter?.next ?? 1);
@@ -322,15 +332,16 @@ async function main() {
     const values: (typeof schema.expenses.$inferInsert)[] = [];
 
     for (const group of FIXTURE) {
-      const lineItemId = byName.get(group.lineItem);
-      if (!lineItemId) {
+      const lineItem = byName.get(group.lineItem);
+      if (!lineItem) {
         console.warn(`Skipping unknown line item "${group.lineItem}"`);
         continue;
       }
       for (const [name, description, cents] of group.rows) {
         values.push({
           orgId: org.id,
-          lineItemId,
+          lineItemId: lineItem.id,
+          fundingSourceId: lineItem.fundingSourceId,
           month: MONTH,
           date: `${MONTH}-${String(day).padStart(2, "0")}`,
           name,
@@ -354,9 +365,18 @@ async function main() {
     // the app would claim reference 1 and collide with the fixture's own first row.
     await db
       .insert(schema.monthStatuses)
-      .values({ orgId: org.id, month: MONTH, nextReferenceSeq: firstReference + values.length })
+      .values({
+        orgId: org.id,
+        fundingSourceId,
+        month: MONTH,
+        nextReferenceSeq: firstReference + values.length,
+      })
       .onConflictDoUpdate({
-        target: [schema.monthStatuses.orgId, schema.monthStatuses.month],
+        target: [
+          schema.monthStatuses.orgId,
+          schema.monthStatuses.fundingSourceId,
+          schema.monthStatuses.month,
+        ],
         set: { nextReferenceSeq: firstReference + values.length },
       });
 

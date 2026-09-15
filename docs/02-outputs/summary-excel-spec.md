@@ -1,6 +1,6 @@
 # Output Spec — Contract Summary Excel
 
-One workbook per month: `{DocName}_{Month}_{YYYY}_Summary.xlsx` (e.g. `Team_Pursuit_February_2026_Summary.xlsx`). Library: **exceljs** (SheetJS community edition cannot write cell styles — prototype used it, we don't). All money cells number format `[$$-409]#,##0.00`, all percent cells `0%`, values written as numbers (dollars, not cents) / fractions (0.66), never preformatted strings. The currency symbol is pinned to en-US rather than written as a bare `"$"`: Numbers and LibreOffice treat a bare `$` as the system currency, which rendered a delivered workbook in Hong Kong dollars.
+One workbook per **(funding source, month)** (D-93, Phase 6 — that source's own line items and expenses only): `{DocName}_{Month}_{YYYY}_Summary.xlsx` (e.g. `Team_Pursuit_February_2026_Summary.xlsx`), or once the organisation has more than one funding source, `{DocName}_{SourceName}_{Month}_{YYYY}_Summary.xlsx` (R10.3, decision 2.12). Library: **exceljs** (SheetJS community edition cannot write cell styles — prototype used it, we don't). All money cells number format `[$$-409]#,##0.00`, all percent cells `0%`, values written as numbers (dollars, not cents) / fractions (0.66), never preformatted strings. The currency symbol is pinned to en-US rather than written as a bare `"$"`: Numbers and LibreOffice treat a bare `$` as the system currency, which rendered a delivered workbook in Hong Kong dollars.
 
 ## Sheet 1 — `Contract Summary`
 

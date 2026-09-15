@@ -10,6 +10,7 @@ import { db } from "@/src/db";
 import {
   expenseDocuments,
   expenses,
+  fundingSources,
   lineItems,
   paymentSources,
   recurringItems,
@@ -21,7 +22,7 @@ import { addedState, validateRecurring } from "@/src/domain/recurring-rules";
 import { fail, ok, type ActionResult } from "@/src/lib/action-result";
 import { actionSession } from "@/src/lib/action-session";
 import { isUuid } from "@/src/lib/ids";
-import { reimbursementRulesFor } from "@/src/modules/expenses/reimbursement";
+import { rulesForFundingSource } from "@/src/modules/expenses/reimbursement";
 import { claimReferenceSeq } from "@/src/modules/expenses/references";
 
 
@@ -48,11 +49,14 @@ export async function saveRecurringItemAction(input: {
   if (invalid) return fail(invalid);
 
   const owned = await db
-    .select({ id: lineItems.id })
+    .select({ id: lineItems.id, archivedAt: fundingSources.archivedAt })
     .from(lineItems)
+    .innerJoin(fundingSources, eq(fundingSources.id, lineItems.fundingSourceId))
     .where(and(eq(lineItems.id, input.lineItemId), eq(lineItems.orgId, current.orgId)))
     .limit(1);
   if (owned.length === 0) return fail("Choose a line item.");
+  // A template exists to create new expenses, which an archived source no longer takes (D-93).
+  if (owned[0].archivedAt) return fail("That funding source is archived.");
 
   const values = {
     name: input.name.trim(),
@@ -129,6 +133,8 @@ export async function addRecurringToMonthAction(
       name: recurringItems.name,
       amountCents: recurringItems.amountCents,
       lineItemId: recurringItems.lineItemId,
+      fundingSourceId: lineItems.fundingSourceId,
+      sourceArchivedAt: fundingSources.archivedAt,
       defaultDescription: recurringItems.defaultDescription,
       defaultNarrative: recurringItems.defaultNarrative,
       defaultPaymentSource: recurringItems.defaultPaymentSource,
@@ -136,10 +142,14 @@ export async function addRecurringToMonthAction(
       defaultFeesCents: recurringItems.defaultFeesCents,
     })
     .from(recurringItems)
+    .innerJoin(lineItems, eq(lineItems.id, recurringItems.lineItemId))
+    .innerJoin(fundingSources, eq(fundingSources.id, lineItems.fundingSourceId))
     .where(and(eq(recurringItems.id, id), eq(recurringItems.orgId, current.orgId)))
     .limit(1);
   const item = rows[0];
   if (!item) return fail("That recurring item no longer exists.");
+  // Same rule as createExpenseAction: an archived source takes no new expenses (D-93).
+  if (item.sourceArchivedAt) return fail("That funding source is archived.");
 
   // Fall back to the vendor library's description when the item has none of its own.
   const [vendor] = await db
@@ -176,14 +186,16 @@ export async function addRecurringToMonthAction(
     .from(expenses)
     .where(and(eq(expenses.orgId, current.orgId), eq(expenses.month, month)));
 
-  // The funder decides what it reimburses, so a one-click add must resolve the same rules the
-  // expense form does (D-67). Falling through to the column defaults meant the identical
-  // expense claimed a different amount depending on how it was entered.
-  const rules = await reimbursementRulesFor(current.orgId, paymentSource);
+  // The funding source decides what it reimburses, so a one-click add must resolve the same
+  // rules the expense form does (D-67, Phase 4/D-93 — no longer the payment source). Falling
+  // through to the column defaults meant the identical expense claimed a different amount
+  // depending on how it was entered.
+  const rules = await rulesForFundingSource(current.orgId, item.fundingSourceId);
 
   await db.insert(expenses).values({
     orgId: current.orgId,
     lineItemId: item.lineItemId,
+    fundingSourceId: item.fundingSourceId,
     month,
     date: todayIso(),
     name: item.name,
@@ -202,7 +214,7 @@ export async function addRecurringToMonthAction(
     // R2.6: a one-click add is an expense like any other and needs the month's next
     // reference. Omitting this left every added row at the column default, so the second
     // add into a month collided on `expenses_org_month_reference_uq` and failed.
-    referenceSeq: await claimReferenceSeq(current.orgId, month),
+    referenceSeq: await claimReferenceSeq(current.orgId, item.fundingSourceId, month),
     recurringItemId: id,
   });
 
@@ -233,8 +245,17 @@ export async function removeRecurringFromMonthAction(
   if (!isValidMonthKey(month)) return fail("That is not a valid month.");
 
   const rows = await db
-    .select({ name: recurringItems.name, lineItemId: recurringItems.lineItemId })
+    .select({
+      name: recurringItems.name,
+      lineItemId: recurringItems.lineItemId,
+      // The template's funding source, through its line item (recurring items have no
+      // funding_source_id column of their own — m05). Review fix: an expense created from
+      // this template, then moved to another source by editing it, must not be reachable by
+      // Remove here — it belongs to a different source's month now.
+      fundingSourceId: lineItems.fundingSourceId,
+    })
     .from(recurringItems)
+    .innerJoin(lineItems, eq(lineItems.id, recurringItems.lineItemId))
     .where(and(eq(recurringItems.id, id), eq(recurringItems.orgId, current.orgId)))
     .limit(1);
   const item = rows[0];
@@ -252,7 +273,12 @@ export async function removeRecurringFromMonthAction(
     .from(expenses)
     .leftJoin(expenseDocuments, eq(expenseDocuments.expenseId, expenses.id))
     .where(
-      and(eq(expenses.orgId, current.orgId), eq(expenses.month, month), isNull(expenses.deletedAt)),
+      and(
+        eq(expenses.orgId, current.orgId),
+        eq(expenses.fundingSourceId, item.fundingSourceId),
+        eq(expenses.month, month),
+        isNull(expenses.deletedAt),
+      ),
     )
     .groupBy(expenses.id);
 

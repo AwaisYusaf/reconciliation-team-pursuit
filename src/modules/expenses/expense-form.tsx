@@ -17,6 +17,7 @@ import { Card, DangerPanel } from "@/src/components/ui/surfaces";
 import toast from "react-hot-toast";
 
 import { reportResult } from "@/src/components/ui/toast";
+import { setActiveFundingSourceAction } from "@/src/modules/auth/actions";
 import { projectedRemainingCents } from "@/src/domain/budget-math";
 import { compareMonthKeys, monthLabel } from "@/src/domain/dates";
 import { formatMoney } from "@/src/domain/format";
@@ -48,19 +49,18 @@ import type { AttachedDocument } from "./queries";
 import { UploadField, type PendingUpload } from "./upload-field";
 
 export type FormOptions = {
-  lineItems: Array<{ id: string; name: string }>;
+  /** Active sources, plus the expense's own source on edit even when it is archived. */
+  fundingSources: Array<{
+    id: string;
+    name: string;
+    taxReimbursable: boolean;
+    feesReimbursable: boolean;
+  }>;
+  /** Keyed by funding source id, covering exactly the sources in `fundingSources`. */
+  lineItemsBySource: Record<string, Array<{ id: string; name: string }>>;
   paymentSources: string[];
   supportingDocTypes: string[];
   months: string[];
-  /**
-   * What each funder reimburses, keyed by payment source label (R1.3, D-67). Optional so the
-   * type survives a caller that has not been updated; an absent entry simply leaves the
-   * flags alone rather than silently asserting one funder's rules.
-   */
-  reimbursementRules?: Record<
-    string,
-    { taxReimbursable: boolean; feesReimbursable: boolean }
-  >;
 };
 
 export type RemainingByLineItem = Record<string, number>;
@@ -75,10 +75,19 @@ export type ExpenseFormProps = {
    * absent on the add form, where the month is simply the one being created into.
    */
   remainingByMonth?: Record<string, RemainingByLineItem>;
-  /** Submission dates by month, already formatted — for the R10.6 warning on the month picked. */
+  /** Submission dates keyed `"{sourceId}:{month}"`, already formatted — for the R10.6 warning. */
   submittedOn?: Record<string, string>;
   today: string;
   activeMonth: string;
+  /** New = the header's selection or the org's first active source; edit = the expense's own. */
+  initialFundingSourceId: string;
+  /**
+   * The organisation's current header selection — `null` when "All" is active. Distinct from
+   * `initialFundingSourceId`: on edit, that is the expense's *own* source, which need not be
+   * what the header is showing. Used only to decide, after a successful save, whether the
+   * header needs to follow the source actually saved to (review fix — see the submit handler).
+   */
+  headerSelectedSourceId: string | null;
   /** Present in edit mode. */
   existing?: {
     id: string;
@@ -96,6 +105,7 @@ const RATE_LIMIT_RETRY_MS = 6_000;
 
 const EMPTY: ExpenseInput = {
   name: "",
+  fundingSourceId: "",
   lineItemId: "",
   paymentSource: "",
   month: "",
@@ -119,18 +129,28 @@ export function ExpenseForm({
   submittedOn,
   today,
   activeMonth,
+  initialFundingSourceId,
+  headerSelectedSourceId,
   existing,
 }: ExpenseFormProps) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const editing = Boolean(existing);
 
+  const initialSource = options.fundingSources.find((source) => source.id === initialFundingSourceId);
+
   const [values, setValues] = useState<ExpenseInput>(
     existing?.values ?? {
       ...EMPTY,
+      fundingSourceId: initialFundingSourceId,
       month: activeMonth,
       date: today,
-      ...(options.reimbursementRules?.[options.paymentSources[0] ?? ""] ?? {}),
+      ...(initialSource
+        ? {
+            taxReimbursable: initialSource.taxReimbursable,
+            feesReimbursable: initialSource.feesReimbursable,
+          }
+        : {}),
     },
   );
   const [error, setError] = useState<string | null>(null);
@@ -163,6 +183,17 @@ export function ExpenseForm({
   )
     ? options.paymentSources
     : [...options.paymentSources, values.paymentSource].filter(Boolean);
+
+  // The line items offered — and everything vendor autofill may cross-check against — are
+  // always just the currently selected funding source's own list (spec §4: the line item
+  // list only shows that source's line items).
+  const sourceLineItems = options.lineItemsBySource[values.fundingSourceId] ?? [];
+  // Resolved from the source a state update actually lands on, never captured at render: a
+  // fresh array here was a dependency of the vendor-search effect, which re-ran on every
+  // render and, with the compiler off, looped a timer and a server call every 250 ms. It also
+  // let a search started under one source autofill a line item into the next.
+  const lineItemIdsFor = (fundingSourceId: string) =>
+    (options.lineItemsBySource[fundingSourceId] ?? []).map((item) => item.id);
 
   // On the add form files are held until the expense exists, then uploaded against it.
   const [queued, setQueued] = useState<PendingUpload[]>([]);
@@ -251,12 +282,15 @@ export function ExpenseForm({
   );
 
   const lineItemName =
-    options.lineItems.find((item) => item.id === values.lineItemId)?.name ?? "";
+    sourceLineItems.find((item) => item.id === values.lineItemId)?.name ?? "";
 
-  // Warn about the month the expense is heading for, not the one it came from: moving into a
-  // submitted month is the case that actually changes a packet someone already received.
+  // Warn about the month/source the expense is heading for, not the one it came from: moving
+  // into a submitted month is the case that actually changes a packet someone already
+  // received. Checked for the target source first, then (on edit, if the source is also
+  // changing) the OLD source too — moving can leave either one submitted.
   const selectedMonthSubmittedOn =
-    submittedOn?.[values.month] ??
+    submittedOn?.[`${values.fundingSourceId}:${values.month}`] ??
+    (existing ? submittedOn?.[`${existing.values.fundingSourceId}:${values.month}`] : undefined) ??
     (values.month === existing?.values.month
       ? existing?.monthSubmittedOn
       : null);
@@ -296,7 +330,7 @@ export function ExpenseForm({
             current,
             exact,
             options.paymentSources,
-            options.reimbursementRules,
+            (options.lineItemsBySource[current.fundingSourceId] ?? []).map((item) => item.id),
           ),
         );
         setAutofilled(true);
@@ -313,15 +347,9 @@ export function ExpenseForm({
     return () => {
       if (searchTimer.current) clearTimeout(searchTimer.current);
     };
-    // `options.paymentSources` and the funder rules are both read when an exact match
-    // autofills, so both belong here. Re-running on a new identity costs nothing: the work is
-    // debounced, and the effect only starts a timer.
-  }, [
-    values.name,
-    existing,
-    options.paymentSources,
-    options.reimbursementRules,
-  ]);
+    // Only stable props and the typed name: the line item ids are read from the updater's own
+    // `current`, so nothing rebuilt per render may appear here (see `lineItemIdsFor`).
+  }, [values.name, existing, options.paymentSources, options.lineItemsBySource]);
 
   /**
    * Apply a vendor the user actually clicked.
@@ -340,7 +368,7 @@ export function ExpenseForm({
         current,
         row,
         options.paymentSources,
-        options.reimbursementRules,
+        lineItemIdsFor(current.fundingSourceId),
       ),
     );
     setSuggestions([]);
@@ -414,6 +442,19 @@ export function ExpenseForm({
     return null;
   }
 
+  /**
+   * If the header is showing one specific source and the expense was just saved under a
+   * *different* one, follow it there before landing on the list — otherwise the header kept
+   * pointing at the old source, the list filtered to it, and a just-saved expense looked like
+   * it had never been saved at all (review fix). Left alone when the header is on "All": the
+   * list already shows every source, so nothing there would hide the new expense.
+   */
+  async function switchHeaderSourceIfNeeded() {
+    if (headerSelectedSourceId !== null && headerSelectedSourceId !== values.fundingSourceId) {
+      await setActiveFundingSourceAction(values.fundingSourceId);
+    }
+  }
+
   function save() {
     setError(null);
     setStatus(null);
@@ -438,6 +479,7 @@ export function ExpenseForm({
         // The expense's own month, not wherever the org's shared active month happens to be
         // (R2.2 lets them differ) — otherwise landing on the active month's list after saving
         // into a different one made the just-saved record look like it had vanished.
+        await switchHeaderSourceIfNeeded();
         router.push(`/r/expenses?month=${values.month}`);
         router.refresh();
         return;
@@ -461,6 +503,7 @@ export function ExpenseForm({
         return;
       }
       toast.success(savedMessage());
+      await switchHeaderSourceIfNeeded();
       router.push(`/r/expenses?month=${values.month}`);
       router.refresh();
     });
@@ -485,7 +528,7 @@ export function ExpenseForm({
         }}
       >
         <Card className="p-7 flex flex-col gap-[22px]">
-          <div className="relative">
+          <div className="relative" data-tour="add-expense-name">
             <Label htmlFor="name">Name</Label>
             <Input
               id="name"
@@ -498,8 +541,9 @@ export function ExpenseForm({
               <div className="absolute left-0 right-0 top-full mt-1 bg-surface border border-line rounded-[3px] z-10 max-h-[220px] overflow-y-auto">
                 {suggestions.map((row) => {
                   // What clicking will actually put in the form. Shown because the name alone
-                  // does not say whether picking this vendor is what you want.
-                  const vendorLineItem = options.lineItems.find(
+                  // does not say whether picking this vendor is what you want — searched
+                  // against the current source's list, since autofill never crosses sources.
+                  const vendorLineItem = sourceLineItems.find(
                     (item) => item.id === row.lineItemId,
                   )?.name;
                   // Only mention a source that could actually be applied (R5.2).
@@ -541,6 +585,43 @@ export function ExpenseForm({
           </div>
 
           <div>
+            <Label htmlFor="fundingSource">Funding source</Label>
+            {options.fundingSources.length === 1 ? (
+              // One source: pre-filled and not editable, no extra clicks (spec §2/§4).
+              <div id="fundingSource" className="text-base py-1.5">
+                {options.fundingSources[0].name}
+              </div>
+            ) : (
+              <Select
+                id="fundingSource"
+                value={values.fundingSourceId}
+                onValueChange={(value) => {
+                  const nextSource = options.fundingSources.find((s) => s.id === value);
+                  // Changing the source clears the line item (it belongs to the old source's
+                  // list) and re-applies the new source's tax/fee rules — one update (spec §4).
+                  setValues((current) => ({
+                    ...current,
+                    fundingSourceId: value,
+                    lineItemId: "",
+                    ...(nextSource
+                      ? {
+                          taxReimbursable: nextSource.taxReimbursable,
+                          feesReimbursable: nextSource.feesReimbursable,
+                        }
+                      : {}),
+                  }));
+                }}
+              >
+                {options.fundingSources.map((source) => (
+                  <option key={source.id} value={source.id}>
+                    {source.name}
+                  </option>
+                ))}
+              </Select>
+            )}
+          </div>
+
+          <div>
             <Label id="lineItem-label" htmlFor="lineItem">
               Budget line item
             </Label>
@@ -552,11 +633,14 @@ export function ExpenseForm({
               onValueChange={(value) => set("lineItemId", value)}
             >
               <option value="">Choose a line item</option>
-              {options.lineItems.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.name}
-                </option>
-              ))}
+              {sourceLineItems.map((item) => {
+                const r = remainingForMonth[item.id];
+                return (
+                  <option key={item.id} value={item.id}>
+                    {r === undefined ? item.name : `${item.name} — Remaining ${formatMoney(r)}`}
+                  </option>
+                );
+              })}
             </Select>
           </div>
 
@@ -568,17 +652,7 @@ export function ExpenseForm({
               id="paymentSource"
               aria-labelledby="paymentSource-label"
               value={values.paymentSource}
-              onValueChange={(value) => {
-                // The funder decides what it reimburses, so choosing one applies its rules
-                // (D-67) — set once per source rather than re-decided on every expense. Still
-                // editable afterwards, because one expense can legitimately differ.
-                const rules = options.reimbursementRules?.[value];
-                setValues((current) => ({
-                  ...current,
-                  paymentSource: value,
-                  ...(rules ?? {}),
-                }));
-              }}
+              onValueChange={(value) => set("paymentSource", value)}
             >
               <option value="">Choose a payment source</option>
               {/*
@@ -625,7 +699,7 @@ export function ExpenseForm({
             </div>
           </div>
 
-          <div>
+          <div data-tour="add-expense-description">
             <Label htmlFor="description">
               Description / role — this exact text will print on the cover sheet
             </Label>
@@ -638,7 +712,7 @@ export function ExpenseForm({
             />
           </div>
 
-          <div className="flex flex-wrap gap-3.5">
+          <div className="flex flex-wrap gap-3.5" data-tour="add-expense-amounts">
             {(["subtotal", "tax", "fees"] as const).map((field) => (
               <div key={field} className="flex-1 min-w-[150px]">
                 <Label htmlFor={field} className="capitalize">
@@ -705,7 +779,10 @@ export function ExpenseForm({
             </div>
           )}
 
-          <div className="border-2 border-ink rounded-[3px] bg-surface px-[22px] py-5">
+          <div
+            className="border-2 border-ink rounded-[3px] bg-surface px-[22px] py-5"
+            data-tour="add-expense-reimbursable"
+          >
             <div className="text-2xl font-bold tabular-nums">
               Reimbursable amount: {formatMoney(reimbursableCents)}
             </div>
@@ -734,30 +811,32 @@ export function ExpenseForm({
             </div>
           )}
 
-          <UploadField
-            label="Proof of payment"
-            scope="proof"
-            queued={queued}
-            setQueued={setQueued}
-            attached={
-              existing?.documents.filter((doc) => doc.kind === "proof") ?? []
-            }
-            disabled={pending}
-            onRemoveAttached={(id) =>
-              startTransition(async () => {
-                if (
-                  reportResult(
-                    await removeExpenseDocumentAction(id),
-                    "File removed",
-                  )
-                ) {
-                  router.refresh();
-                }
-              })
-            }
-          />
+          <div data-tour="add-expense-proof">
+            <UploadField
+              label="Proof of payment"
+              scope="proof"
+              queued={queued}
+              setQueued={setQueued}
+              attached={
+                existing?.documents.filter((doc) => doc.kind === "proof") ?? []
+              }
+              disabled={pending}
+              onRemoveAttached={(id) =>
+                startTransition(async () => {
+                  if (
+                    reportResult(
+                      await removeExpenseDocumentAction(id),
+                      "File removed",
+                    )
+                  ) {
+                    router.refresh();
+                  }
+                })
+              }
+            />
+          </div>
 
-          <div className="border-t border-line pt-[22px]">
+          <div className="border-t border-line pt-[22px]" data-tour="add-expense-receipt">
             <UploadField
               label="Receipt / justification (receipt, invoice, or timesheet)"
               scope="receipt"

@@ -23,6 +23,7 @@ Last reviewed: 2026-08-20. The application is deployed and serving at
 |---|---|---|
 | S1 | Deploy the latest changes | `cd ~/ngo-expenses && git pull && ./deploy.sh` |
 | S2 | Run the nightly backup once by hand and read the output | `./backup.sh` |
+| S3 | **Before deploying multiple funding sources (Phase 6, D-93):** take a fresh backup, then run the read-only preflight and read it — exit code 2 with a `BLOCKER` line means do not deploy | `./backup.sh`, then `docker compose -f docker-compose.prod.yml run --rm migrate npm run db:preflight-funding-sources` (or any container with the app and `DATABASE_URL`) — see `docs/PHASE-6.md` Results |
 | S3 | Add the cron entry for it | `deploy-ec2.md` § Backups |
 | S4 | Apply the S3 lifecycle rules (30 daily, 13 months monthly) | `deploy-ec2.md` § Backups → Retention |
 | S5 | **Execute the restore drill once.** This is what actually closes D-07 — the procedure is proven on a dev database, not yet on the instance | `deploy-ec2.md` § Backups → The drill |

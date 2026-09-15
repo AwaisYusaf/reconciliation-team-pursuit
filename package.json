@@ -18,7 +18,8 @@
     "db:fixture": "tsx --conditions=react-server src/db/dev-fixture.ts",
     "db:reset-password": "tsx --conditions=react-server src/db/reset-password.ts",
     "db:backup-upload": "tsx --conditions=react-server src/db/backup-upload.ts",
-    "db:backup-fetch": "tsx --conditions=react-server src/db/backup-fetch.ts"
+    "db:backup-fetch": "tsx --conditions=react-server src/db/backup-fetch.ts",
+    "db:preflight-funding-sources": "tsx --conditions=react-server src/db/preflight-funding-sources.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1111.0",

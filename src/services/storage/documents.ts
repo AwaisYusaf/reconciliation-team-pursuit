@@ -338,6 +338,7 @@ export async function ingestExpenseDocument(input: {
 /** Attach a packet-level document to a month (R11.2). */
 export async function ingestMonthDocument(input: {
   orgId: string;
+  fundingSourceId: string;
   month: string;
   category: MonthDocumentCategory;
   title?: string | null;
@@ -349,7 +350,13 @@ export async function ingestMonthDocument(input: {
   const [{ total }] = await db
     .select({ total: sql<number>`count(*)::int` })
     .from(monthDocuments)
-    .where(and(eq(monthDocuments.orgId, input.orgId), eq(monthDocuments.month, input.month)));
+    .where(
+      and(
+        eq(monthDocuments.orgId, input.orgId),
+        eq(monthDocuments.fundingSourceId, input.fundingSourceId),
+        eq(monthDocuments.month, input.month),
+      ),
+    );
   if (total >= MAX_MONTH_DOCUMENTS) {
     return { ok: false, error: `A month can hold at most ${MAX_MONTH_DOCUMENTS} documents.` };
   }
@@ -406,7 +413,13 @@ export async function ingestMonthDocument(input: {
       const [{ live }] = await tx
         .select({ live: sql<number>`count(*)::int` })
         .from(monthDocuments)
-        .where(and(eq(monthDocuments.orgId, input.orgId), eq(monthDocuments.month, input.month)));
+        .where(
+          and(
+            eq(monthDocuments.orgId, input.orgId),
+            eq(monthDocuments.fundingSourceId, input.fundingSourceId),
+            eq(monthDocuments.month, input.month),
+          ),
+        );
       if (live >= MAX_MONTH_DOCUMENTS) {
         return `A month can hold at most ${MAX_MONTH_DOCUMENTS} documents.`;
       }
@@ -417,6 +430,7 @@ export async function ingestMonthDocument(input: {
       await tx.insert(monthDocuments).values({
         id: documentId,
         orgId: input.orgId,
+        fundingSourceId: input.fundingSourceId,
         month: input.month,
         category: input.category,
         title: input.title?.trim() || null,
@@ -473,10 +487,20 @@ export async function deleteExpenseDocument(orgId: string, documentId: string): 
 }
 
 /** Remove a month document and its stored objects. */
-export async function deleteMonthDocument(orgId: string, documentId: string): Promise<boolean> {
+export async function deleteMonthDocument(
+  orgId: string,
+  fundingSourceId: string,
+  documentId: string,
+): Promise<boolean> {
   const rows = await db
     .delete(monthDocuments)
-    .where(and(eq(monthDocuments.id, documentId), eq(monthDocuments.orgId, orgId)))
+    .where(
+      and(
+        eq(monthDocuments.id, documentId),
+        eq(monthDocuments.orgId, orgId),
+        eq(monthDocuments.fundingSourceId, fundingSourceId),
+      ),
+    )
     .returning({ key: monthDocuments.s3Key });
 
   const row = rows[0];

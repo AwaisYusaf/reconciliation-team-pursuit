@@ -3,7 +3,7 @@ import "server-only";
 /**
  * Line item reads for m08, including the usage counts the delete rules need (R9.3).
  */
-import { and, asc, count, eq } from "drizzle-orm";
+import { and, asc, count, eq, inArray } from "drizzle-orm";
 
 import { db } from "@/src/db";
 import { expenses, lineItemPerformances, lineItems, recurringItems } from "@/src/db/schema";
@@ -38,38 +38,50 @@ export type LineItemRow = {
   recurringNames: string[];
 };
 
-export async function loadLineItemRows(orgId: string): Promise<LineItemRow[]> {
-  const [items, expenseCounts, recurring, performances] = await Promise.all([
-    db
-      .select()
-      .from(lineItems)
-      .where(eq(lineItems.orgId, orgId))
-      .orderBy(asc(lineItems.sortOrder), asc(lineItems.name)),
-    // Not filtered on `deletedAt`: must agree with the delete gate in
-    // line-items/actions.ts, or this screen would say "0 expenses" while delete refuses.
-    db
-      .select({ lineItemId: expenses.lineItemId, total: count() })
-      .from(expenses)
-      .where(eq(expenses.orgId, orgId))
-      .groupBy(expenses.lineItemId),
-    db
-      .select({ lineItemId: recurringItems.lineItemId, name: recurringItems.name })
-      .from(recurringItems)
-      .where(eq(recurringItems.orgId, orgId))
-      .orderBy(asc(recurringItems.sortOrder)),
-    db
-      .select({
-        id: lineItemPerformances.id,
-        lineItemId: lineItemPerformances.lineItemId,
-        amountCents: lineItemPerformances.amountCents,
-        name: lineItemPerformances.name,
-        date: lineItemPerformances.date,
-        countsTowardContractTotal: lineItemPerformances.countsTowardContractTotal,
-      })
-      .from(lineItemPerformances)
-      .where(eq(lineItemPerformances.orgId, orgId))
-      .orderBy(asc(lineItemPerformances.sortOrder)),
-  ]);
+export async function loadLineItemRows(orgId: string, fundingSourceId: string): Promise<LineItemRow[]> {
+  const items = await db
+    .select()
+    .from(lineItems)
+    .where(and(eq(lineItems.orgId, orgId), eq(lineItems.fundingSourceId, fundingSourceId)))
+    .orderBy(asc(lineItems.sortOrder), asc(lineItems.name));
+
+  const itemIds = items.map((item) => item.id);
+  // Restricted to this source's own line item ids — an org-wide filter here would leak
+  // another source's expense counts and performances onto this screen's rows. Empty on
+  // purpose when there are no items: `inArray([])` would otherwise still hit the database.
+  const [expenseCounts, recurring, performances] = itemIds.length
+    ? await Promise.all([
+        // Not filtered on `deletedAt`: must agree with the delete gate in
+        // line-items/actions.ts, or this screen would say "0 expenses" while delete refuses.
+        db
+          .select({ lineItemId: expenses.lineItemId, total: count() })
+          .from(expenses)
+          .where(and(eq(expenses.orgId, orgId), inArray(expenses.lineItemId, itemIds)))
+          .groupBy(expenses.lineItemId),
+        db
+          .select({ lineItemId: recurringItems.lineItemId, name: recurringItems.name })
+          .from(recurringItems)
+          .where(and(eq(recurringItems.orgId, orgId), inArray(recurringItems.lineItemId, itemIds)))
+          .orderBy(asc(recurringItems.sortOrder)),
+        db
+          .select({
+            id: lineItemPerformances.id,
+            lineItemId: lineItemPerformances.lineItemId,
+            amountCents: lineItemPerformances.amountCents,
+            name: lineItemPerformances.name,
+            date: lineItemPerformances.date,
+            countsTowardContractTotal: lineItemPerformances.countsTowardContractTotal,
+          })
+          .from(lineItemPerformances)
+          .where(
+            and(
+              eq(lineItemPerformances.orgId, orgId),
+              inArray(lineItemPerformances.lineItemId, itemIds),
+            ),
+          )
+          .orderBy(asc(lineItemPerformances.sortOrder)),
+      ])
+    : [[], [], []];
 
   const countByLineItem = new Map(expenseCounts.map((row) => [row.lineItemId, row.total]));
   const recurringByLineItem = new Map<string, string[]>();
@@ -108,12 +120,18 @@ export async function loadLineItemRows(orgId: string): Promise<LineItemRow[]> {
   });
 }
 
-/** Single line item, org-scoped — used by actions before they mutate. */
-export async function findLineItem(orgId: string, id: string) {
+/** Single line item, org- and source-scoped — used by actions before they mutate. */
+export async function findLineItem(orgId: string, fundingSourceId: string, id: string) {
   const rows = await db
     .select()
     .from(lineItems)
-    .where(and(eq(lineItems.id, id), eq(lineItems.orgId, orgId)))
+    .where(
+      and(
+        eq(lineItems.id, id),
+        eq(lineItems.orgId, orgId),
+        eq(lineItems.fundingSourceId, fundingSourceId),
+      ),
+    )
     .limit(1);
   return rows[0] ?? null;
 }

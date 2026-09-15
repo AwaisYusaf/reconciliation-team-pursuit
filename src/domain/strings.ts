@@ -167,36 +167,141 @@ export function packetSummaryTitle(docName: string, monthLabel: string): string 
  * slashes but keep its dots, producing a key that the `keyBelongsToOrg` guard would then
  * reject — the builder and the validator have to agree.
  */
-export function sanitiseForFilename(value: string): string {
-  return value
-    .replace(/[\\/:*?"<>|]/g, "")
-    .replace(/[^A-Za-z0-9._ -]/g, "")
-    .replace(/\.{2,}/g, ".")
-    .replace(/\s+/g, " ")
-    .replace(/^[.\s]+|[.\s]+$/g, "")
-    .slice(0, 80);
+export function sanitiseForFilename(value: string, maxLength = S3_COMPONENT_MAX): string {
+  return (
+    value
+      .replace(/[\\/:*?"<>|]/g, "")
+      .replace(/[^A-Za-z0-9._ -]/g, "")
+      .replace(/\.{2,}/g, ".")
+      .replace(/\s+/g, " ")
+      .replace(/^[.\s]+|[.\s]+$/g, "")
+      .slice(0, maxLength)
+      // The trim above runs before the slice, so the slice itself can land on a space or a dot
+      // and put one back on the end. Harmless in a display string, not in an S3 key.
+      .replace(/[.\s]+$/g, "")
+  );
 }
 
-/** `Team Pursuit February 2026 Salary Breakdown.docx` (R10.3). */
+/** Default cap, and the one S3 key components keep (`services/storage/keys.ts`). */
+const S3_COMPONENT_MAX = 80;
+
+/**
+ * The budget a *document* filename's stem gets, which is deliberately larger than the S3
+ * component cap above.
+ *
+ * At 80 the protection `fitSourceName` gives is conditional: it guarantees the month, the
+ * document type and the full line item name survive only while those three already fit, and
+ * with a real organisation name and month that leaves barely 35 characters for a line item
+ * name — so two long line items sharing a prefix still collided, just without the source name
+ * being the part that gave way. 150 leaves ~75 for the line item name against realistic
+ * inputs, which also drowns out the few characters the budget estimate can undercount by
+ * (it measures parts sanitised individually, while the title is sanitised joined). Well under
+ * the 255-character limit filesystems and S3 actually impose.
+ */
+const STEM_MAX = 150;
+
+/**
+ * `Team Pursuit February 2026 Salary Breakdown.docx` (R10.3). With a `sourceName` (given only
+ * when the organisation has more than one funding source), the source name is inserted between
+ * the document name and the month: `Team Pursuit Foundation grant February 2026 Salary
+ * Breakdown.docx`. Absent/empty `sourceName` is byte-identical to before.
+ *
+ * The month, "Breakdown", and the **full** line item name are never shortened — two line
+ * items differing only in name must never collapse onto the same file (review fix). Only the
+ * source name gives way if the combined title would exceed the stem budget.
+ */
 export function coverSheetFilename(
   docName: string,
   monthLabel: string,
   lineItemName: string,
   extension: "docx" | "pdf",
+  sourceName?: string | null,
 ): string {
-  return `${sanitiseForFilename(coverSheetTitle(docName, monthLabel, lineItemName))}.${extension}`;
+  // Budget estimate only — sanitised copies never reach the output. `docName`/`monthLabel`/
+  // `lineItemName` are joined raw below and sanitised once, together, exactly like the no-
+  // source path: sanitising a part in isolation trims characters (a trailing period, say)
+  // that would have survived in the middle of the full joined string, which is not the same
+  // filename as before (a real regression this fix introduced and then caught: "Team/Pursuit
+  // & Co." must still keep its period).
+  const budgetParts = [
+    sanitiseForFilename(docName, STEM_MAX),
+    sanitiseForFilename(monthLabel, STEM_MAX),
+    sanitiseForFilename(lineItemName, STEM_MAX),
+    "Breakdown",
+  ].filter(Boolean);
+  const source = fitSourceName(sourceName, budgetParts);
+  const title = source
+    ? [docName, source, monthLabel, lineItemName, "Breakdown"]
+        .filter((part) => part && `${part}`.trim())
+        .join(" ")
+    : coverSheetTitle(docName, monthLabel, lineItemName);
+  return `${sanitiseForFilename(title, STEM_MAX)}.${extension}`;
 }
 
-/** `Team_Pursuit_February_2026_Summary.xlsx` (R10.3). */
-export function summaryFilename(docName: string, monthLabel: string): string {
-  return `${underscored(docName, monthLabel)}_Summary.xlsx`;
+/**
+ * `Team_Pursuit_February_2026_Summary.xlsx` (R10.3), or with a `sourceName`,
+ * `Team_Pursuit_Foundation_grant_February_2026_Summary.xlsx`. The month is never shortened;
+ * only the source name gives way (review fix — see `coverSheetFilename`).
+ */
+export function summaryFilename(docName: string, monthLabel: string, sourceName?: string | null): string {
+  return `${underscored(docName, sourceName, monthLabel)}_Summary.xlsx`;
 }
 
-/** `Team_Pursuit_February_2026_Packet.pdf` (R10.3). */
-export function packetFilename(docName: string, monthLabel: string): string {
-  return `${underscored(docName, monthLabel)}_Packet.pdf`;
+/**
+ * `Team_Pursuit_February_2026_Packet.pdf` (R10.3), or with a `sourceName`,
+ * `Team_Pursuit_Foundation_grant_February_2026_Packet.pdf`. The month is never shortened;
+ * only the source name gives way (review fix — see `coverSheetFilename`).
+ */
+export function packetFilename(docName: string, monthLabel: string, sourceName?: string | null): string {
+  return `${underscored(docName, sourceName, monthLabel)}_Packet.pdf`;
 }
 
-function underscored(docName: string, monthLabel: string): string {
-  return sanitiseForFilename(`${docName} ${monthLabel}`).replace(/ /g, "_");
+function underscored(docName: string, sourceName: string | null | undefined, monthLabel: string): string {
+  // Same reasoning as `coverSheetFilename`: sanitised copies are for the budget estimate
+  // only. The actual title is built from the raw parts and sanitised once, so a boundary
+  // character inside `docName` (a trailing period, say) is not treated as if it sat at the
+  // edge of the whole filename just because it sat at the edge of `docName` alone.
+  const budgetParts = [
+    sanitiseForFilename(docName, STEM_MAX),
+    sanitiseForFilename(monthLabel, STEM_MAX),
+  ].filter(Boolean);
+  const source = fitSourceName(sourceName, budgetParts);
+  const parts = [docName, source, monthLabel].filter((part) => part && `${part}`.trim());
+  return sanitiseForFilename(parts.join(" "), STEM_MAX).replace(/ /g, "_");
+}
+
+/**
+ * The source-name slice of a filename, shortened only as far as it has to be so the parts that
+ * must stay whole — `otherParts`, already sanitised — fit within `STEM_MAX` alongside it.
+ *
+ * Originally the whole assembled title was cut to 80 characters as one blind slice: a long
+ * source name pushed the month or the line item name (or "Breakdown" entirely) past the cut, so
+ * two different line items — or two different months — could download under the same filename.
+ * Only the source gives way now, dropped altogether if there is no room for it at all.
+ *
+ * There is deliberately no fixed maximum on top of that budget. A flat 30-character cap used to
+ * apply "even with room to spare", and it is what actually produced the reported
+ * `…Community Violence Interventio September 2026…`: a 31-character source name lost its last
+ * letter with 100 characters of the stem still unused. The budget above already guarantees what
+ * that cap was reaching for — the protected parts always fit — so it bounds the source name on
+ * its own, without cutting one that fits.
+ *
+ * Cuts on a whole word where that does not throw away most of the available room, so a
+ * genuinely over-long name still reads as a name and not a mid-word fragment.
+ */
+function fitSourceName(sourceName: string | null | undefined, otherParts: readonly string[]): string {
+  if (!sourceName || !sourceName.trim()) return "";
+  const sanitised = sanitiseForFilename(sourceName, STEM_MAX);
+  if (!sanitised) return "";
+
+  const otherLength = otherParts.reduce((sum, part) => sum + part.length, 0);
+  // One space between every part once the source is inserted among them.
+  const budget = STEM_MAX - otherLength - otherParts.length;
+  if (budget <= 0) return "";
+  if (sanitised.length <= budget) return sanitised;
+
+  const cut = sanitised.slice(0, budget);
+  const lastSpace = cut.lastIndexOf(" ");
+  const wholeWords = lastSpace > budget * 0.6 ? cut.slice(0, lastSpace) : cut;
+  return wholeWords.trim();
 }

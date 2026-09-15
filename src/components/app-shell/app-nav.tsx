@@ -36,7 +36,9 @@ function scrollActiveIntoView(node: HTMLAnchorElement | null): void {
   node?.scrollIntoView({ block: "nearest", inline: "nearest" });
 }
 
-function matches(pathname: string, href: string): boolean {
+/** Exported for `tour-replay-button.tsx`, which resolves the current tab's tour the same way
+ *  this nav resolves its own active tab — same "longest href wins" rule, same edge cases. */
+export function matches(pathname: string, href: string): boolean {
   if (href === "/r") return pathname === "/r";
   return pathname === href || pathname.startsWith(`${href}/`);
 }
@@ -67,6 +69,7 @@ export function AppNav() {
             href={item.href}
             aria-current={active ? "page" : undefined}
             ref={active ? scrollActiveIntoView : undefined}
+            data-tour={item.href === "/r/expenses/new" ? "add-expense-nav" : undefined}
             className={cn(
               "pt-2.5 pb-3 sm:pt-3 sm:pb-[13px] text-[15px] sm:text-base border-b-[3px] transition-colors whitespace-nowrap",
               active

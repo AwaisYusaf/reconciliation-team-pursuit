@@ -21,9 +21,6 @@ export type LabelRow = {
   id: string;
   label: string;
   active: boolean;
-  /** Payment sources only: what this funder reimburses (R1.3, D-67). */
-  taxReimbursable?: boolean;
-  feesReimbursable?: boolean;
 };
 
 export type Vendor = {
