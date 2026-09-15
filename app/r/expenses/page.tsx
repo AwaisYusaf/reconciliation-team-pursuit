@@ -13,6 +13,7 @@ import { documentationStatus, type GateExpense } from "@/src/domain/gate";
 import { reimbursableCents } from "@/src/domain/money";
 import { loadMonthExpenses } from "@/src/modules/expenses/queries";
 import { findFundingSource, loadSourceContext } from "@/src/modules/funding-sources/queries";
+import { loadLockedMonths } from "@/src/modules/packet/queries";
 import { EXPENSES_TOUR_STEPS } from "@/src/modules/tours/expenses-tour";
 import { hasSeenTour } from "@/src/modules/tours/queries";
 import { getSession } from "@/src/services/auth/session";
@@ -66,7 +67,7 @@ export default async function ExpensesPage({
         ? (await findFundingSource(session.orgId, requestedSource))?.id ?? null
         : null;
 
-  const [expenses, paySources, seenExpensesTour] = await Promise.all([
+  const [expenses, paySources, seenExpensesTour, lockedMonthKeys] = await Promise.all([
     loadMonthExpenses(session.orgId, scope, month),
     db
       .select({ label: paymentSources.label })
@@ -74,6 +75,7 @@ export default async function ExpensesPage({
       .where(and(eq(paymentSources.orgId, session.orgId), eq(paymentSources.active, true)))
       .orderBy(asc(paymentSources.sortOrder)),
     hasSeenTour(session.userId, "expenses"),
+    loadLockedMonths(session.orgId, null),
   ]);
 
   const sourceNameById = new Map(sources.map((source) => [source.id, source.name]));
@@ -98,6 +100,8 @@ export default async function ExpensesPage({
       lineItemName: expense.lineItemName,
       paymentSource: expense.paymentSource,
       fundingSourceName: sourceNameById.get(expense.fundingSourceId) ?? "",
+      fundingSourceId: expense.fundingSourceId,
+      month: expense.month,
       reimbursableCents: reimbursableCents(expense),
       // The whole attached set per kind, not a count and a first id: the row opens a viewer
       // that pages through them, and an expense with three receipts could otherwise only ever
@@ -184,6 +188,7 @@ export default async function ExpensesPage({
         selectedSourceId={scope}
         sourceFilterOffered={selectedId === null}
         totalBy={scope === null ? "source" : "payment"}
+        lockedMonths={[...lockedMonthKeys]}
       />
     </div>
   );

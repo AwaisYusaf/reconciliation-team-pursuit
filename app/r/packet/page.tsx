@@ -19,14 +19,14 @@ import { UI } from "@/src/domain/strings";
 import { packetContents } from "@/src/generation/packet-order";
 import { loadTrashedExpenses } from "@/src/modules/expenses/queries";
 import { loadSourceContext } from "@/src/modules/funding-sources/queries";
-import { loadPacketReadiness } from "@/src/modules/packet/queries";
+import { loadLockedMonths, loadLockEvents, loadPacketReadiness } from "@/src/modules/packet/queries";
 import { PACKET_TOUR_STEPS } from "@/src/modules/tours/packet-tour";
 import { hasSeenTour } from "@/src/modules/tours/queries";
 import { getSession } from "@/src/services/auth/session";
 
+import { LockHistory, MonthLockControls } from "./month-lock";
 import { MonthDocuments } from "./month-documents";
 import { PacketDownloadButtons, type DeletedItem } from "./packet-download-buttons";
-import { SubmittedMarker } from "./submitted-marker";
 
 export const metadata = { title: "Month-End Packet — Grant Expense Reconciliation" };
 
@@ -64,11 +64,29 @@ export default async function PacketPage() {
     );
   }
 
-  const [readiness, deletedInMonth, seenPacketTour] = await Promise.all([
+  const [readiness, deletedInMonth, seenPacketTour, events, lockedMonths] = await Promise.all([
     loadPacketReadiness(session.orgId, fundingSourceId, month),
     loadTrashedExpenses(session.orgId, fundingSourceId, month),
     hasSeenTour(session.userId, "packet"),
+    loadLockEvents(session.orgId, fundingSourceId, month),
+    loadLockedMonths(session.orgId, fundingSourceId),
   ]);
+
+  // Locked state comes from `month_statuses.locked_at`, not from the newest event (PR #16
+  // review): the newest event being a lock does not by itself mean the month is still locked —
+  // only `locked_at` is what every write's guard (`monthLocked`) actually checks. The newest
+  // event is still used below, for its date/name/link, but only once `locked` says to show it.
+  const locked = lockedMonths.has(`${fundingSourceId}:${month}`);
+  const lastEvent = events.length > 0 ? events[events.length - 1] : null;
+  const lockedEvent =
+    locked && lastEvent
+      ? {
+          id: lastEvent.id,
+          // The organisation's calendar date, matching every other date shown on this page.
+          date: formatDateUS(todayIso(lastEvent.createdAt)),
+          name: lastEvent.userDisplay,
+        }
+      : null;
 
   // Archived sources stay selectable so their history and documents remain reachable, which
   // means this page now renders for one — and month documents can't be added to or removed
@@ -95,17 +113,23 @@ export default async function PacketPage() {
         title="Month-End Packet"
         subtext={`Everything the funder receives for ${label}.`}
         actions={
-          <SubmittedMarker
+          <MonthLockControls
             month={month}
+            monthLabel={label}
             fundingSourceId={fundingSourceId}
             // The organisation's calendar date, not UTC's: a packet submitted at 9 pm in
             // Detroit would otherwise be stamped with tomorrow's date (R2.5, D-26).
             submittedAt={
               readiness.submittedAt ? formatDateUS(todayIso(readiness.submittedAt)) : null
             }
+            locked={locked}
+            lockedEvent={lockedEvent}
+            blocked={blocked}
           />
         }
       />
+
+      <LockHistory events={events} />
 
       {/* The tour wrapper below is the same width as the panel inside it: the spotlight lights
           that element's box, so a full-width wrapper around a narrower panel lit a wide empty
@@ -229,6 +253,7 @@ export default async function PacketPage() {
             fundingSourceId={fundingSourceId}
             blocked={blocked}
             deletedItems={deletedItems}
+            locked={locked}
           />
         </Card>
 
@@ -240,7 +265,8 @@ export default async function PacketPage() {
             documents={readiness.documents}
             monthLabel={label}
             hasBankStatement={readiness.hasBankStatement}
-            readOnly={sourceIsArchived}
+            readOnly={sourceIsArchived || locked}
+            lockedMessage={locked ? UI.monthLocked(label) : null}
           />
         </div>
       </div>

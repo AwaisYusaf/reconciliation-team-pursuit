@@ -21,7 +21,7 @@ import { Select } from "@/src/components/ui/select";
 import { Card, DangerPanel, EmptyState } from "@/src/components/ui/surfaces";
 import { TableCard, Td, Th } from "@/src/components/ui/table";
 import { reportResult } from "@/src/components/ui/toast";
-import { formatDateTimeUS, formatDateUS } from "@/src/domain/dates";
+import { formatDateTimeUS, formatDateUS, monthLabel } from "@/src/domain/dates";
 import { formatMoney } from "@/src/domain/format";
 import {
   ALL_DOCUMENTATION,
@@ -30,6 +30,7 @@ import {
   type DocumentationFilter,
   type MissingKind,
 } from "@/src/domain/gate";
+import { UI } from "@/src/domain/strings";
 import { userDisplay } from "@/src/domain/user-display";
 import { deleteExpenseAction, loadExpenseHistoryAction } from "@/src/modules/expenses/actions";
 // Type-only: `queries.ts` is `server-only`, so importing a runtime value from it into this
@@ -70,6 +71,9 @@ export type ExpenseRow = {
   lineItemName: string;
   paymentSource: string;
   fundingSourceName: string;
+  /** This row's own source and month — the lock key `"{fundingSourceId}:{month}"` (D-96). */
+  fundingSourceId: string;
+  month: string;
   reimbursableCents: number;
   proofs: RowDocument[];
   receipts: RowDocument[];
@@ -193,6 +197,7 @@ export function ExpensesTable({
   selectedSourceId,
   sourceFilterOffered,
   totalBy,
+  lockedMonths,
 }: {
   rows: ExpenseRow[];
   paymentSourceLabels: string[];
@@ -212,9 +217,12 @@ export function ExpensesTable({
   sourceFilterOffered: boolean;
   /** "source" only when All is the resolved scope (R5.2: no combined total across funders). */
   totalBy: "payment" | "source";
+  /** Every locked `"{fundingSourceId}:{month}"` in the org (Appendix A §2, D-96). */
+  lockedMonths: string[];
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
+  const lockedMonthKeys = useMemo(() => new Set(lockedMonths), [lockedMonths]);
   const [lineFilter, setLineFilter] = useState(ALL_LINE_ITEMS);
   const [sourceFilter, setSourceFilter] = useState(ALL_SOURCES);
   const [docFilter, setDocFilter] = useState<DocumentationFilter>(ALL_DOCUMENTATION);
@@ -503,7 +511,9 @@ export function ExpensesTable({
           </tr>
         </thead>
         <tbody>
-          {visible.map((row) => (
+          {visible.map((row) => {
+            const rowLocked = lockedMonthKeys.has(`${row.fundingSourceId}:${row.month}`);
+            return (
             <tr key={row.id}>
               <Td sticky className="whitespace-nowrap">
                 {row.allDocuments.length > 0 ? (
@@ -578,15 +588,31 @@ export function ExpensesTable({
                     panelDataTour="expenses-row-menu-panel"
                   >
                     <MenuLink href={`/r/expenses/${row.id}/edit`}>Edit</MenuLink>
-                    <MenuItem disabled={pending} onClick={() => setConfirming(row)}>
+                    <MenuItem
+                      disabled={pending || rowLocked}
+                      onClick={() => setConfirming(row)}
+                      // `disabled:opacity-100!` beats the item's own `disabled:opacity-50`, which
+                      // faded the reason below it too far to read; "Delete" is greyed instead.
+                      className={
+                        rowLocked
+                          ? "flex-col items-start h-auto py-2 gap-0.5 text-sub disabled:opacity-100!"
+                          : undefined
+                      }
+                    >
                       Delete
+                      {rowLocked && (
+                        <span className="text-xs font-normal normal-case text-ink">
+                          {UI.monthLocked(monthLabel(row.month))}
+                        </span>
+                      )}
                     </MenuItem>
                     {isAdmin && <MenuItem onClick={() => openHistory(row)}>History</MenuItem>}
                   </Menu>
                 </div>
               </Td>
             </tr>
-          ))}
+            );
+          })}
         </tbody>
       </TableCard>
 

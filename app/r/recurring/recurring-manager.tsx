@@ -18,6 +18,7 @@ import {
   matchesRecurringFilters,
   removeConfirmation,
 } from "@/src/domain/recurring-rules";
+import { UI } from "@/src/domain/strings";
 import {
   addRecurringToMonthAction,
   deleteRecurringItemAction,
@@ -32,6 +33,8 @@ export type RecurringRow = {
   lineItemId: string;
   lineItemName: string;
   fundingSourceName: string;
+  /** This row's own source — the lock key `"{fundingSourceId}:{month}"` (D-96). */
+  fundingSourceId: string;
   defaultDescription: string;
   defaultNarrative: string;
   defaultPaymentSource: string;
@@ -77,6 +80,7 @@ export function RecurringManager({
   monthLabel,
   monthShort,
   multiSource,
+  lockedMonths,
 }: {
   rows: RecurringRow[];
   /** `label` is what the picker shows (source-qualified when the org has several sources);
@@ -88,9 +92,12 @@ export function RecurringManager({
   monthShort: string;
   /** True when the org has more than one funding source; shows the Funding Source column. */
   multiSource: boolean;
+  /** Every locked `"{fundingSourceId}:{month}"` in the org (Appendix A §2, D-96). */
+  lockedMonths: string[];
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
+  const lockedMonthKeys = useMemo(() => new Set(lockedMonths), [lockedMonths]);
   const [error, setError] = useState<string | null>(null);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [confirmRemove, setConfirmRemove] = useState<{ row: RecurringRow; message: string } | null>(
@@ -471,7 +478,9 @@ export function RecurringManager({
             </tr>
           </thead>
           <tbody>
-            {shown.map((row) => (
+            {shown.map((row) => {
+              const rowLocked = lockedMonthKeys.has(`${row.fundingSourceId}:${month}`);
+              return (
               <Fragment key={row.id}>
               <tr className={justChanged === row.id ? "bg-success-bg" : undefined}>
                 <Td>{row.name}</Td>
@@ -481,6 +490,7 @@ export function RecurringManager({
                 <Td>{row.lineItemName}</Td>
                 {multiSource && <Td className="text-[15px] text-sub leading-snug">{row.fundingSourceName}</Td>}
                 <Td align="right">
+                  <div className="flex flex-col items-end gap-1">
                   <div className="flex items-center justify-end gap-4 flex-wrap">
                     <Button
                       variant="quiet"
@@ -510,7 +520,7 @@ export function RecurringManager({
                         <Button
                           variant="quiet"
                           className="min-h-9"
-                          disabled={pending}
+                          disabled={pending || rowLocked}
                           onClick={() => remove(row)}
                         >
                           Remove
@@ -520,13 +530,17 @@ export function RecurringManager({
                       <Button
                         variant="secondary"
                         className="min-h-11 px-4 text-[15px] whitespace-nowrap"
-                        disabled={pending}
+                        disabled={pending || rowLocked}
                         onClick={() => add(row)}
                         data-tour="recurring-add-to-month"
                       >
                         Add to {monthShort}
                       </Button>
                     )}
+                  </div>
+                  {rowLocked && (
+                    <span className="text-xs text-sub">{UI.monthLocked(monthLabel)}</span>
+                  )}
                   </div>
                 </Td>
               </tr>
@@ -538,7 +552,8 @@ export function RecurringManager({
                 </tr>
               )}
               </Fragment>
-            ))}
+              );
+            })}
           </tbody>
         </TableCard>
       )}

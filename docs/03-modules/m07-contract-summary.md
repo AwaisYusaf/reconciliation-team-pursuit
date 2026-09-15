@@ -14,9 +14,10 @@ Calculation service (R3, R7); the selected source's own row via `loadFundingSour
 - Table per R7.1/R7.3: BASE section header row → line item rows (every line item is BASE now; one may be built from performances, R9.5) → bold `Totals`. No separate subtotal or Performance Grant section (R7.2 retired, D-80) — `Totals` is the only bottom-line row. Columns exactly: `Description of Work | Scheduled Value | Previously Billed | This Period | Total Billed to Date | % Complete | Balance to Finish`. A line item with a performance shows its split right there, not only in the Line Items screen's "Add" popup: its name reads `{name} (includes {amount} performance)` — the Scheduled Value cell still shows the combined total.
 - Reconciliation card per R7.4 (4 rows).
 - Button: `Download Summary (Excel)` (reuses m06's `downloadSummary`) — gated like m06 (R4.3); when disabled, an inline line explains: `Blocked — {n} records are missing documents. See Month-End Packet.`
+- **Reporting periods (R10.7, D-96):** every month for this source that has live expenses, a submission or a lock, newest first (a month whose only expenses are trashed is left out) — `Month | Status | Details`. `Open` → `—`; `Submitted` → `Submitted {date}`; `Reconciled` → `Locked {date} by {name} · View signed packet`. A month that was unlocked and locked again lists what happened beneath it, oldest first: `Locked {date} by {name} · View signed packet (replaced)` and `Unlocked {date} by {name} — "{reason}"`. Read via `loadReportingPeriods`; still no writes.
 
 ## Acceptance
-Every figure equals the Excel for the same data (R10.2); % formats per R1.5; hidden-when-empty settings behave; disabled state explains itself.
+Every figure equals the Excel for the same data (R10.2); % formats per R1.5; hidden-when-empty settings behave; disabled state explains itself; Reporting periods shows Open, Submitted and Reconciled correctly for the selected source.
 
 ---
 

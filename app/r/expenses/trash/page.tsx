@@ -4,6 +4,7 @@ import { PageTitle, Subtext } from "@/src/components/ui/surfaces";
 import { formatDateUS, monthLabel, todayIso } from "@/src/domain/dates";
 import { loadTrashedExpenses } from "@/src/modules/expenses/queries";
 import { findFundingSource, loadSourceContext } from "@/src/modules/funding-sources/queries";
+import { loadLockedMonths } from "@/src/modules/packet/queries";
 import { getSession } from "@/src/services/auth/session";
 
 import { TrashTable, type TrashRow } from "./trash-table";
@@ -37,7 +38,10 @@ export default async function ExpenseTrashPage({
 
   const sourceNameById = new Map(sources.map((source) => [source.id, source.name]));
 
-  const expenses = await loadTrashedExpenses(session.orgId, scope);
+  const [expenses, lockedMonthKeys] = await Promise.all([
+    loadTrashedExpenses(session.orgId, scope),
+    loadLockedMonths(session.orgId, null),
+  ]);
   const presentSourceIds = new Set(expenses.map((expense) => expense.fundingSourceId));
   const fundingSources = sources
     .filter((source) => source.archivedAt === null || presentSourceIds.has(source.id))
@@ -48,7 +52,9 @@ export default async function ExpenseTrashPage({
     name: expense.name,
     lineItemName: expense.lineItemName,
     fundingSourceName: sourceNameById.get(expense.fundingSourceId) ?? "",
+    fundingSourceId: expense.fundingSourceId,
     month: monthLabel(expense.month),
+    monthKey: expense.month,
     amountCents: expense.amountCents,
     deletedAt: formatDateUS(todayIso(expense.deletedAt)),
     // Only "attached" documents — a pending or failed upload has no bytes to preview, which
@@ -71,6 +77,7 @@ export default async function ExpenseTrashPage({
         fundingSources={fundingSources}
         selectedSourceId={scope}
         sourceFilterOffered={selectedId === null}
+        lockedMonths={[...lockedMonthKeys]}
       />
     </div>
   );

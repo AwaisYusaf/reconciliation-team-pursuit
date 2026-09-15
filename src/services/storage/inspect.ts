@@ -14,6 +14,8 @@ import "server-only";
  */
 import sharp from "sharp";
 
+import { pdfOpensWithoutPassword } from "@/src/generation/raster";
+
 export type InspectionSuccess = {
   ok: true;
   /** Normalised bytes to store — HEIC/WebP arrive here converted to JPEG. */
@@ -59,8 +61,16 @@ function sniff(body: Buffer): string | null {
 export async function inspectUpload(input: {
   body: Buffer;
   declaredMimeType: string;
+  /**
+   * Accept a PDF that is encrypted with only an owner password (permissions restrictions, empty
+   * user password) — every viewer opens these unprompted, so refusing them is wrong for a copy
+   * that is only ever stored and served back. Off by default: expense/month uploads are embedded
+   * into generated packets, where pdf-lib cannot decrypt an actual user-password document, so
+   * loosening this there risks silently corrupting pages.
+   */
+  allowOwnerPasswordPdf?: boolean;
 }): Promise<InspectionResult> {
-  const { body, declaredMimeType } = input;
+  const { body, declaredMimeType, allowOwnerPasswordPdf = false } = input;
 
   if (body.length === 0) return { ok: false, error: "That file is empty." };
 
@@ -79,14 +89,42 @@ export async function inspectUpload(input: {
     };
   }
 
-  return actual === "application/pdf" ? inspectPdf(body) : inspectImage(body, actual);
+  return actual === "application/pdf" ? inspectPdf(body, allowOwnerPasswordPdf) : inspectImage(body, actual);
 }
 
-async function inspectPdf(body: Buffer): Promise<InspectionResult> {
+/**
+ * `pdfOpensWithoutPassword` shells out to `pdfinfo`; if that binary is missing or the probe
+ * fails for an unrelated reason, fail safe by treating the PDF as needing a password — the
+ * existing refusal — rather than letting an infra hiccup either accept an unverified file or
+ * crash the whole upload.
+ */
+async function opensWithoutPassword(body: Buffer): Promise<boolean> {
+  try {
+    return await pdfOpensWithoutPassword(body);
+  } catch {
+    return false;
+  }
+}
+
+async function inspectPdf(body: Buffer, allowOwnerPasswordPdf: boolean): Promise<InspectionResult> {
   try {
     const { PDFDocument } = await import("pdf-lib");
-    // Encrypted documents throw here rather than silently producing blank pages later.
-    const document = await PDFDocument.load(body, { ignoreEncryption: false });
+    let document;
+    try {
+      // Encrypted documents throw here rather than silently producing blank pages later.
+      document = await PDFDocument.load(body, { ignoreEncryption: false });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "";
+      // Only strings and streams are encrypted per the PDF spec, never the page tree, so an
+      // owner-password-only PDF's page count and size are readable without decrypting anything —
+      // `pdfOpensWithoutPassword` is what tells an owner-only PDF apart from one that genuinely
+      // needs a password, which pdf-lib alone cannot do (it never attempts decryption).
+      if (allowOwnerPasswordPdf && /encrypt/i.test(message) && (await opensWithoutPassword(body))) {
+        document = await PDFDocument.load(body, { ignoreEncryption: true });
+      } else {
+        throw error;
+      }
+    }
     const pageCount = document.getPageCount();
     if (pageCount === 0) return { ok: false, error: "That PDF has no pages." };
 

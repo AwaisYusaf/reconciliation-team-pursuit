@@ -1,8 +1,8 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNotNull } from "drizzle-orm";
 import { NextResponse } from "next/server";
 
 import { db } from "@/src/db";
-import { expenseDocuments, monthDocuments } from "@/src/db/schema";
+import { expenseDocuments, monthDocuments, monthLockEvents } from "@/src/db/schema";
 import { attachmentHeader, INLINE_DISPOSITION } from "@/src/lib/http";
 import { isUuid } from "@/src/lib/ids";
 import { getSession } from "@/src/services/auth/session";
@@ -51,7 +51,27 @@ export async function GET(
         .where(and(eq(monthDocuments.id, id), eq(monthDocuments.orgId, session.orgId)))
         .limit(1);
 
-  const document = expenseDoc ?? monthDoc;
+  // Signed packets have no `mime_type` column — they are always the PDF `lockMonth` stored
+  // (R10.7). Only a lock row (`s3_key IS NOT NULL`) is ever downloadable; an unlock row has none.
+  const [lockEvent] =
+    (expenseDoc ?? monthDoc)
+      ? [undefined]
+      : await db
+          .select({ key: monthLockEvents.s3Key, name: monthLockEvents.filename })
+          .from(monthLockEvents)
+          .where(
+            and(
+              eq(monthLockEvents.id, id),
+              eq(monthLockEvents.orgId, session.orgId),
+              isNotNull(monthLockEvents.s3Key),
+            ),
+          )
+          .limit(1);
+  const signedPacket = lockEvent?.key
+    ? { key: lockEvent.key, name: lockEvent.name ?? "Signed packet.pdf", type: "application/pdf" }
+    : undefined;
+
+  const document = expenseDoc ?? monthDoc ?? signedPacket;
   // Indistinguishable from "belongs to another organisation", so a probe learns nothing.
   if (!document) return new NextResponse("Not found", { status: 404 });
 

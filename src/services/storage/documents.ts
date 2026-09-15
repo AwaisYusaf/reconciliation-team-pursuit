@@ -13,7 +13,10 @@ import { and, eq, isNull, sql } from "drizzle-orm";
 import { v7 as uuidv7 } from "uuid";
 
 import { db } from "@/src/db";
+import { monthLabel } from "@/src/domain/dates";
+import { UI } from "@/src/domain/strings";
 import { isKnownSupportingDocType } from "@/src/modules/settings/labels";
+import { monthLocked } from "@/src/modules/packet/month-guard";
 import { expenseDocuments, expenses, monthDocuments, organizations } from "@/src/db/schema";
 import type { MonthDocumentCategory } from "@/src/db/schema";
 
@@ -85,8 +88,10 @@ export function expenseBudgetError(
   return null;
 }
 
-/** Take back objects written for an upload whose row was then refused. */
-async function discardStored(key: string, hadThumbnail: boolean): Promise<void> {
+/** Take back objects written for an upload whose row was then refused. Shared with `lockMonth`
+ *  (`src/modules/packet/lock.ts`), which stores the signed packet the same store-then-transaction
+ *  way and needs the same cleanup on refusal. */
+export async function discardStored(key: string, hadThumbnail: boolean): Promise<void> {
   const store = storage();
   await Promise.allSettled([
     store.delete(key),
@@ -110,8 +115,11 @@ type Queryable = Pick<typeof db, "select" | "execute">;
  * parent row to lock, and locking `organizations` would contend with unrelated writes like
  * the active-month change. The key is hashed, so a collision only over-serialises two
  * unrelated organisations briefly — it never lets one through.
+ *
+ * Exported for `lockMonth` (`src/modules/packet/lock.ts`), which stores the signed packet
+ * through this same lock rather than its own.
  */
-async function withOrgUploadLock<T>(
+export async function withOrgUploadLock<T>(
   tx: Queryable,
   orgId: string,
   run: () => Promise<T>,
@@ -142,8 +150,11 @@ export function storageQuotaError(usedBytes: number, incomingBytes: number): str
  *
  * Takes the executor so the authoritative check can run inside the upload lock; called on
  * the bare connection first only as a cheap rejection.
+ *
+ * Exported for `lockMonth` (`src/modules/packet/lock.ts`), which charges the signed copy
+ * against this same quota rather than a separate one.
  */
-async function orgStorageError(
+export async function orgStorageError(
   tx: Queryable,
   orgId: string,
   incomingBytes: number,
@@ -153,6 +164,7 @@ async function orgStorageError(
       used: sql<number>`
         coalesce((select sum(size_bytes + thumbnail_bytes) from expense_documents where org_id = ${orgId}), 0)
         + coalesce((select sum(size_bytes + thumbnail_bytes) from month_documents where org_id = ${orgId}), 0)
+        + coalesce((select sum(size_bytes) from month_lock_events where org_id = ${orgId}), 0)
       `,
     })
     .from(organizations)
@@ -165,7 +177,10 @@ async function orgStorageError(
   return storageQuotaError(Number(rows[0].used), incomingBytes);
 }
 
-function precheck(file: { size: number; type: string }): string | null {
+/** Size and declared-type check before the (possibly expensive) inspection. Exported for
+ *  `lockMonth` (`src/modules/packet/lock.ts`), which runs the same precheck on the signed
+ *  packet before its own PDF-only inspection. */
+export function precheck(file: { size: number; type: string }): string | null {
   if (file.size > MAX_UPLOAD_BYTES) {
     return "That file is larger than 25 MB. Upload a smaller export.";
   }
@@ -206,7 +221,11 @@ export async function ingestExpenseDocument(input: {
 
   // No attaching files to a trashed expense.
   const owner = await db
-    .select({ month: expenses.month, noReceipt: expenses.noReceipt })
+    .select({
+      month: expenses.month,
+      fundingSourceId: expenses.fundingSourceId,
+      noReceipt: expenses.noReceipt,
+    })
     .from(expenses)
     .where(
       and(
@@ -283,6 +302,46 @@ export async function ingestExpenseDocument(input: {
   // position, and packet document order is defined by it (R10.1 determinism).
   const placed = await db.transaction(async (tx) =>
     withOrgUploadLock(tx, input.orgId, async (): Promise<string | null> => {
+      // The pre-inspection read above is a fast rejection only — it is read outside any
+      // transaction, before the slow inspection, so a move landing meanwhile would leave it
+      // stale. Re-read the expense's current month/source/deletedAt here, inside the
+      // transaction and before any write (R10.7, D-96), and guard on THAT — not on `expense`
+      // above. Deliberately not a row lock on the expense: `updateExpenseAction` locks
+      // `month_statuses` first and the expense row second, and taking the expense row lock
+      // before `monthLocked` here would risk a deadlock against that order.
+      const [current] = await tx
+        .select({
+          month: expenses.month,
+          fundingSourceId: expenses.fundingSourceId,
+          deletedAt: expenses.deletedAt,
+        })
+        .from(expenses)
+        .where(and(eq(expenses.id, input.expenseId), eq(expenses.orgId, input.orgId)))
+        .limit(1);
+      if (!current || current.deletedAt) return "That expense no longer exists.";
+
+      const locked = await monthLocked(tx, input.orgId, [
+        { fundingSourceId: current.fundingSourceId, month: current.month },
+      ]);
+      if (locked) return UI.monthLocked(monthLabel(locked.month));
+
+      // `monthLocked` above took its own row lock (on `month_statuses`, not on the expense), so
+      // there was a window between the read just above and that lock in which the expense could
+      // have moved to a different month again. Close it: re-read and refuse if it moved, rather
+      // than attach the file to a month that is no longer the one just checked.
+      const [after] = await tx
+        .select({ month: expenses.month, fundingSourceId: expenses.fundingSourceId })
+        .from(expenses)
+        .where(and(eq(expenses.id, input.expenseId), eq(expenses.orgId, input.orgId)))
+        .limit(1);
+      if (
+        !after ||
+        after.month !== current.month ||
+        after.fundingSourceId !== current.fundingSourceId
+      ) {
+        return "That expense just changed. Try again.";
+      }
+
       const [held] = await tx
         .select({
           files: sql<number>`count(*)::int`,
@@ -410,6 +469,13 @@ export async function ingestMonthDocument(input: {
 
   const placed = await db.transaction(async (tx) =>
     withOrgUploadLock(tx, input.orgId, async (): Promise<string | null> => {
+      // First thing inside the transaction, before any write (R10.7, D-96) — inside the
+      // advisory lock, matching lockMonth's own order.
+      const locked = await monthLocked(tx, input.orgId, [
+        { fundingSourceId: input.fundingSourceId, month: input.month },
+      ]);
+      if (locked) return UI.monthLocked(monthLabel(locked.month));
+
       const [{ live }] = await tx
         .select({ live: sql<number>`count(*)::int` })
         .from(monthDocuments)
@@ -461,51 +527,11 @@ export async function ingestMonthDocument(input: {
  * Remove the stored object and its thumbnail for an already-known key. Best-effort; the
  * nightly sweep is the backstop for whichever of the two calls fails.
  *
- * Split out so a caller whose own DELETE already removed the DB row (e.g. via a foreign-key
- * cascade) can still clean up storage: `deleteExpenseDocument` below only works when the row
- * is deleted *by* that call, since it reads the key back from the same statement's
- * `RETURNING` — a row cascaded away by something else first is already gone, so that lookup
- * finds nothing and storage is silently never touched.
+ * Callers delete the DB row themselves — inside their own transaction, after the month-lock
+ * guard (R10.7) — and call this only once that has committed, so a refused or failed write
+ * never loses the bytes.
  */
 export async function deleteStoredObjects(key: string): Promise<void> {
   const store = storage();
   await Promise.allSettled([store.delete(key), store.delete(thumbnailKey(key))]);
-}
-
-/** Remove a document and its stored objects. Best-effort on storage; the sweep is the backstop. */
-export async function deleteExpenseDocument(orgId: string, documentId: string): Promise<boolean> {
-  const rows = await db
-    .delete(expenseDocuments)
-    .where(and(eq(expenseDocuments.id, documentId), eq(expenseDocuments.orgId, orgId)))
-    .returning({ key: expenseDocuments.s3Key });
-
-  const row = rows[0];
-  if (!row) return false;
-
-  await deleteStoredObjects(row.key);
-  return true;
-}
-
-/** Remove a month document and its stored objects. */
-export async function deleteMonthDocument(
-  orgId: string,
-  fundingSourceId: string,
-  documentId: string,
-): Promise<boolean> {
-  const rows = await db
-    .delete(monthDocuments)
-    .where(
-      and(
-        eq(monthDocuments.id, documentId),
-        eq(monthDocuments.orgId, orgId),
-        eq(monthDocuments.fundingSourceId, fundingSourceId),
-      ),
-    )
-    .returning({ key: monthDocuments.s3Key });
-
-  const row = rows[0];
-  if (!row) return false;
-
-  await deleteStoredObjects(row.key);
-  return true;
 }

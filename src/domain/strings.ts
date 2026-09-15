@@ -108,7 +108,58 @@ export const UI = {
   /** Add Expense caution (non-blocking) — a $0.00 subtotal is allowed, but unusual enough to
    *  flag rather than save silently. */
   subtotalIsZeroWarning: "Subtotal is $0.00 — double-check this entry.",
+  /** Refusal on every §2 write to a locked month (R10.7, D-96). */
+  monthLocked: (monthLabel: string) =>
+    `${monthLabel} is locked. Unlock it on the Month-End Packet tab to make changes.`,
+  /** Lock button/upload refusal while the blocking panel shows (R10.7). */
+  lockNeedsDocuments: "Add the missing documents before locking this month.",
+  /** Lock upload refusal for anything but a PDF (R10.7). */
+  lockNotPdf: "Upload the signed packet as a PDF.",
+  /** Lock upload refusal — the row was already locked by someone else. */
+  monthAlreadyLocked: "This month is already locked.",
+  /** Unlock refusal — nothing to undo. */
+  monthNotLocked: "This month is not locked.",
+  /** Packet header, once locked (Appendix A §1). */
+  reconciledLabel: "Reconciled",
+  /** Packet header's locked line: "Locked on {date} by {name}" (Appendix A §1). */
+  lockedOnBy: (date: string, name: string) => `Locked on ${date} by ${name}`,
+  /** Event-history lines and the Reporting periods table (Appendix A §3, §4): "Locked {date} by {name}". */
+  lockedBy: (date: string, name: string) => `Locked ${date} by ${name}`,
+  /** Event-history lines: "Unlocked {date} by {name}", with the reason quoted when there is one
+   *  (Appendix A §3, §4). */
+  unlockEventLine: (date: string, name: string, reason: string | null) =>
+    `Unlocked ${date} by ${name}${reason ? ` — "${reason}"` : ""}`,
+  /** Heading over the Packet page's event history (Appendix A §3). */
+  lockHistoryTitle: "Lock history",
+  /** Link text beside a lock event, opening `/api/files/{eventId}` (Appendix A §1, §3, §4). */
+  viewSignedPacket: "View signed packet",
+  /** Packet page's own event history — an earlier copy later superseded (Appendix A §3). */
+  replacedOn: (date: string) => `Replaced on ${date}`,
+  /** Reporting periods' event history — the same fact, inline (Appendix A §4). */
+  replacedTag: "(replaced)",
+  lockButtonLabel: "Lock month",
+  unlockButtonLabel: "Unlock",
+  /** Lock dialog (Appendix A §1). */
+  lockDialogTitle: (monthLabel: string) => `Lock ${monthLabel}?`,
+  lockDialogText:
+    "Upload the signed packet from the City. Once locked, this month's expenses can't be changed until someone unlocks it.",
+  /** Unlock dialog (Appendix A §3). */
+  unlockDialogTitle: (monthLabel: string) => `Unlock ${monthLabel}?`,
+  unlockDialogText:
+    "Its expenses can be changed again. The signed copy stays saved. Lock the month again when the new signed copy arrives.",
+  unlockReasonPlaceholder: "e.g. City asked us to remove the duplicate Staples invoice.",
+  /** Unlock refusal past `UNLOCK_REASON_MAX_LENGTH` — the box's `maxLength` stops typing first. */
+  unlockReasonTooLong: (max: number) => `Keep the reason under ${max} characters.`,
+  statusOpen: "Open",
+  statusSubmitted: "Submitted",
+  reportingPeriodsTitle: "Reporting periods",
+  /** Contract Summary's Reporting periods, and the Packet page's own Submitted marker (Appendix A §4). */
+  submittedOn: (date: string) => `Submitted ${date}`,
 } as const;
+
+/** Longest unlock reason — long enough for a real explanation, short enough that nobody pastes a
+ *  whole email. Shared so the box's `maxLength` and the server's refusal can't drift apart. */
+export const UNLOCK_REASON_MAX_LENGTH = 700;
 
 /** Inline explanation beside a disabled download button (m07, R4.3). */
 export function downloadBlockedReason(count: number): string {

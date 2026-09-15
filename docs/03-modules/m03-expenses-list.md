@@ -37,7 +37,7 @@ Reads `expenses` + `expense_documents` (status), `funding_sources` (names, for t
   - Receipt column: `{n} attached`, or `No receipt (reason)` in secondary text when flagged (R4.2), or bold red `Missing`.
   - Supporting: count.
   - Narrative column: `Provided`, or bold red `MISSING` (R4.7) — same visual treatment as Proof/Receipt, though narrative is a field rather than an uploaded file.
-  - Actions: Edit · Delete.
+  - Actions: Edit · Delete. For a row whose (source, month) is locked (R10.7, D-96), Delete is disabled and shows the locked-month message; Edit still opens the expense, read-only. Trash's Restore and Delete permanently behave the same for a trashed row in a locked month.
 - Row order: the per-month insertion counter (`sort_order`, data-model). Empty state: `No expenses recorded for {Month YYYY} yet.`
 - A thin status strip above the table when the month has incomplete records: `{n} records are missing documents — view Month-End Packet` (link) — keeps the gate visible early.
 

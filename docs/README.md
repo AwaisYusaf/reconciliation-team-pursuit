@@ -7,6 +7,7 @@ Docs-first, AI-native project. **These files are the source of truth.** Code ser
 | Path | What it is |
 |---|---|
 | `TASKS.md` | **Outstanding work** — everything unfinished, why it matters, and what is blocked on whom |
+| `PHASE-8.md` | **Phase 8** — locking a reconciled month: signed copy storage, the lock guard on every month-scoped write, Reconciled state and reporting periods; build plan and Results (built; not yet deployed) |
 | `PHASE-7.md` | **Phase 7** — guided first-run tours for Dashboard, Add Expense, Recurring and Month-End Packet: persistence model, tour engine decision, phased build plan (not started) |
 | `PHASE-6.md` | **Phase 6** — multiple funding sources per organisation: data model, migration, phased build plan, acceptance proof, and the Results of the migration/rollback rehearsal (built; not yet deployed) |
 | `PHASE-5.md` | **Phase 5** — packet navigation: clickable references, page map, outline; plan and passing criteria, blocked on six decisions |

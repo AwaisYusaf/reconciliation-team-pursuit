@@ -39,6 +39,7 @@ export function MonthDocuments({
   monthLabel,
   hasBankStatement,
   readOnly = false,
+  lockedMessage = null,
 }: {
   month: string;
   fundingSourceId: string;
@@ -46,12 +47,16 @@ export function MonthDocuments({
   monthLabel: string;
   hasBankStatement: boolean;
   /**
-   * The source is archived. Its documents stay listed and downloadable — that is the point of
-   * archiving rather than deleting — but adding and removing them is refused server-side, so
-   * the controls that would do either are not offered. Without this the page showed a working
-   * upload form whose only possible outcome was an error toast.
+   * The source is archived, or the month is locked. Either way documents stay listed and
+   * downloadable, but adding and removing them is refused server-side, so the controls that
+   * would do either are not offered. Without this the page showed a working upload form whose
+   * only possible outcome was an error toast.
    */
   readOnly?: boolean;
+  /** The locked-month message (Appendix A §1, D-96) — shown instead of the archived-source
+   *  text when the reason `readOnly` is true is that the month is locked, not that the source
+   *  is archived. Null (the default) keeps the archived wording. */
+  lockedMessage?: string | null;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -160,8 +165,8 @@ export function MonthDocuments({
 
       {readOnly ? (
         <p className="text-sm text-muted border-t border-line pt-4">
-          This funding source is archived. Its documents stay available to open and download,
-          but nothing can be added or removed.
+          {lockedMessage ??
+            "This funding source is archived. Its documents stay available to open and download, but nothing can be added or removed."}
         </p>
       ) : (
       <form

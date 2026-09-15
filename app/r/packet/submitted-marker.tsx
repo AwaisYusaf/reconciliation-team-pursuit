@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useTransition } from "react";
 
+import { Button } from "@/src/components/ui/button";
 import { ConfirmButton } from "@/src/components/ui/confirm-button";
 import { reportResult } from "@/src/components/ui/toast";
 import type { ActionResult } from "@/src/lib/action-result";
@@ -19,10 +20,14 @@ export function SubmittedMarker({
   month,
   submittedAt,
   fundingSourceId,
+  hideUndo = false,
 }: {
   month: string;
   submittedAt: string | null;
   fundingSourceId: string;
+  /** The month is locked — Undo is refused server-side anyway, but a locked month keeps
+   *  nothing about its submission reversible from here (Appendix A §1, D-96). */
+  hideUndo?: boolean;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -37,35 +42,36 @@ export function SubmittedMarker({
     return (
       <div className="flex flex-wrap items-center gap-3 text-sm">
         <span className="text-muted">Submitted {submittedAt}</span>
-        <ConfirmButton
-          variant="quiet"
-          disabled={pending}
-          title="Undo the submission mark?"
-          confirmLabel="Undo submission"
-          body={
-            <>
-              This also discards the figures captured when the month was marked submitted, which
-              are what later changes are compared against. Marking it submitted again captures
-              the month as it stands then, not as it stood before.
-            </>
-          }
-          onConfirm={() => run(() => clearMonthSubmittedAction(month, fundingSourceId), "Submission mark removed.")}
-        >
-          Undo
-        </ConfirmButton>
+        {!hideUndo && (
+          <ConfirmButton
+            variant="quiet"
+            disabled={pending}
+            title="Undo the submission mark?"
+            confirmLabel="Undo submission"
+            body={
+              <>
+                This also discards the figures captured when the month was marked submitted, which
+                are what later changes are compared against. Marking it submitted again captures
+                the month as it stands then, not as it stood before.
+              </>
+            }
+            onConfirm={() => run(() => clearMonthSubmittedAction(month, fundingSourceId), "Submission mark removed.")}
+          >
+            Undo
+          </ConfirmButton>
+        )}
       </div>
     );
   }
 
   return (
-    <button
-      type="button"
+    <Button
+      variant="secondary"
+      className="min-h-11 px-4 text-[15px]"
       onClick={() => run(() => markMonthSubmittedAction(month, fundingSourceId), "Month marked as submitted.")}
       disabled={pending}
-      className="text-sm text-muted underline disabled:opacity-60"
-      data-tour="packet-submit"
     >
       Mark as submitted
-    </button>
+    </Button>
   );
 }

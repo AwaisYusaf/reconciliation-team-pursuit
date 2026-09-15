@@ -14,7 +14,9 @@ import { buttonClassName } from "@/src/components/ui/button";
 import { Dialog } from "@/src/components/ui/dialog";
 import { useDownload } from "@/src/components/ui/download-button";
 import { reportResult } from "@/src/components/ui/toast";
+import { monthLabel } from "@/src/domain/dates";
 import { formatMoney } from "@/src/domain/format";
+import { UI } from "@/src/domain/strings";
 import { restoreExpenseAction } from "@/src/modules/expenses/actions";
 
 export type DeletedItem = {
@@ -33,11 +35,14 @@ export function PacketDownloadButtons({
   fundingSourceId,
   blocked,
   deletedItems,
+  locked,
 }: {
   month: string;
   fundingSourceId: string;
   blocked: boolean;
   deletedItems: DeletedItem[];
+  /** Restoring an expense is one of the writes a locked month refuses (Appendix A §2, D-96). */
+  locked: boolean;
 }) {
   const router = useRouter();
   const [restoring, startRestoring] = useTransition();
@@ -113,6 +118,7 @@ export function PacketDownloadButtons({
           from this reporting period. Restore anything that shouldn&apos;t have gone, or continue
           if the rest were intentional.
         </p>
+        {locked && <p className="mb-3 font-semibold">{UI.monthLocked(monthLabel(month))}</p>}
         <ul className="flex flex-col divide-y divide-danger/25 -mx-1">
           {deletedItems.map((item) => (
             <li key={item.id} className="flex items-center justify-between gap-3 px-1 py-2.5">
@@ -125,7 +131,7 @@ export function PacketDownloadButtons({
               <button
                 type="button"
                 className="shrink-0 underline font-medium disabled:opacity-50"
-                disabled={restoring}
+                disabled={restoring || locked}
                 onClick={() => restore(item)}
               >
                 Restore

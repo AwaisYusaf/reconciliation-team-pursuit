@@ -6,14 +6,23 @@ import "server-only";
  * The page-count listing is built from the same ordering and estimation the assembler uses,
  * so the contents the user reads before downloading describe the file they get.
  */
-import { and, asc, eq, isNull } from "drizzle-orm";
+import { and, asc, eq, isNotNull, isNull } from "drizzle-orm";
 
-import { db } from "@/src/db";
-import { expenseDocuments, expenses, lineItems, monthDocuments, monthStatuses } from "@/src/db/schema";
+import { db, type Database } from "@/src/db";
+import {
+  expenseDocuments,
+  expenses,
+  lineItems,
+  monthDocuments,
+  monthLockEvents,
+  monthStatuses,
+  users,
+} from "@/src/db/schema";
 import type { MonthDocumentCategory } from "@/src/db/schema";
 import { coverSheetRows } from "@/src/domain/cover-sheet";
 import { blockingLabel, documentationStatus, type GateExpense } from "@/src/domain/gate";
 import { reimbursableCents } from "@/src/domain/money";
+import { userDisplay } from "@/src/domain/user-display";
 import { estimateCoverSheetPages, estimateUploadPages } from "@/src/generation/page-estimate";
 
 export type ReadinessRow = {
@@ -55,19 +64,26 @@ export type PacketReadiness = {
   hasBankStatement: boolean;
 };
 
+/** Either the pooled handle or an open transaction's handle — same trick as
+ *  `claimReferenceSeq` (`src/modules/expenses/references.ts`): `lockMonth` passes its own `tx`
+ *  so this reads through the same transaction instead of checking out a second pool
+ *  connection while one is already held. */
+type Executor = Database | Parameters<Parameters<Database["transaction"]>[0]>[0];
+
 /** Readiness, blocking list, month documents and live page counts for one month. */
 export async function loadPacketReadiness(
   orgId: string,
   fundingSourceId: string,
   month: string,
+  executor: Executor = db,
 ): Promise<PacketReadiness> {
   const [items, rows, documents, docs, status] = await Promise.all([
-    db
+    executor
       .select({ id: lineItems.id, name: lineItems.name })
       .from(lineItems)
       .where(and(eq(lineItems.orgId, orgId), eq(lineItems.fundingSourceId, fundingSourceId)))
       .orderBy(asc(lineItems.sortOrder), asc(lineItems.name), asc(lineItems.id)),
-    db
+    executor
       .select({
         id: expenses.id,
         lineItemId: expenses.lineItemId,
@@ -96,7 +112,7 @@ export async function loadPacketReadiness(
         ),
       )
       .orderBy(asc(expenses.sortOrder), asc(expenses.id)),
-    db
+    executor
       .select({
         expenseId: expenseDocuments.expenseId,
         kind: expenseDocuments.kind,
@@ -116,7 +132,7 @@ export async function loadPacketReadiness(
         ),
       )
       .orderBy(asc(expenseDocuments.sortOrder), asc(expenseDocuments.id)),
-    db
+    executor
       .select({
         id: monthDocuments.id,
         category: monthDocuments.category,
@@ -135,7 +151,7 @@ export async function loadPacketReadiness(
         ),
       )
       .orderBy(asc(monthDocuments.sortOrder), asc(monthDocuments.id)),
-    db
+    executor
       .select({ submittedAt: monthStatuses.submittedAt })
       .from(monthStatuses)
       .where(
@@ -268,4 +284,138 @@ export async function loadPacketReadiness(
     submittedAt: status[0]?.submittedAt ?? null,
     hasBankStatement: attachedDocs.some((row) => row.category === "bank_statement"),
   };
+}
+
+/** Every locked `(source, month)`, as `"{sourceId}:{month}"` (R10.7). All sources when `null`. */
+export async function loadLockedMonths(
+  orgId: string,
+  fundingSourceId: string | null,
+): Promise<Set<string>> {
+  const rows = await db
+    .select({ fundingSourceId: monthStatuses.fundingSourceId, month: monthStatuses.month })
+    .from(monthStatuses)
+    .where(
+      and(
+        eq(monthStatuses.orgId, orgId),
+        fundingSourceId ? eq(monthStatuses.fundingSourceId, fundingSourceId) : undefined,
+        isNotNull(monthStatuses.lockedAt),
+      ),
+    );
+  return new Set(rows.map((row) => `${row.fundingSourceId}:${row.month}`));
+}
+
+export type LockEventRow = {
+  id: string;
+  month: string;
+  createdAt: Date;
+  /** `true` = a lock (the signed copy); `false` = an unlock. */
+  isLock: boolean;
+  filename: string | null;
+  reason: string | null;
+  userDisplay: string;
+};
+
+/** A (source, month)'s lock/unlock history, oldest first. All months when `month` is omitted. */
+export async function loadLockEvents(
+  orgId: string,
+  fundingSourceId: string,
+  month?: string,
+): Promise<LockEventRow[]> {
+  const rows = await db
+    .select({
+      id: monthLockEvents.id,
+      month: monthLockEvents.month,
+      createdAt: monthLockEvents.createdAt,
+      s3Key: monthLockEvents.s3Key,
+      filename: monthLockEvents.filename,
+      reason: monthLockEvents.reason,
+      actorName: users.name,
+      actorEmail: users.email,
+    })
+    .from(monthLockEvents)
+    .leftJoin(users, eq(users.id, monthLockEvents.actorUserId))
+    .where(
+      and(
+        eq(monthLockEvents.orgId, orgId),
+        eq(monthLockEvents.fundingSourceId, fundingSourceId),
+        month ? eq(monthLockEvents.month, month) : undefined,
+      ),
+    )
+    .orderBy(asc(monthLockEvents.createdAt), asc(monthLockEvents.id));
+
+  return rows.map((row) => ({
+    id: row.id,
+    month: row.month,
+    createdAt: row.createdAt,
+    isLock: row.s3Key !== null,
+    filename: row.filename,
+    reason: row.reason,
+    // A deleted actor leaves the event with no matching user row (D-89).
+    userDisplay: row.actorEmail ? userDisplay(row.actorName, row.actorEmail) : "Unknown",
+  }));
+}
+
+export type ReportingPeriod = {
+  month: string;
+  submittedAt: Date | null;
+  lockedAt: Date | null;
+  events: LockEventRow[];
+};
+
+/**
+ * Every month that has a live (non-deleted) expense, a submission, or a lock event for this
+ * source, newest first (Appendix A §4). Trashed-only months are excluded (plan §7 Q5).
+ */
+export async function loadReportingPeriods(
+  orgId: string,
+  fundingSourceId: string,
+): Promise<ReportingPeriod[]> {
+  const [expenseMonths, statusRows, events] = await Promise.all([
+    db
+      .selectDistinct({ month: expenses.month })
+      .from(expenses)
+      .where(
+        and(
+          eq(expenses.orgId, orgId),
+          eq(expenses.fundingSourceId, fundingSourceId),
+          isNull(expenses.deletedAt),
+        ),
+      ),
+    db
+      .select({
+        month: monthStatuses.month,
+        submittedAt: monthStatuses.submittedAt,
+        lockedAt: monthStatuses.lockedAt,
+      })
+      .from(monthStatuses)
+      .where(
+        and(eq(monthStatuses.orgId, orgId), eq(monthStatuses.fundingSourceId, fundingSourceId)),
+      ),
+    loadLockEvents(orgId, fundingSourceId),
+  ]);
+
+  const eventsByMonth = new Map<string, LockEventRow[]>();
+  for (const event of events) {
+    const list = eventsByMonth.get(event.month) ?? [];
+    list.push(event);
+    eventsByMonth.set(event.month, list);
+  }
+
+  const statusByMonth = new Map(statusRows.map((row) => [row.month, row]));
+  const months = new Set<string>([
+    ...expenseMonths.map((row) => row.month),
+    ...statusRows
+      .filter((row) => row.submittedAt !== null || row.lockedAt !== null)
+      .map((row) => row.month),
+    ...events.map((event) => event.month),
+  ]);
+
+  return [...months]
+    .sort((a, b) => (a < b ? 1 : a > b ? -1 : 0))
+    .map((month) => ({
+      month,
+      submittedAt: statusByMonth.get(month)?.submittedAt ?? null,
+      lockedAt: statusByMonth.get(month)?.lockedAt ?? null,
+      events: eventsByMonth.get(month) ?? [],
+    }));
 }
