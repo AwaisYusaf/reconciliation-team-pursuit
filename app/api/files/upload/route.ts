@@ -4,6 +4,7 @@ import { isValidMonthKey } from "@/src/domain/dates";
 import { consume } from "@/src/services/rate-limit";
 import { getSession } from "@/src/services/auth/session";
 import { findFundingSource } from "@/src/modules/funding-sources/queries";
+import { lockMonth } from "@/src/modules/packet/lock";
 import { ingestExpenseDocument, ingestMonthDocument } from "@/src/services/storage/documents";
 import { MAX_UPLOAD_BYTES, type DocumentScope } from "@/src/services/storage/keys";
 import type { MonthDocumentCategory } from "@/src/db/schema";
@@ -97,6 +98,28 @@ export async function POST(request: NextRequest) {
       month,
       category,
       title: form.get("title") ? String(form.get("title")) : null,
+      file,
+    });
+    return NextResponse.json(result, { status: result.ok ? 200 : 400 });
+  }
+
+  if (target === "signed-packet") {
+    const month = String(form.get("month") ?? "");
+    if (!isValidMonthKey(month)) {
+      return NextResponse.json({ ok: false, error: "That is not a valid month." }, { status: 400 });
+    }
+    const fundingSourceId = String(form.get("fundingSourceId") ?? "");
+    const source = await findFundingSource(session.orgId, fundingSourceId);
+    if (!source) {
+      return NextResponse.json({ ok: false, error: "Choose a funding source." }, { status: 400 });
+    }
+    // Archived sources are allowed to lock their last months (plan §7 Q3, R14.3) — unlike
+    // `target=month` above, no archived refusal here.
+    const result = await lockMonth({
+      orgId: session.orgId,
+      userId: session.userId,
+      fundingSourceId,
+      month,
       file,
     });
     return NextResponse.json(result, { status: result.ok ? 200 : 400 });

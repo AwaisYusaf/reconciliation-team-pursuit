@@ -16,10 +16,13 @@ import {
   vendorDefaults,
   type ExpenseAuditSnapshot,
 } from "@/src/db/schema";
+import { monthLabel } from "@/src/domain/dates";
 import { parseMoneyToCentsOrZero } from "@/src/domain/money";
+import { UI } from "@/src/domain/strings";
 import { fail, ok, type ActionResult } from "@/src/lib/action-result";
 import { actionSession, requireAdmin } from "@/src/lib/action-session";
 import { requireOwnedFundingSource } from "@/src/modules/funding-sources/queries";
+import { monthLocked, type MonthRef } from "@/src/modules/packet/month-guard";
 import { carryNarrativeToTemplate } from "@/src/modules/recurring/narrative";
 import { claimReferenceSeq } from "./references";
 import { loadOrgAuditHistory, type OrgAuditEvent } from "./queries";
@@ -157,6 +160,15 @@ const EXPENSE_SNAPSHOT_COLUMNS = {
  *  "no longer exists" failure; never leaks past the action that throws it. */
 class ExpenseRaceLost extends Error {}
 
+/** Signals a locked-month refusal out of `permanentlyDeleteExpenseAction`'s transaction, which
+ *  otherwise only returns via `db.transaction`'s resolved value — thrown so it rolls back
+ *  the same way `ExpenseRaceLost` does, alongside it in that function's one try/catch. */
+class MonthLockedRefusal extends Error {
+  constructor(readonly locked: MonthRef) {
+    super();
+  }
+}
+
 /**
  * The library learns from every save (R8.2): next time this payee is typed, its line item,
  * description and last amounts are offered automatically.
@@ -262,6 +274,14 @@ export async function createExpenseAction(
   // first committed, the expense would exist with no record of who created it, defeating the
   // audit trail's whole purpose.
   const created = await db.transaction(async (tx) => {
+    // First thing inside the transaction, before any write (R10.7, D-96) — the month must
+    // still be checked here even though a page can't reach this month at all once locked,
+    // because the block has to hold for a page that was already open before the lock landed.
+    const locked = await monthLocked(tx, current.orgId, [
+      { fundingSourceId: input.fundingSourceId, month: row.month },
+    ]);
+    if (locked) return { ok: false as const, locked };
+
     const [row_] = await tx
       .insert(expenses)
       .values({
@@ -283,12 +303,13 @@ export async function createExpenseAction(
       afterData: snapshotOf(row, owned[0].name, source.name),
     });
 
-    return row_;
+    return { ok: true as const, row: row_ };
   });
+  if (!created.ok) return fail(UI.monthLocked(monthLabel(created.locked.month)));
 
   await learnVendor(current.orgId, row);
   revalidatePath("/", "layout");
-  return ok({ id: created.id });
+  return ok({ id: created.row.id });
 }
 
 export async function updateExpenseAction(input: ExpenseInput): Promise<ActionResult> {
@@ -403,14 +424,23 @@ export async function updateExpenseAction(input: ExpenseInput): Promise<ActionRe
   // second hand-maintained field list next to `EXPENSE_SNAPSHOT_COLUMNS`.
   const beforeSnapshot = pickSnapshot(existing);
 
-  const nextReferenceSeq = moved
-    ? await claimReferenceSeq(current.orgId, input.fundingSourceId, row.month)
-    : undefined;
-
   // The update and its audit event must land together — see the same reasoning in
   // createExpenseAction. A failure between them would otherwise leave an edit applied with no
   // record of what it changed from.
   const updated = await db.transaction(async (tx) => {
+    // First thing inside the transaction, before any write, and before claimReferenceSeq below
+    // (R10.7, D-96) — checks both the expense's current month and its target month, so a
+    // refused move can never spend the target month's reference number (plan §3.4).
+    const locked = await monthLocked(tx, current.orgId, [
+      { fundingSourceId: existing.fundingSourceId, month: existing.month },
+      { fundingSourceId: input.fundingSourceId, month: row.month },
+    ]);
+    if (locked) return { ok: false as const, locked };
+
+    const nextReferenceSeq = moved
+      ? await claimReferenceSeq(current.orgId, input.fundingSourceId, row.month, tx)
+      : undefined;
+
     const updated_ = await tx
       .update(expenses)
       .set({
@@ -440,9 +470,10 @@ export async function updateExpenseAction(input: ExpenseInput): Promise<ActionRe
       });
     }
 
-    return updated_;
+    return { ok: true as const, rows: updated_ };
   });
-  if (updated.length === 0) return fail("That expense no longer exists.");
+  if (!updated.ok) return fail(UI.monthLocked(monthLabel(updated.locked.month)));
+  if (updated.rows.length === 0) return fail("That expense no longer exists.");
 
   // Carry a corrected narrative back to the template it came from, so next month's one-click
   // add arrives with the current text and nobody reopens an old month to copy it (R8.3, D-66).
@@ -497,6 +528,23 @@ export async function deleteExpenseAction(id: string): Promise<ActionResult> {
   // The trash-update and its audit event must land together — see the same reasoning in
   // createExpenseAction. A failure between them would trash an expense with no record of it.
   const trashed = await db.transaction(async (tx) => {
+    // Read the (fundingSourceId, month) the update below would touch, under the same filter,
+    // so the guard runs before any write. A row already gone falls through unguarded — the
+    // update's own WHERE finds nothing either way, the ordinary "no longer exists" case.
+    const [found] = await tx
+      .select({ fundingSourceId: expenses.fundingSourceId, month: expenses.month })
+      .from(expenses)
+      .where(
+        and(eq(expenses.id, id), eq(expenses.orgId, current.orgId), isNull(expenses.deletedAt)),
+      )
+      .limit(1);
+    if (found) {
+      const locked = await monthLocked(tx, current.orgId, [
+        { fundingSourceId: found.fundingSourceId, month: found.month },
+      ]);
+      if (locked) return { ok: false as const, locked };
+    }
+
     const trashed_ = await tx
       .update(expenses)
       .set({ deletedAt: new Date() })
@@ -504,7 +552,7 @@ export async function deleteExpenseAction(id: string): Promise<ActionResult> {
         and(eq(expenses.id, id), eq(expenses.orgId, current.orgId), isNull(expenses.deletedAt)),
       )
       .returning(EXPENSE_SNAPSHOT_COLUMNS);
-    if (trashed_.length === 0) return trashed_;
+    if (trashed_.length === 0) return { ok: true as const, rows: trashed_ };
     const [row] = trashed_;
 
     // RETURNING cannot reach a joined table, so the line item's (and its source's) name — the
@@ -526,9 +574,10 @@ export async function deleteExpenseAction(id: string): Promise<ActionResult> {
       afterData: null,
     });
 
-    return trashed_;
+    return { ok: true as const, rows: trashed_ };
   });
-  if (trashed.length === 0) return fail("That expense no longer exists.");
+  if (!trashed.ok) return fail(UI.monthLocked(monthLabel(trashed.locked.month)));
+  if (trashed.rows.length === 0) return fail("That expense no longer exists.");
 
   revalidatePath("/", "layout");
   return ok();
@@ -542,6 +591,22 @@ export async function restoreExpenseAction(id: string): Promise<ActionResult> {
 
   // Same reasoning as deleteExpenseAction: the restore and its audit event must land together.
   const restored = await db.transaction(async (tx) => {
+    // Same guard shape as deleteExpenseAction: read the (fundingSourceId, month) the update
+    // below would touch, under the same filter, before any write.
+    const [found] = await tx
+      .select({ fundingSourceId: expenses.fundingSourceId, month: expenses.month })
+      .from(expenses)
+      .where(
+        and(eq(expenses.id, id), eq(expenses.orgId, current.orgId), isNotNull(expenses.deletedAt)),
+      )
+      .limit(1);
+    if (found) {
+      const locked = await monthLocked(tx, current.orgId, [
+        { fundingSourceId: found.fundingSourceId, month: found.month },
+      ]);
+      if (locked) return { ok: false as const, locked };
+    }
+
     const restored_ = await tx
       .update(expenses)
       .set({ deletedAt: null })
@@ -549,7 +614,7 @@ export async function restoreExpenseAction(id: string): Promise<ActionResult> {
         and(eq(expenses.id, id), eq(expenses.orgId, current.orgId), isNotNull(expenses.deletedAt)),
       )
       .returning(EXPENSE_SNAPSHOT_COLUMNS);
-    if (restored_.length === 0) return restored_;
+    if (restored_.length === 0) return { ok: true as const, rows: restored_ };
     const [row] = restored_;
 
     // RETURNING cannot reach a joined table, so the line item's (and its source's) name costs
@@ -570,9 +635,10 @@ export async function restoreExpenseAction(id: string): Promise<ActionResult> {
       afterData: snapshotOf(row, lineItem?.name ?? "", lineItem?.fundingSourceName ?? ""),
     });
 
-    return restored_;
+    return { ok: true as const, rows: restored_ };
   });
-  if (restored.length === 0) return fail("That expense no longer exists.");
+  if (!restored.ok) return fail(UI.monthLocked(monthLabel(restored.locked.month)));
+  if (restored.rows.length === 0) return fail("That expense no longer exists.");
 
   revalidatePath("/", "layout");
   return ok();
@@ -625,6 +691,12 @@ export async function permanentlyDeleteExpenseAction(id: string): Promise<Action
   // compensating delete needed, and no window where a failed delete leaves a stray event.
   try {
     await db.transaction(async (tx) => {
+      // First thing inside the transaction, before any write (R10.7, D-96).
+      const locked = await monthLocked(tx, current.orgId, [
+        { fundingSourceId: existsRow.fundingSourceId, month: existsRow.month },
+      ]);
+      if (locked) throw new MonthLockedRefusal(locked);
+
       await tx.insert(expenseAuditEvents).values({
         orgId: current.orgId,
         expenseId: id,
@@ -644,6 +716,7 @@ export async function permanentlyDeleteExpenseAction(id: string): Promise<Action
     });
   } catch (error) {
     if (error instanceof ExpenseRaceLost) return fail("That expense no longer exists.");
+    if (error instanceof MonthLockedRefusal) return fail(UI.monthLocked(monthLabel(error.locked.month)));
     throw error;
   }
 
@@ -663,8 +736,39 @@ export async function removeExpenseDocumentAction(documentId: string): Promise<A
   if ("expired" in current) return current.expired;
   if (!isUuid(documentId)) return fail("That file is already gone.");
 
-  const removed = await removeStoredDocument(current.orgId, documentId);
-  if (!removed) return fail("That file is already gone.");
+  // The expense's own (fundingSourceId, month) is what the guard checks — a file has no month
+  // of its own. Read before the transaction, same as the other guarded paths' lookups.
+  const [owner] = await db
+    .select({
+      fundingSourceId: expenses.fundingSourceId,
+      month: expenses.month,
+    })
+    .from(expenseDocuments)
+    .innerJoin(expenses, eq(expenses.id, expenseDocuments.expenseId))
+    .where(and(eq(expenseDocuments.id, documentId), eq(expenseDocuments.orgId, current.orgId)))
+    .limit(1);
+
+  // Guard, then delete the row in one transaction; the stored objects are only removed after
+  // that commits (plan §3.4) — deleting them first and then having the guard refuse would
+  // destroy the file irreversibly on a locked month.
+  const removed = await db.transaction(async (tx) => {
+    if (owner) {
+      const locked = await monthLocked(tx, current.orgId, [
+        { fundingSourceId: owner.fundingSourceId, month: owner.month },
+      ]);
+      if (locked) return { ok: false as const, locked };
+    }
+
+    const rows = await tx
+      .delete(expenseDocuments)
+      .where(and(eq(expenseDocuments.id, documentId), eq(expenseDocuments.orgId, current.orgId)))
+      .returning({ key: expenseDocuments.s3Key });
+    return { ok: true as const, rows };
+  });
+  if (!removed.ok) return fail(UI.monthLocked(monthLabel(removed.locked.month)));
+  if (removed.rows.length === 0) return fail("That file is already gone.");
+
+  await deleteStoredObjects(removed.rows[0].key);
 
   revalidatePath("/", "layout");
   return ok();

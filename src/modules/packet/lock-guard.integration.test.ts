@@ -1,0 +1,665 @@
+/**
+ * Every write path refuses a locked month (R10.7, D-96) — `docs/PHASE-8.md` §8 Phase 1.
+ *
+ * Table-driven over the §2 write table: each row is refused on a locked month with the exact
+ * `UI.monthLocked` message and leaves every row it would have touched untouched. Each row also
+ * proves the guard is actually load-bearing by temporarily replacing `monthLocked` with a
+ * stub that always says "not locked", confirming the write then succeeds, before restoring it.
+ *
+ * Two more scenarios that only make sense once the table above exists: the open-page case (a
+ * stale read, saved after the month locks under it) and the race (a concurrent save blocked on
+ * the same row lock the guard takes).
+ *
+ * Kept separate from `lock.integration.test.ts`, which does not need to touch `monthLocked`
+ * itself. Locks here are set directly on `month_statuses` (`lockDirectly`) rather than through
+ * `lockMonth` — `lockMonth`'s own correctness (blocking documents, PDF-only, quota, the
+ * Submitted interplay) is already proven there; this file is only about what a locked row does
+ * to every *other* write.
+ *
+ * Skipped when DATABASE_URL is absent.
+ */
+import { config } from "dotenv";
+
+vi.mock("next/cache", () => ({ revalidatePath: () => {} }));
+vi.mock("@/src/lib/action-session", () => ({ actionSession: vi.fn() }));
+vi.mock("@/src/modules/packet/month-guard", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/src/modules/packet/month-guard")>();
+  return { ...actual, monthLocked: vi.fn(actual.monthLocked) };
+});
+
+config({ path: ".env.local", quiet: true });
+
+import sharp from "sharp";
+import { and, eq } from "drizzle-orm";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+
+const hasDatabase = Boolean(process.env.DATABASE_URL);
+
+describe.skipIf(!hasDatabase)("every write path refuses a locked month (integration, R10.7)", async () => {
+  const { db } = await import("@/src/db");
+  const {
+    expenseDocuments,
+    expenses,
+    fundingSources,
+    lineItems,
+    monthDocuments,
+    monthStatuses,
+    organizations,
+    paymentSources,
+    recurringItems,
+  } = await import("@/src/db/schema");
+  const { createTestOrg } = await import("@/src/db/test-org");
+  const { hashPassword } = await import("@/src/services/auth/passwords");
+  const { monthLabel } = await import("@/src/domain/dates");
+  const { UI } = await import("@/src/domain/strings");
+  const { claimReferenceSeq } = await import("@/src/modules/expenses/references");
+  const { actionSession } = await import("@/src/lib/action-session");
+  const { monthLocked } = await import("@/src/modules/packet/month-guard");
+
+  const {
+    createExpenseAction,
+    updateExpenseAction,
+    deleteExpenseAction,
+    restoreExpenseAction,
+    permanentlyDeleteExpenseAction,
+    removeExpenseDocumentAction,
+  } = await import("@/src/modules/expenses/actions");
+  const { addRecurringToMonthAction, removeRecurringFromMonthAction } = await import(
+    "@/src/modules/recurring/actions"
+  );
+  const { removeMonthDocumentAction } = await import("./actions");
+  const { ingestExpenseDocument, ingestMonthDocument } = await import("@/src/services/storage/documents");
+  const { storage } = await import("@/src/services/storage/driver");
+
+  const actionSessionMock = vi.mocked(actionSession);
+  const guardSpy = vi.mocked(monthLocked);
+
+  let orgId: string;
+  let sourceA: string;
+  let sourceB: string;
+  let itemA: string;
+  let itemB: string;
+  let userId: string;
+
+  function sessionContext() {
+    return {
+      orgId,
+      userId,
+      email: "e@example.com",
+      role: "admin" as const,
+      orgName: "Org",
+      docName: "Doc",
+      activeMonth: "2094-01",
+      activeFundingSourceId: null,
+      onboarded: true,
+      welcomeDismissed: true,
+    };
+  }
+  function asUser() {
+    actionSessionMock.mockResolvedValue(sessionContext());
+  }
+
+  let monthCounter = 0;
+  function freshMonth(): string {
+    monthCounter += 1;
+    const month = 1 + (monthCounter % 12);
+    const year = 2094 + Math.floor(monthCounter / 12);
+    return `${year}-${String(month).padStart(2, "0")}`;
+  }
+
+  async function lockDirectly(sourceId: string, month: string) {
+    await db
+      .insert(monthStatuses)
+      .values({ orgId, fundingSourceId: sourceId, month, lockedAt: new Date() })
+      .onConflictDoUpdate({
+        target: [monthStatuses.orgId, monthStatuses.fundingSourceId, monthStatuses.month],
+        set: { lockedAt: new Date() },
+      });
+  }
+
+  async function insertExpenseDirect(sourceId: string, itemId: string, month: string, overrides: Partial<{
+    name: string;
+    deletedAt: Date | null;
+    recurringItemId: string | null;
+  }> = {}) {
+    const [row] = await db
+      .insert(expenses)
+      .values({
+        orgId,
+        fundingSourceId: sourceId,
+        lineItemId: itemId,
+        month,
+        date: `${month}-05`,
+        name: overrides.name ?? "Direct expense",
+        narrative: "n",
+        paymentSource: "Cash",
+        subtotalCents: 1_000,
+        taxReimbursable: false,
+        feesReimbursable: true,
+        sortOrder: 0,
+        referenceSeq: await claimReferenceSeq(orgId, sourceId, month),
+        deletedAt: overrides.deletedAt ?? null,
+        recurringItemId: overrides.recurringItemId ?? null,
+      })
+      .returning({ id: expenses.id });
+    return row.id;
+  }
+
+  async function nextRefSeqOf(sourceId: string, month: string): Promise<number | null> {
+    const [row] = await db
+      .select({ next: monthStatuses.nextReferenceSeq })
+      .from(monthStatuses)
+      .where(
+        and(
+          eq(monthStatuses.orgId, orgId),
+          eq(monthStatuses.fundingSourceId, sourceId),
+          eq(monthStatuses.month, month),
+        ),
+      )
+      .limit(1);
+    return row?.next ?? null;
+  }
+
+  async function expenseRow(id: string) {
+    const [row] = await db.select().from(expenses).where(eq(expenses.id, id)).limit(1);
+    return row;
+  }
+
+  const validExpenseInput = (overrides: Partial<Record<string, unknown>> = {}) => ({
+    name: "Guard test",
+    fundingSourceId: sourceA,
+    lineItemId: itemA,
+    paymentSource: "Cash",
+    taxReimbursable: false,
+    feesReimbursable: true,
+    month: "2094-01",
+    date: "2094-01-06",
+    description: "",
+    subtotal: "1.00",
+    tax: "0.00",
+    fees: "0.00",
+    note: "",
+    narrative: "narrative",
+    noReceipt: true,
+    noReceiptReason: "n/a",
+    ...overrides,
+  });
+
+  beforeAll(async () => {
+    const org = await createTestOrg({ name: "Guard Org", activeMonth: "2094-01" });
+    orgId = org.orgId;
+    sourceA = org.fundingSourceId;
+
+    const [row] = await db
+      .insert((await import("@/src/db/schema")).users)
+      .values({
+        orgId,
+        email: `guard-${Date.now()}-${Math.random().toString(36).slice(2)}@example.test`,
+        passwordHash: await hashPassword("original-password-here"),
+        role: "admin",
+      })
+      .returning({ id: (await import("@/src/db/schema")).users.id });
+    userId = row.id;
+
+    const [b] = await db
+      .insert(fundingSources)
+      .values({ orgId, name: "Source B", type: "donation", sortOrder: 1, taxReimbursable: false, feesReimbursable: true })
+      .returning({ id: fundingSources.id });
+    sourceB = b.id;
+
+    await db.insert(paymentSources).values({ orgId, label: "Cash", sortOrder: 0 });
+
+    const [ia] = await db
+      .insert(lineItems)
+      .values({ orgId, fundingSourceId: sourceA, name: "A item", scheduledValueCents: 100_000, sortOrder: 0 })
+      .returning({ id: lineItems.id });
+    itemA = ia.id;
+
+    const [ib] = await db
+      .insert(lineItems)
+      .values({ orgId, fundingSourceId: sourceB, name: "B item", scheduledValueCents: 100_000, sortOrder: 0 })
+      .returning({ id: lineItems.id });
+    itemB = ib.id;
+  }, 30_000);
+
+  afterAll(async () => {
+    if (orgId) {
+      await db.delete(organizations).where(eq(organizations.id, orgId));
+      const { rm } = await import("node:fs/promises");
+      const path = await import("node:path");
+      await rm(path.join(process.cwd(), ".storage", "org", orgId), { recursive: true, force: true });
+    }
+  });
+
+  it("create expense: refused into a locked month, nothing created; guard proven by disabling it", async () => {
+    const month = freshMonth();
+    await lockDirectly(sourceA, month);
+    asUser();
+
+    const beforeRef = await nextRefSeqOf(sourceA, month);
+    const result = await createExpenseAction(validExpenseInput({ month, date: `${month}-06` }));
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toBe(UI.monthLocked(monthLabel(month)));
+
+    const rows = await db.select().from(expenses).where(and(eq(expenses.orgId, orgId), eq(expenses.month, month)));
+    expect(rows).toHaveLength(0);
+    expect(await nextRefSeqOf(sourceA, month)).toBe(beforeRef);
+
+    // Prove the guard is load-bearing: disable it once, the same write now succeeds.
+    guardSpy.mockResolvedValueOnce(null);
+    const bypassed = await createExpenseAction(validExpenseInput({ month, date: `${month}-06` }));
+    expect(bypassed.ok).toBe(true);
+  });
+
+  it("edit in place: refused on a locked month, name unchanged; guard proven", async () => {
+    const month = freshMonth();
+    const id = await insertExpenseDirect(sourceA, itemA, month, { name: "Original" });
+    await lockDirectly(sourceA, month);
+    asUser();
+
+    const result = await updateExpenseAction(
+      validExpenseInput({ id, month, date: `${month}-06`, name: "Renamed" }),
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toBe(UI.monthLocked(monthLabel(month)));
+
+    const row = await expenseRow(id);
+    expect(row.name).toBe("Original");
+
+    guardSpy.mockResolvedValueOnce(null);
+    const bypassed = await updateExpenseAction(
+      validExpenseInput({ id, month, date: `${month}-06`, name: "Renamed" }),
+    );
+    expect(bypassed.ok).toBe(true);
+  });
+
+  it("move INTO a locked month: refused naming the locked target, expense stays put; guard proven", async () => {
+    const openMonth = freshMonth();
+    const lockedMonth = freshMonth();
+    const id = await insertExpenseDirect(sourceA, itemA, openMonth);
+    await lockDirectly(sourceA, lockedMonth);
+    asUser();
+
+    const beforeRef = await nextRefSeqOf(sourceA, lockedMonth);
+    const result = await updateExpenseAction(
+      validExpenseInput({ id, month: lockedMonth, date: `${lockedMonth}-06` }),
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toBe(UI.monthLocked(monthLabel(lockedMonth)));
+
+    const row = await expenseRow(id);
+    expect(row.month).toBe(openMonth);
+    expect(await nextRefSeqOf(sourceA, lockedMonth)).toBe(beforeRef);
+
+    guardSpy.mockResolvedValueOnce(null);
+    const bypassed = await updateExpenseAction(
+      validExpenseInput({ id, month: lockedMonth, date: `${lockedMonth}-06` }),
+    );
+    expect(bypassed.ok).toBe(true);
+  });
+
+  it("move OUT of a locked month: refused naming the locked source month, expense stays put; guard proven", async () => {
+    const lockedMonth = freshMonth();
+    const openMonth = freshMonth();
+    await lockDirectly(sourceA, lockedMonth);
+    const id = await insertExpenseDirect(sourceA, itemA, lockedMonth);
+    asUser();
+
+    const result = await updateExpenseAction(validExpenseInput({ id, month: openMonth, date: `${openMonth}-06` }));
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toBe(UI.monthLocked(monthLabel(lockedMonth)));
+
+    const row = await expenseRow(id);
+    expect(row.month).toBe(lockedMonth);
+
+    guardSpy.mockResolvedValueOnce(null);
+    const bypassed = await updateExpenseAction(
+      validExpenseInput({ id, month: openMonth, date: `${openMonth}-06` }),
+    );
+    expect(bypassed.ok).toBe(true);
+  });
+
+  it("change funding source into a locked source-month: refused, source unchanged; guard proven", async () => {
+    const month = freshMonth();
+    const id = await insertExpenseDirect(sourceA, itemA, month);
+    await lockDirectly(sourceB, month);
+    asUser();
+
+    const result = await updateExpenseAction(
+      validExpenseInput({ id, month, date: `${month}-06`, fundingSourceId: sourceB, lineItemId: itemB }),
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toBe(UI.monthLocked(monthLabel(month)));
+
+    const row = await expenseRow(id);
+    expect(row.fundingSourceId).toBe(sourceA);
+
+    guardSpy.mockResolvedValueOnce(null);
+    const bypassed = await updateExpenseAction(
+      validExpenseInput({ id, month, date: `${month}-06`, fundingSourceId: sourceB, lineItemId: itemB }),
+    );
+    expect(bypassed.ok).toBe(true);
+  });
+
+  it("delete: refused on a locked month, not trashed; guard proven", async () => {
+    const month = freshMonth();
+    const id = await insertExpenseDirect(sourceA, itemA, month);
+    await lockDirectly(sourceA, month);
+    asUser();
+
+    const result = await deleteExpenseAction(id);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toBe(UI.monthLocked(monthLabel(month)));
+
+    const row = await expenseRow(id);
+    expect(row.deletedAt).toBeNull();
+
+    guardSpy.mockResolvedValueOnce(null);
+    const bypassed = await deleteExpenseAction(id);
+    expect(bypassed.ok).toBe(true);
+  });
+
+  it("restore: refused on a locked month, stays trashed; guard proven", async () => {
+    const month = freshMonth();
+    const id = await insertExpenseDirect(sourceA, itemA, month, { deletedAt: new Date() });
+    await lockDirectly(sourceA, month);
+    asUser();
+
+    const result = await restoreExpenseAction(id);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toBe(UI.monthLocked(monthLabel(month)));
+
+    const row = await expenseRow(id);
+    expect(row.deletedAt).not.toBeNull();
+
+    guardSpy.mockResolvedValueOnce(null);
+    const bypassed = await restoreExpenseAction(id);
+    expect(bypassed.ok).toBe(true);
+  });
+
+  it("permanently delete: refused on a locked month, row still exists; guard proven", async () => {
+    const month = freshMonth();
+    const id = await insertExpenseDirect(sourceA, itemA, month, { deletedAt: new Date() });
+    await lockDirectly(sourceA, month);
+    asUser();
+
+    const result = await permanentlyDeleteExpenseAction(id);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toBe(UI.monthLocked(monthLabel(month)));
+
+    const row = await expenseRow(id);
+    expect(row).toBeDefined();
+
+    guardSpy.mockResolvedValueOnce(null);
+    const bypassed = await permanentlyDeleteExpenseAction(id);
+    expect(bypassed.ok).toBe(true);
+  });
+
+  it("remove an expense file: refused on a locked month, file and row remain; guard proven", async () => {
+    const month = freshMonth();
+    const id = await insertExpenseDirect(sourceA, itemA, month);
+    const jpeg = await sharp({ create: { width: 40, height: 40, channels: 3, background: { r: 1, g: 2, b: 3 } } })
+      .jpeg()
+      .toBuffer();
+    const attached = await ingestExpenseDocument({
+      orgId,
+      expenseId: id,
+      scope: "proof",
+      file: new File([new Uint8Array(jpeg)], "proof.jpg", { type: "image/jpeg" }),
+    });
+    if (!attached.ok) throw new Error(attached.error);
+    await lockDirectly(sourceA, month);
+    asUser();
+
+    const result = await removeExpenseDocumentAction(attached.documentId);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toBe(UI.monthLocked(monthLabel(month)));
+
+    const [doc] = await db
+      .select({ id: expenseDocuments.id, key: expenseDocuments.s3Key })
+      .from(expenseDocuments)
+      .where(eq(expenseDocuments.id, attached.documentId));
+    expect(doc).toBeDefined();
+    expect(await storage().exists(doc.key)).toBe(true);
+
+    guardSpy.mockResolvedValueOnce(null);
+    const bypassed = await removeExpenseDocumentAction(attached.documentId);
+    expect(bypassed.ok).toBe(true);
+  });
+
+  it("attach an expense file: refused on a locked month, no document row created; guard proven", async () => {
+    const month = freshMonth();
+    const id = await insertExpenseDirect(sourceA, itemA, month);
+    await lockDirectly(sourceA, month);
+
+    const jpeg = await sharp({ create: { width: 40, height: 40, channels: 3, background: { r: 1, g: 2, b: 3 } } })
+      .jpeg()
+      .toBuffer();
+    const result = await ingestExpenseDocument({
+      orgId,
+      expenseId: id,
+      scope: "proof",
+      file: new File([new Uint8Array(jpeg)], "proof.jpg", { type: "image/jpeg" }),
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toBe(UI.monthLocked(monthLabel(month)));
+
+    const rows = await db.select().from(expenseDocuments).where(eq(expenseDocuments.expenseId, id));
+    expect(rows).toHaveLength(0);
+
+    guardSpy.mockResolvedValueOnce(null);
+    const bypassed = await ingestExpenseDocument({
+      orgId,
+      expenseId: id,
+      scope: "proof",
+      file: new File([new Uint8Array(jpeg)], "proof.jpg", { type: "image/jpeg" }),
+    });
+    expect(bypassed.ok).toBe(true);
+  });
+
+  it("recurring 'Add to month': refused on a locked month, no expense created, reference untouched; guard proven", async () => {
+    const month = freshMonth();
+    const [item] = await db
+      .insert(recurringItems)
+      .values({ orgId, name: "Recurring guard test", amountCents: 500, lineItemId: itemA, sortOrder: 0 })
+      .returning({ id: recurringItems.id });
+    await lockDirectly(sourceA, month);
+    asUser();
+
+    const beforeRef = await nextRefSeqOf(sourceA, month);
+    const result = await addRecurringToMonthAction(item.id, month);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toBe(UI.monthLocked(monthLabel(month)));
+
+    const rows = await db
+      .select()
+      .from(expenses)
+      .where(and(eq(expenses.orgId, orgId), eq(expenses.month, month), eq(expenses.recurringItemId, item.id)));
+    expect(rows).toHaveLength(0);
+    expect(await nextRefSeqOf(sourceA, month)).toBe(beforeRef);
+
+    guardSpy.mockResolvedValueOnce(null);
+    const bypassed = await addRecurringToMonthAction(item.id, month);
+    expect(bypassed.ok).toBe(true);
+  });
+
+  it("recurring 'Remove': refused on a locked month, expense stays; guard proven", async () => {
+    const month = freshMonth();
+    const [item] = await db
+      .insert(recurringItems)
+      .values({ orgId, name: "Recurring remove guard test", amountCents: 500, lineItemId: itemA, sortOrder: 0 })
+      .returning({ id: recurringItems.id });
+    asUser();
+    const added = await addRecurringToMonthAction(item.id, month);
+    expect(added.ok).toBe(true);
+
+    await lockDirectly(sourceA, month);
+
+    const result = await removeRecurringFromMonthAction(item.id, month, true);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toBe(UI.monthLocked(monthLabel(month)));
+
+    const rows = await db
+      .select({ deletedAt: expenses.deletedAt })
+      .from(expenses)
+      .where(and(eq(expenses.orgId, orgId), eq(expenses.month, month), eq(expenses.recurringItemId, item.id)));
+    expect(rows).toHaveLength(1);
+    expect(rows[0].deletedAt).toBeNull();
+
+    guardSpy.mockResolvedValueOnce(null);
+    const bypassed = await removeRecurringFromMonthAction(item.id, month, true);
+    expect(bypassed.ok).toBe(true);
+  });
+
+  it("add month document: refused on a locked month, no row created; guard proven", async () => {
+    const month = freshMonth();
+    await lockDirectly(sourceA, month);
+
+    const jpeg = await sharp({ create: { width: 40, height: 40, channels: 3, background: { r: 1, g: 2, b: 3 } } })
+      .jpeg()
+      .toBuffer();
+    const result = await ingestMonthDocument({
+      orgId,
+      fundingSourceId: sourceA,
+      month,
+      category: "bank_statement",
+      file: new File([new Uint8Array(jpeg)], "statement.jpg", { type: "image/jpeg" }),
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toBe(UI.monthLocked(monthLabel(month)));
+
+    const rows = await db
+      .select()
+      .from(monthDocuments)
+      .where(and(eq(monthDocuments.orgId, orgId), eq(monthDocuments.fundingSourceId, sourceA), eq(monthDocuments.month, month)));
+    expect(rows).toHaveLength(0);
+
+    guardSpy.mockResolvedValueOnce(null);
+    const bypassed = await ingestMonthDocument({
+      orgId,
+      fundingSourceId: sourceA,
+      month,
+      category: "bank_statement",
+      file: new File([new Uint8Array(jpeg)], "statement.jpg", { type: "image/jpeg" }),
+    });
+    expect(bypassed.ok).toBe(true);
+  });
+
+  it("remove month document: refused on a locked month, stays attached; guard proven", async () => {
+    const month = freshMonth();
+    const jpeg = await sharp({ create: { width: 40, height: 40, channels: 3, background: { r: 1, g: 2, b: 3 } } })
+      .jpeg()
+      .toBuffer();
+    const attached = await ingestMonthDocument({
+      orgId,
+      fundingSourceId: sourceA,
+      month,
+      category: "bank_statement",
+      file: new File([new Uint8Array(jpeg)], "statement.jpg", { type: "image/jpeg" }),
+    });
+    if (!attached.ok) throw new Error(attached.error);
+    await lockDirectly(sourceA, month);
+    asUser();
+
+    const result = await removeMonthDocumentAction(attached.documentId, sourceA);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toBe(UI.monthLocked(monthLabel(month)));
+
+    const [doc] = await db
+      .select({ status: monthDocuments.status })
+      .from(monthDocuments)
+      .where(eq(monthDocuments.id, attached.documentId));
+    expect(doc.status).toBe("attached");
+
+    guardSpy.mockResolvedValueOnce(null);
+    const bypassed = await removeMonthDocumentAction(attached.documentId, sourceA);
+    expect(bypassed.ok).toBe(true);
+  });
+
+  it("the open-page case: a page read before the lock, saved after, is refused with nothing changed", async () => {
+    const month = freshMonth();
+    const id = await insertExpenseDirect(sourceA, itemA, month, { name: "Read before lock" });
+    asUser();
+
+    // Simulate the page load: read the expense's current values (what the edit form would hold).
+    const stale = await expenseRow(id);
+    expect(stale.name).toBe("Read before lock");
+
+    // Someone else locks the month while that page is still open.
+    await lockDirectly(sourceA, month);
+
+    // The open page then saves — with the exact values it read, unchanged.
+    const result = await updateExpenseAction(
+      validExpenseInput({
+        id,
+        month: stale.month,
+        date: stale.date,
+        name: stale.name,
+        subtotal: (stale.subtotalCents / 100).toFixed(2),
+      }),
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toBe(UI.monthLocked(monthLabel(month)));
+
+    const after = await expenseRow(id);
+    expect(after.name).toBe("Read before lock");
+    expect(after.subtotalCents).toBe(stale.subtotalCents);
+  });
+
+  it("the race: a concurrent save waits on the lock's own row lock, then is refused once it commits", async () => {
+    const month = freshMonth();
+    const id = await insertExpenseDirect(sourceA, itemA, month);
+    asUser();
+
+    let releaseLock: () => void;
+    const holdUntilReleased = new Promise<void>((resolve) => {
+      releaseLock = resolve;
+    });
+    let lockTaken = false;
+
+    const lockTxPromise = db.transaction(async (tx) => {
+      // The exact row lock the guard itself takes — proves the two really contend on the same
+      // row, not just on application logic. `monthLocked` here is the mocked binding, but with
+      // no queued override it runs its default implementation, the real function.
+      await monthLocked(tx, orgId, [{ fundingSourceId: sourceA, month }]);
+      await tx
+        .update(monthStatuses)
+        .set({ lockedAt: new Date() })
+        .where(
+          and(
+            eq(monthStatuses.orgId, orgId),
+            eq(monthStatuses.fundingSourceId, sourceA),
+            eq(monthStatuses.month, month),
+          ),
+        );
+      lockTaken = true;
+      await holdUntilReleased; // hold the row lock open until the test says commit
+    });
+
+    // Wait until the locking transaction has actually taken the row lock.
+    while (!lockTaken) await new Promise((r) => setTimeout(r, 5));
+
+    let updateSettled = false;
+    const updatePromise = updateExpenseAction(
+      validExpenseInput({ id, month, date: `${month}-07`, name: "Raced edit" }),
+    ).then((result) => {
+      updateSettled = true;
+      return result;
+    });
+
+    // Still pending while the locking transaction holds the row — the guard's SELECT ... FOR
+    // UPDATE cannot proceed until it commits.
+    await new Promise((r) => setTimeout(r, 200));
+    expect(updateSettled).toBe(false);
+
+    releaseLock!();
+    await lockTxPromise;
+
+    const result = await updatePromise;
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toBe(UI.monthLocked(monthLabel(month)));
+
+    const row = await expenseRow(id);
+    expect(row.name).not.toBe("Raced edit");
+  }, 15_000);
+});

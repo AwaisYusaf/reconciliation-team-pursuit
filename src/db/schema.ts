@@ -693,6 +693,8 @@ export const monthStatuses = pgTable(
     fundingSourceId: uuid("funding_source_id").notNull(),
     month: char({ length: 7 }).notNull(),
     submittedAt: timestamp("submitted_at", { withTimezone: true }),
+    /** Set when this (source, month) is locked/Reconciled (R10.7, D-96). Null → not locked. */
+    lockedAt: timestamp("locked_at", { withTimezone: true }),
     /**
      * The next expense reference to hand out in this month (R2.6).
      *
@@ -709,6 +711,38 @@ export const monthStatuses = pgTable(
   },
   (t) => [
     primaryKey({ columns: [t.orgId, t.fundingSourceId, t.month] }),
+    foreignKey({
+      columns: [t.fundingSourceId, t.orgId],
+      foreignColumns: [fundingSources.id, fundingSources.orgId],
+    }),
+  ],
+);
+
+/**
+ * Lock/unlock history per (source, month), append-only (R10.7, D-96). The newest `locked` row
+ * is the current signed copy; earlier `locked` rows are replaced copies, kept forever.
+ */
+export const monthLockEvents = pgTable(
+  "month_lock_events",
+  {
+    id: id(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    fundingSourceId: uuid("funding_source_id").notNull(),
+    month: char({ length: 7 }).notNull(),
+    actorUserId: uuid("actor_user_id").references(() => users.id, { onDelete: "set null" }),
+    /** Unlock only; trimmed, null when blank. */
+    reason: text(),
+    /** Set on a lock (the signed copy, always a PDF), null on an unlock — this is what says
+     *  which of the two a row is. No separate action/enum column. */
+    s3Key: text("s3_key"),
+    filename: text(),
+    sizeBytes: bigint("size_bytes", { mode: "number" }),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    index("month_lock_events_month_idx").on(t.orgId, t.fundingSourceId, t.month, t.createdAt),
     foreignKey({
       columns: [t.fundingSourceId, t.orgId],
       foreignColumns: [fundingSources.id, fundingSources.orgId],
@@ -997,6 +1031,7 @@ export type ExpenseAuditEventRow = typeof expenseAuditEvents.$inferSelect;
 export type ExpenseDocument = typeof expenseDocuments.$inferSelect;
 export type MonthDocument = typeof monthDocuments.$inferSelect;
 export type MonthStatus = typeof monthStatuses.$inferSelect;
+export type MonthLockEvent = typeof monthLockEvents.$inferSelect;
 export type VendorDefault = typeof vendorDefaults.$inferSelect;
 export type RecurringItem = typeof recurringItems.$inferSelect;
 export type GeneratedArtifact = typeof generatedArtifacts.$inferSelect;

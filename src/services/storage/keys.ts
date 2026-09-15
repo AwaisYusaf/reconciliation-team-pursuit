@@ -100,6 +100,24 @@ export function generatedArtifactKey(input: {
   ].join("/");
 }
 
+/** `org/{orgId}/months/{YYYY-MM}/signed-packets/{fundingSourceId}/{eventId}.pdf` (R10.7). */
+export function signedPacketKey(input: {
+  orgId: string;
+  month: MonthKey;
+  fundingSourceId: string;
+  eventId: string;
+}): string {
+  return [
+    "org",
+    input.orgId,
+    "months",
+    input.month,
+    "signed-packets",
+    input.fundingSourceId,
+    `${input.eventId}.pdf`,
+  ].join("/");
+}
+
 /** Thumbnail beside its source object. */
 export function thumbnailKey(objectKey: string): string {
   return `${objectKey.replace(/\.[^./]+$/, "")}.thumb.jpg`;

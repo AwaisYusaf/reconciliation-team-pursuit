@@ -203,6 +203,27 @@ Same processing/status fields as expense_documents, plus:
 |---|---|---|
 | org_id + funding_source_id + month | PK | Reference counter per (source, month) (D-93 2.6) |
 | submitted_at | timestamptz null | Set via "Mark as submitted" on the packet screen; drives the R10.6 edit warning |
+| locked_at | timestamptz null | Reconciled (R10.7, D-96) — set/cleared by `lockMonth`/`unlockMonthAction`; the fast guard flag every protected write checks inside its own transaction (`monthLocked`). Unlocking never touches `submitted_at` |
+
+### month_lock_events (R10.7, D-96)
+Append-only lock/unlock history per (source, month). A row with `s3_key` set is a lock (the
+signed copy, always a PDF); a row without one is an unlock — the file is the only flag, there is
+no separate action/enum column. The newest lock row is the current signed copy; earlier lock rows
+are replaced copies, kept forever.
+| Field | Type | Notes |
+|---|---|---|
+| id | uuid PK | |
+| org_id | uuid FK | cascade delete with the organisation |
+| funding_source_id | uuid FK | Composite FK `(funding_source_id, org_id) → funding_sources(id, org_id)`, same pattern as `month_statuses` |
+| month | char(7) | |
+| actor_user_id | uuid FK null | **set null** on the user's own delete — a deleted actor's event survives, rendered "Unknown" (D-89) |
+| reason | text null | Unlock only; trimmed, null when blank |
+| s3_key | text null | Set on a lock, null on an unlock |
+| filename | text null | Set on a lock — the uploaded name |
+| size_bytes | bigint null | Set on a lock |
+| created_at | timestamptz | |
+
+Index `(org_id, funding_source_id, month, created_at)`.
 
 ### vendor_defaults (library, R8.1–R8.2)
 | Field | Type | Notes |
@@ -258,7 +279,7 @@ user's own rows (`resetToursAction`), which re-arms all nine tours on next visit
 
 ## Relationships summary
 
-organizations 1—1 contract_settings (deprecated) · 1—n users, payment_sources, supporting_doc_types, funding_sources, line_items, expenses, month_documents, month_statuses, vendor_defaults, recurring_items, generated_artifacts. funding_sources 1—n line_items, expenses, month_documents, month_statuses, generated_artifacts. expenses 1—n expense_documents. line_items 1—n expenses (restrict), recurring_items (cascade after confirm), vendor_defaults (set null). users 1—n user_tour_progress (cascade delete).
+organizations 1—1 contract_settings (deprecated) · 1—n users, payment_sources, supporting_doc_types, funding_sources, line_items, expenses, month_documents, month_statuses, month_lock_events, vendor_defaults, recurring_items, generated_artifacts. funding_sources 1—n line_items, expenses, month_documents, month_statuses, month_lock_events, generated_artifacts. expenses 1—n expense_documents. line_items 1—n expenses (restrict), recurring_items (cascade after confirm), vendor_defaults (set null). users 1—n user_tour_progress (cascade delete), month_lock_events (set null on delete).
 
 ## S3 layout (private bucket)
 
@@ -268,9 +289,11 @@ org/{orgId}/
     expenses/{expenseId}/{proof|receipt|supporting}/{docId}.{ext}
     month-docs/{category}/{docId}.{ext}
     generated/{fundingSourceId}/{type}[-{lineItemSlug}]-{inputsHash}.{ext}
+    signed-packets/{fundingSourceId}/{eventId}.pdf
 backups/  (pg_dump nightly — separate prefix, 30 daily + 12 monthly, lifecycle-managed)
 ```
 - **Generated artifact keys gain a `{fundingSourceId}/` segment** for artifacts written from Phase 6 on (D-93 2.9). Expense and month document keys are unchanged — the new `funding_source_id` column on the row is what scopes them. Existing rows keep their stored `s3_key`.
+- **Signed packets** (R10.7, D-96): `{eventId}` is the `month_lock_events` row's own id, so every lock keeps its own object — earlier signed copies are never overwritten or deleted. Always `application/pdf`; served by `/api/files/[id]` the same as an expense or month document, looked up in `month_lock_events` where `s3_key IS NOT NULL`.
 
 - **Keys never contain user-supplied filenames** (PII-free keys; original name lives in the DB and is served via RFC 5987-encoded `Content-Disposition`). Key month reflects upload time and is **historical** — moving an expense to another month never moves objects (DB row is authoritative).
 - One sanitizer for every slug/filename use: allow `[A-Za-z0-9._ -]`, collapse whitespace, strip `\/:*?"<>|`, cap length 80.
@@ -293,5 +316,5 @@ Deleting an expense/document deletes S3 objects inline best-effort; a nightly sw
 - Unique `(org_id, lower(name))` on vendor_defaults; unique `(funding_source_id, lower(name))` on line_items (two sources can each have "Salary", D-93 2.2); unique `(org_id, lower(label))` on payment_sources and supporting_doc_types; unique `lower(email)` on users; unique `(org_id, lower(name))` on funding_sources.
 - Composite FKs (D-93 2.2): every grant-scoped table's `(funding_source_id, org_id) → funding_sources(id, org_id)`, and `expenses(line_item_id, funding_source_id) → line_items(id, funding_source_id)` — cross-source and cross-org rows are unrepresentable at the database level. `ON DELETE NO ACTION` (not `RESTRICT`) so org deletion cascades in one statement.
 - `generated_artifacts` live-cache uniqueness coalesces the nullable `line_item_id` (SQL NULLs are distinct in unique indexes, which would otherwise allow duplicate packet/summary cache rows).
-- Indexes for hot paths (declared in the Drizzle schema): expenses `(org_id, funding_source_id, month)`; expense_documents `(expense_id, kind, sort_order)`; month_documents `(org_id, funding_source_id, month, category, sort_order)`; generated_artifacts `(org_id, funding_source_id, month, type, line_item_id)`; sessions `(user_id)`, `(expires_at)`.
+- Indexes for hot paths (declared in the Drizzle schema): expenses `(org_id, funding_source_id, month)`; expense_documents `(expense_id, kind, sort_order)`; month_documents `(org_id, funding_source_id, month, category, sort_order)`; month_lock_events `(org_id, funding_source_id, month, created_at)`; generated_artifacts `(org_id, funding_source_id, month, type, line_item_id)`; sessions `(user_id)`, `(expires_at)`.
 - No denormalized totals — all figures derive at read time through the calculation service (R10.2).

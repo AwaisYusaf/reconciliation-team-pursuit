@@ -16,14 +16,16 @@ import {
   recurringItems,
   vendorDefaults,
 } from "@/src/db/schema";
-import { isValidMonthKey, todayIso } from "@/src/domain/dates";
+import { isValidMonthKey, monthLabel, todayIso } from "@/src/domain/dates";
 import { parseMoneyToCents } from "@/src/domain/money";
 import { addedState, validateRecurring } from "@/src/domain/recurring-rules";
+import { UI } from "@/src/domain/strings";
 import { fail, ok, type ActionResult } from "@/src/lib/action-result";
 import { actionSession } from "@/src/lib/action-session";
 import { isUuid } from "@/src/lib/ids";
 import { rulesForFundingSource } from "@/src/modules/expenses/reimbursement";
 import { claimReferenceSeq } from "@/src/modules/expenses/references";
+import { monthLocked } from "@/src/modules/packet/month-guard";
 
 
 export async function saveRecurringItemAction(input: {
@@ -192,31 +194,45 @@ export async function addRecurringToMonthAction(
   // depending on how it was entered.
   const rules = await rulesForFundingSource(current.orgId, item.fundingSourceId);
 
-  await db.insert(expenses).values({
-    orgId: current.orgId,
-    lineItemId: item.lineItemId,
-    fundingSourceId: item.fundingSourceId,
-    month,
-    date: todayIso(),
-    name: item.name,
-    description: item.defaultDescription ?? vendor?.description ?? "",
-    // The narrative is the whole point of carrying a template forward: it arrives filled in
-    // and editable, so nobody reopens last month to copy and paste it (R8.3).
-    narrative: item.defaultNarrative,
-    // A remembered source is only offered while it is still one the organisation uses (R5.2).
-    paymentSource,
-    subtotalCents: item.amountCents,
-    taxCents: item.defaultTaxCents ?? 0,
-    feesCents: item.defaultFeesCents ?? 0,
-    taxReimbursable: rules.taxReimbursable,
-    feesReimbursable: rules.feesReimbursable,
-    sortOrder: Number(next),
-    // R2.6: a one-click add is an expense like any other and needs the month's next
-    // reference. Omitting this left every added row at the column default, so the second
-    // add into a month collided on `expenses_org_month_reference_uq` and failed.
-    referenceSeq: await claimReferenceSeq(current.orgId, item.fundingSourceId, month),
-    recurringItemId: id,
+  // The insert and its reference claim must land together — a refused insert must never spend
+  // the month's next reference number (plan §3.4, the same non-atomicity createExpenseAction
+  // already avoids).
+  const result = await db.transaction(async (tx) => {
+    // First thing inside the transaction, before any write and before claimReferenceSeq
+    // (R10.7, D-96).
+    const locked = await monthLocked(tx, current.orgId, [
+      { fundingSourceId: item.fundingSourceId, month },
+    ]);
+    if (locked) return { ok: false as const, locked };
+
+    await tx.insert(expenses).values({
+      orgId: current.orgId,
+      lineItemId: item.lineItemId,
+      fundingSourceId: item.fundingSourceId,
+      month,
+      date: todayIso(),
+      name: item.name,
+      description: item.defaultDescription ?? vendor?.description ?? "",
+      // The narrative is the whole point of carrying a template forward: it arrives filled in
+      // and editable, so nobody reopens last month to copy and paste it (R8.3).
+      narrative: item.defaultNarrative,
+      // A remembered source is only offered while it is still one the organisation uses (R5.2).
+      paymentSource,
+      subtotalCents: item.amountCents,
+      taxCents: item.defaultTaxCents ?? 0,
+      feesCents: item.defaultFeesCents ?? 0,
+      taxReimbursable: rules.taxReimbursable,
+      feesReimbursable: rules.feesReimbursable,
+      sortOrder: Number(next),
+      // R2.6: a one-click add is an expense like any other and needs the month's next
+      // reference. Omitting this left every added row at the column default, so the second
+      // add into a month collided on `expenses_org_month_reference_uq` and failed.
+      referenceSeq: await claimReferenceSeq(current.orgId, item.fundingSourceId, month, tx),
+      recurringItemId: id,
+    });
+    return { ok: true as const };
   });
+  if (!result.ok) return fail(UI.monthLocked(monthLabel(result.locked.month)));
 
   revalidatePath("/", "layout");
   return ok();
@@ -301,16 +317,27 @@ export async function removeRecurringFromMonthAction(
   // this used to hard-delete the row with no way back. Soft delete also means the documents
   // are left alone here, the same as any other trashed expense: nothing to clean up in
   // storage on this path at all.
-  await db
-    .update(expenses)
-    .set({ deletedAt: new Date() })
-    .where(
-      and(
-        eq(expenses.id, state.targetExpenseId),
-        eq(expenses.orgId, current.orgId),
-        isNull(expenses.deletedAt),
-      ),
-    );
+  const targetExpenseId = state.targetExpenseId;
+  const result = await db.transaction(async (tx) => {
+    // First thing inside the transaction, before any write (R10.7, D-96).
+    const locked = await monthLocked(tx, current.orgId, [
+      { fundingSourceId: item.fundingSourceId, month },
+    ]);
+    if (locked) return { ok: false as const, locked };
+
+    await tx
+      .update(expenses)
+      .set({ deletedAt: new Date() })
+      .where(
+        and(
+          eq(expenses.id, targetExpenseId),
+          eq(expenses.orgId, current.orgId),
+          isNull(expenses.deletedAt),
+        ),
+      );
+    return { ok: true as const };
+  });
+  if (!result.ok) return fail(UI.monthLocked(monthLabel(result.locked.month)));
 
   revalidatePath("/", "layout");
   return ok({});

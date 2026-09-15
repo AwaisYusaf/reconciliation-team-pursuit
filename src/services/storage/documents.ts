@@ -13,7 +13,10 @@ import { and, eq, isNull, sql } from "drizzle-orm";
 import { v7 as uuidv7 } from "uuid";
 
 import { db } from "@/src/db";
+import { monthLabel } from "@/src/domain/dates";
+import { UI } from "@/src/domain/strings";
 import { isKnownSupportingDocType } from "@/src/modules/settings/labels";
+import { monthLocked } from "@/src/modules/packet/month-guard";
 import { expenseDocuments, expenses, monthDocuments, organizations } from "@/src/db/schema";
 import type { MonthDocumentCategory } from "@/src/db/schema";
 
@@ -85,8 +88,10 @@ export function expenseBudgetError(
   return null;
 }
 
-/** Take back objects written for an upload whose row was then refused. */
-async function discardStored(key: string, hadThumbnail: boolean): Promise<void> {
+/** Take back objects written for an upload whose row was then refused. Shared with `lockMonth`
+ *  (`src/modules/packet/lock.ts`), which stores the signed packet the same store-then-transaction
+ *  way and needs the same cleanup on refusal. */
+export async function discardStored(key: string, hadThumbnail: boolean): Promise<void> {
   const store = storage();
   await Promise.allSettled([
     store.delete(key),
@@ -110,8 +115,11 @@ type Queryable = Pick<typeof db, "select" | "execute">;
  * parent row to lock, and locking `organizations` would contend with unrelated writes like
  * the active-month change. The key is hashed, so a collision only over-serialises two
  * unrelated organisations briefly — it never lets one through.
+ *
+ * Exported for `lockMonth` (`src/modules/packet/lock.ts`), which stores the signed packet
+ * through this same lock rather than its own.
  */
-async function withOrgUploadLock<T>(
+export async function withOrgUploadLock<T>(
   tx: Queryable,
   orgId: string,
   run: () => Promise<T>,
@@ -142,8 +150,11 @@ export function storageQuotaError(usedBytes: number, incomingBytes: number): str
  *
  * Takes the executor so the authoritative check can run inside the upload lock; called on
  * the bare connection first only as a cheap rejection.
+ *
+ * Exported for `lockMonth` (`src/modules/packet/lock.ts`), which charges the signed copy
+ * against this same quota rather than a separate one.
  */
-async function orgStorageError(
+export async function orgStorageError(
   tx: Queryable,
   orgId: string,
   incomingBytes: number,
@@ -153,6 +164,7 @@ async function orgStorageError(
       used: sql<number>`
         coalesce((select sum(size_bytes + thumbnail_bytes) from expense_documents where org_id = ${orgId}), 0)
         + coalesce((select sum(size_bytes + thumbnail_bytes) from month_documents where org_id = ${orgId}), 0)
+        + coalesce((select sum(size_bytes) from month_lock_events where org_id = ${orgId}), 0)
       `,
     })
     .from(organizations)
@@ -165,7 +177,10 @@ async function orgStorageError(
   return storageQuotaError(Number(rows[0].used), incomingBytes);
 }
 
-function precheck(file: { size: number; type: string }): string | null {
+/** Size and declared-type check before the (possibly expensive) inspection. Exported for
+ *  `lockMonth` (`src/modules/packet/lock.ts`), which runs the same precheck on the signed
+ *  packet before its own PDF-only inspection. */
+export function precheck(file: { size: number; type: string }): string | null {
   if (file.size > MAX_UPLOAD_BYTES) {
     return "That file is larger than 25 MB. Upload a smaller export.";
   }
@@ -206,7 +221,11 @@ export async function ingestExpenseDocument(input: {
 
   // No attaching files to a trashed expense.
   const owner = await db
-    .select({ month: expenses.month, noReceipt: expenses.noReceipt })
+    .select({
+      month: expenses.month,
+      fundingSourceId: expenses.fundingSourceId,
+      noReceipt: expenses.noReceipt,
+    })
     .from(expenses)
     .where(
       and(
@@ -283,6 +302,13 @@ export async function ingestExpenseDocument(input: {
   // position, and packet document order is defined by it (R10.1 determinism).
   const placed = await db.transaction(async (tx) =>
     withOrgUploadLock(tx, input.orgId, async (): Promise<string | null> => {
+      // First thing inside the transaction, before any write (R10.7, D-96) — inside the
+      // advisory lock, matching lockMonth's own order (plan's "Consistency rules").
+      const locked = await monthLocked(tx, input.orgId, [
+        { fundingSourceId: expense.fundingSourceId, month: expense.month },
+      ]);
+      if (locked) return UI.monthLocked(monthLabel(locked.month));
+
       const [held] = await tx
         .select({
           files: sql<number>`count(*)::int`,
@@ -410,6 +436,13 @@ export async function ingestMonthDocument(input: {
 
   const placed = await db.transaction(async (tx) =>
     withOrgUploadLock(tx, input.orgId, async (): Promise<string | null> => {
+      // First thing inside the transaction, before any write (R10.7, D-96) — inside the
+      // advisory lock, matching lockMonth's own order.
+      const locked = await monthLocked(tx, input.orgId, [
+        { fundingSourceId: input.fundingSourceId, month: input.month },
+      ]);
+      if (locked) return UI.monthLocked(monthLabel(locked.month));
+
       const [{ live }] = await tx
         .select({ live: sql<number>`count(*)::int` })
         .from(monthDocuments)
@@ -478,30 +511,6 @@ export async function deleteExpenseDocument(orgId: string, documentId: string): 
     .delete(expenseDocuments)
     .where(and(eq(expenseDocuments.id, documentId), eq(expenseDocuments.orgId, orgId)))
     .returning({ key: expenseDocuments.s3Key });
-
-  const row = rows[0];
-  if (!row) return false;
-
-  await deleteStoredObjects(row.key);
-  return true;
-}
-
-/** Remove a month document and its stored objects. */
-export async function deleteMonthDocument(
-  orgId: string,
-  fundingSourceId: string,
-  documentId: string,
-): Promise<boolean> {
-  const rows = await db
-    .delete(monthDocuments)
-    .where(
-      and(
-        eq(monthDocuments.id, documentId),
-        eq(monthDocuments.orgId, orgId),
-        eq(monthDocuments.fundingSourceId, fundingSourceId),
-      ),
-    )
-    .returning({ key: monthDocuments.s3Key });
 
   const row = rows[0];
   if (!row) return false;

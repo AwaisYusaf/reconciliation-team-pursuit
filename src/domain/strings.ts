@@ -108,6 +108,17 @@ export const UI = {
   /** Add Expense caution (non-blocking) — a $0.00 subtotal is allowed, but unusual enough to
    *  flag rather than save silently. */
   subtotalIsZeroWarning: "Subtotal is $0.00 — double-check this entry.",
+  /** Refusal on every §2 write to a locked month (R10.7, D-96). */
+  monthLocked: (monthLabel: string) =>
+    `${monthLabel} is locked. Unlock it on the Month-End Packet tab to make changes.`,
+  /** Lock button/upload refusal while the blocking panel shows (R10.7). */
+  lockNeedsDocuments: "Add the missing documents before locking this month.",
+  /** Lock upload refusal for anything but a PDF (R10.7). */
+  lockNotPdf: "Upload the signed packet as a PDF.",
+  /** Lock upload refusal — the row was already locked by someone else. */
+  monthAlreadyLocked: "This month is already locked.",
+  /** Unlock refusal — nothing to undo. */
+  monthNotLocked: "This month is not locked.",
 } as const;
 
 /** Inline explanation beside a disabled download button (m07, R4.3). */
