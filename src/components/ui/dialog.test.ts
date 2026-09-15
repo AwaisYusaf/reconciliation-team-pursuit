@@ -61,4 +61,24 @@ describe("DialogPanel", () => {
     expect(html).toContain("border-danger");
     expect(html).toContain("text-danger");
   });
+
+  it("the neutral tone drops every danger token (lock/unlock are not delete warnings)", () => {
+    const html = renderPanel({ ...BASE, tone: "neutral", children: "Lock this month?" });
+    expect(html).not.toContain("danger");
+    expect(html).toContain("bg-surface");
+  });
+
+  it("a disabled dismiss renders its button disabled, confirm alongside it or not", () => {
+    const alone = renderPanel({ ...BASE, dismissDisabled: true, children: "Uploading…" });
+    expect(alone).toMatch(/<button[^>]*disabled=""[^>]*>OK<\/button>/);
+
+    const withConfirm = renderPanel({
+      ...BASE,
+      dismissLabel: "Cancel",
+      dismissDisabled: true,
+      confirm: { label: "Lock month", onConfirm: () => {} },
+      children: "Uploading…",
+    });
+    expect(withConfirm).toMatch(/<button[^>]*disabled=""[^>]*>Cancel<\/button>/);
+  });
 });

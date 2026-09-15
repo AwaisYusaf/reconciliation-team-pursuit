@@ -661,4 +661,60 @@ describe.skipIf(!hasDatabase)("month locking (integration, R10.7)", async () => 
       expect(edited.ok).toBe(true);
     }
   }, 30_000);
+
+  it("locks a month through the upload route: 200, ok true, locked_at set, one lock event, signed copy served by GET", async () => {
+    const month = freshMonth();
+    routeAsUser(orgId, userId);
+    const form = new FormData();
+    form.set("target", "signed-packet");
+    form.set("month", month);
+    form.set("fundingSourceId", sourceA);
+    form.set("file", await pdfFile("route-lock.pdf"));
+    const request = new NextRequest("http://localhost/api/files/upload", {
+      method: "POST",
+      body: form,
+      headers: { "sec-fetch-site": "same-origin" },
+    });
+    const response = await uploadPost(request);
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.ok).toBe(true);
+
+    const status = await lockedAtOf(sourceA, month);
+    expect(status?.lockedAt).not.toBeNull();
+
+    const events = await loadLockEvents(orgId, sourceA, month);
+    expect(events).toHaveLength(1);
+    expect(events[0].filename).toBe("route-lock.pdf");
+
+    const getResponse = await filesGet(new Request(`http://localhost/api/files/${events[0].id}`), {
+      params: Promise.resolve({ id: events[0].id }),
+    });
+    expect(getResponse.status).toBe(200);
+  });
+
+  it("a non-PDF through the upload route is refused: 400, UI.lockNotPdf, month not locked, no event row", async () => {
+    const month = freshMonth();
+    routeAsUser(orgId, userId);
+    const form = new FormData();
+    form.set("target", "signed-packet");
+    form.set("month", month);
+    form.set("fundingSourceId", sourceA);
+    form.set("file", await pngFile());
+    const request = new NextRequest("http://localhost/api/files/upload", {
+      method: "POST",
+      body: form,
+      headers: { "sec-fetch-site": "same-origin" },
+    });
+    const response = await uploadPost(request);
+    expect(response.status).toBe(400);
+    const body = await response.json();
+    expect(body.ok).toBe(false);
+    expect(body.error).toBe(UI.lockNotPdf);
+
+    const status = await lockedAtOf(sourceA, month);
+    expect(status?.lockedAt ?? null).toBeNull();
+    const events = await loadLockEvents(orgId, sourceA, month);
+    expect(events).toHaveLength(0);
+  });
 });

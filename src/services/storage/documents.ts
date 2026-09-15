@@ -302,12 +302,45 @@ export async function ingestExpenseDocument(input: {
   // position, and packet document order is defined by it (R10.1 determinism).
   const placed = await db.transaction(async (tx) =>
     withOrgUploadLock(tx, input.orgId, async (): Promise<string | null> => {
-      // First thing inside the transaction, before any write (R10.7, D-96) — inside the
-      // advisory lock, matching lockMonth's own order (plan's "Consistency rules").
+      // The pre-inspection read above is a fast rejection only — it is read outside any
+      // transaction, before the slow inspection, so a move landing meanwhile would leave it
+      // stale. Re-read the expense's current month/source/deletedAt here, inside the
+      // transaction and before any write (R10.7, D-96), and guard on THAT — not on `expense`
+      // above. Deliberately not a row lock on the expense: `updateExpenseAction` locks
+      // `month_statuses` first and the expense row second, and taking the expense row lock
+      // before `monthLocked` here would risk a deadlock against that order.
+      const [current] = await tx
+        .select({
+          month: expenses.month,
+          fundingSourceId: expenses.fundingSourceId,
+          deletedAt: expenses.deletedAt,
+        })
+        .from(expenses)
+        .where(and(eq(expenses.id, input.expenseId), eq(expenses.orgId, input.orgId)))
+        .limit(1);
+      if (!current || current.deletedAt) return "That expense no longer exists.";
+
       const locked = await monthLocked(tx, input.orgId, [
-        { fundingSourceId: expense.fundingSourceId, month: expense.month },
+        { fundingSourceId: current.fundingSourceId, month: current.month },
       ]);
       if (locked) return UI.monthLocked(monthLabel(locked.month));
+
+      // `monthLocked` above took its own row lock (on `month_statuses`, not on the expense), so
+      // there was a window between the read just above and that lock in which the expense could
+      // have moved to a different month again. Close it: re-read and refuse if it moved, rather
+      // than attach the file to a month that is no longer the one just checked.
+      const [after] = await tx
+        .select({ month: expenses.month, fundingSourceId: expenses.fundingSourceId })
+        .from(expenses)
+        .where(and(eq(expenses.id, input.expenseId), eq(expenses.orgId, input.orgId)))
+        .limit(1);
+      if (
+        !after ||
+        after.month !== current.month ||
+        after.fundingSourceId !== current.fundingSourceId
+      ) {
+        return "That expense just changed. Try again.";
+      }
 
       const [held] = await tx
         .select({
@@ -494,27 +527,11 @@ export async function ingestMonthDocument(input: {
  * Remove the stored object and its thumbnail for an already-known key. Best-effort; the
  * nightly sweep is the backstop for whichever of the two calls fails.
  *
- * Split out so a caller whose own DELETE already removed the DB row (e.g. via a foreign-key
- * cascade) can still clean up storage: `deleteExpenseDocument` below only works when the row
- * is deleted *by* that call, since it reads the key back from the same statement's
- * `RETURNING` — a row cascaded away by something else first is already gone, so that lookup
- * finds nothing and storage is silently never touched.
+ * Callers delete the DB row themselves — inside their own transaction, after the month-lock
+ * guard (R10.7) — and call this only once that has committed, so a refused or failed write
+ * never loses the bytes.
  */
 export async function deleteStoredObjects(key: string): Promise<void> {
   const store = storage();
   await Promise.allSettled([store.delete(key), store.delete(thumbnailKey(key))]);
-}
-
-/** Remove a document and its stored objects. Best-effort on storage; the sweep is the backstop. */
-export async function deleteExpenseDocument(orgId: string, documentId: string): Promise<boolean> {
-  const rows = await db
-    .delete(expenseDocuments)
-    .where(and(eq(expenseDocuments.id, documentId), eq(expenseDocuments.orgId, orgId)))
-    .returning({ key: expenseDocuments.s3Key });
-
-  const row = rows[0];
-  if (!row) return false;
-
-  await deleteStoredObjects(row.key);
-  return true;
 }

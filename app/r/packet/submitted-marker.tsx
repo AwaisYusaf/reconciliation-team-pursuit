@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useTransition } from "react";
 
+import { Button } from "@/src/components/ui/button";
 import { ConfirmButton } from "@/src/components/ui/confirm-button";
 import { reportResult } from "@/src/components/ui/toast";
 import type { ActionResult } from "@/src/lib/action-result";
@@ -64,14 +65,14 @@ export function SubmittedMarker({
   }
 
   return (
-    <button
-      type="button"
+    <Button
+      variant="secondary"
+      className="min-h-11 px-4 text-[15px]"
       onClick={() => run(() => markMonthSubmittedAction(month, fundingSourceId), "Month marked as submitted.")}
       disabled={pending}
-      className="text-sm text-muted underline disabled:opacity-60"
       data-tour="packet-submit"
     >
       Mark as submitted
-    </button>
+    </Button>
   );
 }

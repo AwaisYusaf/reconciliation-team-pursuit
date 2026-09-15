@@ -207,7 +207,11 @@ export function TrashTable({
                   </ConfirmButton>
                 </div>
                 {rowLocked && (
-                  <span className="text-xs text-sub">{UI.monthLocked(row.month)}</span>
+                  // The cell is `whitespace-nowrap` for the buttons; the message must wrap, or on a
+                  // phone it widens the pinned column over the rest of the row.
+                  <span className="text-xs text-sub whitespace-normal text-right max-w-[16rem]">
+                    {UI.monthLocked(row.month)}
+                  </span>
                 )}
               </div>
             </Td>

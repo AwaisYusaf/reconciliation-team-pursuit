@@ -101,14 +101,23 @@ export async function markMonthSubmittedAction(
   const owned = await requireOwnedFundingSource(current, fundingSourceId);
   if ("denied" in owned) return owned.denied;
 
+  // Guard, then upsert, in one transaction — a lock landing between the two must not have this
+  // overwrite `submitted_at` and re-capture the snapshot of a month that is now Reconciled.
   const now = new Date();
-  await db
-    .insert(monthStatuses)
-    .values({ orgId: current.orgId, fundingSourceId: owned.id, month, submittedAt: now })
-    .onConflictDoUpdate({
-      target: [monthStatuses.orgId, monthStatuses.fundingSourceId, monthStatuses.month],
-      set: { submittedAt: now },
-    });
+  const locked = await db.transaction(async (tx) => {
+    const locked = await monthLocked(tx, current.orgId, [{ fundingSourceId: owned.id, month }]);
+    if (locked) return locked;
+
+    await tx
+      .insert(monthStatuses)
+      .values({ orgId: current.orgId, fundingSourceId: owned.id, month, submittedAt: now })
+      .onConflictDoUpdate({
+        target: [monthStatuses.orgId, monthStatuses.fundingSourceId, monthStatuses.month],
+        set: { submittedAt: now },
+      });
+    return null;
+  });
+  if (locked) return fail(UI.monthLocked(monthLabel(locked.month)));
 
   // Submission is what makes a month's figures official, so it is where they are recorded
   // (D-68). Everything else in the app recomputes from live rows, which means a later

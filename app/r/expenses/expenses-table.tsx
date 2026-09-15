@@ -591,11 +591,17 @@ export function ExpensesTable({
                     <MenuItem
                       disabled={pending || rowLocked}
                       onClick={() => setConfirming(row)}
-                      className={rowLocked ? "flex-col items-start h-auto py-2 gap-0.5" : undefined}
+                      // `disabled:opacity-100!` beats the item's own `disabled:opacity-50`, which
+                      // faded the reason below it too far to read; "Delete" is greyed instead.
+                      className={
+                        rowLocked
+                          ? "flex-col items-start h-auto py-2 gap-0.5 text-sub disabled:opacity-100!"
+                          : undefined
+                      }
                     >
                       Delete
                       {rowLocked && (
-                        <span className="text-xs font-normal normal-case text-sub">
+                        <span className="text-xs font-normal normal-case text-ink">
                           {UI.monthLocked(monthLabel(row.month))}
                         </span>
                       )}

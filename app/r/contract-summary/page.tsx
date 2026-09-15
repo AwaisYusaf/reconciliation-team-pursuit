@@ -22,6 +22,7 @@ import { loadReportingPeriods, type LockEventRow, type ReportingPeriod } from "@
 import { CONTRACT_SUMMARY_TOUR_STEPS } from "@/src/modules/tours/contract-summary-tour";
 import { hasSeenTour } from "@/src/modules/tours/queries";
 import { getSession } from "@/src/services/auth/session";
+import { inlineSrc } from "@/src/services/storage/preview";
 import { and, eq } from "drizzle-orm";
 
 export const metadata = { title: "Contract Summary — Grant Expense Reconciliation" };
@@ -238,9 +239,10 @@ export default async function ContractSummaryPage() {
  *  history beneath, oldest first (Appendix A §4). */
 function ReportingPeriodRows({ period }: { period: ReportingPeriod }) {
   const lockEvents = period.events.filter((event) => event.isLock);
-  // Once locked, a month can only be locked again after an unlock (the guard refuses a
-  // second lock), so more than one lock event always means an unlock happened in between.
-  const relocked = lockEvents.length > 1;
+  // A single lock is already said in full by the details cell. Anything more — an unlock,
+  // whether or not the month was locked again — is history the row alone would hide (review
+  // fix: a lock then an unlock used to show no history, losing the unlock and its reason).
+  const hasHistory = period.events.length > 1;
   const lastLock = lockEvents.at(-1) ?? null;
 
   const status = period.lockedAt ? UI.reconciledLabel : period.submittedAt ? UI.statusSubmitted : UI.statusOpen;
@@ -249,7 +251,7 @@ function ReportingPeriodRows({ period }: { period: ReportingPeriod }) {
     <>
       {UI.lockedBy(formatDateUS(todayIso(lastLock.createdAt)), lastLock.userDisplay)}{" · "}
       <a
-        href={`/api/files/${lastLock.id}`}
+        href={inlineSrc(lastLock.id)}
         target="_blank"
         rel="noopener noreferrer"
         className="text-accent underline"
@@ -270,7 +272,7 @@ function ReportingPeriodRows({ period }: { period: ReportingPeriod }) {
         <Td>{status}</Td>
         <Td>{details}</Td>
       </tr>
-      {relocked && (
+      {hasHistory && (
         <tr>
           <td colSpan={3} className="px-3 sm:px-4 py-2 border-b border-line bg-section">
             <ul className="flex flex-col gap-1 text-sm text-muted">
@@ -301,7 +303,7 @@ function EventLine({
       <li>
         {UI.lockedBy(date, event.userDisplay)}{" · "}
         <a
-          href={`/api/files/${event.id}`}
+          href={inlineSrc(event.id)}
           target="_blank"
           rel="noopener noreferrer"
           className="text-accent underline"

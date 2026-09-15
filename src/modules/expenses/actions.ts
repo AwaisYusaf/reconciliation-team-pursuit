@@ -26,10 +26,7 @@ import { monthLocked, type MonthRef } from "@/src/modules/packet/month-guard";
 import { carryNarrativeToTemplate } from "@/src/modules/recurring/narrative";
 import { claimReferenceSeq } from "./references";
 import { loadOrgAuditHistory, type OrgAuditEvent } from "./queries";
-import {
-  deleteExpenseDocument as removeStoredDocument,
-  deleteStoredObjects,
-} from "@/src/services/storage/documents";
+import { deleteStoredObjects } from "@/src/services/storage/documents";
 import { isUuid } from "@/src/lib/ids";
 import { isKnownPaymentSource } from "@/src/modules/settings/labels";
 
@@ -470,7 +467,27 @@ export async function updateExpenseAction(input: ExpenseInput): Promise<ActionRe
       });
     }
 
-    return { ok: true as const, rows: updated_ };
+    // "No receipt available" and attached receipts are mutually exclusive (R4.2): saving with
+    // the box ticked removes the receipt files the user confirmed away. Deleted here, inside
+    // the same guarded transaction as the update, so a lock landing between the update and a
+    // separate delete cannot permanently remove files from a month that just locked. Only the
+    // rows are deleted here; the stored objects themselves are removed after commit, below —
+    // deleting them first would destroy files irreversibly even when the save then failed.
+    const removedDocs =
+      updated_.length > 0 && row.noReceipt
+        ? await tx
+            .delete(expenseDocuments)
+            .where(
+              and(
+                eq(expenseDocuments.expenseId, expenseId),
+                eq(expenseDocuments.orgId, current.orgId),
+                eq(expenseDocuments.kind, "receipt"),
+              ),
+            )
+            .returning({ key: expenseDocuments.s3Key })
+        : [];
+
+    return { ok: true as const, rows: updated_, removedDocs };
   });
   if (!updated.ok) return fail(UI.monthLocked(monthLabel(updated.locked.month)));
   if (updated.rows.length === 0) return fail("That expense no longer exists.");
@@ -494,24 +511,10 @@ export async function updateExpenseAction(input: ExpenseInput): Promise<ActionRe
     });
   }
 
-  // "No receipt available" and attached receipts are mutually exclusive (R4.2): saving
-  // with the box ticked removes the receipt files the user confirmed away. This runs only
-  // after the update has proven the expense exists and is writable — deleting first would
-  // destroy files irreversibly even when the save then failed.
-  if (row.noReceipt) {
-    const receipts = await db
-      .select({ id: expenseDocuments.id })
-      .from(expenseDocuments)
-      .where(
-        and(
-          eq(expenseDocuments.expenseId, input.id),
-          eq(expenseDocuments.orgId, current.orgId),
-          eq(expenseDocuments.kind, "receipt"),
-        ),
-      );
-    for (const receipt of receipts) {
-      await removeStoredDocument(current.orgId, receipt.id);
-    }
+  // The rows are already gone (deleted inside the transaction above); the stored objects are
+  // only removed now that the transaction has committed.
+  for (const doc of updated.removedDocs) {
+    await deleteStoredObjects(doc.key);
   }
 
   await learnVendor(current.orgId, row);

@@ -633,6 +633,7 @@ export function ExpenseForm({
                 value={values.fundingSourceId}
                 onValueChange={(value) => {
                   const nextSource = options.fundingSources.find((s) => s.id === value);
+                  setError(null);
                   // Changing the source clears the line item (it belongs to the old source's
                   // list) and re-applies the new source's tax/fee rules — one update (spec §4).
                   setValues((current) => ({
@@ -715,7 +716,11 @@ export function ExpenseForm({
                 id="month"
                 aria-labelledby="month-label"
                 value={values.month}
-                onValueChange={(value) => set("month", value)}
+                onValueChange={(value) => {
+                  set("month", value);
+                  // A refusal (a locked month, say) was about the previous choice.
+                  setError(null);
+                }}
               >
                 {options.months.map((month) => (
                   <option key={month} value={month}>

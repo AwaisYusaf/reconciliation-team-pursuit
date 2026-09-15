@@ -129,6 +129,8 @@ export const UI = {
    *  (Appendix A §3, §4). */
   unlockEventLine: (date: string, name: string, reason: string | null) =>
     `Unlocked ${date} by ${name}${reason ? ` — "${reason}"` : ""}`,
+  /** Heading over the Packet page's event history (Appendix A §3). */
+  lockHistoryTitle: "Lock history",
   /** Link text beside a lock event, opening `/api/files/{eventId}` (Appendix A §1, §3, §4). */
   viewSignedPacket: "View signed packet",
   /** Packet page's own event history — an earlier copy later superseded (Appendix A §3). */

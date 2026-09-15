@@ -12,14 +12,17 @@
 import { useRouter } from "next/navigation";
 import { useRef, useState, useTransition } from "react";
 
+import { Button, buttonClassName } from "@/src/components/ui/button";
 import { Dialog } from "@/src/components/ui/dialog";
 import { Label, Textarea } from "@/src/components/ui/field";
+import { Card, SubsectionTitle } from "@/src/components/ui/surfaces";
 import { reportResult } from "@/src/components/ui/toast";
 import { formatDateUS, todayIso } from "@/src/domain/dates";
 import { UI } from "@/src/domain/strings";
 import { cn } from "@/src/lib/cn";
 import { unlockMonthAction } from "@/src/modules/packet/actions";
 import type { LockEventRow } from "@/src/modules/packet/queries";
+import { inlineSrc } from "@/src/services/storage/preview";
 
 import { SubmittedMarker } from "./submitted-marker";
 
@@ -56,6 +59,9 @@ export function MonthLockControls({
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   function closeLock() {
+    // Review fix: once the signed copy is sending, the server may lock the month whatever the
+    // browser does next — closing here told the user nothing happened, then it locked anyway.
+    if (uploading) return;
     setLocking(false);
     setFile(null);
     setError(null);
@@ -79,7 +85,9 @@ export function MonthLockControls({
         setError(result.error ?? UI.uploadFailed);
         return;
       }
-      closeLock();
+      // Not `closeLock()`: `uploading` in its closure is still the stale `true`.
+      setLocking(false);
+      setFile(null);
       router.refresh();
     } catch {
       setUploading(false);
@@ -107,28 +115,28 @@ export function MonthLockControls({
   return (
     <div className="flex flex-col items-end gap-2">
       {locked && lockedEvent && (
-        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 justify-end text-sm">
-          <span className="font-bold text-ink">{UI.reconciledLabel}</span>
-          <span className="text-muted">·</span>
-          <span className="text-muted">{UI.lockedOnBy(lockedEvent.date, lockedEvent.name)}</span>
-          <span className="text-muted">·</span>
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 justify-end">
+          <span className="text-sm">
+            <span className="font-bold text-ink">{UI.reconciledLabel}</span>
+            <span className="text-muted"> · {UI.lockedOnBy(lockedEvent.date, lockedEvent.name)}</span>
+          </span>
+          {/* A link styled as a button, not a <button>: it opens the stored PDF in a new tab. */}
           <a
-            href={`/api/files/${lockedEvent.id}`}
+            href={inlineSrc(lockedEvent.id)}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-accent underline"
+            className={buttonClassName("secondary", "min-h-11 px-4 text-[15px]")}
           >
             {UI.viewSignedPacket}
           </a>
-          <span className="text-muted">·</span>
-          <button
-            type="button"
-            className="text-accent underline disabled:opacity-60"
+          <Button
+            variant="secondary"
+            className="min-h-11 px-4 text-[15px]"
             disabled={pending}
             onClick={() => setUnlocking(true)}
           >
             {UI.unlockButtonLabel}
-          </button>
+          </Button>
         </div>
       )}
 
@@ -140,40 +148,78 @@ export function MonthLockControls({
           hideUndo={locked}
         />
         {!locked && (
-          <button
-            type="button"
-            className="text-sm text-muted underline disabled:opacity-60"
+          <Button
+            variant="secondary"
+            className="min-h-11 px-4 text-[15px]"
             disabled={blocked}
+            aria-describedby={blocked ? "lock-needs-documents" : undefined}
             onClick={() => setLocking(true)}
           >
             {UI.lockButtonLabel}
-          </button>
+          </Button>
         )}
       </div>
-      {!locked && blocked && <span className="text-sm text-danger">{UI.lockNeedsDocuments}</span>}
+      {!locked && blocked && (
+        <span id="lock-needs-documents" className="text-sm text-danger">
+          {UI.lockNeedsDocuments}
+        </span>
+      )}
 
       <Dialog
         open={locking}
+        tone="neutral"
         title={UI.lockDialogTitle(monthLabel)}
         dismissLabel="Cancel"
+        dismissDisabled={uploading}
         onDismiss={closeLock}
         confirm={{ label: UI.lockButtonLabel, disabled: !file || uploading, onConfirm: lock }}
       >
         <p className="mb-3">{UI.lockDialogText}</p>
+        {/* The native picker is hidden behind a real button, the same way the month documents
+            upload does it, so the dialog doesn't show the browser's own unstyled file control. */}
         <input
           ref={fileInputRef}
           type="file"
           accept="application/pdf"
-          onChange={(event) => setFile(event.target.files?.[0] ?? null)}
+          className="sr-only"
+          tabIndex={-1}
+          onChange={(event) => {
+            setFile(event.target.files?.[0] ?? null);
+            // A refusal was about the file previously chosen, not this one.
+            setError(null);
+          }}
         />
-        {uploading && <p className="mt-2 text-sm">Uploading…</p>}
-        {error && <p className="mt-2 text-sm font-semibold">{error}</p>}
+        <div className="flex flex-wrap items-center gap-3">
+          <Button
+            variant="secondary"
+            className="min-h-11 px-[18px] text-[15px]"
+            disabled={uploading}
+            onClick={() => fileInputRef.current?.click()}
+          >
+            Choose file
+          </Button>
+          <span className="text-[15px] truncate max-w-[220px]" aria-live="polite">
+            {file?.name ?? "No file chosen"}
+          </span>
+        </div>
+        {uploading && (
+          <p className="mt-2 text-sm" role="status">
+            Uploading…
+          </p>
+        )}
+        {error && (
+          <p className="mt-2 text-sm font-semibold text-danger" role="alert">
+            {error}
+          </p>
+        )}
       </Dialog>
 
       <Dialog
         open={unlocking}
+        tone="neutral"
         title={UI.unlockDialogTitle(monthLabel)}
         dismissLabel="Cancel"
+        dismissDisabled={pending}
         onDismiss={() => {
           setUnlocking(false);
           setError(null);
@@ -191,7 +237,11 @@ export function MonthLockControls({
           onChange={(event) => setReason(event.target.value)}
           placeholder={UI.unlockReasonPlaceholder}
         />
-        {error && <p className="mt-2 text-sm font-semibold">{error}</p>}
+        {error && (
+          <p className="mt-2 text-sm font-semibold text-danger" role="alert">
+            {error}
+          </p>
+        )}
       </Dialog>
     </div>
   );
@@ -208,32 +258,56 @@ export function LockHistory({
   if (events.length === 0) return null;
 
   return (
-    <ul className={cn("flex flex-col gap-1.5 text-sm text-muted mb-7", className)}>
-      {events.map((event, index) => {
-        const date = formatDateUS(todayIso(event.createdAt));
-        if (event.isLock) {
+    <Card className={cn("mb-7 px-4 sm:px-5 py-3", className)}>
+      <SubsectionTitle className="mb-1">{UI.lockHistoryTitle}</SubsectionTitle>
+      <ul className="divide-y divide-line">
+        {events.map((event, index) => {
+          const date = formatDateUS(todayIso(event.createdAt));
           // The next lock after this one, if any — this copy was replaced by it (plan §3.1).
-          const nextLock = events.slice(index + 1).find((later) => later.isLock);
+          const nextLock = event.isLock
+            ? events.slice(index + 1).find((later) => later.isLock)
+            : undefined;
           return (
-            <li key={event.id} className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
-              <span>{UI.lockedBy(date, event.userDisplay)}</span>
-              <span>·</span>
-              <a
-                href={`/api/files/${event.id}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-accent underline"
-              >
-                {UI.viewSignedPacket}
-              </a>
+            <li
+              key={event.id}
+              className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2.5 text-[15px]"
+            >
+              {/* Filled: the signed copy in force. Hollow: a copy since replaced. Grey: an unlock. */}
+              <span
+                aria-hidden
+                className={cn(
+                  "size-2.5 shrink-0 rounded-full border-2",
+                  !event.isLock
+                    ? "border-line bg-line"
+                    : nextLock
+                      ? "border-accent bg-transparent"
+                      : "border-accent bg-accent",
+                )}
+              />
+              <span className={cn("min-w-0 flex-1", event.isLock && !nextLock ? "text-ink" : "text-sub")}>
+                {event.isLock
+                  ? UI.lockedBy(date, event.userDisplay)
+                  : UI.unlockEventLine(date, event.userDisplay, event.reason)}
+              </span>
               {nextLock && (
-                <span>· {UI.replacedOn(formatDateUS(todayIso(nextLock.createdAt)))}</span>
+                <span className="text-[13px] text-sub bg-section rounded-full px-2.5 py-0.5">
+                  {UI.replacedOn(formatDateUS(todayIso(nextLock.createdAt)))}
+                </span>
+              )}
+              {event.isLock && (
+                <a
+                  href={inlineSrc(event.id)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-accent font-semibold underline underline-offset-2 hover:no-underline"
+                >
+                  {UI.viewSignedPacket}
+                </a>
               )}
             </li>
           );
-        }
-        return <li key={event.id}>{UI.unlockEventLine(date, event.userDisplay, event.reason)}</li>;
-      })}
-    </ul>
+        })}
+      </ul>
+    </Card>
   );
 }

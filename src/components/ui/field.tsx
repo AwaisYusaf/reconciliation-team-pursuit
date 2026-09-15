@@ -7,7 +7,9 @@ import { cn } from "@/src/lib/cn";
 /** Shared control chrome. Exported so the custom `Select` trigger matches Input/Textarea. */
 export const CONTROL =
   "w-full min-h-11 px-3.5 py-3 text-base font-sans text-ink bg-surface " +
-  "border border-line rounded-[3px] box-border";
+  "border border-line rounded-[3px] box-border " +
+  // Read-only (a locked month's expense) must not look editable.
+  "disabled:bg-section disabled:text-sub disabled:cursor-not-allowed";
 
 /** Field label — 15px semibold above the control, per the design system. */
 export function Label({ className, ...props }: ComponentProps<"label">) {
@@ -48,7 +50,7 @@ export function MoneyInput({ className, onChange, ...props }: ComponentProps<"in
   return (
     <div
       className={cn(
-        "flex items-center gap-1.5 min-h-11 px-3 bg-surface border border-line rounded-[3px]",
+        "flex items-center gap-1.5 min-h-11 px-3 bg-surface border border-line rounded-[3px] has-[:disabled]:bg-section",
         className,
       )}
     >
@@ -74,7 +76,7 @@ export function MoneyInput({ className, onChange, ...props }: ComponentProps<"in
 
           onChange?.(event);
         }}
-        className="flex-1 min-w-0 border-none outline-none bg-transparent py-[11px] text-base text-ink text-right tabular-nums font-sans"
+        className="flex-1 min-w-0 border-none outline-none bg-transparent py-[11px] text-base text-ink text-right tabular-nums font-sans disabled:text-sub disabled:cursor-not-allowed"
         {...props}
       />
     </div>

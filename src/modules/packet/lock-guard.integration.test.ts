@@ -26,6 +26,14 @@ vi.mock("@/src/modules/packet/month-guard", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/src/modules/packet/month-guard")>();
   return { ...actual, monthLocked: vi.fn(actual.monthLocked) };
 });
+vi.mock("@/src/modules/recurring/narrative", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/src/modules/recurring/narrative")>();
+  return { ...actual, carryNarrativeToTemplate: vi.fn(actual.carryNarrativeToTemplate) };
+});
+vi.mock("@/src/services/storage/inspect", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/src/services/storage/inspect")>();
+  return { ...actual, inspectUpload: vi.fn(actual.inspectUpload) };
+});
 
 config({ path: ".env.local", quiet: true });
 
@@ -43,6 +51,7 @@ describe.skipIf(!hasDatabase)("every write path refuses a locked month (integrat
     fundingSources,
     lineItems,
     monthDocuments,
+    monthSnapshotTotals,
     monthStatuses,
     organizations,
     paymentSources,
@@ -55,6 +64,8 @@ describe.skipIf(!hasDatabase)("every write path refuses a locked month (integrat
   const { claimReferenceSeq } = await import("@/src/modules/expenses/references");
   const { actionSession } = await import("@/src/lib/action-session");
   const { monthLocked } = await import("@/src/modules/packet/month-guard");
+  const { carryNarrativeToTemplate } = await import("@/src/modules/recurring/narrative");
+  const { inspectUpload } = await import("@/src/services/storage/inspect");
 
   const {
     createExpenseAction,
@@ -67,12 +78,14 @@ describe.skipIf(!hasDatabase)("every write path refuses a locked month (integrat
   const { addRecurringToMonthAction, removeRecurringFromMonthAction } = await import(
     "@/src/modules/recurring/actions"
   );
-  const { removeMonthDocumentAction } = await import("./actions");
+  const { removeMonthDocumentAction, markMonthSubmittedAction } = await import("./actions");
   const { ingestExpenseDocument, ingestMonthDocument } = await import("@/src/services/storage/documents");
   const { storage } = await import("@/src/services/storage/driver");
 
   const actionSessionMock = vi.mocked(actionSession);
   const guardSpy = vi.mocked(monthLocked);
+  const narrativeSpy = vi.mocked(carryNarrativeToTemplate);
+  const inspectSpy = vi.mocked(inspectUpload);
 
   let orgId: string;
   let sourceA: string;
@@ -163,6 +176,36 @@ describe.skipIf(!hasDatabase)("every write path refuses a locked month (integrat
   async function expenseRow(id: string) {
     const [row] = await db.select().from(expenses).where(eq(expenses.id, id)).limit(1);
     return row;
+  }
+
+  async function monthStatusOf(sourceId: string, month: string) {
+    const [row] = await db
+      .select({ lockedAt: monthStatuses.lockedAt, submittedAt: monthStatuses.submittedAt })
+      .from(monthStatuses)
+      .where(
+        and(
+          eq(monthStatuses.orgId, orgId),
+          eq(monthStatuses.fundingSourceId, sourceId),
+          eq(monthStatuses.month, month),
+        ),
+      )
+      .limit(1);
+    return row;
+  }
+
+  async function snapshotCapturedAtOf(sourceId: string, month: string) {
+    const [row] = await db
+      .select({ capturedAt: monthSnapshotTotals.capturedAt })
+      .from(monthSnapshotTotals)
+      .where(
+        and(
+          eq(monthSnapshotTotals.orgId, orgId),
+          eq(monthSnapshotTotals.fundingSourceId, sourceId),
+          eq(monthSnapshotTotals.month, month),
+        ),
+      )
+      .limit(1);
+    return row?.capturedAt ?? null;
   }
 
   const validExpenseInput = (overrides: Partial<Record<string, unknown>> = {}) => ({
@@ -662,4 +705,211 @@ describe.skipIf(!hasDatabase)("every write path refuses a locked month (integrat
     const row = await expenseRow(id);
     expect(row.name).not.toBe("Raced edit");
   }, 15_000);
+
+  it("mark as submitted on a locked month: refused, submitted_at and the snapshot stay; guard proven", async () => {
+    const month = freshMonth();
+    asUser();
+
+    const first = await markMonthSubmittedAction(month, sourceA);
+    expect(first.ok).toBe(true);
+
+    const before = await monthStatusOf(sourceA, month);
+    const beforeCapturedAt = await snapshotCapturedAtOf(sourceA, month);
+    expect(beforeCapturedAt).not.toBeNull();
+
+    await lockDirectly(sourceA, month);
+    await new Promise((r) => setTimeout(r, 5)); // distinguishable timestamp if the bug existed
+
+    const result = await markMonthSubmittedAction(month, sourceA);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toBe(UI.monthLocked(monthLabel(month)));
+
+    const after = await monthStatusOf(sourceA, month);
+    expect(after!.submittedAt!.getTime()).toBe(before!.submittedAt!.getTime());
+    const afterCapturedAt = await snapshotCapturedAtOf(sourceA, month);
+    expect(afterCapturedAt!.getTime()).toBe(beforeCapturedAt!.getTime());
+
+    guardSpy.mockResolvedValueOnce(null);
+    const bypassed = await markMonthSubmittedAction(month, sourceA);
+    expect(bypassed.ok).toBe(true);
+  });
+
+  it("mark as submitted on an unlocked month still succeeds (regression)", async () => {
+    const month = freshMonth();
+    asUser();
+    const result = await markMonthSubmittedAction(month, sourceA);
+    expect(result.ok).toBe(true);
+    const status = await monthStatusOf(sourceA, month);
+    expect(status?.submittedAt).not.toBeNull();
+  });
+
+  it("save with noReceipt=true on a locked month: refused, receipt document row still exists; guard proven", async () => {
+    const month = freshMonth();
+    const id = await insertExpenseDirect(sourceA, itemA, month);
+    const jpeg = await sharp({ create: { width: 40, height: 40, channels: 3, background: { r: 1, g: 2, b: 3 } } })
+      .jpeg()
+      .toBuffer();
+    const attached = await ingestExpenseDocument({
+      orgId,
+      expenseId: id,
+      scope: "receipt",
+      file: new File([new Uint8Array(jpeg)], "receipt.jpg", { type: "image/jpeg" }),
+    });
+    if (!attached.ok) throw new Error(attached.error);
+    await lockDirectly(sourceA, month);
+    asUser();
+
+    const result = await updateExpenseAction(
+      validExpenseInput({ id, month, date: `${month}-06`, noReceipt: true }),
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toBe(UI.monthLocked(monthLabel(month)));
+
+    const rows = await db.select().from(expenseDocuments).where(eq(expenseDocuments.expenseId, id));
+    expect(rows).toHaveLength(1);
+    expect(await storage().exists(rows[0].s3Key!)).toBe(true);
+
+    guardSpy.mockResolvedValueOnce(null);
+    const bypassed = await updateExpenseAction(
+      validExpenseInput({ id, month, date: `${month}-06`, noReceipt: true }),
+    );
+    expect(bypassed.ok).toBe(true);
+
+    const rowsAfter = await db.select().from(expenseDocuments).where(eq(expenseDocuments.expenseId, id));
+    expect(rowsAfter).toHaveLength(0);
+    expect(await storage().exists(rows[0].s3Key!)).toBe(false); // regression: unlocked + noReceipt still deletes storage
+  });
+
+  it("noReceipt deletion is atomic with the update: the row is already gone by the time the old post-commit step would run", async () => {
+    // Reproduces the exact race the fix closes: the old code deleted receipt rows in a
+    // separate, unguarded step AFTER the guarded update transaction had already committed.
+    // `carryNarrativeToTemplate` runs at precisely that point in both the old and the fixed
+    // code (right after the transaction, before the old code's now-removed delete step) — it
+    // is used here purely as a timing hook into that exact spot, not because its own behaviour
+    // matters (it no-ops for a non-recurring expense).
+    const month = freshMonth();
+    const id = await insertExpenseDirect(sourceA, itemA, month);
+    const jpeg = await sharp({ create: { width: 40, height: 40, channels: 3, background: { r: 1, g: 2, b: 3 } } })
+      .jpeg()
+      .toBuffer();
+    const attached = await ingestExpenseDocument({
+      orgId,
+      expenseId: id,
+      scope: "receipt",
+      file: new File([new Uint8Array(jpeg)], "receipt.jpg", { type: "image/jpeg" }),
+    });
+    if (!attached.ok) throw new Error(attached.error);
+    asUser();
+
+    const { carryNarrativeToTemplate: realCarry } = await vi.importActual<
+      typeof import("@/src/modules/recurring/narrative")
+    >("@/src/modules/recurring/narrative");
+
+    let rowCountAtHook: number | null = null;
+    narrativeSpy.mockImplementationOnce(async (input) => {
+      const rows = await db.select().from(expenseDocuments).where(eq(expenseDocuments.expenseId, id));
+      rowCountAtHook = rows.length;
+      // A lock landing right after the update committed must not stop the receipt row from
+      // already being gone — it was deleted atomically with the update, before this ran.
+      await lockDirectly(sourceA, month);
+      return realCarry(input);
+    });
+
+    const result = await updateExpenseAction(
+      validExpenseInput({ id, month, date: `${month}-06`, noReceipt: true }),
+    );
+    expect(result.ok).toBe(true);
+    expect(rowCountAtHook).toBe(0);
+  });
+
+  it("expense moved into a locked month while its upload is being inspected: attach refused, no document row created", async () => {
+    const openMonth = freshMonth();
+    const lockedMonth = freshMonth();
+    const id = await insertExpenseDirect(sourceA, itemA, openMonth);
+    asUser();
+
+    const { inspectUpload: realInspect } = await vi.importActual<
+      typeof import("@/src/services/storage/inspect")
+    >("@/src/services/storage/inspect");
+
+    inspectSpy.mockImplementationOnce(async (input) => {
+      // The expense moves to a locked month while the (slow) inspection is running — landing
+      // after the stale pre-inspection read this ingestion took, before its transaction opens.
+      await db.update(expenses).set({ month: lockedMonth }).where(eq(expenses.id, id));
+      await lockDirectly(sourceA, lockedMonth);
+      return realInspect(input);
+    });
+
+    const jpeg = await sharp({ create: { width: 40, height: 40, channels: 3, background: { r: 1, g: 2, b: 3 } } })
+      .jpeg()
+      .toBuffer();
+    const result = await ingestExpenseDocument({
+      orgId,
+      expenseId: id,
+      scope: "proof",
+      file: new File([new Uint8Array(jpeg)], "proof.jpg", { type: "image/jpeg" }),
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toBe(UI.monthLocked(monthLabel(lockedMonth)));
+
+    const rows = await db.select().from(expenseDocuments).where(eq(expenseDocuments.expenseId, id));
+    expect(rows).toHaveLength(0);
+  });
+
+  it("expense moved again between the guard's row lock and the second re-read: refused as 'just changed', no document row", async () => {
+    const month = freshMonth();
+    const otherMonth = freshMonth();
+    const id = await insertExpenseDirect(sourceA, itemA, month);
+    asUser();
+
+    const actualGuard = await vi.importActual<typeof import("@/src/modules/packet/month-guard")>(
+      "@/src/modules/packet/month-guard",
+    );
+    guardSpy.mockImplementationOnce(async (tx, org, entries) => {
+      const result = await actualGuard.monthLocked(tx, org, entries);
+      // Simulate a second move landing in the window between the guard's own row lock and the
+      // ingestion's second re-read, using the same transaction handle the guard itself runs on.
+      await tx.update(expenses).set({ month: otherMonth }).where(eq(expenses.id, id));
+      return result;
+    });
+
+    const jpeg = await sharp({ create: { width: 40, height: 40, channels: 3, background: { r: 1, g: 2, b: 3 } } })
+      .jpeg()
+      .toBuffer();
+    const result = await ingestExpenseDocument({
+      orgId,
+      expenseId: id,
+      scope: "proof",
+      file: new File([new Uint8Array(jpeg)], "proof.jpg", { type: "image/jpeg" }),
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toBe("That expense just changed. Try again.");
+
+    const rows = await db.select().from(expenseDocuments).where(eq(expenseDocuments.expenseId, id));
+    expect(rows).toHaveLength(0);
+  });
+
+  it("move OUT of a locked source-month into a different, open funding source: refused naming the locked source month, source and month unchanged; guard proven", async () => {
+    const lockedMonth = freshMonth();
+    const openMonth = freshMonth();
+    await lockDirectly(sourceA, lockedMonth);
+    const id = await insertExpenseDirect(sourceA, itemA, lockedMonth);
+    asUser();
+
+    const result = await updateExpenseAction(
+      validExpenseInput({ id, month: openMonth, date: `${openMonth}-06`, fundingSourceId: sourceB, lineItemId: itemB }),
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toBe(UI.monthLocked(monthLabel(lockedMonth)));
+
+    const row = await expenseRow(id);
+    expect(row.month).toBe(lockedMonth);
+    expect(row.fundingSourceId).toBe(sourceA);
+
+    guardSpy.mockResolvedValueOnce(null);
+    const bypassed = await updateExpenseAction(
+      validExpenseInput({ id, month: openMonth, date: `${openMonth}-06`, fundingSourceId: sourceB, lineItemId: itemB }),
+    );
+    expect(bypassed.ok).toBe(true);
+  });
 });
