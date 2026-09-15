@@ -71,7 +71,7 @@ One module (`services/auth.ts`), no framework. Sized for a single credentials pr
 
 ## Scheduled jobs (container cron)
 
-- **Nightly sweep** (`sweep.ts`): S3 objects with no DB row >24 h (abandoned drafts, failed inline deletes), `failed` document rows + objects >24 h, unpinned `generated/` objects >90 d.
+- **Nightly sweep** (`sweep.ts`): S3 objects with no DB row >24 h (abandoned drafts, failed inline deletes), `failed` document rows + objects >24 h, unpinned `generated/` objects >90 d. Signed packets (`…/signed-packets/…`) are referenced only by `month_lock_events.s3_key`: the sweep must count that column as a DB row and never expire those objects — they are the City's signed copies and are kept forever (R10.7).
 - **Nightly backup:** `pg_dump` → `s3://{bucket}/backups/` (30 daily + 12 monthly via lifecycle). Restore procedure documented in the deploy runbook and **executed once before go-live** (D-07). Bucket versioning ON.
 - **Disk watch:** alert when volume >80 % (rasterization temp + Postgres share one disk).
 

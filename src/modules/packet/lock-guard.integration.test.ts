@@ -1101,4 +1101,159 @@ describe.skipIf(!hasDatabase)("every write path refuses a locked month (integrat
     const row = await expenseRow(createdRow.id);
     expect(row.deletedAt).toBeNull();
   });
+
+  /*
+   * The guard only holds if it runs on the write's own transaction (month-guard.ts). Called on
+   * the pooled `db` instead, its row lock is released the moment its own statement commits, so
+   * a lock can land between the check and the write — and every refusal test above still
+   * passes, because a lock that is already committed is seen either way. So each write is run
+   * once on an open month and the executor the guard received is checked directly.
+   */
+  const jpegFile = async (name: string) =>
+    new File(
+      [
+        new Uint8Array(
+          await sharp({ create: { width: 40, height: 40, channels: 3, background: { r: 1, g: 2, b: 3 } } })
+            .jpeg()
+            .toBuffer(),
+        ),
+      ],
+      name,
+      { type: "image/jpeg" },
+    );
+
+  const guardedWrites: { name: string; run: () => Promise<{ ok: boolean }> }[] = [
+    {
+      name: "create expense",
+      run: () => {
+        const month = freshMonth();
+        return createExpenseAction(validExpenseInput({ month, date: `${month}-06` }));
+      },
+    },
+    {
+      name: "edit and move an expense",
+      run: async () => {
+        const id = await insertExpenseDirect(sourceA, itemA, freshMonth());
+        const target = freshMonth();
+        return updateExpenseAction(validExpenseInput({ id, month: target, date: `${target}-06` }));
+      },
+    },
+    {
+      name: "delete an expense",
+      run: async () => deleteExpenseAction(await insertExpenseDirect(sourceA, itemA, freshMonth())),
+    },
+    {
+      name: "restore an expense",
+      run: async () =>
+        restoreExpenseAction(await insertExpenseDirect(sourceA, itemA, freshMonth(), { deletedAt: new Date() })),
+    },
+    {
+      name: "permanently delete an expense",
+      run: async () =>
+        permanentlyDeleteExpenseAction(
+          await insertExpenseDirect(sourceA, itemA, freshMonth(), { deletedAt: new Date() }),
+        ),
+    },
+    {
+      name: "attach an expense file",
+      run: async () =>
+        ingestExpenseDocument({
+          orgId,
+          expenseId: await insertExpenseDirect(sourceA, itemA, freshMonth()),
+          scope: "proof",
+          file: await jpegFile("proof.jpg"),
+        }),
+    },
+    {
+      name: "remove an expense file",
+      run: async () => {
+        const attached = await ingestExpenseDocument({
+          orgId,
+          expenseId: await insertExpenseDirect(sourceA, itemA, freshMonth()),
+          scope: "proof",
+          file: await jpegFile("proof.jpg"),
+        });
+        if (!attached.ok) throw new Error(attached.error);
+        guardSpy.mockClear();
+        return removeExpenseDocumentAction(attached.documentId);
+      },
+    },
+    {
+      name: "recurring 'Add to month'",
+      run: async () => {
+        const [item] = await db
+          .insert(recurringItems)
+          .values({ orgId, name: "Executor add", amountCents: 500, lineItemId: itemA, sortOrder: 0 })
+          .returning({ id: recurringItems.id });
+        return addRecurringToMonthAction(item.id, freshMonth());
+      },
+    },
+    {
+      name: "recurring 'Remove'",
+      run: async () => {
+        const month = freshMonth();
+        const [item] = await db
+          .insert(recurringItems)
+          .values({ orgId, name: "Executor remove", amountCents: 500, lineItemId: itemA, sortOrder: 0 })
+          .returning({ id: recurringItems.id });
+        const added = await addRecurringToMonthAction(item.id, month);
+        if (!added.ok) throw new Error(added.error);
+        guardSpy.mockClear();
+        return removeRecurringFromMonthAction(item.id, month, true);
+      },
+    },
+    {
+      name: "add a month document",
+      run: async () =>
+        ingestMonthDocument({
+          orgId,
+          fundingSourceId: sourceA,
+          month: freshMonth(),
+          category: "bank_statement",
+          file: await jpegFile("statement.jpg"),
+        }),
+    },
+    {
+      name: "remove a month document",
+      run: async () => {
+        const attached = await ingestMonthDocument({
+          orgId,
+          fundingSourceId: sourceA,
+          month: freshMonth(),
+          category: "bank_statement",
+          file: await jpegFile("statement.jpg"),
+        });
+        if (!attached.ok) throw new Error(attached.error);
+        guardSpy.mockClear();
+        return removeMonthDocumentAction(attached.documentId, sourceA);
+      },
+    },
+    {
+      name: "mark as submitted",
+      run: () => markMonthSubmittedAction(freshMonth(), sourceA),
+    },
+    {
+      name: "lock a month",
+      run: async () => {
+        const { lockMonth } = await import("./lock");
+        const { PDFDocument } = await import("pdf-lib");
+        const pdf = await PDFDocument.create();
+        pdf.addPage([612, 792]);
+        const file = new File([new Uint8Array(await pdf.save())], "signed.pdf", { type: "application/pdf" });
+        return lockMonth({ orgId, userId, fundingSourceId: sourceA, month: freshMonth(), file });
+      },
+    },
+  ];
+
+  it.each(guardedWrites)("$name: the guard runs on the write's own transaction, never the pooled db", async ({ run }) => {
+    asUser();
+    guardSpy.mockClear();
+
+    const result = await run();
+    expect(result.ok).toBe(true);
+
+    const executors = guardSpy.mock.calls.map(([executor]) => executor);
+    expect(executors.length).toBeGreaterThan(0);
+    for (const executor of executors) expect(executor).not.toBe(db);
+  });
 });
