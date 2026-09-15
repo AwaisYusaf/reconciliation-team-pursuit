@@ -20,9 +20,18 @@ export const TOUR_SEQUENCE: readonly { tour: TourKey; href: string }[] = [
   { tour: "settings", href: "/r/settings" },
 ];
 
-/** sessionStorage key marking a full guided walkthrough in progress (tab-scoped, cleared on
- *  Skip/Escape or once the sequence reaches its last tour — see `tour.tsx`). */
-export const TOUR_SEQUENCE_KEY = "tour-sequence-active";
+/**
+ * sessionStorage key for a guided walkthrough in progress (tab-scoped). Its value is the
+ * `TourKey` of the tab the walkthrough is on right now — not a bare "on" flag.
+ *
+ * It used to hold `"1"`, which said a walkthrough was running but not where. Anything that
+ * stopped the chain without clearing it — reaching a tab whose tour was already seen, or Line
+ * Items' "choose a source" panel — left it set, and much later an ordinary visit to Packet or
+ * Cover Sheets with "All" selected read it and navigated the user to another tab out of nowhere
+ * (review fix). Recording the expected tab means a leftover value can only ever be acted on by
+ * that one tab, and every other tab treats it as stale and clears it.
+ */
+export const TOUR_SEQUENCE_KEY = "tour-sequence-at";
 
 /**
  * Window event the header's replay (i) button fires, carrying the `TourKey` it just cleared,
@@ -45,17 +54,79 @@ export function nextInSequence(tour: TourKey): { tour: TourKey; href: string } |
   return position >= 0 ? TOUR_SEQUENCE[position + 1] : undefined;
 }
 
+/** The tab the walkthrough is on, or `null` when none is running. Storage that is blocked or
+ *  unavailable (private browsing, a policy) reads as "none running" — each tour still shows on
+ *  its own tab, it just won't carry the user between them. */
+function sequencePosition(): string | null {
+  try {
+    return sessionStorage.getItem(TOUR_SEQUENCE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function setSequencePosition(tour: TourKey): void {
+  try {
+    sessionStorage.setItem(TOUR_SEQUENCE_KEY, tour);
+  } catch {
+    // See `sequencePosition`.
+  }
+}
+
+/** Stop the walkthrough: Skip, Escape, the replay button, the end of the list, or a tab that
+ *  can't take its turn. */
+export function endTourSequence(): void {
+  try {
+    sessionStorage.removeItem(TOUR_SEQUENCE_KEY);
+  } catch {
+    // Nothing to clear if storage isn't available in the first place.
+  }
+}
+
+/** Begin the walkthrough at its first tab. */
+export function startTourSequence(): void {
+  setSequencePosition(TOUR_SEQUENCE[0].tour);
+}
+
 /**
- * Carry a running walkthrough on to the tab after `tour`, or end it quietly at the last one.
- * A no-op unless a walkthrough is actually in progress, so an ordinary single-tour visit
- * never navigates anywhere.
+ * Whether showing a step should start the walkthrough: only the first step shown by the first
+ * tab's tour, and never on a replay.
  *
- * Shared by the two things that finish a tour's turn: the engine (`tour.tsx`), on Done and
- * when a tour reaches the end of its steps; and `TourSequenceSkip`, on a screen that can't
- * show its tour at all right now. That second caller is what keeps the chain alive past Cover
- * Sheets, Packet and Contract Summary while "All funding sources" is selected — each shows a
- * "choose a source first" panel instead of its real content, so its tour has nothing to point
- * at, and the walkthrough used to simply stop there and never reach the tabs after it.
+ * The replay (i) button resets the tour's "shown anything yet" state so it can run again, which
+ * made a replayed Dashboard tour look exactly like a brand-new user's first one — so pressing
+ * Done after a replay carried the user off to Add Expense and through every tab (review fix).
+ * A replay is always a one-off view of one screen.
+ */
+export function startsWalkthrough(
+  tour: TourKey,
+  { firstStep, replay }: { firstStep: boolean; replay: boolean },
+): boolean {
+  return tour === TOUR_SEQUENCE[0].tour && firstStep && !replay;
+}
+
+/**
+ * Called once when a tab's tour mounts. Keeps a walkthrough that has arrived at this tab in
+ * turn, and clears it in every other case:
+ * - `willRun` is false (this user has already seen this tab's tour) — the chain can't take its
+ *   turn here, and stopping cleanly beats leaving a flag that fires somewhere unrelated later;
+ * - the walkthrough is recorded as being on a *different* tab — the user has left it.
+ */
+export function settleTourSequenceOnMount(tour: TourKey, willRun: boolean): void {
+  const at = sequencePosition();
+  if (at !== null && (!willRun || at !== tour)) endTourSequence();
+}
+
+/**
+ * Carry a running walkthrough on from `tour` to the next tab, or end it at the last one.
+ *
+ * Only acts when the walkthrough is actually on `tour`. Anything else is a leftover from a
+ * walkthrough that stopped somewhere else, so it is cleared rather than followed — that is what
+ * stops an ordinary later visit to Packet or Cover Sheets with "All" selected (whose
+ * `TourSequenceSkip` calls this on every render of the "choose a source" panel) from sending
+ * the user to another tab.
+ *
+ * Shared by the engine (`tour.tsx`, on Done and when a tour has nothing to show) and
+ * `TourSequenceSkip` (a tab showing "choose a source first", whose tour can't mount at all).
  *
  * `refresh()` after `push()` isn't redundant: Next's client Router Cache can serve a prefetched
  * payload for the next route computed before the current tour's "seen" write landed, which
@@ -68,23 +139,19 @@ export function continueTourSequence(
   tour: TourKey,
   router: { push: (href: string) => void; refresh: () => void },
 ): void {
-  let active = false;
-  try {
-    active = sessionStorage.getItem(TOUR_SEQUENCE_KEY) === "1";
-  } catch {
-    // Storage blocked or unavailable — treated as "no walkthrough running", same as a fresh tab.
+  const at = sequencePosition();
+  if (at === null) return;
+  if (at !== tour) {
+    endTourSequence();
+    return;
   }
-  if (!active) return;
 
   const next = nextInSequence(tour);
   if (!next) {
-    try {
-      sessionStorage.removeItem(TOUR_SEQUENCE_KEY);
-    } catch {
-      // Nothing to clean up if storage isn't available in the first place.
-    }
+    endTourSequence();
     return;
   }
+  setSequencePosition(next.tour);
   router.push(next.href);
   router.refresh();
 }

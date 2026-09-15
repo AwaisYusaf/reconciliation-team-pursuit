@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 
 import { PickFundingSource } from "@/src/components/app-shell/pick-funding-source";
+import { TourSequenceSkip } from "@/src/components/app-shell/tour-sequence-skip";
 import { PageTitle, Subtext } from "@/src/components/ui/surfaces";
 import { TourGuide } from "@/src/components/ui/tour";
 import { loadSourceContext } from "@/src/modules/funding-sources/queries";
@@ -31,7 +32,12 @@ export default async function LineItemsPage() {
       </Subtext>
 
       {selectedId === null ? (
-        <PickFundingSource sources={activeSources} />
+        <>
+          {/* Nothing here for the line items tour to point at. Without this a walkthrough
+              arriving on "All" stopped here and left its flag behind. */}
+          <TourSequenceSkip tour="line_items" />
+          <PickFundingSource sources={activeSources} />
+        </>
       ) : (
         <LineItemsManagerFor
           orgId={session.orgId}

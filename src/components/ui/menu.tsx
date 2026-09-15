@@ -218,12 +218,18 @@ export function Menu({
         // `detail === 0` means the click came from Enter/Space on the focused button rather
         // than a pointer — the browser reports no click count for a synthesised one. That is
         // the signal for whether to move focus into the panel.
+        //
+        // `isTrusted` as well: a script's `.click()` also reports `detail === 0`, and was being
+        // read as a keyboard open. The app guide opens a row's menu that way (`autoOpen`), so
+        // focus jumped onto "Edit" mid-tour — pressing Enter to continue the tour opened the
+        // expense instead, and ArrowDown + Enter reached Delete (review fix). A real keypress
+        // is trusted; a scripted click is not.
         onClick={(event) => {
           if (open) {
             close();
             return;
           }
-          openedByKeyboard.current = event.detail === 0;
+          openedByKeyboard.current = event.detail === 0 && event.isTrusted;
           openMenu();
         }}
         data-tour={triggerDataTour}

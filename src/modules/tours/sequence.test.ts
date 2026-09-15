@@ -9,7 +9,11 @@ import { tourKey } from "@/src/db/schema";
 
 import {
   continueTourSequence,
+  endTourSequence,
   nextInSequence,
+  settleTourSequenceOnMount,
+  startsWalkthrough,
+  startTourSequence,
   TOUR_SEQUENCE,
   TOUR_SEQUENCE_KEY,
 } from "./sequence";
@@ -52,7 +56,7 @@ describe("nextInSequence", () => {
   });
 });
 
-describe("continueTourSequence", () => {
+describe("the walkthrough flag", () => {
   const store = new Map<string, string>();
 
   function stubStorage() {
@@ -72,64 +76,145 @@ describe("continueTourSequence", () => {
     vi.unstubAllGlobals();
   });
 
-  it("navigates to the next tab while a walkthrough is running", () => {
-    stubStorage();
-    store.set(TOUR_SEQUENCE_KEY, "1");
-    const router = stubRouter();
+  describe("continueTourSequence", () => {
+    it("hands on to the next tab and records that as where the walkthrough now is", () => {
+      stubStorage();
+      store.set(TOUR_SEQUENCE_KEY, "dashboard");
+      const router = stubRouter();
 
-    continueTourSequence("dashboard", router);
+      continueTourSequence("dashboard", router);
 
-    expect(router.push).toHaveBeenCalledWith("/r/expenses/new");
-    // Paired with the push so the next tab can't be served a prefetched, stale `alreadySeen`.
-    expect(router.refresh).toHaveBeenCalled();
+      expect(router.push).toHaveBeenCalledWith("/r/expenses/new");
+      // Paired with the push so the next tab can't be served a prefetched, stale `alreadySeen`.
+      expect(router.refresh).toHaveBeenCalled();
+      expect(store.get(TOUR_SEQUENCE_KEY)).toBe("add_expense");
+    });
+
+    it("carries on past a 'choose a source' screen", () => {
+      stubStorage();
+      store.set(TOUR_SEQUENCE_KEY, "cover_sheets");
+      const router = stubRouter();
+
+      continueTourSequence("cover_sheets", router);
+
+      expect(router.push).toHaveBeenCalledWith("/r/recurring");
+    });
+
+    it("never navigates on a leftover flag for a different tab, and clears it", () => {
+      // The reported bug. A walkthrough stopped at Line Items left its flag behind; much later
+      // an ordinary visit to Packet with "All" selected read it and sent the user to Contract
+      // Summary. With the old bare "1" flag this call navigated.
+      stubStorage();
+      store.set(TOUR_SEQUENCE_KEY, "line_items");
+      const router = stubRouter();
+
+      continueTourSequence("packet", router);
+
+      expect(router.push).not.toHaveBeenCalled();
+      expect(store.has(TOUR_SEQUENCE_KEY)).toBe(false);
+    });
+
+    it("does nothing when no walkthrough is running", () => {
+      stubStorage();
+      const router = stubRouter();
+
+      continueTourSequence("dashboard", router);
+
+      expect(router.push).not.toHaveBeenCalled();
+      expect(router.refresh).not.toHaveBeenCalled();
+    });
+
+    it("ends the walkthrough at the last tab instead of navigating", () => {
+      stubStorage();
+      const last = TOUR_SEQUENCE[TOUR_SEQUENCE.length - 1].tour;
+      store.set(TOUR_SEQUENCE_KEY, last);
+      const router = stubRouter();
+
+      continueTourSequence(last, router);
+
+      expect(router.push).not.toHaveBeenCalled();
+      expect(store.has(TOUR_SEQUENCE_KEY)).toBe(false);
+    });
+
+    it("treats unavailable storage as no walkthrough rather than throwing", () => {
+      // Private browsing, or storage blocked by policy.
+      vi.stubGlobal("sessionStorage", {
+        getItem: () => {
+          throw new Error("blocked");
+        },
+        removeItem: () => {},
+        setItem: () => {},
+      });
+      const router = stubRouter();
+
+      expect(() => continueTourSequence("dashboard", router)).not.toThrow();
+      expect(router.push).not.toHaveBeenCalled();
+    });
   });
 
-  it("carries on past a screen that showed nothing — the Cover Sheets/Packet dead-end", () => {
-    // With "All funding sources" selected these tabs render a "choose a source" panel, so
-    // their tours have nothing to point at. The walkthrough used to stop at the first one and
-    // never reach the five tabs after it.
-    stubStorage();
-    store.set(TOUR_SEQUENCE_KEY, "1");
-    const router = stubRouter();
+  describe("settleTourSequenceOnMount", () => {
+    it("ends the walkthrough when it reaches a tab whose tour was already seen", () => {
+      // The other way the flag used to get stuck: that tab's tour never starts, so nothing
+      // ever carried the walkthrough on or cleared it.
+      stubStorage();
+      store.set(TOUR_SEQUENCE_KEY, "recurring");
 
-    continueTourSequence("cover_sheets", router);
+      settleTourSequenceOnMount("recurring", false);
 
-    expect(router.push).toHaveBeenCalledWith("/r/recurring");
+      expect(store.has(TOUR_SEQUENCE_KEY)).toBe(false);
+    });
+
+    it("keeps a walkthrough that has arrived at this tab in turn", () => {
+      stubStorage();
+      store.set(TOUR_SEQUENCE_KEY, "packet");
+
+      settleTourSequenceOnMount("packet", true);
+
+      expect(store.get(TOUR_SEQUENCE_KEY)).toBe("packet");
+    });
+
+    it("clears a walkthrough recorded as being on some other tab", () => {
+      stubStorage();
+      store.set(TOUR_SEQUENCE_KEY, "packet");
+
+      settleTourSequenceOnMount("expenses", true);
+
+      expect(store.has(TOUR_SEQUENCE_KEY)).toBe(false);
+    });
+
+    it("leaves things alone when no walkthrough is running", () => {
+      stubStorage();
+
+      settleTourSequenceOnMount("dashboard", true);
+
+      expect(store.has(TOUR_SEQUENCE_KEY)).toBe(false);
+    });
   });
 
-  it("does nothing at all when no walkthrough is running", () => {
+  it("startTourSequence begins at the first tab; endTourSequence clears it", () => {
     stubStorage();
-    const router = stubRouter();
 
-    continueTourSequence("dashboard", router);
+    startTourSequence();
+    expect(store.get(TOUR_SEQUENCE_KEY)).toBe("dashboard");
 
-    expect(router.push).not.toHaveBeenCalled();
-    expect(router.refresh).not.toHaveBeenCalled();
-  });
-
-  it("ends the walkthrough at the last tab instead of navigating", () => {
-    stubStorage();
-    store.set(TOUR_SEQUENCE_KEY, "1");
-    const router = stubRouter();
-
-    continueTourSequence(TOUR_SEQUENCE[TOUR_SEQUENCE.length - 1].tour, router);
-
-    expect(router.push).not.toHaveBeenCalled();
+    endTourSequence();
     expect(store.has(TOUR_SEQUENCE_KEY)).toBe(false);
   });
+});
 
-  it("treats unavailable storage as no walkthrough rather than throwing", () => {
-    // Private browsing, or storage blocked by policy.
-    vi.stubGlobal("sessionStorage", {
-      getItem: () => {
-        throw new Error("blocked");
-      },
-      removeItem: () => {},
-      setItem: () => {},
-    });
-    const router = stubRouter();
+describe("startsWalkthrough", () => {
+  it("starts on the first step the Dashboard tour shows", () => {
+    expect(startsWalkthrough("dashboard", { firstStep: true, replay: false })).toBe(true);
+  });
 
-    expect(() => continueTourSequence("dashboard", router)).not.toThrow();
-    expect(router.push).not.toHaveBeenCalled();
+  it("does not start on a replay of the Dashboard tour", () => {
+    // The reported bug: (i) on the Dashboard reset the tour's "shown anything yet" state, so a
+    // replay looked like a first run and Done carried the user off to Add Expense.
+    expect(startsWalkthrough("dashboard", { firstStep: true, replay: true })).toBe(false);
+  });
+
+  it("does not start from any later step, or from any other tab's tour", () => {
+    expect(startsWalkthrough("dashboard", { firstStep: false, replay: false })).toBe(false);
+    expect(startsWalkthrough("packet", { firstStep: true, replay: false })).toBe(false);
   });
 });

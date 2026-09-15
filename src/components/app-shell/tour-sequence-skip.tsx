@@ -19,15 +19,21 @@
  * to Packet with "All" selected behaves exactly as before.
  */
 import { useRouter } from "next/navigation";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 
 import type { TourKey } from "@/src/db/schema";
 import { continueTourSequence } from "@/src/modules/tours/sequence";
 
 export function TourSequenceSkip({ tour }: { tour: TourKey }) {
   const router = useRouter();
+  // Once per mount. React Strict Mode runs effects twice in development, and the second run
+  // would see the walkthrough already moved on to the next tab — read that as a stale flag —
+  // and end the walkthrough it had just handed on. Refs survive that replay.
+  const handedOn = useRef(false);
 
   useEffect(() => {
+    if (handedOn.current) return;
+    handedOn.current = true;
     continueTourSequence(tour, router);
   }, [tour, router]);
 

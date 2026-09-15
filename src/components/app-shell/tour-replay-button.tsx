@@ -25,7 +25,7 @@ import { useTransition } from "react";
 
 import { matches } from "@/src/components/app-shell/app-nav";
 import { replayTourAction } from "@/src/modules/tours/actions";
-import { TOUR_REPLAY_EVENT, TOUR_SEQUENCE, TOUR_SEQUENCE_KEY } from "@/src/modules/tours/sequence";
+import { endTourSequence, TOUR_REPLAY_EVENT, TOUR_SEQUENCE } from "@/src/modules/tours/sequence";
 
 export function TourReplayButton() {
   const pathname = usePathname();
@@ -48,11 +48,7 @@ export function TourReplayButton() {
       disabled={pending}
       onClick={() =>
         startTransition(async () => {
-          try {
-            sessionStorage.removeItem(TOUR_SEQUENCE_KEY);
-          } catch {
-            // Nothing to clean up if storage isn't available in the first place.
-          }
+          endTourSequence();
           await replayTourAction(current.tour);
           // Re-arms the `TourGuide` already mounted on this page. `refresh()` alone only
           // freshens the server's own "seen" read for the *next* navigation — it cannot
@@ -62,9 +58,18 @@ export function TourReplayButton() {
           router.refresh();
         })
       }
-      className="shrink-0 h-7 w-7 text-[12px] leading-none flex items-center justify-center rounded-full border border-line text-accent font-serif font-bold italic hover:bg-section disabled:opacity-60"
+      // The button is the 44px tap target; the circle inside it stays the smaller visual size.
+      // At 28px the whole control sat right against Log out and was easy to mistap on a phone
+      // (review fix). No negative margin to claw the space back — overlapping hit areas are
+      // the mistap this is fixing.
+      className="group shrink-0 h-11 w-11 flex items-center justify-center rounded-full disabled:opacity-60"
     >
-      i
+      <span
+        aria-hidden="true"
+        className="h-7 w-7 text-[12px] leading-none flex items-center justify-center rounded-full border border-line text-accent font-serif font-bold italic group-hover:bg-section"
+      >
+        i
+      </span>
     </button>
   );
 }

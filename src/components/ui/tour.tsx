@@ -26,9 +26,9 @@
  */
 import { useRouter } from "next/navigation";
 import { createPortal } from "react-dom";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 
-import { Button, buttonClassName } from "@/src/components/ui/button";
+import { Button } from "@/src/components/ui/button";
 import type { TourKey } from "@/src/db/schema";
 import { completeTourAction } from "@/src/modules/tours/actions";
 import {
@@ -42,8 +42,11 @@ import {
 } from "@/src/modules/tours/resolve-steps";
 import {
   continueTourSequence,
+  endTourSequence,
+  settleTourSequenceOnMount,
+  startsWalkthrough,
+  startTourSequence,
   TOUR_REPLAY_EVENT,
-  TOUR_SEQUENCE_KEY,
 } from "@/src/modules/tours/sequence";
 
 export type { TourStep };
@@ -99,7 +102,14 @@ export function TourGuide({
   // Bumped by the replay (i) button to force a fresh run even when no prop and no other piece
   // of state actually changed (see the replay effect below).
   const [runId, setRunId] = useState(0);
-  const skipRef = useRef<HTMLButtonElement>(null);
+  // The card's primary button (Next/Done), which holds focus on every step — see the focus
+  // effect below.
+  const primaryRef = useRef<HTMLButtonElement>(null);
+  // Whether the current run came from the replay (i) button — a one-off view of one screen,
+  // which must never start the walkthrough. See `startsWalkthrough`.
+  const replayRef = useRef(false);
+  const titleId = useId();
+  const bodyId = useId();
   const router = useRouter();
   // Whether this tour has successfully shown at least one step yet — decides both the
   // "never showed anything, don't mark seen" rule below and, for Dashboard specifically, when
@@ -113,6 +123,21 @@ export function TourGuide({
   // Whether any step's `autoOpen` actually opened something dismissible. Set when a click is
   // performed, cleared when the tour tidies up after itself — see `closeAnythingOpened`.
   const openedRef = useRef(false);
+
+  // Once, on mount: keep a walkthrough that has arrived at this tab in turn, and clear it in
+  // every other case — this user has already seen this tab's tour, or the walkthrough is
+  // recorded against a different tab (see `settleTourSequenceOnMount`).
+  //
+  // Mount-only on purpose. A tour that finishes hands the walkthrough on and calls
+  // `router.refresh()`; if that refresh re-rendered this page before it unmounted, `alreadySeen`
+  // would flip to true here, and re-running this would end the walkthrough it had just handed
+  // on. Reading `alreadySeen` at mount is trustworthy: these pages are dynamic, and dynamic
+  // segments aren't served from the client router cache by default (`staleTimes.dynamic` is 0
+  // since Next 15).
+  useEffect(() => {
+    settleTourSequenceOnMount(tour, !alreadySeen);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Gate the whole engine behind one animation frame after mount, same reasoning as the old
   // single-pass resolver: `alreadySeen` itself is available synchronously, but flipping
@@ -166,17 +191,10 @@ export function TourGuide({
           setStepIndex((i) => i + 1);
           return;
         }
-        if (tour === "dashboard" && !shownAnyRef.current) {
-          // Dashboard is always `TOUR_SEQUENCE`'s first stop (`sequence.ts`) and this is the
-          // one point every brand-new user's very first tour passes through, so it's where the
-          // guided walkthrough begins: mark it active so this tour's own Finish knows to carry
-          // the user on to the next tab instead of just closing.
-          try {
-            sessionStorage.setItem(TOUR_SEQUENCE_KEY, "1");
-          } catch {
-            // Private-browsing/storage-blocked: the walkthrough just won't auto-advance; each
-            // tour still shows on its own tab as before.
-          }
+        if (startsWalkthrough(tour, { firstStep: !shownAnyRef.current, replay: replayRef.current })) {
+          // Every brand-new user's very first tour passes through here, so this is where the
+          // guided walkthrough begins — never on a replay (see `startsWalkthrough`).
+          startTourSequence();
         }
         shownAnyRef.current = true;
         historyRef.current = pushShownStep(historyRef.current, stepIndex);
@@ -199,6 +217,7 @@ export function TourGuide({
   useEffect(() => {
     function onReplay(event: Event) {
       if ((event as CustomEvent<TourKey>).detail !== tour) return;
+      replayRef.current = true;
       historyRef.current = [];
       shownAnyRef.current = false;
       setCurrent(null);
@@ -268,11 +287,21 @@ export function TourGuide({
       child.setAttribute("inert", "");
       marked.push(child);
     }
-    skipRef.current?.focus();
     return () => {
       for (const el of marked) el.removeAttribute("inert");
     };
   }, [running]);
+
+  // Keep keyboard focus on the card's primary button (Next/Done) on every step, not just the
+  // first. Enter then always means "continue the tour", and a step's `autoOpen` can't leave focus
+  // somewhere real — a row menu used to take focus onto "Edit", so Enter opened the expense and
+  // ArrowDown + Enter reached Delete (review fix; `Menu` also no longer moves focus on a scripted
+  // open). Keyed on the step, and on the card existing at all — it isn't rendered until its
+  // target has been measured. `preventScroll`, because an open `Menu` shuts on any scroll.
+  const cardShown = rect !== null;
+  useEffect(() => {
+    if (current && cardShown) primaryRef.current?.focus({ preventScroll: true });
+  }, [current, cardShown]);
 
   useEffect(() => {
     if (!running) return;
@@ -287,16 +316,6 @@ export function TourGuide({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [running]);
 
-  /**
-   * `skipped` decides what happens to the guided walkthrough, not just this one tour (both
-   * still write the same "seen" row — spec: "Skipping or finishing means it doesn't show
-   * again"). Skip (or Escape) is treated as "stop guiding me", not just "not this tour": it
-   * cancels the rest of the sequence outright rather than silently carrying the user to the
-   * next tab anyway. Finishing the last step, with the sequence still active, navigates on to
-   * `TOUR_SEQUENCE`'s next tab — that tab's own `TourGuide`, freshly server-rendered with
-   * `alreadySeen: false`, picks up from there. Reaching the end of the list simply lets the
-   * walkthrough run out.
-   */
   /**
    * Put the page back as the tour found it. A step's `autoOpen` opens real UI — an Expenses
    * row's ⋮ menu, Line Items' "Manage" modal — and without this the tour ended leaving the user
@@ -316,16 +335,20 @@ export function TourGuide({
     }, 0);
   }
 
+  /**
+   * `skipped` decides what happens to the guided walkthrough, not just this one tour (both
+   * still write the same "seen" row — spec: "Skipping or finishing means it doesn't show
+   * again"). Skip (or Escape) is treated as "stop guiding me", not just "not this tour": it
+   * ends the walkthrough outright rather than silently carrying the user to the next tab
+   * anyway. Finishing, with the walkthrough on this tab, navigates on to `TOUR_SEQUENCE`'s next
+   * tab, whose own `TourGuide` picks up from there.
+   */
   function finish(skipped: boolean) {
     setCurrent(null);
     closeAnythingOpened();
     void completeTourAction(tour);
     if (skipped) {
-      try {
-        sessionStorage.removeItem(TOUR_SEQUENCE_KEY);
-      } catch {
-        // Nothing to clean up if storage isn't available in the first place.
-      }
+      endTourSequence();
       return;
     }
     continueTourSequence(tour, router);
@@ -407,8 +430,6 @@ export function TourGuide({
     <div
       className="tour-overlay fixed inset-0 z-[60]"
       data-tour-overlay
-      role="region"
-      aria-label="App guide"
     >
       {/* One rounded cutout, not four dark strips meeting at square corners: a strip has no
        *  way to round the hole it helps form, so the revealed area always came out a hard
@@ -452,34 +473,48 @@ export function TourGuide({
           "max-h-[calc(100dvh-24px)] overflow-y-auto"
         }
         style={{ top: cardTop, left: cardLeft, width: cardWidth }}
+        // A dialog labelled by its title and described by its body, so a screen reader says what
+        // the step is about when focus arrives. The overlay's old `role="region"` announced only
+        // "App guide" (review fix). `aria-modal`: everything behind it is `inert`.
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        aria-describedby={bodyId}
       >
+        {/* Focus stays on Next between steps rather than re-entering the dialog, so a step change
+            would otherwise not be announced at all. */}
+        <p className="sr-only" aria-live="polite">
+          {`Step ${shownSoFar} of ${shownSoFar + remaining}. ${current.step.title}. ${current.step.body}`}
+        </p>
         {/* The same eyebrow treatment section headings use elsewhere (line-items-manager,
             settings-sections), so the card reads as part of the app rather than a tooltip. */}
         <div className="text-[11px] uppercase tracking-[0.06em] font-bold text-sub mb-2">
           Step {shownSoFar} of {shownSoFar + remaining}
         </div>
-        <div className="font-serif text-lg font-bold text-ink mb-1.5">{current.step.title}</div>
-        <div className="text-[15px] text-ink leading-relaxed">{current.step.body}</div>
+        <div id={titleId} className="font-serif text-lg font-bold text-ink mb-1.5">
+          {current.step.title}
+        </div>
+        <div id={bodyId} className="text-[15px] text-ink leading-relaxed">
+          {current.step.body}
+        </div>
         {/* A hairline above the controls rather than bare space: at the narrow card width the
             body text and the buttons otherwise crowd into one block. */}
         <div className="flex items-center justify-between gap-3 mt-4 pt-3.5 border-t border-line">
-          {/* A plain button, not `Button`: that component is a bare function, not
-              `forwardRef`-wrapped, so it can't take the ref this needs for initial focus. */}
-          <button
-            ref={skipRef}
-            type="button"
-            className={buttonClassName("quiet")}
-            onClick={() => finish(true)}
-          >
+          <Button variant="quiet" onClick={() => finish(true)}>
             Skip
-          </button>
+          </Button>
           <div className="flex gap-2">
             {shownSoFar > 1 && (
               <Button variant="secondary" onClick={goBack}>
                 Back
               </Button>
             )}
-            <Button onClick={() => (isLast ? finish(false) : setStepIndex((i) => i + 1))}>
+            {/* React 19 passes `ref` through as an ordinary prop, so `Button` needs no
+                `forwardRef` to take it. */}
+            <Button
+              ref={primaryRef}
+              onClick={() => (isLast ? finish(false) : setStepIndex((i) => i + 1))}
+            >
               {isLast ? "Done" : "Next"}
             </Button>
           </div>
