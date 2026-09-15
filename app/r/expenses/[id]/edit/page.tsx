@@ -12,6 +12,7 @@ import { reimbursableCents } from "@/src/domain/money";
 import { ExpenseForm } from "@/src/modules/expenses/expense-form";
 import { loadExpense, loadExpenseFormOptions } from "@/src/modules/expenses/queries";
 import { loadSourceContext } from "@/src/modules/funding-sources/queries";
+import { loadLockedMonths } from "@/src/modules/packet/queries";
 import { getSession } from "@/src/services/auth/session";
 
 export const metadata = { title: "Edit Expense — Grant Expense Reconciliation" };
@@ -40,7 +41,7 @@ export default async function EditExpensePage({
     session.activeFundingSourceId,
   );
 
-  const [options, months, submittedRows] = await Promise.all([
+  const [options, months, submittedRows, lockedMonthKeys] = await Promise.all([
     loadExpenseFormOptions(session.orgId, fundingSourceId),
     // The same list the header offers: a month you can view must be one you can move into.
     loadSelectableMonths(session.orgId, fundingSourceId, [expense.month, session.activeMonth]),
@@ -54,6 +55,9 @@ export default async function EditExpensePage({
       })
       .from(monthStatuses)
       .where(and(eq(monthStatuses.orgId, session.orgId), isNotNull(monthStatuses.submittedAt))),
+    // Every source, not just this expense's own — the Month dropdown can move it to another
+    // source's locked month too (Appendix A §2, D-96).
+    loadLockedMonths(session.orgId, null),
   ]);
 
   // The Month dropdown moves the expense (R2.2), so both the budget projection and the
@@ -104,6 +108,7 @@ export default async function EditExpensePage({
         remaining={remaining}
         remainingByMonth={remainingByMonth}
         submittedOn={submittedOn}
+        lockedMonths={[...lockedMonthKeys]}
         today={todayIso()}
         activeMonth={expense.month}
         initialFundingSourceId={expense.fundingSourceId}

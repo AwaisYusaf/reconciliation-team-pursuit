@@ -9,6 +9,7 @@ import { monthLabel, monthWindow, todayIso } from "@/src/domain/dates";
 import { ExpenseForm } from "@/src/modules/expenses/expense-form";
 import { loadExpenseFormOptions } from "@/src/modules/expenses/queries";
 import { loadSourceContext } from "@/src/modules/funding-sources/queries";
+import { loadLockedMonths } from "@/src/modules/packet/queries";
 import { ADD_EXPENSE_TOUR_STEPS } from "@/src/modules/tours/add-expense-tour";
 import { hasSeenTour } from "@/src/modules/tours/queries";
 import { getSession } from "@/src/services/auth/session";
@@ -41,8 +42,11 @@ export default async function NewExpensePage() {
   const initialFundingSourceId =
     activeSources.find((source) => source.id === selectedId)?.id ?? activeSources[0].id;
   const month = session.activeMonth;
-  const seenAddExpenseTour = await hasSeenTour(session.userId, "add_expense");
-  const options = await loadExpenseFormOptions(session.orgId, null);
+  const [seenAddExpenseTour, options, lockedMonthKeys] = await Promise.all([
+    hasSeenTour(session.userId, "add_expense"),
+    loadExpenseFormOptions(session.orgId, null),
+    loadLockedMonths(session.orgId, null),
+  ]);
 
   // Remaining per line item drives the live projection as the user types (R3.7). Line item
   // ids are UUIDs and unique across sources, so every source's figures merge into one flat
@@ -77,6 +81,7 @@ export default async function NewExpensePage() {
       <ExpenseForm
         options={{ ...options, months: monthWindow([month]) }}
         remaining={remaining}
+        lockedMonths={[...lockedMonthKeys]}
         today={todayIso()}
         activeMonth={month}
         initialFundingSourceId={initialFundingSourceId}

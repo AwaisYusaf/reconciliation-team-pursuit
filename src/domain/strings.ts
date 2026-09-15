@@ -119,6 +119,38 @@ export const UI = {
   monthAlreadyLocked: "This month is already locked.",
   /** Unlock refusal — nothing to undo. */
   monthNotLocked: "This month is not locked.",
+  /** Packet header, once locked (Appendix A §1). */
+  reconciledLabel: "Reconciled",
+  /** Packet header's locked line: "Locked on {date} by {name}" (Appendix A §1). */
+  lockedOnBy: (date: string, name: string) => `Locked on ${date} by ${name}`,
+  /** Event-history lines and the Reporting periods table (Appendix A §3, §4): "Locked {date} by {name}". */
+  lockedBy: (date: string, name: string) => `Locked ${date} by ${name}`,
+  /** Event-history lines: "Unlocked {date} by {name}", with the reason quoted when there is one
+   *  (Appendix A §3, §4). */
+  unlockEventLine: (date: string, name: string, reason: string | null) =>
+    `Unlocked ${date} by ${name}${reason ? ` — "${reason}"` : ""}`,
+  /** Link text beside a lock event, opening `/api/files/{eventId}` (Appendix A §1, §3, §4). */
+  viewSignedPacket: "View signed packet",
+  /** Packet page's own event history — an earlier copy later superseded (Appendix A §3). */
+  replacedOn: (date: string) => `Replaced on ${date}`,
+  /** Reporting periods' event history — the same fact, inline (Appendix A §4). */
+  replacedTag: "(replaced)",
+  lockButtonLabel: "Lock month",
+  unlockButtonLabel: "Unlock",
+  /** Lock dialog (Appendix A §1). */
+  lockDialogTitle: (monthLabel: string) => `Lock ${monthLabel}?`,
+  lockDialogText:
+    "Upload the signed packet from the City. Once locked, this month's expenses can't be changed until someone unlocks it.",
+  /** Unlock dialog (Appendix A §3). */
+  unlockDialogTitle: (monthLabel: string) => `Unlock ${monthLabel}?`,
+  unlockDialogText:
+    "Its expenses can be changed again. The signed copy stays saved. Lock the month again when the new signed copy arrives.",
+  unlockReasonPlaceholder: "e.g. City asked us to remove the duplicate Staples invoice.",
+  statusOpen: "Open",
+  statusSubmitted: "Submitted",
+  reportingPeriodsTitle: "Reporting periods",
+  /** Contract Summary's Reporting periods, and the Packet page's own Submitted marker (Appendix A §4). */
+  submittedOn: (date: string) => `Submitted ${date}`,
 } as const;
 
 /** Inline explanation beside a disabled download button (m07, R4.3). */

@@ -77,6 +77,8 @@ export type ExpenseFormProps = {
   remainingByMonth?: Record<string, RemainingByLineItem>;
   /** Submission dates keyed `"{sourceId}:{month}"`, already formatted — for the R10.6 warning. */
   submittedOn?: Record<string, string>;
+  /** Every locked `"{sourceId}:{month}"` in the org (Appendix A §2, D-96). */
+  lockedMonths?: string[];
   today: string;
   activeMonth: string;
   /** New = the header's selection or the org's first active source; edit = the expense's own. */
@@ -127,6 +129,7 @@ export function ExpenseForm({
   remaining,
   remainingByMonth,
   submittedOn,
+  lockedMonths = [],
   today,
   activeMonth,
   initialFundingSourceId,
@@ -295,6 +298,17 @@ export function ExpenseForm({
       ? existing?.monthSubmittedOn
       : null);
 
+  // Locked months (Appendix A §2, D-96): `ownSavedLocked` is this record's own *committed*
+  // source/month — reached by opening its Edit page directly, not by anything the dropdowns
+  // below can change — and disables the whole form. `selectedMonthLocked` follows the
+  // dropdowns live, the same way `selectedMonthSubmittedOn` does, and is what the Month
+  // choice picks up when adding a new expense or moving an existing one.
+  const lockedMonthKeys = new Set(lockedMonths);
+  const ownSavedLocked = existing
+    ? lockedMonthKeys.has(`${existing.values.fundingSourceId}:${existing.values.month}`)
+    : false;
+  const selectedMonthLocked = lockedMonthKeys.has(`${values.fundingSourceId}:${values.month}`);
+
   // Vendor autofill (R8.1): an exact match fills line item and description; partials list.
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
@@ -458,6 +472,13 @@ export function ExpenseForm({
   function save() {
     setError(null);
     setStatus(null);
+    // Refused client-side too, matching what the server would say — a courtesy, not the
+    // guarantee: the server checks again inside the same transaction as the write itself
+    // (Appendix A "the block must still hold if someone had a page open").
+    if (selectedMonthLocked) {
+      setError(UI.monthLocked(monthLabel(values.month)));
+      return;
+    }
     startTransition(async () => {
       if (editing) {
         const result = await updateExpenseAction({
@@ -513,13 +534,24 @@ export function ExpenseForm({
 
   return (
     <div className="max-w-[560px]">
-      {selectedMonthSubmittedOn && (
-        <DangerPanel tone="notice" className="mb-5">
-          {monthLabel(values.month)} was submitted on {selectedMonthSubmittedOn}{" "}
-          — changes will not alter the packet that was downloaded, but
-          regenerated documents will differ.
+      {ownSavedLocked && existing && (
+        <DangerPanel className="mb-5">
+          {UI.monthLocked(monthLabel(existing.values.month))}
         </DangerPanel>
       )}
+
+      {!ownSavedLocked &&
+        (selectedMonthLocked ? (
+          <DangerPanel className="mb-5">{UI.monthLocked(monthLabel(values.month))}</DangerPanel>
+        ) : (
+          selectedMonthSubmittedOn && (
+            <DangerPanel tone="notice" className="mb-5">
+              {monthLabel(values.month)} was submitted on {selectedMonthSubmittedOn}{" "}
+              — changes will not alter the packet that was downloaded, but
+              regenerated documents will differ.
+            </DangerPanel>
+          )
+        ))}
 
       <form
         onSubmit={(event) => {
@@ -528,6 +560,10 @@ export function ExpenseForm({
         }}
       >
         <Card className="p-7 flex flex-col gap-[22px]">
+          {/* `display: contents` keeps the Card's own flex layout unchanged — the fieldset
+              contributes only its native disabling, in one attribute, of every input, select,
+              textarea and button inside it (plan §3.11). */}
+          <fieldset disabled={ownSavedLocked} className="contents">
           <div className="relative" data-tour="add-expense-name">
             <Label htmlFor="name">Name</Label>
             <Input
@@ -811,6 +847,13 @@ export function ExpenseForm({
             </div>
           )}
 
+          {/* The fieldset pauses here for the three upload fields. A disabled fieldset disables
+              every button inside it, and a file's preview is a button: on a locked month that
+              would have stopped anyone opening the receipts, and the lock must leave everything
+              viewable (R10.7). `UploadField`'s own `disabled` blocks adding and removing while
+              leaving preview alone, so these take that instead. */}
+          </fieldset>
+
           <div data-tour="add-expense-proof">
             <UploadField
               label="Proof of payment"
@@ -820,7 +863,7 @@ export function ExpenseForm({
               attached={
                 existing?.documents.filter((doc) => doc.kind === "proof") ?? []
               }
-              disabled={pending}
+              disabled={pending || ownSavedLocked}
               onRemoveAttached={(id) =>
                 startTransition(async () => {
                   if (
@@ -846,7 +889,7 @@ export function ExpenseForm({
                 existing?.documents.filter((doc) => doc.kind === "receipt") ??
                 []
               }
-              disabled={pending || values.noReceipt}
+              disabled={pending || values.noReceipt || ownSavedLocked}
               hidden={values.noReceipt}
               onRemoveAttached={(id) =>
                 startTransition(async () => {
@@ -866,6 +909,7 @@ export function ExpenseForm({
               <input
                 type="checkbox"
                 checked={values.noReceipt}
+                disabled={ownSavedLocked}
                 onChange={(event) => {
                   const checked = event.target.checked;
                   // Ask before the files disappear from view, not on the way out of the form.
@@ -888,6 +932,7 @@ export function ExpenseForm({
                 </Label>
                 <Textarea
                   id="noReceiptReason"
+                  disabled={ownSavedLocked}
                   rows={2}
                   value={values.noReceiptReason}
                   onChange={(event) =>
@@ -916,7 +961,7 @@ export function ExpenseForm({
                   (doc) => doc.kind === "supporting",
                 ) ?? []
               }
-              disabled={pending}
+              disabled={pending || ownSavedLocked}
               supportingTypes={options.supportingDocTypes}
               onRemoveAttached={(id) =>
                 startTransition(async () => {
@@ -933,6 +978,7 @@ export function ExpenseForm({
             />
           </div>
 
+          <fieldset disabled={ownSavedLocked} className="contents">
           <div className="border-t border-line pt-[22px]">
             <Label htmlFor="note">
               Note <span className="font-normal text-sub">(optional)</span>
@@ -964,13 +1010,17 @@ export function ExpenseForm({
             </Helper>
           </div>
 
+          </fieldset>
+
           {error && <DangerPanel>{error}</DangerPanel>}
           {status && <div className="text-[15px] text-sub">{status}</div>}
 
           <div className="flex flex-wrap items-center gap-5">
-            <Button type="submit" disabled={pending}>
-              {pending ? "Saving…" : editing ? "Save changes" : "Save expense"}
-            </Button>
+            {!ownSavedLocked && (
+              <Button type="submit" disabled={pending}>
+                {pending ? "Saving…" : editing ? "Save changes" : "Save expense"}
+              </Button>
+            )}
             <Button
               variant="quiet"
               onClick={() => router.push("/r/expenses")}
@@ -982,7 +1032,7 @@ export function ExpenseForm({
               <Button
                 variant="quiet"
                 onClick={() => setConfirmingDelete(true)}
-                disabled={pending}
+                disabled={pending || ownSavedLocked}
               >
                 Delete
               </Button>

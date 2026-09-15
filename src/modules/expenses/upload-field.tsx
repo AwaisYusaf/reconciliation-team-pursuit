@@ -141,6 +141,7 @@ export function UploadField({
       {supportingTypes && supportingTypes.length > 0 && (
         <Select
           aria-label="Supporting document type"
+          disabled={disabled}
           value={supportingType}
           onValueChange={setSupportingType}
           className="mb-3 max-w-[260px]"

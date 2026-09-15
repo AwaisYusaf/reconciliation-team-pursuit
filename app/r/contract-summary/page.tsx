@@ -4,20 +4,21 @@ import { redirect } from "next/navigation";
 import { PickFundingSource } from "@/src/components/app-shell/pick-funding-source";
 import { TourSequenceSkip } from "@/src/components/app-shell/tour-sequence-skip";
 import { DownloadButton } from "@/src/components/ui/download-button";
-import { Card, EmptyState, PageTitle, Subtext } from "@/src/components/ui/surfaces";
+import { Card, EmptyState, PageTitle, SectionTitle, Subtext } from "@/src/components/ui/surfaces";
 import { SectionRow, TableCard, Td, Th } from "@/src/components/ui/table";
 import { TourGuide } from "@/src/components/ui/tour";
 import { loadExpenseAmounts, loadFundingSourceSettings, loadLineItemBudgets } from "@/src/db/queries";
 import { db } from "@/src/db";
 import { fundingSources } from "@/src/db/schema";
 import { contractContextItems } from "@/src/domain/contract-context";
-import { monthLabel } from "@/src/domain/dates";
+import { formatDateUS, monthLabel, todayIso } from "@/src/domain/dates";
 import { formatMoney, formatPercent, summaryRowLabel } from "@/src/domain/format";
 import { blockingRecords, type GateExpense } from "@/src/domain/gate";
-import { downloadBlockedReason } from "@/src/domain/strings";
+import { downloadBlockedReason, UI } from "@/src/domain/strings";
 import { contractSummary, type SummaryRow } from "@/src/domain/summary";
 import { loadMonthExpenses } from "@/src/modules/expenses/queries";
 import { loadSourceContext } from "@/src/modules/funding-sources/queries";
+import { loadReportingPeriods, type LockEventRow, type ReportingPeriod } from "@/src/modules/packet/queries";
 import { CONTRACT_SUMMARY_TOUR_STEPS } from "@/src/modules/tours/contract-summary-tour";
 import { hasSeenTour } from "@/src/modules/tours/queries";
 import { getSession } from "@/src/services/auth/session";
@@ -59,23 +60,31 @@ export default async function ContractSummaryPage() {
     );
   }
 
-  const [lineItems, amounts, settings, identifiers, monthExpenses, seenContractSummaryTour] =
-    await Promise.all([
-      loadLineItemBudgets(session.orgId, fundingSourceId),
-      loadExpenseAmounts(session.orgId, fundingSourceId, month),
-      loadFundingSourceSettings(session.orgId, fundingSourceId),
-      db
-        .select({
-          contractNumber: fundingSources.contractNumber,
-          basePoNumber: fundingSources.basePoNumber,
-          performancePoNumber: fundingSources.performancePoNumber,
-        })
-        .from(fundingSources)
-        .where(and(eq(fundingSources.id, fundingSourceId), eq(fundingSources.orgId, session.orgId)))
-        .limit(1),
-      loadMonthExpenses(session.orgId, fundingSourceId, month),
-      hasSeenTour(session.userId, "contract_summary"),
-    ]);
+  const [
+    lineItems,
+    amounts,
+    settings,
+    identifiers,
+    monthExpenses,
+    seenContractSummaryTour,
+    reportingPeriods,
+  ] = await Promise.all([
+    loadLineItemBudgets(session.orgId, fundingSourceId),
+    loadExpenseAmounts(session.orgId, fundingSourceId, month),
+    loadFundingSourceSettings(session.orgId, fundingSourceId),
+    db
+      .select({
+        contractNumber: fundingSources.contractNumber,
+        basePoNumber: fundingSources.basePoNumber,
+        performancePoNumber: fundingSources.performancePoNumber,
+      })
+      .from(fundingSources)
+      .where(and(eq(fundingSources.id, fundingSourceId), eq(fundingSources.orgId, session.orgId)))
+      .limit(1),
+    loadMonthExpenses(session.orgId, fundingSourceId, month),
+    hasSeenTour(session.userId, "contract_summary"),
+    loadReportingPeriods(session.orgId, fundingSourceId),
+  ]);
 
   if (lineItems.length === 0) {
     return (
@@ -196,8 +205,114 @@ export default async function ContractSummaryPage() {
         </DownloadButton>
         {refusal && <p className="mt-2.5 text-sm text-danger">{refusal}</p>}
       </div>
+
+      <div className="mt-8">
+        <SectionTitle className="mb-3">{UI.reportingPeriodsTitle}</SectionTitle>
+        {reportingPeriods.length === 0 ? (
+          <p className="text-[15px] text-muted">No reporting periods yet.</p>
+        ) : (
+          // No `minWidth` — three columns with `break-words` cells already fit a phone without
+          // forcing the horizontal scroll `TableCard` offers wider tables (judgment call: the
+          // plan only requires it not overflow, and this is the smaller of the two ways).
+          <TableCard>
+            <thead>
+              <tr>
+                <Th>Month</Th>
+                <Th>Status</Th>
+                <Th>Details</Th>
+              </tr>
+            </thead>
+            <tbody>
+              {reportingPeriods.map((period) => (
+                <ReportingPeriodRows key={period.month} period={period} />
+              ))}
+            </tbody>
+          </TableCard>
+        )}
+      </div>
     </div>
   );
+}
+
+/** A month's status + details row, and — when it was unlocked and locked again — its event
+ *  history beneath, oldest first (Appendix A §4). */
+function ReportingPeriodRows({ period }: { period: ReportingPeriod }) {
+  const lockEvents = period.events.filter((event) => event.isLock);
+  // Once locked, a month can only be locked again after an unlock (the guard refuses a
+  // second lock), so more than one lock event always means an unlock happened in between.
+  const relocked = lockEvents.length > 1;
+  const lastLock = lockEvents.at(-1) ?? null;
+
+  const status = period.lockedAt ? UI.reconciledLabel : period.submittedAt ? UI.statusSubmitted : UI.statusOpen;
+
+  const details = period.lockedAt && lastLock ? (
+    <>
+      {UI.lockedBy(formatDateUS(todayIso(lastLock.createdAt)), lastLock.userDisplay)}{" · "}
+      <a
+        href={`/api/files/${lastLock.id}`}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="text-accent underline"
+      >
+        {UI.viewSignedPacket}
+      </a>
+    </>
+  ) : period.submittedAt ? (
+    UI.submittedOn(formatDateUS(todayIso(period.submittedAt)))
+  ) : (
+    "—"
+  );
+
+  return (
+    <>
+      <tr>
+        <Td>{monthLabel(period.month)}</Td>
+        <Td>{status}</Td>
+        <Td>{details}</Td>
+      </tr>
+      {relocked && (
+        <tr>
+          <td colSpan={3} className="px-3 sm:px-4 py-2 border-b border-line bg-section">
+            <ul className="flex flex-col gap-1 text-sm text-muted">
+              {period.events.map((event, index) => (
+                <EventLine key={event.id} event={event} index={index} events={period.events} />
+              ))}
+            </ul>
+          </td>
+        </tr>
+      )}
+    </>
+  );
+}
+
+function EventLine({
+  event,
+  index,
+  events,
+}: {
+  event: LockEventRow;
+  index: number;
+  events: LockEventRow[];
+}) {
+  const date = formatDateUS(todayIso(event.createdAt));
+  if (event.isLock) {
+    const replaced = events.slice(index + 1).some((later) => later.isLock);
+    return (
+      <li>
+        {UI.lockedBy(date, event.userDisplay)}{" · "}
+        <a
+          href={`/api/files/${event.id}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-accent underline"
+        >
+          {UI.viewSignedPacket}
+        </a>
+        {replaced && ` ${UI.replacedTag}`}
+      </li>
+    );
+  }
+  return <li>{UI.unlockEventLine(date, event.userDisplay, event.reason)}</li>;
 }
 
 function SummaryTableRow({ row, bold = false }: { row: SummaryRow; bold?: boolean }) {

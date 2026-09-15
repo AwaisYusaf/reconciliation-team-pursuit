@@ -34,6 +34,6 @@ export const PACKET_TOUR_STEPS: readonly TourStep[] = [
   {
     target: "packet-submit",
     title: "Mark as submitted",
-    body: "Mark the month as submitted once it's sent. You can still correct it later.",
+    body: "Mark the month as submitted once it's sent. When the signed copy comes back, lock the month so nothing changes by accident.",
   },
 ];

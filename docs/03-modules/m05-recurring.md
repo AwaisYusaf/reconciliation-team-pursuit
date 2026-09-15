@@ -25,6 +25,7 @@ Reads/writes `recurring_items`; creates `expenses` (no documents — R4.5). A re
   - Added-state is unaffected: it is resolved per row on the server from the whole month, so it
     travels with the row and stays correct on any page or filter. Narrowing the *lookup* instead
     would make a filtered row read as not-added, and adding again would duplicate a salary.
+- Locked month (R10.7, D-96): for a row whose source has the selected month locked, `Add to {month}` and `Remove` are disabled and the locked-month message shows beneath them; the server refuses both regardless.
 - Added-then-documented flow: the created expense is documentation-incomplete until proofs are attached — packet gate surfaces it (deliberate).
 
 ## Server surface

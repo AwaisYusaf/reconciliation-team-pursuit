@@ -1,8 +1,8 @@
 # Phase 8 — Locking a reconciled month
 
-Planning document. Not started — no code, no migration yet. Written against
-`implementation/Multi-Grant` at commit `8d4f9d3` (2026-09-15); update file:line references if
-the branch has moved since.
+Built (2026-09-15); not yet deployed — see **Results** below. Planned against
+`implementation/Multi-Grant` at commit `8d4f9d3`; the file:line references in §2 are from that
+commit.
 
 The product ask is reproduced verbatim in **Appendix A**. Read it first; this document is the
 build plan for it, not a restatement.
@@ -213,6 +213,46 @@ behaviour they describe.
   blocked lock; the open-page case in two browser sessions; phone, tablet and desktop widths.
 
 ---
+
+## Results (2026-09-15)
+
+Both phases built. Phase 1 (server) is commit `3ff9971`; Phase 2 (screens) follows it. Open
+questions §7 settled as the defaults, recorded in **D-96**.
+
+**Phase 1.** Migration `0026` reviewed (additive; composite FK matches `month_statuses` and
+`month_documents`; no unrelated snapshot drift) and applied locally. 29 new integration tests
+against the real database (`src/modules/packet/lock.integration.test.ts`,
+`lock-guard.integration.test.ts`), including every row of the §2 table — each refused with the
+exact message and nothing changed (rows, files, audit events, reference counter), and each proven
+load-bearing by disabling its guard and watching the same write succeed — plus the open-page case
+and the race (a concurrent save shown still pending while the lock's transaction holds the row,
+then refused once it commits).
+
+Found and fixed in review, before tests:
+- The guard returned only true/false, so a move out of a locked month could not name the month
+  that refused it; it now returns the locked month.
+- Refreshing the snapshot after a lock could fail after the lock had already committed, answering
+  "could not be saved" for a month that was in fact locked; the failure is now logged instead.
+- `lock.ts` and `documents.ts` imported each other; the guard moved to `month-guard.ts`.
+- `deleteMonthDocument` became unused and was removed.
+
+**Phase 2.** Found and fixed in review:
+- `<fieldset disabled>` around the whole expense form also disabled each attached file's preview
+  button, so a locked expense's receipts could not be opened — against "people can still view
+  everything". The upload fields now sit outside the fieldset and use `UploadField`'s own
+  `disabled`, which blocks add/remove but not preview.
+- A refused unlock showed its error twice (inline and as a toast behind the dialog).
+- Reporting periods dropped the `·` between "Locked {date} by {name}" and "View signed packet".
+
+**Verified:** typecheck, lint and build clean; full suite 894 passed, 20 skipped. The one failing
+file, `packet-trace.integration.test.ts`, is pre-existing and environmental: it needs Poppler's
+`pdftotext -bbox-layout`, and the development machine has Xpdf.
+
+**Not verified:** no live browser pass. The browser tool was unavailable in the building session,
+so the screens (Lock/Unlock dialogs, the Reconciled line, disabled controls with their messages,
+Reporting periods) and their look at phone, tablet and desktop widths are verified by typecheck,
+build and code review only. The open-page case is proven at the server by test, not yet clicked
+through in two browser sessions.
 
 ## 9. Acceptance criteria → where each is proven
 

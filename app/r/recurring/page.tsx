@@ -8,6 +8,7 @@ import { expenseDocuments, expenses, lineItems, paymentSources, recurringItems }
 import { monthLabel, monthShortLabel } from "@/src/domain/dates";
 import { addedState } from "@/src/domain/recurring-rules";
 import { loadSourceContext } from "@/src/modules/funding-sources/queries";
+import { loadLockedMonths } from "@/src/modules/packet/queries";
 import { RECURRING_TOUR_STEPS } from "@/src/modules/tours/recurring-tour";
 import { hasSeenTour } from "@/src/modules/tours/queries";
 import { getSession } from "@/src/services/auth/session";
@@ -33,7 +34,7 @@ export default async function RecurringPage() {
     fundingSources.filter((source) => source.archivedAt !== null).map((source) => source.id),
   );
 
-  const [items, options, sources, monthRows] = await Promise.all([
+  const [items, options, sources, monthRows, lockedMonthKeys] = await Promise.all([
     db
       .select({
         id: recurringItems.id,
@@ -94,6 +95,7 @@ export default async function RecurringPage() {
         ),
       )
       .groupBy(expenses.id),
+    loadLockedMonths(session.orgId, null),
   ]);
 
   // The picker offers only line items a template can be saved on — an archived source takes no
@@ -130,6 +132,7 @@ export default async function RecurringPage() {
       lineItemId: item.lineItemId,
       lineItemName: item.lineItemName,
       fundingSourceName: sourceNameById.get(item.fundingSourceId) ?? "",
+      fundingSourceId: item.fundingSourceId,
       defaultDescription: item.defaultDescription ?? "",
       defaultNarrative: item.defaultNarrative ?? "",
       // A retired label is not offered again; the item falls back to the org default (R5.2).
@@ -160,6 +163,7 @@ export default async function RecurringPage() {
         monthLabel={monthLabel(month)}
         monthShort={monthShortLabel(month)}
         multiSource={multiSource}
+        lockedMonths={[...lockedMonthKeys]}
       />
     </div>
   );

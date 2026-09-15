@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useCallback, useTransition } from "react";
+import { useCallback, useMemo, useTransition } from "react";
 
 import { Button } from "@/src/components/ui/button";
 import { ConfirmButton } from "@/src/components/ui/confirm-button";
@@ -18,6 +18,7 @@ import { EmptyState } from "@/src/components/ui/surfaces";
 import { TableCard, Td, Th } from "@/src/components/ui/table";
 import { reportResult } from "@/src/components/ui/toast";
 import { formatMoney } from "@/src/domain/format";
+import { UI } from "@/src/domain/strings";
 import {
   permanentlyDeleteExpenseAction,
   restoreExpenseAction,
@@ -32,8 +33,12 @@ export type TrashRow = {
   name: string;
   lineItemName: string;
   fundingSourceName: string;
+  /** This row's own source — the lock key `"{fundingSourceId}:{monthKey}"` (D-96). */
+  fundingSourceId: string;
   /** Already formatted for display (`monthLabel`). */
   month: string;
+  /** The raw `"YYYY-MM"` key, for the lock lookup — `month` above is display-only. */
+  monthKey: string;
   amountCents: number;
   /** Already formatted for display (`formatDateUS`). */
   deletedAt: string;
@@ -46,6 +51,7 @@ export function TrashTable({
   fundingSources,
   selectedSourceId,
   sourceFilterOffered,
+  lockedMonths,
 }: {
   rows: TrashRow[];
   /** True when the org has more than one funding source (active or archived). */
@@ -56,10 +62,13 @@ export function TrashTable({
   selectedSourceId: string | null;
   /** True when the header is on "All" — the only time the source filter is offered. */
   sourceFilterOffered: boolean;
+  /** Every locked `"{fundingSourceId}:{month}"` in the org (Appendix A §2, D-96). */
+  lockedMonths: string[];
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const { open, viewer } = useDocumentViewer();
+  const lockedMonthKeys = useMemo(() => new Set(lockedMonths), [lockedMonths]);
 
   const openDocuments = useCallback(
     (documents: RowDocument[], index: number) => {
@@ -133,7 +142,9 @@ export function TrashTable({
         </tr>
       </thead>
       <tbody>
-        {rows.map((row) => (
+        {rows.map((row) => {
+          const rowLocked = lockedMonthKeys.has(`${row.fundingSourceId}:${row.monthKey}`);
+          return (
           <tr key={row.id}>
             <Td>{row.name}</Td>
             <Td>{row.lineItemName}</Td>
@@ -165,38 +176,44 @@ export function TrashTable({
             </Td>
             <Td className="text-sub">{row.deletedAt}</Td>
             <Td align="right" stickyEnd className="whitespace-nowrap">
-              <div className="flex gap-4 justify-end">
-                <Button
-                  variant="quiet"
-                  disabled={pending}
-                  onClick={() => run(() => restoreExpenseAction(row.id), `${row.name} restored`)}
-                >
-                  Restore
-                </Button>
-                <ConfirmButton
-                  variant="quiet"
-                  disabled={pending}
-                  title="Delete this expense permanently?"
-                  confirmLabel="Delete permanently"
-                  body={
-                    <>
-                      <strong>{row.name}</strong> — {formatMoney(row.amountCents)}. Its attached
-                      files are removed too. This cannot be undone.
-                    </>
-                  }
-                  onConfirm={() =>
-                    run(
-                      () => permanentlyDeleteExpenseAction(row.id),
-                      `${row.name} deleted permanently`,
-                    )
-                  }
-                >
-                  Delete permanently
-                </ConfirmButton>
+              <div className="flex flex-col items-end gap-1">
+                <div className="flex gap-4 justify-end">
+                  <Button
+                    variant="quiet"
+                    disabled={pending || rowLocked}
+                    onClick={() => run(() => restoreExpenseAction(row.id), `${row.name} restored`)}
+                  >
+                    Restore
+                  </Button>
+                  <ConfirmButton
+                    variant="quiet"
+                    disabled={pending || rowLocked}
+                    title="Delete this expense permanently?"
+                    confirmLabel="Delete permanently"
+                    body={
+                      <>
+                        <strong>{row.name}</strong> — {formatMoney(row.amountCents)}. Its attached
+                        files are removed too. This cannot be undone.
+                      </>
+                    }
+                    onConfirm={() =>
+                      run(
+                        () => permanentlyDeleteExpenseAction(row.id),
+                        `${row.name} deleted permanently`,
+                      )
+                    }
+                  >
+                    Delete permanently
+                  </ConfirmButton>
+                </div>
+                {rowLocked && (
+                  <span className="text-xs text-sub">{UI.monthLocked(row.month)}</span>
+                )}
               </div>
             </Td>
           </tr>
-        ))}
+          );
+        })}
       </tbody>
       </TableCard>
       {viewer}

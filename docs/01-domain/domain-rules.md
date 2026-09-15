@@ -129,6 +129,12 @@ Let `opening` = line item's opening previously-billed balance (setup figure), `e
 | lock-not-pdf (UI) | `Upload the signed packet as a PDF.` (R10.7) |
 | month-already-locked (UI) | `This month is already locked.` (R10.7) |
 | month-not-locked (UI) | `This month is not locked.` (R10.7) |
+| lock-button / unlock-button (UI) | `Lock month` · `Unlock` (R10.7) |
+| lock-dialog (UI) | `Lock {Month YYYY}?` — `Upload the signed packet from the City. Once locked, this month's expenses can't be changed until someone unlocks it.` (R10.7) |
+| unlock-dialog (UI) | `Unlock {Month YYYY}?` — `Its expenses can be changed again. The signed copy stays saved. Lock the month again when the new signed copy arrives.` (R10.7) |
+| reconciled-line (UI) | `Reconciled · Locked on {date} by {name} · View signed packet · Unlock` (R10.7) |
+| lock-history (UI) | `Locked {date} by {name} · View signed packet`, with `Replaced on {date}` (Packet) or `(replaced)` (Reporting periods) for an earlier copy; `Unlocked {date} by {name} — "{reason}"` (R10.7) |
+| reporting-periods (UI) | `Reporting periods` · statuses `Open` / `Submitted` / `Reconciled` · `Submitted {date}` (R10.7) |
 
 ## 13. Limits (enforced at presign/save; friendly errors)
 
