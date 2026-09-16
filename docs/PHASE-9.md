@@ -1,6 +1,6 @@
 # Phase 9 — AB Solutions staff dashboard
 
-Status: **Phases 1 and 2 committed (`1f139ae`, `dd96b6f`); Phase 3 built, not committed; Phases 4-5 not started** (2026-09-16). The product spec is Appendix A, copied word for word.
+Status: **Phases 1-3 committed (`1f139ae`, `dd96b6f`, `e5ee969`); Phase 4 built, not committed; Phase 5 not started** (2026-09-16). The product spec is Appendix A, copied word for word.
 Each build phase in §8 is written to run in a fresh chat: it names its own sources and its own checks.
 
 ---
@@ -451,6 +451,92 @@ production data.
 - Run the app (the `run` skill) with a seeded staff account, a customer admin and two orgs. Screenshot at 1280px and 768px.
 - In the browser: filters and cards narrow the table; each dialog saves and adds a History line; errors show inside the dialog.
 - A customer admin visiting `/a` and `/a/orgs/<id>` lands on `/r`; a staff user visiting `/r` lands on `/a`.
+
+**Results — Phase 4 (2026-09-16, branch `implementation/admin-dashboard`, not committed)**
+
+Built as specified: `app/a/layout.tsx` (staff shell), `app/a/page.tsx` + `org-directory.tsx`,
+`app/a/badges.tsx`, `app/a/orgs/[id]/page.tsx` + `account-actions.tsx`, the `m10` spec with its
+Claude Design prompt, the README module row, and eighteen new §12 strings. No migration, no change
+to the Phase 2 actions (one stale comment fixed, no code), no new dependency, no tour on `/a`.
+`summarize()` and `filterOrgs()` do all the counting and filtering; the only logic added to
+`directory.ts` is the one-line pure `toggleFilterValue`.
+
+| Gate | Result |
+|---|---|
+| `npm run typecheck` | clean |
+| `npm run lint` | clean |
+| `npm run build` | succeeds; `/a` and `/a/orgs/[id]` both compile as dynamic (`ƒ`) routes |
+| `npm test` | 94 files, **1077 tests, all passing, zero skipped, zero failing** — twice in a row. Up from the 1068 baseline: +3 `toggleFilterValue` tests and +6 string/boundary tests, so this phase added 9 tests and zero regressions |
+| Fail-before: `toggleFilterValue` | `current === next ? null : next` forced to `return next` → 2 tests fail (clear-on-second-click, the falsy-value identity case) → restored → pass |
+| Fail-before: American-spelling guard | one `UI` entry changed to "organisations" → the guard test fails → restored → pass |
+
+**Browser verification.** Chrome driven over the DevTools Protocol against `next dev` (the
+Playwright MCP server was not connected and this repo has no Playwright; a small CDP driver in a
+scratchpad needed no dependency). A staff account was seeded with `db:create-staff` and a throwaway
+customer org signed up through the real signup form; both were deleted afterwards, leaving the local
+database at the 6 organizations it started with.
+
+Verified at **1280px**, and re-checked at **768px** with zero page-level horizontal overflow on both
+screens (the table itself scrolls inside `TableCard`, as §3.11 intends):
+
+- The directory renders every organization, newest signup first, with the plan, status, badges,
+  user count and last sign-in. The "N organizations" line equals the rendered row count.
+- **All eight summary cards**, one at a time: each filters the table to exactly its own count and
+  its own count only, sets `aria-pressed`, leaves every card's count unchanged while filtered (§7
+  Q10), and clears on a second click. The four zero-count cards correctly show the empty state.
+- Search narrows to matching names only, is case-insensitive, leaves the card counts alone, and
+  ANDs with a card filter. A non-matching term shows "No organizations match these filters."
+- Both `Select`s filter and stay in sync with the cards' pressed state.
+- A row's organization link opens `/a/orgs/<id>`.
+- The org page renders account details ("Setup finished: Not finished" for an org that never
+  onboarded), the users table with "Not recorded yet", and every Usage line — funding sources,
+  expenses with the month label, last expense, the `0 B of 5 GB` storage bar, months
+  submitted/locked, and packets downloaded with its §7 Q2 helper line.
+- **All four dialogs saved and each added exactly one History line** carrying the actor, the
+  timestamp and the note/reason, with the "Organization signed up" line still last. Each write was
+  confirmed against the database, not just the screen. Change plan → `reconciliation_ai`/`past_due`;
+  complimentary with a past end date → `complimentary_until = 2020-01-31`, rendering as
+  "Complimentary (ended 31 Jan 2020)" in the warning tone; suspend → `suspended_at` set and the
+  Suspend button replaced by Reinstate; reinstate → `suspended_at` cleared.
+- An **empty and a whitespace-only** suspend reason both keep the confirm button disabled.
+- An **error renders inside the dialog**: with the Suspend dialog open, the org was suspended out
+  of band (the two-staff race of §3.10) and confirming showed "This organization is already
+  suspended." inside the panel.
+- A non-uuid id and an unknown uuid both render the not-found page, and unauthenticated requests to
+  `/a`, `/a/orgs/<uuid>` and `/a/orgs/` with a SQL-injection, path-traversal or non-uuid id all
+  return 307 to `/login` — the gate fires before any database read, so none of them reaches a 500.
+- **Guards, both directions:** a signed-in customer admin at `/a` and at `/a/orgs/<id>` lands on
+  `/r`; a staff member at `/r`, `/r/expenses` and `/r/settings` lands on `/a`; Log out returns to
+  `/login` and `/a` is then unreachable.
+
+Two bugs were caught in review before testing and fixed in this phase:
+
+1. **Stale dialog state after a save.** `ChangePlan` and `ComplimentaryAccess` reset their fields on
+   *close*, but `router.refresh()` lands the new `org` prop asynchronously, so the reset put the
+   pre-save values back and reopening the dialog showed the old plan. Both now seed their fields on
+   *open*, which reads whatever props the latest render carries. The browser check asserts the
+   reopened dialog shows the saved values.
+2. An unused optional `today` prop on `AccountActions`, with a comment defending it — both deleted.
+
+One visual fix after looking at the screenshots: the summary cards were `flex-1` with no maximum, so
+the two-card rows stretched to the full content width while the four-card status row stayed narrow
+and the three rows didn't line up. Capped at `max-w-[260px]`, matching Appendix A §3's "small cards".
+
+**Deviations from §6, both deliberate:** (1) §6 says "clicking a row goes to the org page"; only the
+organization name is the click target, as a real `<Link>` — the same sentence asks for it to be a
+real link so it works from the keyboard, and a row-level `onClick` wrapping a link is the pattern
+that breaks that. (2) Generic control words ("Save", "Cancel", column headers) are literals rather
+than `strings.ts` entries, matching the existing convention in `expenses-table.tsx`; everything
+Appendix A pins verbatim, and everything shared by more than one screen, goes through `UI`.
+
+**Not verified:** no test renders these React components — this repo has `environment: "node"` and no
+React testing library, and one was deliberately not added, so the screens are proven in a browser
+rather than in the suite. The org page's Usage numbers were confirmed against their own SQL, not yet
+side by side against the same organization's own screens (that is Phase 5's check), and they were
+only exercised on a brand-new org where every count is 0 plus the existing seeded orgs — not against
+an organization with real storage, packets or locked months. Nothing was run against production data,
+no accessibility audit beyond `aria-pressed`/`aria-label`/labelled controls, and no check below
+768px (desktop and tablet only, per the ticket).
 
 ### Phase 5 — Verification and docs
 

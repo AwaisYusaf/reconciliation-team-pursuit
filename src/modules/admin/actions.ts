@@ -5,7 +5,8 @@
  * complimentary access on or off, suspend and reinstate. Every action locks the organisation
  * row first (`SELECT … FOR UPDATE`, D-98 decision 10) so two staff acting on one org at once
  * give one success and one refusal, then writes an `org_account_events` row in the same
- * transaction — no screens yet, so nothing here calls `revalidatePath`.
+ * transaction — the client calls `router.refresh()` after a success (Phase 4), which is why
+ * nothing here calls `revalidatePath`.
  */
 import { eq, inArray } from "drizzle-orm";
 

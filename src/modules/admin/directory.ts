@@ -93,6 +93,11 @@ export function summarize<T extends DirectoryOrg>(rows: readonly T[], today: Iso
   };
 }
 
+/** A summary card toggles its own filter: clicking the active one clears it (Phase 9 §6). */
+export function toggleFilterValue<T>(current: T | null, next: T): T | null {
+  return current === next ? null : next;
+}
+
 /** The `loadOrgHistory` row shape this needs — structurally typed, not imported from `queries.ts`. */
 export type AccountEvent = {
   action: "plan_changed" | "complimentary_granted" | "complimentary_changed" | "complimentary_removed" | "suspended" | "reinstated";

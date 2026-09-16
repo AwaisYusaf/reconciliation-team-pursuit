@@ -199,6 +199,43 @@ export const UI = {
   historyComplimentaryRemoved: "removed complimentary access",
   historySuspended: "suspended access",
   historyReinstated: "reinstated access",
+  /** `/a` last sign-in / org-page fields with no value yet (Phase 9 §5, §6). */
+  notRecordedYet: "Not recorded yet",
+  /** Account details' "Setup finished" field, unset (Phase 9 §6, Appendix A §4). */
+  setupNotFinished: "Not finished",
+  /** Badge row (Phase 9 §6, D-98): complimentary with no end date. */
+  complimentaryLabel: "Complimentary",
+  /** Badge row: complimentary with a future (or today's) end date (Appendix A §6). */
+  complimentaryUntil: (date: string) => `Complimentary until ${date}`,
+  /** Badge row: complimentary whose end date has passed — warning tone (Appendix A §6, §7 Q5). */
+  complimentaryEnded: (date: string) => `Complimentary (ended ${date})`,
+  /** Badge row: an org with `suspended_at` set (Phase 9 §6). */
+  suspendedLabel: "Suspended",
+  /** Complimentary access dialog checkbox (Appendix A §6, verbatim). */
+  complimentaryCheckboxLabel: "Give this organization free access",
+  /** Actions row / modal title, reused by both the trigger button and the `Modal` (Appendix A §5). */
+  changePlanTitle: "Change plan",
+  /** Actions row / modal title (Appendix A §6). */
+  complimentaryAccessTitle: "Complimentary access",
+  /** Org page usage card (Phase 9 §6, Appendix A §4): "2 active, 1 archived". */
+  usageFundingSources: (active: number, archived: number) => `${active} active, ${archived} archived`,
+  /** Org page usage card: "412 total · 38 in September 2026". */
+  usageExpenses: (total: number, monthCount: number, currentMonthLabel: string) =>
+    `${total} total · ${monthCount} in ${currentMonthLabel}`,
+  /** Org page usage card: "212 MB of 5 GB", and its storage-bar `aria-label`. */
+  usageStorage: (used: string, limit: string) => `${used} of ${limit}`,
+  /** Org page usage card — no expense recorded yet. */
+  noneYet: "None yet",
+  /** Org page usage card label (Phase 9 §7 Q2). */
+  packetsDownloadedLabel: "Packets downloaded",
+  /** Org page usage card helper, explaining the §7 Q2 counting rule. */
+  packetsDownloadedNote: "Counts each packet the first time it was downloaded.",
+  /** Directory table's row count line, above the table (Phase 9 §7 Q10). */
+  organizationsCount: (n: number) => `${n} organization${n === 1 ? "" : "s"}`,
+  /** Directory table empty state (Phase 9 §6). */
+  noOrganizationsMatch: "No organizations match these filters.",
+  /** Org page users table empty state. */
+  noUsersYet: "No users yet.",
 } as const;
 
 /** Longest unlock reason — long enough for a real explanation, short enough that nobody pastes a

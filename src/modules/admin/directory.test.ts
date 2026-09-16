@@ -5,6 +5,7 @@ import {
   describeAccountEvent,
   filterOrgs,
   summarize,
+  toggleFilterValue,
   type AccountEvent,
   type DirectoryOrg,
 } from "./directory";
@@ -261,5 +262,28 @@ describe("describeAccountEvent (Phase 9 §5)", () => {
   it("actorEmail null (deleted staff account) renders the actor as 'Unknown'", () => {
     const e = event({ action: "suspended", actorName: "Someone", actorEmail: null });
     expect(describeAccountEvent(e)).toBe("Unknown suspended access");
+  });
+});
+
+describe("toggleFilterValue (Phase 9 §6)", () => {
+  it("sets an unset filter", () => {
+    expect(toggleFilterValue(null, "active")).toBe("active");
+  });
+
+  it("clears the active filter when clicked again", () => {
+    expect(toggleFilterValue("active", "active")).toBeNull();
+  });
+
+  it("switches from one value to another", () => {
+    expect(toggleFilterValue("active", "trial")).toBe("trial");
+  });
+
+  it("a falsy-but-not-null current value is still distinguished from null (identity, not truthiness)", () => {
+    // No real caller passes a falsy T today (plan/status/badge keys are all non-empty strings),
+    // but the function is generic and pure, so its `===` semantics are worth pinning directly:
+    // setting 0 must not be mistaken for "unset", and re-clicking it must still clear to null.
+    expect(toggleFilterValue<number>(null, 0)).toBe(0);
+    expect(toggleFilterValue<number>(0, 0)).toBeNull();
+    expect(toggleFilterValue<number>(0, 1)).toBe(1);
   });
 });

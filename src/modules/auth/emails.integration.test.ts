@@ -39,7 +39,7 @@ vi.mock("next/cache", () => ({ revalidatePath: () => {} }));
 
 config({ path: ".env.local", quiet: true });
 
-import { eq } from "drizzle-orm";
+import { eq, like } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 const hasDatabase = Boolean(process.env.DATABASE_URL);
@@ -86,6 +86,12 @@ describe.skipIf(!hasDatabase)("staff/customer email uniqueness (integration)", a
   afterAll(async () => {
     for (const id of cleanupOrgIds) await db.delete(organizations).where(eq(organizations.id, id));
     if (existingStaffId) await db.delete(staffUsers).where(eq(staffUsers.id, existingStaffId));
+
+    // The signup tests below assert that no org was created. When the guard they cover is
+    // deliberately neutralised — a fail-before proof — signup really does create one, and
+    // without this the "Should Not Exist" orgs pile up in the developer's database and then
+    // show on the /a dashboard. Only ever matches this suite's own throwaway names.
+    await db.delete(organizations).where(like(organizations.name, "Should Not Exist%"));
   });
 
   beforeEach(async () => {

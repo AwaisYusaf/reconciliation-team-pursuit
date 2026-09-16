@@ -21,7 +21,7 @@ Docs-first, AI-native project. **These files are the source of truth.** Code ser
 | `02-outputs/summary-excel-spec.md` | Excel contract summary format spec |
 | `02-outputs/packet-pdf-spec.md` | Merged month-end packet PDF: canonical order, rasterization, footer |
 | `03-modules/design-language.md` | Shared visual language + the paste-first Claude Design preamble |
-| `03-modules/m00…m09-*.md` | Per-module spec + self-contained Claude Design prompt |
+| `03-modules/m00…m10-*.md` | Per-module spec + self-contained Claude Design prompt |
 | `03-modules/design-review.md` | Fetched-design analysis: dc format, per-screen verdicts, adopted patterns, refetch instructions |
 | `04-engineering/architecture.md` | Stack, layers, folder conventions, generation engine, ops, testing |
 | `04-engineering/decisions.md` | Decision log — settled and open |
@@ -65,6 +65,7 @@ Each `03-modules/m*.md` is one unit of work that flows through five gates:
 | m07 Contract summary | ✅ | ✅ | ✅ | ✅ | ✅ |
 | m08 Line items | ✅ | ✅ | ✅ | ✅ | ✅ |
 | m09 Settings | ✅ | ✅ | ✅ | ✅ | ✅ |
+| m10 Admin dashboard | ✅ | ✅ | — | ✅ | ✅ |
 
 Output generators (cover sheets, Excel, packet) are backend work items specced in `02-outputs/` and wired during m04/m06/m07.
 

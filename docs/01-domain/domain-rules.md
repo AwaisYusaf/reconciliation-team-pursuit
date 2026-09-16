@@ -152,6 +152,21 @@ Let `opening` = line item's opening previously-billed balance (setup figure), `e
 | history-complimentary-changed (UI) | `{actor} changed complimentary access to end {date}`, or `… to no end date` (Phase 9 §5) |
 | history-complimentary-removed (UI) | `{actor} removed complimentary access` (Phase 9 §5) |
 | history-suspended / history-reinstated (UI) | `{actor} suspended access` · `{actor} reinstated access` (Phase 9 §5) |
+| not-recorded-yet (UI) | `Not recorded yet` — an org page field with no value yet (Phase 9 §5, §6) |
+| setup-not-finished (UI) | `Not finished` — Account details' "Setup finished" field, unset (Phase 9 §6, Appendix A §4) |
+| complimentary-badge (UI) | `Complimentary` (no end date) · `Complimentary until {date}` · `Complimentary (ended {date})` in the warning tone (Phase 9 §6, Appendix A §6, §7 Q5) |
+| suspended-badge (UI) | `Suspended` (Phase 9 §6) |
+| complimentary-checkbox (UI) | `Give this organization free access` (Phase 9 Appendix A §6, verbatim) |
+| change-plan-title (UI) | `Change plan` — action button and dialog title (Phase 9 Appendix A §5) |
+| complimentary-access-title (UI) | `Complimentary access` — action button and dialog title (Phase 9 Appendix A §6) |
+| usage-funding-sources (UI) | `{active} active, {archived} archived` (Phase 9 §6, Appendix A §4) |
+| usage-expenses (UI) | `{total} total · {monthCount} in {Month YYYY}` (Phase 9 §6, Appendix A §4, §7 Q3) |
+| usage-storage (UI) | `{used} of {limit}` — e.g. `212 MB of 5 GB` (Phase 9 §6, §7 Q1) |
+| none-yet (UI) | `None yet` — org page's "Last expense added" with no expenses (Phase 9 §6) |
+| packets-downloaded (UI) | `Packets downloaded` — label, with helper `Counts each packet the first time it was downloaded.` (Phase 9 §6, §7 Q2) |
+| organizations-count (UI) | `{n} organization` / `{n} organizations` — directory table's row count line (Phase 9 §7 Q10) |
+| no-organizations-match (UI) | `No organizations match these filters.` (Phase 9 §6) |
+| no-users-yet (UI) | `No users yet.` — org page's users table, empty (Phase 9 §6) |
 
 ## 13. Limits (enforced at presign/save; friendly errors)
 
