@@ -9,6 +9,10 @@
  * session row untouched, so an attacker who already has a cookie keeps their access and the
  * "reset" achieves nothing.
  *
+ * Falls back to `staff_users` when the email isn't a customer account (Phase 9, D-98), so a
+ * locked-out AB Solutions staff member has the same recovery path — the message otherwise
+ * reads identically either way.
+ *
  *   npm run db:reset-password -- --email team@example.org
  *   npm run db:reset-password -- --email team@example.org --password 'a chosen one'
  *
@@ -59,21 +63,46 @@ async function main() {
       .where(sql`lower(${schema.users.email}) = lower(${email})`)
       .limit(1);
 
-    if (!user) throw new Error(`No account found for ${email}`);
+    if (user) {
+      await db
+        .update(schema.users)
+        .set({ passwordHash: await hashPassword(password) })
+        .where(eq(schema.users.id, user.id));
+
+      // The half that makes this a reset rather than a password change: anyone already
+      // holding a session for this account loses it, including whoever prompted the reset.
+      const revoked = await db
+        .delete(schema.sessions)
+        .where(eq(schema.sessions.userId, user.id))
+        .returning({ id: schema.sessions.id });
+
+      console.log(`Password reset for ${user.email}.`);
+      console.log(`Signed out ${revoked.length} active session${revoked.length === 1 ? "" : "s"}.`);
+      if (!argument("password")) {
+        console.log(`\nNew password (shown once — hand it over out of band):\n\n  ${password}\n`);
+      }
+      return;
+    }
+
+    const [staff] = await db
+      .select({ id: schema.staffUsers.id, email: schema.staffUsers.email })
+      .from(schema.staffUsers)
+      .where(sql`lower(${schema.staffUsers.email}) = lower(${email})`)
+      .limit(1);
+
+    if (!staff) throw new Error(`No account found for ${email}`);
 
     await db
-      .update(schema.users)
+      .update(schema.staffUsers)
       .set({ passwordHash: await hashPassword(password) })
-      .where(eq(schema.users.id, user.id));
+      .where(eq(schema.staffUsers.id, staff.id));
 
-    // The half that makes this a reset rather than a password change: anyone already holding
-    // a session for this account loses it, including whoever prompted the reset.
     const revoked = await db
-      .delete(schema.sessions)
-      .where(eq(schema.sessions.userId, user.id))
-      .returning({ id: schema.sessions.id });
+      .delete(schema.staffSessions)
+      .where(eq(schema.staffSessions.staffUserId, staff.id))
+      .returning({ id: schema.staffSessions.id });
 
-    console.log(`Password reset for ${user.email}.`);
+    console.log(`Password reset for ${staff.email}.`);
     console.log(`Signed out ${revoked.length} active session${revoked.length === 1 ? "" : "s"}.`);
     if (!argument("password")) {
       console.log(`\nNew password (shown once — hand it over out of band):\n\n  ${password}\n`);

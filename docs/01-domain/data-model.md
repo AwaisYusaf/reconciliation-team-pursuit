@@ -18,6 +18,11 @@ Postgres, single database, org-scoped rows (single-tenant-per-org from day one; 
 | active_funding_source_id | uuid FK null | Last selected funding source (per-org UI persistence, same model as `active_month`, D-93 2.5). `NULL` = "All". Plain single-column FK (not composite — `SET NULL` on a composite key would null `organizations.id` too); app code re-validates it belongs to the org whenever it is read |
 | onboarded_at | timestamptz null | Null → login redirects into onboarding (m00) |
 | welcome_dismissed_at | timestamptz null | First-run banner dismissal |
+| plan | org_plan enum | `reconciliation` \| `reconciliation_ai`. Hand-set until Stripe is connected (Phase 9, D-98) |
+| subscription_status | subscription_status enum | `trial` \| `active` \| `past_due` \| `cancelled` |
+| complimentary | boolean | Free access, independent of `subscription_status` |
+| complimentary_until | date null | Null → no end. A past date is allowed and shows as ended |
+| suspended_at | timestamptz null | Set → every session for this org is refused and its users can't sign in. Enforced from Phase 9 part 2 (`resolveSession` filter); nothing reads or writes it after Phase 1 alone |
 
 ### users
 Multi-user per org (D-85). Org creation provisions one `admin`; admins create `manager` accounts. User management (add user, reset password) is admin-only, enforced server-side in the action.
@@ -29,6 +34,7 @@ Multi-user per org (D-85). Org creation provisions one `admin`; admins create `m
 | email | citext unique | Login identity |
 | password_hash | text | argon2id; password minimum 12 chars |
 | role | user_role enum | `admin` \| `manager`. No column default — a forgotten role is a type error, not a silent admin (D-85) |
+| last_sign_in_at | timestamptz null | Written from ship date on (Phase 9); null on every account that predates it |
 
 ### sessions (custom auth — D-06, architecture §Auth)
 | Field | Type | Notes |
@@ -38,6 +44,34 @@ Multi-user per org (D-85). Org creation provisions one `admin`; admins create `m
 | expires_at | timestamptz | 30-day sliding; renewed when < 15 days remain |
 
 Logout deletes the row; password change deletes all the user's other sessions (revocation is row deletion).
+
+### staff_users (Phase 9, D-98)
+AB Solutions staff accounts, separate from `users` — they don't belong to any organisation and can't resolve through the customer session path. No sign-up; created by the developer (`db:create-staff`).
+| Field | Type | Notes |
+|---|---|---|
+| id | uuid PK | |
+| email | citext unique | Login identity, unique across both `users` and `staff_users` (`emailInUse`) |
+| name | text | |
+| password_hash | text | argon2id, same policy as `users` |
+
+### staff_sessions (Phase 9, D-98)
+The staff equivalent of `sessions` — same token, TTL and sliding-renewal rules. `getStaffSession()` looks here; `getSession()` never does.
+| Field | Type | Notes |
+|---|---|---|
+| id | text PK | `SHA-256(token)` hex |
+| staff_user_id | uuid FK | cascade delete |
+| expires_at | timestamptz | 30-day sliding; renewed when < 15 days remain |
+
+### org_account_events (Phase 9, D-98)
+History of every account change AB Solutions staff make on an organisation's plan, status, complimentary access or suspension. This table is created in Phase 1; nothing writes to it until the account actions ship in Phase 2.
+| Field | Type | Notes |
+|---|---|---|
+| id | uuid PK | |
+| org_id | uuid FK | cascade delete |
+| actor_staff_id | uuid FK null | Set null when the acting staff account is removed — shown as "Unknown" |
+| action | org_account_event_action enum | `plan_changed` \| `complimentary_granted` \| `complimentary_changed` \| `complimentary_removed` \| `suspended` \| `reinstated` |
+| before / after | jsonb | `OrgAccountSnapshot` — `{ plan, status, complimentary, complimentaryUntil, suspended }` |
+| note | text null | Trimmed; the suspend reason is required, the rest optional |
 
 ### contract_settings (1:1 organizations) — **deprecated (Phase 6, D-93)**
 Superseded by `funding_sources`: contract details now live on each funding source. Kept in the database, no longer read or written, so the migration stays additive and reversible. A later phase drops this table once Phase 6 has run in production.
@@ -316,5 +350,5 @@ Deleting an expense/document deletes S3 objects inline best-effort; a nightly sw
 - Unique `(org_id, lower(name))` on vendor_defaults; unique `(funding_source_id, lower(name))` on line_items (two sources can each have "Salary", D-93 2.2); unique `(org_id, lower(label))` on payment_sources and supporting_doc_types; unique `lower(email)` on users; unique `(org_id, lower(name))` on funding_sources.
 - Composite FKs (D-93 2.2): every grant-scoped table's `(funding_source_id, org_id) → funding_sources(id, org_id)`, and `expenses(line_item_id, funding_source_id) → line_items(id, funding_source_id)` — cross-source and cross-org rows are unrepresentable at the database level. `ON DELETE NO ACTION` (not `RESTRICT`) so org deletion cascades in one statement.
 - `generated_artifacts` live-cache uniqueness coalesces the nullable `line_item_id` (SQL NULLs are distinct in unique indexes, which would otherwise allow duplicate packet/summary cache rows).
-- Indexes for hot paths (declared in the Drizzle schema): expenses `(org_id, funding_source_id, month)`; expense_documents `(expense_id, kind, sort_order)`; month_documents `(org_id, funding_source_id, month, category, sort_order)`; month_lock_events `(org_id, funding_source_id, month, created_at)`; generated_artifacts `(org_id, funding_source_id, month, type, line_item_id)`; sessions `(user_id)`, `(expires_at)`.
+- Indexes for hot paths (declared in the Drizzle schema): expenses `(org_id, funding_source_id, month)`; expense_documents `(expense_id, kind, sort_order)`; month_documents `(org_id, funding_source_id, month, category, sort_order)`; month_lock_events `(org_id, funding_source_id, month, created_at)`; generated_artifacts `(org_id, funding_source_id, month, type, line_item_id)`; sessions `(user_id)`, `(expires_at)`; staff_sessions `(staff_user_id)`, `(expires_at)`; org_account_events `(org_id, created_at)`.
 - No denormalized totals — all figures derive at read time through the calculation service (R10.2).

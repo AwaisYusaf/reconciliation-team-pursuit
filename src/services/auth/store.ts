@@ -10,7 +10,7 @@ import "server-only";
 import { and, eq, lt, ne } from "drizzle-orm";
 
 import { db } from "@/src/db";
-import { organizations, sessions, users } from "@/src/db/schema";
+import { organizations, sessions, staffSessions, staffUsers, users } from "@/src/db/schema";
 import type { UserRole } from "@/src/db/schema";
 
 import {
@@ -39,6 +39,18 @@ export type SessionContext = {
 export type ResolvedSession = {
   context: SessionContext;
   /** True when the sliding window fired, so the caller can re-issue the cookie. */
+  renewed: boolean;
+};
+
+/** AB Solutions staff — no org, no role (Phase 9, D-98). */
+export type StaffSessionContext = {
+  staffId: string;
+  email: string;
+  name: string;
+};
+
+export type ResolvedStaffSession = {
+  context: StaffSessionContext;
   renewed: boolean;
 };
 
@@ -120,9 +132,70 @@ export async function resolveSession(
   };
 }
 
-/** Delete one session (sign out). */
+/** Create a staff session row and return the raw token for the cookie. */
+export async function createStaffSession(staffId: string, now: Date = new Date()): Promise<string> {
+  const token = generateSessionToken();
+  await db.insert(staffSessions).values({
+    id: hashSessionToken(token),
+    staffUserId: staffId,
+    expiresAt: sessionExpiry(now),
+  });
+  return token;
+}
+
+/**
+ * Look up a staff session by its cookie token. Same expiry / max-age / sliding-renewal rules
+ * as `resolveSession`, joined `staff_sessions` → `staff_users` only — a customer token can
+ * never resolve here (Phase 9, D-98).
+ */
+export async function resolveStaffSession(
+  token: string,
+  now: Date = new Date(),
+): Promise<ResolvedStaffSession | null> {
+  const tokenHash = hashSessionToken(token);
+
+  const rows = await db
+    .select({
+      expiresAt: staffSessions.expiresAt,
+      createdAt: staffSessions.createdAt,
+      staffId: staffUsers.id,
+      email: staffUsers.email,
+      name: staffUsers.name,
+    })
+    .from(staffSessions)
+    .innerJoin(staffUsers, eq(staffUsers.id, staffSessions.staffUserId))
+    .where(eq(staffSessions.id, tokenHash))
+    .limit(1);
+
+  const row = rows[0];
+  if (!row) return null;
+
+  if (isExpired(row.expiresAt, now) || exceedsMaxAge(row.createdAt, now)) {
+    await db.delete(staffSessions).where(eq(staffSessions.id, tokenHash));
+    return null;
+  }
+
+  let renewed = false;
+  if (needsRenewal(row.expiresAt, now)) {
+    await db
+      .update(staffSessions)
+      .set({ expiresAt: sessionExpiry(now) })
+      .where(eq(staffSessions.id, tokenHash));
+    renewed = true;
+  }
+
+  return {
+    renewed,
+    context: { staffId: row.staffId, email: row.email, name: row.name },
+  };
+}
+
+/** Delete one session (sign out). Covers both `sessions` and `staff_sessions` — a token lives
+ *  in exactly one table, so deleting from both needs no lookup to know which. */
 export async function deleteSession(token: string): Promise<void> {
-  await db.delete(sessions).where(eq(sessions.id, hashSessionToken(token)));
+  const tokenHash = hashSessionToken(token);
+  await db.delete(sessions).where(eq(sessions.id, tokenHash));
+  await db.delete(staffSessions).where(eq(staffSessions.id, tokenHash));
 }
 
 /**
@@ -136,8 +209,12 @@ export async function deleteOtherSessions(userId: string, keepToken?: string): P
     .where(keepId ? and(eq(sessions.userId, userId), ne(sessions.id, keepId)) : eq(sessions.userId, userId));
 }
 
-/** Housekeeping for the nightly sweep. */
+/** Housekeeping for the nightly sweep. Sweeps both `sessions` and `staff_sessions`. */
 export async function deleteExpiredSessions(now: Date = new Date()): Promise<number> {
   const deleted = await db.delete(sessions).where(lt(sessions.expiresAt, now)).returning({ id: sessions.id });
-  return deleted.length;
+  const deletedStaff = await db
+    .delete(staffSessions)
+    .where(lt(staffSessions.expiresAt, now))
+    .returning({ id: staffSessions.id });
+  return deleted.length + deletedStaff.length;
 }

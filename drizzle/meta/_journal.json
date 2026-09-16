@@ -190,6 +190,13 @@
       "when": 1789452859653,
       "tag": "0026_minor_baron_zemo",
       "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1789472464700,
+      "tag": "0027_easy_xavin",
+      "breakpoints": true
     }
   ]
 }

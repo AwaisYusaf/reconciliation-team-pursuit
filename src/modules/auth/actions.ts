@@ -12,7 +12,15 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 
 import { db } from "@/src/db";
-import { fundingSources, lineItems, organizations, paymentSources, supportingDocTypes, users } from "@/src/db/schema";
+import {
+  fundingSources,
+  lineItems,
+  organizations,
+  paymentSources,
+  staffUsers,
+  supportingDocTypes,
+  users,
+} from "@/src/db/schema";
 import { currentMonthKey, isValidMonthKey } from "@/src/domain/dates";
 import { parseMoneyToCents } from "@/src/domain/money";
 import { UI } from "@/src/domain/strings";
@@ -21,10 +29,12 @@ import {
   endSession,
   requireSession,
   startSession,
+  startStaffSession,
   UnauthenticatedError,
   type SessionContext,
 } from "@/src/services/auth/session";
 import { hashPassword, validatePasswordPolicy, verifyPassword } from "@/src/services/auth/passwords";
+import { emailInUse } from "@/src/modules/auth/emails";
 import { ORIGINAL_RULES } from "@/src/modules/expenses/reimbursement";
 import { primaryFundingSourceId, requireOwnedFundingSource } from "@/src/modules/funding-sources/queries";
 import { consume, reset } from "@/src/services/rate-limit";
@@ -164,7 +174,26 @@ export async function signInAction(
     .limit(1);
 
   const user = found[0];
-  if (!user) return fail(UI.signInUnknownEmail);
+
+  // Staff and customer accounts share one login form and the same wording either way, so the
+  // form can't be used to tell staff addresses from customer ones (Phase 9 §3.3).
+  if (!user) {
+    const [staff] = await db
+      .select({ id: staffUsers.id, passwordHash: staffUsers.passwordHash })
+      .from(staffUsers)
+      .where(sql`lower(${staffUsers.email}) = lower(${email})`)
+      .limit(1);
+
+    if (!staff) return fail(UI.signInUnknownEmail);
+    if (!(await verifyPassword(staff.passwordHash, password))) {
+      return fail(UI.signInWrongPassword);
+    }
+
+    reset("loginPerAccount", `${email.toLowerCase()}|${ip}`);
+    reset("loginPerIp", ip);
+    await startStaffSession(staff.id);
+    redirect("/a");
+  }
 
   if (!(await verifyPassword(user.passwordHash, password))) {
     return fail(UI.signInWrongPassword);
@@ -172,6 +201,7 @@ export async function signInAction(
 
   reset("loginPerAccount", `${email.toLowerCase()}|${ip}`);
   reset("loginPerIp", ip);
+  await db.update(users).set({ lastSignInAt: new Date() }).where(eq(users.id, user.id));
   await startSession(user.id);
 
   // Onboarding is resumable: an abandoned signup lands back here until it completes.
@@ -240,12 +270,9 @@ export async function signUpAction(
     return fail("Check the highlighted fields.", { confirmPassword: "Passwords don't match." });
   }
 
-  const existing = await db
-    .select({ id: users.id })
-    .from(users)
-    .where(sql`lower(${users.email}) = lower(${email})`)
-    .limit(1);
-  if (existing.length > 0) return fail("Check the highlighted fields.", { email: UI.duplicateEmail });
+  if (await emailInUse(email)) {
+    return fail("Check the highlighted fields.", { email: UI.duplicateEmail });
+  }
 
   const passwordHash = await hashPassword(password);
 

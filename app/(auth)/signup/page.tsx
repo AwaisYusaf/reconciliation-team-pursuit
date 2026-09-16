@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 
 import { UI } from "@/src/domain/strings";
 import { signupEnabled } from "@/src/modules/auth/config";
-import { getSession } from "@/src/services/auth/session";
+import { getSession, getStaffSession } from "@/src/services/auth/session";
 
 import { PageTitle } from "@/src/components/ui/surfaces";
 
@@ -14,6 +14,7 @@ export const metadata = { title: "Create your organization — Grant Expense Rec
 export default async function SignupPage() {
   const session = await getSession();
   if (session) redirect(session.onboarded ? "/r" : "/onboarding/line-items");
+  if (await getStaffSession()) redirect("/a");
 
   if (!signupEnabled()) {
     return (

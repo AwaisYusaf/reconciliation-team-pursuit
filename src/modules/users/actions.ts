@@ -6,7 +6,7 @@
  * Enforcement lives here, not in the page or nav: server actions are directly invocable,
  * so `requireAdmin()` at the top of every export is the real boundary.
  */
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
@@ -16,6 +16,7 @@ import { nameSchema } from "@/src/domain/name";
 import { fail, ok, type ActionResult } from "@/src/lib/action-result";
 import { requireAdmin } from "@/src/lib/action-session";
 import { isUuid } from "@/src/lib/ids";
+import { emailInUse } from "@/src/modules/auth/emails";
 import { generatePassword, hashPassword, validatePasswordPolicy } from "@/src/services/auth/passwords";
 import { revokeOtherSessions } from "@/src/services/auth/session";
 import { consume } from "@/src/services/rate-limit";
@@ -66,12 +67,9 @@ export async function createOrgUserAction({
 
   // Checked before hashing, and the index is global (schema.ts:113): a probe loop against
   // this must not get to burn argon2 CPU, and the message must not confirm cross-org state.
-  const existing = await db
-    .select({ id: users.id })
-    .from(users)
-    .where(sql`lower(${users.email}) = lower(${cleanEmail})`)
-    .limit(1);
-  if (existing.length > 0) return fail(EMAIL_IN_USE);
+  // emailInUse also checks staff_users, so an admin can't accidentally create a customer
+  // account that collides with an AB Solutions staff address (Phase 9 §3.3).
+  if (await emailInUse(cleanEmail)) return fail(EMAIL_IN_USE);
 
   const password = generatePassword();
   const passwordHash = await hashPassword(password);

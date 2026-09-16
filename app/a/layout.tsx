@@ -1,16 +1,12 @@
-import { redirect } from "next/navigation";
-
-import { getSession } from "@/src/services/auth/session";
+import { requireStaffPage } from "@/src/modules/admin/guard";
 
 /**
- * Admin scaffold. Authentication is real here — `getSession()` is the security boundary,
- * same as `/r` — and now so is authorization: `/a` is for `admin` accounts only, same
- * `users.role` check `requireAdmin()` uses in server actions.
+ * Admin scaffold. `requireStaffPage()` is the real boundary — `/a` is for AB Solutions staff
+ * accounts only. Customers, including an organisation's own admin, are refused: every org's
+ * creator is an admin, so the old `session.role !== "admin"` check let them in (Phase 9, D-98).
  */
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
-  const session = await getSession();
-  if (!session) redirect("/login");
-  if (session.role !== "admin") redirect("/r");
+  await requireStaffPage();
 
   return <>{children}</>;
 }

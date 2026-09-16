@@ -15,15 +15,17 @@ import { cache } from "react";
 
 import {
   createSession,
+  createStaffSession,
   deleteExpiredSessions,
   deleteOtherSessions,
   deleteSession,
   resolveSession,
+  resolveStaffSession,
 } from "./store";
 import { SESSION_COOKIE, sessionCookieOptions } from "./tokens";
 
-export type { SessionContext } from "./store";
-import type { SessionContext } from "./store";
+export type { SessionContext, StaffSessionContext } from "./store";
+import type { SessionContext, StaffSessionContext } from "./store";
 
 /** Thrown when an unauthenticated caller reaches a protected server function. */
 export class UnauthenticatedError extends Error {
@@ -74,6 +76,29 @@ export const getSession = cache(async (): Promise<SessionContext | null> => {
   return resolved.context;
 });
 
+/**
+ * Resolve the current staff session from the request cookie — the staff equivalent of
+ * `getSession()` (Phase 9, D-98). Same cookie, same renewal-cookie best-effort write.
+ */
+export const getStaffSession = cache(async (): Promise<StaffSessionContext | null> => {
+  const store = await cookies();
+  const token = store.get(SESSION_COOKIE)?.value;
+  if (!token) return null;
+
+  const resolved = await resolveStaffSession(token);
+  if (!resolved) return null;
+
+  if (resolved.renewed) {
+    try {
+      store.set(SESSION_COOKIE, token, sessionCookieOptions());
+    } catch {
+      // Read-only rendering context; refreshed on the next mutation.
+    }
+  }
+
+  return resolved.context;
+});
+
 /** Session or bust — for server functions that must be authenticated. */
 export async function requireSession(): Promise<SessionContext> {
   const session = await getSession();
@@ -102,9 +127,11 @@ export function assertOrgAccess(
  * Handler — Next.js forbids setting cookies while rendering.
  *
  * Any session the caller was already holding on this device is replaced rather than left
- * behind. Signing in repeatedly otherwise accumulates live rows that nothing collects, and
- * each one is an independent way back into the account — so a shared laptop signed in and
- * "logged out" by closing the tab would leave a usable session for the next person.
+ * behind — `deleteSession` clears **both** `sessions` and `staff_sessions`, so switching
+ * account types on a shared device leaves nothing behind either. Signing in repeatedly
+ * otherwise accumulates live rows that nothing collects, and each one is an independent way
+ * back into the account — so a shared laptop signed in and "logged out" by closing the tab
+ * would leave a usable session for the next person.
  */
 export async function startSession(userId: string): Promise<void> {
   const store = await cookies();
@@ -121,7 +148,21 @@ export async function startSession(userId: string): Promise<void> {
   void deleteExpiredSessions().catch(() => {});
 }
 
-/** End the current session: delete the row, clear the cookie. */
+/** Staff equivalent of `startSession` (Phase 9, D-98). Same replace-previous and sweep logic. */
+export async function startStaffSession(staffId: string): Promise<void> {
+  const store = await cookies();
+
+  const previous = store.get(SESSION_COOKIE)?.value;
+  if (previous) await deleteSession(previous);
+
+  const token = await createStaffSession(staffId);
+  store.set(SESSION_COOKIE, token, sessionCookieOptions());
+
+  void deleteExpiredSessions().catch(() => {});
+}
+
+/** End the current session: delete the row from both `sessions` and `staff_sessions`, clear
+ *  the cookie. */
 export async function endSession(): Promise<void> {
   const store = await cookies();
   const token = store.get(SESSION_COOKIE)?.value;
