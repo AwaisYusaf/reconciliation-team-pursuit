@@ -27,9 +27,9 @@ type Executor = Database | Parameters<Parameters<Database["transaction"]>[0]>[0]
  * collision and retry. Deleting an expense leaves its number spent — a reference that has
  * been printed is never handed to something else.
  *
- * `month_statuses` gains a row here if the (source, month) has none. That is harmless: the
- * only other column is `submitted_at`, and a row with it null already means exactly what no
- * row means.
+ * `month_statuses` gains a row here if the (source, month) has none. That is harmless: its
+ * other columns are `submitted_at` and `locked_at`, and a row with both null already means
+ * exactly what no row means.
  *
  * **Every path that inserts an expense must call this.** `reference_seq` has no column
  * default precisely so that forgetting is a compile error rather than two rows colliding on

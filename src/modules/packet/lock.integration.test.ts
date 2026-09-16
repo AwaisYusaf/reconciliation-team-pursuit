@@ -353,6 +353,43 @@ describe.skipIf(!hasDatabase)("month locking (integration, R10.7)", async () => 
     expect(events).toHaveLength(1); // the refused attempt left no second event
   });
 
+  // The signed copy is stored before the transaction that can still refuse the lock, so each
+  // refusal from inside that transaction has to take the stored copy back — otherwise every
+  // refused attempt leaves a file behind that nothing references and nothing ever deletes.
+  it.each([
+    {
+      reason: "missing documents",
+      error: UI.lockNeedsDocuments,
+      arrange: (month: string) => blockingExpense(sourceA, month, itemA),
+    },
+    {
+      reason: "already locked",
+      error: UI.monthAlreadyLocked,
+      arrange: async (month: string) => {
+        const first = await lockMonth({ orgId, userId, fundingSourceId: sourceA, month, file: await pdfFile() });
+        if (!first.ok) throw new Error(first.error);
+      },
+    },
+  ])("a lock refused for $reason takes back the signed copy it stored", async ({ error, arrange }) => {
+    const month = freshMonth();
+    await arrange(month);
+
+    const put = vi.spyOn(storage(), "put");
+    try {
+      const result = await lockMonth({ orgId, userId, fundingSourceId: sourceA, month, file: await pdfFile() });
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.error).toBe(error);
+
+      const storedKeys = put.mock.calls
+        .map(([options]) => options.key)
+        .filter((key) => key.includes("/signed-packets/"));
+      expect(storedKeys).toHaveLength(1);
+      expect(await storage().exists(storedKeys[0])).toBe(false);
+    } finally {
+      put.mockRestore();
+    }
+  });
+
   it("locking an unsubmitted month marks it submitted and captures the snapshot; a lock after an unlock is a fresh submission that re-captures", async () => {
     const month = freshMonth();
     const before = await lockedAtOf(sourceA, month);
