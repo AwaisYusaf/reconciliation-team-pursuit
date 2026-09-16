@@ -180,6 +180,10 @@ export const UI = {
   pageOf: (page: number, pageCount: number) => `Page ${page} of ${pageCount}`,
   /** Under a truncated users table on an organization's page (Phase 9). */
   showingUsers: (shown: number, total: number) => `Showing ${shown} of ${total} users.`,
+  /** The same, once "View all" has been used and the list has hit its ceiling — there is no
+   *  further page to link to (Phase 9). */
+  usersCapped: (shown: number, total: number) =>
+    `Showing the first ${shown} of ${total} users. The list stops here.`,
   /** App header badge, shown only on the "Reconciliation + AI" plan (Phase 9). */
   planPlusBadge: "Plus",
   /** Admin action refusal for an unknown or non-uuid org id (Phase 9 §5). */

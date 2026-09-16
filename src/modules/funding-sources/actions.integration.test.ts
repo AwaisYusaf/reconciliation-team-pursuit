@@ -2,7 +2,7 @@
  * `createFundingSourceAction` / `updateFundingSourceAction` / `archiveFundingSourceAction` /
  * `unarchiveFundingSourceAction` against a real database (Phase 6, D-93, Phase 3).
  *
- * Admins and managers may both manage funding sources (Appendix A Â§1) â€” unlike most settings
+ * Admins and managers may both manage funding sources (Appendix A §1) â€” unlike most settings
  * actions, these do not call `requireAdmin()`, so a manager-role test is part of the contract
  * here, not incidental coverage. Skipped when DATABASE_URL is absent.
  */

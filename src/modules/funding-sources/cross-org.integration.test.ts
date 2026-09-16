@@ -1,5 +1,5 @@
 ﻿/**
- * P7.2 â€” cross-org sweep (docs/PHASE-6.md Â§5 Phase 7, Â§4 â˜… "A source id from the client
+ * P7.2 â€” cross-org sweep (docs/PHASE-6.md §5 Phase 7, §4 â˜… "A source id from the client
  * belongs to the session's org").
  *
  * Every server action and route handler that accepts a `fundingSourceId` (or the id of a

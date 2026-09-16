@@ -1,6 +1,6 @@
 ﻿/**
  * `createExpenseAction` / `updateExpenseAction` against a real database (Phase 6, D-93,
- * Phase 4) â€” the invariants named in docs/PHASE-6.md Â§5 Phase 4 step 7 and Â§4's â˜… row
+ * Phase 4) â€” the invariants named in docs/PHASE-6.md §5 Phase 4 step 7 and §4's â˜… row
  * "Saving against another source's line item is impossible."
  *
  * Skipped when DATABASE_URL is absent.

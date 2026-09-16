@@ -1,7 +1,7 @@
 ﻿/**
- * Every write path refuses a locked month (R10.7, D-96) â€” `docs/PHASE-8.md` Â§8 Phase 1.
+ * Every write path refuses a locked month (R10.7, D-96) â€” `docs/PHASE-8.md` §8 Phase 1.
  *
- * Table-driven over the Â§2 write table: each row is refused on a locked month with the exact
+ * Table-driven over the §2 write table: each row is refused on a locked month with the exact
  * `UI.monthLocked` message and leaves every row it would have touched untouched. Each row also
  * proves the guard is actually load-bearing by temporarily replacing `monthLocked` with a
  * stub that always says "not locked", confirming the write then succeeds, before restoring it.

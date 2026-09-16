@@ -1,5 +1,5 @@
 ﻿/**
- * `emailInUse()` and its two callers' staff-email rejection (Phase 9, Â§3.3): `signUpAction`
+ * `emailInUse()` and its two callers' staff-email rejection (Phase 9, §3.3): `signUpAction`
  * refuses to create an organisation for an address that already belongs to AB Solutions staff,
  * and `createOrgUserAction` refuses to add one as an org's user.
  *

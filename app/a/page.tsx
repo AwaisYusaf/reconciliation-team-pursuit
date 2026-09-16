@@ -6,6 +6,7 @@ import { TableCard, Td, Th } from "@/src/components/ui/table";
 import { formatDateShort, todayIso } from "@/src/domain/dates";
 import { PLAN_LABELS, STATUS_LABELS, UI } from "@/src/domain/strings";
 import { cn } from "@/src/lib/cn";
+import { parsePlanFilter, parseStatusFilter } from "@/src/modules/admin/directory";
 import { requireStaffPage } from "@/src/modules/admin/guard";
 import {
   loadOrgDirectory,
@@ -105,8 +106,8 @@ export default async function AdminPage({ searchParams }: { searchParams: Search
   // Anything unrecognised in the URL is dropped rather than passed to a query as an enum.
   const filter: OrgDirectoryFilter = {
     search: one(params.q) ?? "",
-    plan: planParam && planParam in PLAN_LABELS ? (planParam as OrgPlanFilter) : null,
-    status: statusParam && statusParam in STATUS_LABELS ? (statusParam as OrgStatusFilter) : null,
+    plan: parsePlanFilter(planParam),
+    status: parseStatusFilter(statusParam),
     badge: badgeParam === "complimentary" || badgeParam === "suspended" ? badgeParam : null,
   };
   const requestedPage = Number(one(params.page) ?? "1");

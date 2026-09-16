@@ -6,7 +6,7 @@ import { TableCard, Td, Th } from "@/src/components/ui/table";
 import { formatDateShort, formatDateTimeShort, monthLabel, todayIso } from "@/src/domain/dates";
 import { formatBytes, ratio } from "@/src/domain/format";
 import { PLAN_LABELS, UI } from "@/src/domain/strings";
-import { describeAccountEvent } from "@/src/modules/admin/directory";
+import { describeAccountEvent, usersFooter } from "@/src/modules/admin/directory";
 import { requireStaffPage } from "@/src/modules/admin/guard";
 import {
   loadOrgAccount,
@@ -86,6 +86,11 @@ export default async function OrgPage({
     loadOrgUsage(id),
     loadOrgHistory(id),
   ]);
+  const footer = usersFooter({
+    showAll: showAllUsers,
+    shown: users.rows.length,
+    total: users.total,
+  });
   const today = todayIso();
   const storageRatio = ratio(usage.storageBytes, usage.storageLimitBytes);
   const storagePercent = Math.min(100, storageRatio * 100);
@@ -162,7 +167,7 @@ export default async function OrgPage({
             </tbody>
           </TableCard>
         )}
-        {users.total > users.rows.length && (
+        {footer === "view-all" && (
           <p className="text-[15px] text-sub mt-3">
             {UI.showingUsers(users.rows.length, users.total)}{" "}
             <Link
@@ -171,6 +176,13 @@ export default async function OrgPage({
             >
               View all
             </Link>
+          </p>
+        )}
+        {footer === "capped" && (
+          // Past the ceiling there is nothing further to show, so no link: the old code
+          // rendered "View all" again, pointing at the page already open.
+          <p className="text-[15px] text-sub mt-3">
+            {UI.usersCapped(users.rows.length, users.total)}
           </p>
         )}
         {showAllUsers && users.total > ORG_USERS_PREVIEW && (

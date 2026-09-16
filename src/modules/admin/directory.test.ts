@@ -3,11 +3,14 @@
 import {
   complimentaryState,
   describeAccountEvent,
+  parsePlanFilter,
+  parseStatusFilter,
+  usersFooter,
   type AccountEvent,
   type DirectoryOrg,
 } from "./directory";
 
-// Type-level guard (Phase 9 Â§7 note): `queries.ts`'s row types must stay structurally
+// Type-level guard (Phase 9 §7 note): `queries.ts`'s row types must stay structurally
 // assignable to `directory.ts`'s own re-declared types, or the two silently drift apart.
 // `import type` is erased at runtime (isolatedModules), so this never drags `server-only`
 // into this unit test.
@@ -18,7 +21,51 @@ const _directoryRowCheck: DirectoryOrg = {} as OrgDirectoryRow;
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 const _accountEventCheck: AccountEvent = {} as OrgAccountEventRow;
 
-describe("complimentaryState (Phase 9 Â§7 Q6)", () => {
+describe("parsePlanFilter / parseStatusFilter (Phase 9 §6)", () => {
+  it("accepts the real values", () => {
+    expect(parsePlanFilter("reconciliation")).toBe("reconciliation");
+    expect(parsePlanFilter("reconciliation_ai")).toBe("reconciliation_ai");
+    expect(parseStatusFilter("trial")).toBe("trial");
+    expect(parseStatusFilter("cancelled")).toBe("cancelled");
+  });
+
+  it("drops absent, empty and unknown values", () => {
+    expect(parsePlanFilter(undefined)).toBeNull();
+    expect(parsePlanFilter("")).toBeNull();
+    expect(parsePlanFilter("gold")).toBeNull();
+    expect(parseStatusFilter("paused")).toBeNull();
+  });
+
+  it("drops inherited object keys, which a `key in object` check would accept", () => {
+    // `?plan=constructor` passed the old `in` check, was cast to an enum value and reached
+    // Postgres, which rejects it as invalid enum input — a 500 from a hand-typed URL. Every
+    // key here is `in PLAN_LABELS` but owned by Object.prototype, not by it.
+    for (const key of ["constructor", "__proto__", "toString", "hasOwnProperty", "valueOf"]) {
+      expect(parsePlanFilter(key)).toBeNull();
+      expect(parseStatusFilter(key)).toBeNull();
+    }
+  });
+});
+
+describe("usersFooter (Phase 9 §6)", () => {
+  it("shows nothing when every user is already on the page", () => {
+    expect(usersFooter({ showAll: false, shown: 4, total: 4 })).toBe("none");
+    expect(usersFooter({ showAll: true, shown: 4, total: 4 })).toBe("none");
+    expect(usersFooter({ showAll: false, shown: 0, total: 0 })).toBe("none");
+  });
+
+  it("offers View all while there are more to fetch", () => {
+    expect(usersFooter({ showAll: false, shown: 10, total: 13 })).toBe("view-all");
+  });
+
+  it("says the list is capped instead of linking to the page already open", () => {
+    // Past ORG_USERS_MAX the old code rendered "View all" again, pointing at `?users=all` —
+    // the page the reader was already on, so the link did nothing.
+    expect(usersFooter({ showAll: true, shown: 200, total: 431 })).toBe("capped");
+  });
+});
+
+describe("complimentaryState (Phase 9 §7 Q6)", () => {
   const today = "2027-01-01";
 
   it("is 'none' when complimentary is off, even with a date set", () => {
@@ -57,7 +104,7 @@ describe("complimentaryState (Phase 9 Â§7 Q6)", () => {
   });
 });
 
-describe("describeAccountEvent (Phase 9 Â§5)", () => {
+describe("describeAccountEvent (Phase 9 §5)", () => {
   const base = {
     before: { plan: "reconciliation" as const, status: "trial" as const, complimentaryUntil: null },
     after: { plan: "reconciliation" as const, status: "trial" as const, complimentaryUntil: null },

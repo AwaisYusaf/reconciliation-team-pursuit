@@ -1,5 +1,5 @@
 ﻿/**
- * Month locking (R10.7, D-96) â€” Phase 1, `docs/PHASE-8.md` Â§8.
+ * Month locking (R10.7, D-96) â€” Phase 1, `docs/PHASE-8.md` §8.
  *
  * The lock/unlock lifecycle against a real database and the local storage driver: storing the
  * signed copy, refusing to lock, the Reconciled/Submitted interplay, per-source isolation,
@@ -449,7 +449,7 @@ describe.skipIf(!hasDatabase)("month locking (integration, R10.7)", async () => 
 
     // Change the amount AFTER submitting but BEFORE the first lock â€” a first lock of an
     // already-submitted month must not pick this up: the figures and the date it was submitted
-    // must keep agreeing (plan Â§7 Q1/Q2).
+    // must keep agreeing (plan §7 Q1/Q2).
     await new Promise((r) => setTimeout(r, 5)); // distinguishable timestamp if the bug existed
     await db.update(expenses).set({ subtotalCents: 99_999 }).where(eq(expenses.id, expenseId));
 
@@ -738,7 +738,7 @@ describe.skipIf(!hasDatabase)("month locking (integration, R10.7)", async () => 
       return new Request(url, { headers: { "Sec-Fetch-Site": "same-origin" } });
     }
 
-    // Packet and summary: an empty month (plan Â§7 Q4, "a month with no expenses can be locked â€”
+    // Packet and summary: an empty month (plan §7 Q4, "a month with no expenses can be locked â€”
     // nothing blocks its download either"). Deliberately NOT using an expense-bearing month for
     // the *packet* route here: building a real cover-sheet section shells out to `pdftotext
     // -bbox-layout` (`coverSheetAnchors`), which this machine's Xpdf build does not support â€”

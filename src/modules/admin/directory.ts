@@ -22,6 +22,44 @@ export type DirectoryOrg = {
   suspendedAt: Date | null;
 };
 
+/**
+ * A `?plan=` / `?status=` value from the URL, or null when it is anything else.
+ *
+ * `Object.hasOwn`, never `key in object`: `in` walks the prototype chain, so `?plan=constructor`,
+ * `?plan=__proto__` and `?status=toString` all passed a `key in PLAN_LABELS` check, were cast to
+ * an enum value and reached Postgres, which rejects them as invalid enum input — a 500 from a
+ * hand-typed URL. Anything unrecognised is simply dropped, the same as an absent filter.
+ */
+export function parsePlanFilter(value: string | undefined): OrgPlan | null {
+  return value && Object.hasOwn(PLAN_LABELS, value) ? (value as OrgPlan) : null;
+}
+
+export function parseStatusFilter(value: string | undefined): SubscriptionStatus | null {
+  return value && Object.hasOwn(STATUS_LABELS, value) ? (value as SubscriptionStatus) : null;
+}
+
+export type UsersFooter = "none" | "view-all" | "capped";
+
+/**
+ * What to show under an organization's users table.
+ *
+ * `capped` is the case the first version got wrong: past `ORG_USERS_MAX` the "View all" link
+ * reappeared on the page it already linked to, so clicking it did nothing. Past the ceiling the
+ * reader is told the list stops instead.
+ */
+export function usersFooter({
+  showAll,
+  shown,
+  total,
+}: {
+  showAll: boolean;
+  shown: number;
+  total: number;
+}): UsersFooter {
+  if (total <= shown) return "none";
+  return showAll ? "capped" : "view-all";
+}
+
 export type ComplimentaryState = "none" | "active" | "ended";
 
 /**

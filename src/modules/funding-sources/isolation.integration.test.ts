@@ -1,6 +1,6 @@
 ﻿/**
  * P7.1 â€” the acceptance criterion "Adding or editing a second source changes nothing in the
- * first" (docs/PHASE-6.md Â§5 Phase 7, Â§6, Appendix A).
+ * first" (docs/PHASE-6.md §5 Phase 7, §6, Appendix A).
  *
  * Source A is fully populated through the real actions where one exists (line items, a
  * performance, expenses with attached documents, a month document, a submission). Every
