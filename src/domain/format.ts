@@ -65,6 +65,27 @@ export function roundHalfAwayFromZero(value: number): number {
   return value < 0 ? -Math.round(-value) : Math.round(value);
 }
 
+const KB = 1024;
+const MB = KB * 1024;
+const GB = MB * 1024;
+
+/**
+ * Human-readable byte size for the `/a` storage bar (Phase 9 §5, §6): `"0 B"`, `"512 B"`,
+ * `"212 MB"`, `"5 GB"`, `"4.8 GB"`. Negative or non-finite input is `"0 B"`, matching
+ * `formatPercent`'s defensive floor.
+ *
+ * Rounding runs before the unit is chosen, not after, so a value that rounds up into the next
+ * unit (1023.6 MB) prints `"1 GB"` rather than the impossible `"1024 MB"`.
+ */
+export function formatBytes(n: number): string {
+  if (!Number.isFinite(n) || n < 0) return "0 B";
+  if (n < KB) return `${Math.round(n)} B`;
+  if (Math.round(n / KB) < 1024) return `${Math.round(n / KB)} KB`;
+  if (Math.round(n / MB) < 1024) return `${Math.round(n / MB)} MB`;
+  const gb = Math.round((n / GB) * 10) / 10;
+  return `${gb} GB`;
+}
+
 /**
  * A line item's (or the Totals row's) name, annotated with its performance amount when it has
  * one (R7.1, m08) — shared by the Contract Summary screen, the packet PDF and the Excel

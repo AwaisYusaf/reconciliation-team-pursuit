@@ -1,6 +1,6 @@
 # Phase 9 — AB Solutions staff dashboard
 
-Status: **Phase 1 committed (`1f139ae`); Phase 2 built, not committed; Phases 3-5 not started** (2026-09-16). The product spec is Appendix A, copied word for word.
+Status: **Phases 1 and 2 committed (`1f139ae`, `dd96b6f`); Phase 3 built, not committed; Phases 4-5 not started** (2026-09-16). The product spec is Appendix A, copied word for word.
 Each build phase in §8 is written to run in a fresh chat: it names its own sources and its own checks.
 
 ---
@@ -376,6 +376,61 @@ load; nothing was run against production data.
   - count only packet artifacts that have been downloaded
   - never include the other org's rows
   - produce a storage total equal to the `orgStorageError` sum
+
+**Results — Phase 3 (2026-09-16, branch `implementation/admin-dashboard`, not committed)**
+
+Built as specified. `src/modules/admin/queries.ts` holds the five read models, `src/modules/admin/directory.ts`
+the four pure functions, and `formatDateShort` / `formatDateTimeShort` / `formatBytes` landed in
+`src/domain/dates.ts` and `src/domain/format.ts`. The History wording strings went into `strings.ts`
+and §12. No migration, no screens, no change to the Phase 2 actions.
+
+Two deviations from the plan, both deliberate:
+
+1. **The storage sum is shared, not copied.** The sum inside `orgStorageError` was extracted into an
+   exported `orgStorageBytes(tx, orgId)` (`src/services/storage/documents.ts`), which both the quota
+   check and `loadOrgUsage` now call. "The dashboard shows the number the quota enforces" therefore
+   holds by construction rather than by two copies of the same SQL staying in sync by hand.
+   `orgStorageError`'s behaviour and message are unchanged. The stale "500 MB" comment at
+   `documents.ts:110` is fixed to 5 GB (§7 Q1).
+2. **`userDisplay` was reused, not copied.** It already exists as `src/domain/user-display.ts` — the
+   "Unknown" fallback for a deleted actor lives in `describeAccountEvent`, so the wording and the
+   fallback sit in one pure place instead of two.
+
+| Gate | Result |
+|---|---|
+| `npm run typecheck` | clean |
+| `npm run lint` | clean |
+| `npm test` | 94 files, **1068 tests, all passing, zero skipped, zero failing**, exit 0 — up from the 1009 baseline, so this phase added 59 tests and zero regressions |
+| Baseline check | The 1009 baseline was re-measured on this machine before the tests were written, with the phase's production code already in the tree: 92 files, 1009 passed, 0 skipped, 0 failed |
+| Fail-before: deleted-expense exclusion | `isNull(expenses.deletedAt)` removed from `loadOrgUsage`'s expense queries → `expected 3 to be 2` at the `expensesTotal` assertion → restored → pass |
+| Fail-before: cross-org scoping | `.where(eq(fundingSources.orgId, orgId))` removed from the funding-source count → `fundingSourcesActive: 13` against an expected `1`, 4 tests failing → restored → pass |
+| Fail-before: `max()` fix (below) | The `toBeInstanceOf(Date)` assertions failed on the original raw-`sql` version and pass on the fixed one — the before/after was observed on the real code, not asserted |
+
+**Bug caught in review, fixed in this phase.** `loadOrgDirectory`'s `lastSignInAt` and `loadOrgUsage`'s
+`lastExpenseAt` were written as raw `` sql<Date | null>`max(...)` `` fragments. The generic on a raw
+`sql` fragment is a compile-time annotation with no runtime effect: drizzle only applies a column's
+type mapper for columns it recognises from the schema, so both values actually came back as the
+driver's raw `"2026-02-01 00:00:00+00"` string while typechecking as `Date`. The first
+`formatDateTimeShort` call on one in Phase 4 would have thrown `TypeError` on a real page. Both now
+use drizzle's own `max()` (and `count()` for `userCount`, which also removes a `Number(...)` cast),
+which carry the runtime mapper. The integration tests assert `instanceof Date` so this cannot return.
+
+**Hardening added beyond the plan.** `loadOrgAccount`, `loadOrgUsers`, `loadOrgUsage` and
+`loadOrgHistory` shape-check `orgId` with `isUuid` (`src/lib/ids.ts`) before it reaches a `uuid`
+column, the same convention §5 already sets for the four actions. `orgId` comes from the
+`/a/orgs/[id]` URL, and Postgres raises 22P02 on a malformed one — without the guard a crafted URL
+would have been a 500 rather than the `notFound()` §6 calls for. `loadOrgAccount` returns `null`,
+the two list loaders `[]`, and `loadOrgUsage` a zeroed `OrgUsage`.
+
+No security pass this phase: every function added is read-only, nothing is a `"use server"` export or
+otherwise callable from the client, and no new auth surface exists. `directory.ts` is pure and carries
+no data, so it is safe for Phase 4 to import into a client component.
+
+**Not verified:** nothing was run in a browser (Phase 4 has no screens yet), so the usage numbers were
+proven equal to their SQL sources but not yet compared side by side against an organization's own
+screens — that is Phase 5's check. `loadOrgDirectory` was measured only against a handful of
+organizations, not at the scale §3.9's `ponytail:` note contemplates. Nothing was run against
+production data.
 
 ### Phase 4 — Screens
 

@@ -146,6 +146,12 @@ Let `opening` = line item's opening previously-billed balance (setup figure), `e
 | reinstate-dialog (UI) | `Reinstate {orgName}?` (Phase 9 Appendix A §7) |
 | plan-labels (UI) | `Reconciliation` · `Reconciliation + AI` (Phase 9 §2) |
 | status-labels (UI) | `Trial` · `Active` · `Past due` · `Cancelled` (Phase 9 §2) |
+| org-signed-up (UI) | `Organization signed up` — History's last line, built from `organizations.created_at`, no event row (Phase 9 §3.8, §6) |
+| history-plan-changed (UI) | `{actor} changed plan from {Plan} to {Plan}`, `… changed status from {Status} to {Status}`, or both joined with "and" when a `plan_changed` event changed both (Phase 9 §5) |
+| history-complimentary-granted (UI) | `{actor} gave complimentary access`, or `… until {date}` when an end date is set (Phase 9 §5) |
+| history-complimentary-changed (UI) | `{actor} changed complimentary access to end {date}`, or `… to no end date` (Phase 9 §5) |
+| history-complimentary-removed (UI) | `{actor} removed complimentary access` (Phase 9 §5) |
+| history-suspended / history-reinstated (UI) | `{actor} suspended access` · `{actor} reinstated access` (Phase 9 §5) |
 
 ## 13. Limits (enforced at presign/save; friendly errors)
 

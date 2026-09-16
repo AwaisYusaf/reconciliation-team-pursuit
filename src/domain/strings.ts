@@ -180,6 +180,25 @@ export const UI = {
     "Everyone in this organization will be signed out and won't be able to sign in until you reinstate it. None of their data is changed or deleted.",
   /** Reinstate dialog (Phase 9 §7). */
   reinstateDialogTitle: (orgName: string) => `Reinstate ${orgName}?`,
+  /** History's last line (Phase 9 §3.8, §6) — built from `organizations.created_at`, no event row. */
+  orgSignedUp: "Organization signed up",
+  /** `describeAccountEvent` (Phase 9 §5) — `plan_changed` covers plan, status, or both. */
+  historyPlanChanged: (fromPlan: string, toPlan: string) =>
+    `changed plan from ${fromPlan} to ${toPlan}`,
+  historyStatusChanged: (fromStatus: string, toStatus: string) =>
+    `changed status from ${fromStatus} to ${toStatus}`,
+  historyPlanAndStatusChanged: (fromPlan: string, toPlan: string, fromStatus: string, toStatus: string) =>
+    `changed plan from ${fromPlan} to ${toPlan} and status from ${fromStatus} to ${toStatus}`,
+  /** Fallback for a `plan_changed` event where before/after are identical — the no-op guard in
+   *  `changePlanAction` never writes one, but a dangling sentence is worse than a plain one. */
+  historyPlanUnchanged: "changed plan",
+  historyComplimentaryGranted: "gave complimentary access",
+  historyComplimentaryGrantedUntil: (date: string) => `gave complimentary access until ${date}`,
+  historyComplimentaryChangedUntil: (date: string) => `changed complimentary access to end ${date}`,
+  historyComplimentaryChangedNoEnd: "changed complimentary access to no end date",
+  historyComplimentaryRemoved: "removed complimentary access",
+  historySuspended: "suspended access",
+  historyReinstated: "reinstated access",
 } as const;
 
 /** Longest unlock reason — long enough for a real explanation, short enough that nobody pastes a
