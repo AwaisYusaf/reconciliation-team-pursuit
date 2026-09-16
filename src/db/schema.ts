@@ -164,8 +164,9 @@ export const organizations = pgTable("organizations", {
   complimentary: boolean().notNull().default(false),
   /** Null → no end. Past dates are allowed and show as ended (Phase 9). */
   complimentaryUntil: date("complimentary_until"),
-  /** Set → every session for this org is refused and its users can't sign in. Enforced from
-   *  Phase 9 part 2 (`resolveSession`); nothing reads or writes it yet. */
+  /** Set → every session for this org is refused and its users can't sign in. Enforced in
+   *  `resolveSession` (Phase 9 part 2, D-99); written by `suspendOrgAction`/`reinstateOrgAction`
+   *  (`src/modules/admin/actions.ts`) and read by `signInAction`'s paused branch. */
   suspendedAt: timestamp("suspended_at", { withTimezone: true }),
   createdAt: createdAt(),
   updatedAt: updatedAt(),
@@ -280,8 +281,8 @@ export type OrgAccountSnapshot = {
 };
 
 /**
- * History of every account change staff make (Phase 9, §3.8). Nothing writes to this table
- * yet — the four admin actions that do are Phase 2.
+ * History of every account change staff make (Phase 9, §3.8), written by the four admin
+ * actions in `src/modules/admin/actions.ts` (Phase 2).
  */
 export const orgAccountEvents = pgTable(
   "org_account_events",

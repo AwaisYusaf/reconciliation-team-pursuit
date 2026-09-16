@@ -155,11 +155,58 @@ export const UI = {
   reportingPeriodsTitle: "Reporting periods",
   /** Contract Summary's Reporting periods, and the Packet page's own Submitted marker (Appendix A §4). */
   submittedOn: (date: string) => `Submitted ${date}`,
+  /**
+   * Login page, correct password on a suspended organisation (Phase 9 §3.5, §7) — shown only
+   * after the password checks out, never for a wrong one, so the form can't be used to learn
+   * whether an address's organisation is suspended. American "organization" is verbatim from
+   * the ticket, unlike the older "organisation" strings above.
+   */
+  orgAccessPaused: "Your organization's access is paused. Please contact support.",
+  /** Admin action refusal for an unknown or non-uuid org id (Phase 9 §5). */
+  orgNoLongerExists: "This organization no longer exists.",
+  /** `suspendOrgAction` refusal — already suspended (Phase 9 §5, D-98 decision 10). */
+  orgAlreadySuspended: "This organization is already suspended.",
+  /** `reinstateOrgAction` refusal — not suspended. */
+  orgNotSuspended: "This organization is not suspended.",
+  /** `suspendOrgAction` — the reason is required, unlike the optional notes on the other three
+   *  admin actions (Phase 9 §7). */
+  suspendReasonRequired: "Enter the reason for suspending this organization.",
+  /** Admin action note refusal past `ACCOUNT_NOTE_MAX_LENGTH`, mirroring `unlockReasonTooLong`. */
+  accountNoteTooLong: (max: number) => `Keep the note under ${max} characters.`,
+  /** `setComplimentaryAction` refusal — `until` is neither empty nor a valid ISO date. */
+  complimentaryUntilInvalid: "Enter a valid end date.",
+  /** Suspend dialog (Phase 9 §7, verbatim). */
+  suspendDialogTitle: (orgName: string) => `Suspend ${orgName}?`,
+  suspendDialogText:
+    "Everyone in this organization will be signed out and won't be able to sign in until you reinstate it. None of their data is changed or deleted.",
+  /** Reinstate dialog (Phase 9 §7). */
+  reinstateDialogTitle: (orgName: string) => `Reinstate ${orgName}?`,
 } as const;
 
 /** Longest unlock reason — long enough for a real explanation, short enough that nobody pastes a
  *  whole email. Shared so the box's `maxLength` and the server's refusal can't drift apart. */
 export const UNLOCK_REASON_MAX_LENGTH = 700;
+
+/** Longest admin note/reason on an org account action — same length and reasoning as
+ *  `UNLOCK_REASON_MAX_LENGTH` (Phase 9 §5). */
+export const ACCOUNT_NOTE_MAX_LENGTH = 700;
+
+/**
+ * Plan and subscription-status labels for the `/a` dashboard (Phase 9 §2). Kept structurally
+ * matched to `OrgPlan`/`SubscriptionStatus` (`src/db/schema.ts`) rather than importing those
+ * types here, so this domain module stays free of a `db` dependency.
+ */
+export const PLAN_LABELS: Record<"reconciliation" | "reconciliation_ai", string> = {
+  reconciliation: "Reconciliation",
+  reconciliation_ai: "Reconciliation + AI",
+};
+
+export const STATUS_LABELS: Record<"trial" | "active" | "past_due" | "cancelled", string> = {
+  trial: "Trial",
+  active: "Active",
+  past_due: "Past due",
+  cancelled: "Cancelled",
+};
 
 /** Inline explanation beside a disabled download button (m07, R4.3). */
 export function downloadBlockedReason(count: number): string {

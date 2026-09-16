@@ -135,6 +135,17 @@ Let `opening` = line item's opening previously-billed balance (setup figure), `e
 | reconciled-line (UI) | `Reconciled · Locked on {date} by {name} · View signed packet · Unlock` (R10.7) |
 | lock-history (UI) | `Locked {date} by {name} · View signed packet`, with `Replaced on {date}` (Packet) or `(replaced)` (Reporting periods) for an earlier copy; `Unlocked {date} by {name} — "{reason}"` (R10.7) |
 | reporting-periods (UI) | `Reporting periods` · statuses `Open` / `Submitted` / `Reconciled` · `Submitted {date}` (R10.7) |
+| org-access-paused (UI) | `Your organization's access is paused. Please contact support.` — shown only after a correct password (Phase 9 §3.5) |
+| org-no-longer-exists (UI) | `This organization no longer exists.` (Phase 9 §5) |
+| org-already-suspended (UI) | `This organization is already suspended.` (Phase 9) |
+| org-not-suspended (UI) | `This organization is not suspended.` (Phase 9) |
+| suspend-reason-required (UI) | `Enter the reason for suspending this organization.` (Phase 9) |
+| account-note-too-long (UI) | `Keep the note under {max} characters.` (Phase 9) |
+| complimentary-until-invalid (UI) | `Enter a valid end date.` (Phase 9) |
+| suspend-dialog (UI) | `Suspend {orgName}?` — `Everyone in this organization will be signed out and won't be able to sign in until you reinstate it. None of their data is changed or deleted.` (Phase 9 Appendix A §7) |
+| reinstate-dialog (UI) | `Reinstate {orgName}?` (Phase 9 Appendix A §7) |
+| plan-labels (UI) | `Reconciliation` · `Reconciliation + AI` (Phase 9 §2) |
+| status-labels (UI) | `Trial` · `Active` · `Past due` · `Cancelled` (Phase 9 §2) |
 
 ## 13. Limits (enforced at presign/save; friendly errors)
 

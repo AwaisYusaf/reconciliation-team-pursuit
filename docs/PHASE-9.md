@@ -1,6 +1,6 @@
 # Phase 9 — AB Solutions staff dashboard
 
-Status: **Phase 1 built, not committed; Phases 2-5 not started** (2026-09-16). The product spec is Appendix A, copied word for word.
+Status: **Phase 1 committed (`1f139ae`); Phase 2 built, not committed; Phases 3-5 not started** (2026-09-16). The product spec is Appendix A, copied word for word.
 Each build phase in §8 is written to run in a fresh chat: it names its own sources and its own checks.
 
 ---
@@ -303,6 +303,56 @@ for it; if it returns, capture the file and test name.
 - A no-op change writes no event.
 - Every event carries the actor, before/after and the note.
 - Remove the suspension filter from `resolveSession` → the race test fails; restore it → it passes.
+
+**Results — Phase 2 (2026-09-16, branch `implementation/admin-dashboard`, not committed)**
+
+Built as specified, no migration needed (0027 already carries every column and table). `resolveSession`
+gained the one `organizations.suspended_at IS NULL` filter; `signInAction` gained the paused branch
+after `verifyPassword`; `src/modules/admin/actions.ts` holds the four actions, each behind
+`requireStaff()` and a `SELECT … FOR UPDATE` on the org row; the §12 strings and
+`ACCOUNT_NOTE_MAX_LENGTH` landed in `strings.ts` with `PLAN_LABELS` / `STATUS_LABELS`.
+
+| Gate | Result |
+|---|---|
+| `npm run typecheck` | clean |
+| `npm run lint` | clean |
+| `npm test` | 92 files, **1009 tests: 989 passing, 20 skipped**, plus the one pre-existing environmental failure below. Baseline measured on the same machine with this change stashed: 90 files, 989 tests, 969 passing, 20 skipped, the same one failing file — so this phase added 20 passing tests and zero regressions |
+| Pre-existing failure | `src/generation/packet-trace.integration.test.ts` fails in `beforeAll`: this machine has Xpdf's `pdftotext` 4.00, which has no `-bbox-layout` flag (poppler-only). Identical on the stashed baseline, unrelated to this diff. Phase 1's "989 passing" figure was the **total** test count, not the passing count — the two numbers were conflated in that Results block |
+| Fail-before: `resolveSession` filter | `isNull(organizations.suspendedAt)` removed → 3 tests fail (race-window resolve, `signInAction` no-session, files/download routes) → restored → 16/16 pass |
+| Fail-before: suspend-time session delete | `tx.delete(sessions)` block removed → the org-A/org-B isolation test fails (`expected length 0, got 1`) → restored → pass |
+| Fail-before: complimentary no-op guard | `if (row.complimentaryUntil === untilValue) return ok()` forced to always return → the `complimentary_changed` / `complimentary_removed` test fails → restored → pass |
+
+Security pass (suspension and staff actions), run over this diff specifically:
+- **No bypass path.** Every one of the five `app/api/*` route handlers calls `getSession()`, every
+  `"use server"` module's exported actions call `actionSession` / `requireAdmin` / `requireStaff`, and
+  the five non-`"use server"` modules that export unguarded functions (`packet/lock.ts`,
+  `packet/snapshot.ts`, `expenses/references.ts`, `recurring/narrative.ts`, `settings/queries.ts`) are
+  deliberately not action modules — each says so in its own header comment. `proxy.ts` only checks
+  cookie *presence* and does no database work, so it neither enforces nor bypasses suspension. Only
+  `app/page.tsx` and `app/layout.tsx` have no session check, and both are public by design.
+- **Staff authorization:** all four actions are guarded (4 guards / 4 exports) and the denial is
+  proven for both the customer (`FORBIDDEN`) and signed-out (`SESSION_EXPIRED`) cases, with nothing
+  written in either.
+- **Cross-org probing:** `isUuid` (anchored regex, `src/lib/ids.ts`) rejects a malformed id before it
+  reaches Postgres, so no 22P02 escapes the `ActionResult` contract, and an unknown org and a non-uuid
+  return the same `orgNoLongerExists`. Staff are authorized on every org by design, so distinguishing
+  a real org from an absent one is not a leak here.
+- **No enumeration:** the paused message is returned only after `verifyPassword` succeeds; a wrong
+  password on a suspended org still gets `UI.signInWrongPassword` (asserted in the same test).
+- **Injection / ReDoS:** plan and status are checked against `enumValues`, the note is length-capped
+  and parameterized, `until` goes through `isValidIsoDate`'s anchored regex. No backtracking risk.
+- Accepted low-risk findings: (1) a sign-in that lands in the paused branch does **not** reset the
+  rate-limit buckets, so a paused org's own users can exhaust their budget while support is on the
+  phone — deliberate, since resetting on a refused sign-in weakens the limiter. (2) A sign-in already
+  in flight when the suspend commits can leave an orphan `sessions` row; it resolves to null forever
+  and is swept on expiry. (3) `withLockedOrg` returning a `fail()` from inside `db.transaction`
+  commits rather than rolls back — correct today because every refusal happens before any write, but
+  fragile if a future edit writes first.
+
+**Not verified:** no browser/UI check (Phase 4 has no screens yet); `packet-trace`'s PDF path was not
+made to pass — a poppler `pdftotext` is needed on this machine; concurrency was tested only as two
+simultaneous `suspendOrgAction` calls, not `changePlanAction` racing `suspendOrgAction`, and not under
+load; nothing was run against production data.
 
 ### Phase 3 — Read models and pure logic
 

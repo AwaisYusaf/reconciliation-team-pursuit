@@ -167,6 +167,7 @@ export async function signInAction(
       passwordHash: users.passwordHash,
       orgId: users.orgId,
       onboardedAt: organizations.onboardedAt,
+      suspendedAt: organizations.suspendedAt,
     })
     .from(users)
     .innerJoin(organizations, eq(organizations.id, users.orgId))
@@ -198,6 +199,12 @@ export async function signInAction(
   if (!(await verifyPassword(user.passwordHash, password))) {
     return fail(UI.signInWrongPassword);
   }
+
+  // Only after the password checks out (Phase 9 §3.5) — a wrong password on a suspended org
+  // gets the normal wrong-password message above, so the form can't be used to learn whether
+  // an address's organization is suspended. No session, no `last_sign_in_at` write, and the
+  // rate limiters stay untouched — this attempt did not prove anything a limiter should forget.
+  if (user.suspendedAt) return fail(UI.orgAccessPaused);
 
   reset("loginPerAccount", `${email.toLowerCase()}|${ip}`);
   reset("loginPerIp", ip);

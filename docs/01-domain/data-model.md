@@ -22,7 +22,7 @@ Postgres, single database, org-scoped rows (single-tenant-per-org from day one; 
 | subscription_status | subscription_status enum | `trial` \| `active` \| `past_due` \| `cancelled` |
 | complimentary | boolean | Free access, independent of `subscription_status` |
 | complimentary_until | date null | Null → no end. A past date is allowed and shows as ended |
-| suspended_at | timestamptz null | Set → every session for this org is refused and its users can't sign in. Enforced from Phase 9 part 2 (`resolveSession` filter); nothing reads or writes it after Phase 1 alone |
+| suspended_at | timestamptz null | Set → every session for this org is refused and its users can't sign in. Enforced in `resolveSession` (Phase 9 part 2, D-99); written by `suspendOrgAction`/`reinstateOrgAction` and read by `signInAction`'s paused branch |
 
 ### users
 Multi-user per org (D-85). Org creation provisions one `admin`; admins create `manager` accounts. User management (add user, reset password) is admin-only, enforced server-side in the action.
@@ -63,7 +63,7 @@ The staff equivalent of `sessions` — same token, TTL and sliding-renewal rules
 | expires_at | timestamptz | 30-day sliding; renewed when < 15 days remain |
 
 ### org_account_events (Phase 9, D-98)
-History of every account change AB Solutions staff make on an organisation's plan, status, complimentary access or suspension. This table is created in Phase 1; nothing writes to it until the account actions ship in Phase 2.
+History of every account change AB Solutions staff make on an organisation's plan, status, complimentary access or suspension, written by the four admin actions in `src/modules/admin/actions.ts` (Phase 2).
 | Field | Type | Notes |
 |---|---|---|
 | id | uuid PK | |

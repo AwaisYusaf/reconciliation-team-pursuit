@@ -7,7 +7,7 @@ import "server-only";
  * expiry, sliding renewal, revocation) can be exercised directly against a real database
  * in integration tests. The cookie layer lives in `session.ts` on top of this.
  */
-import { and, eq, lt, ne } from "drizzle-orm";
+import { and, eq, isNull, lt, ne } from "drizzle-orm";
 
 import { db } from "@/src/db";
 import { organizations, sessions, staffSessions, staffUsers, users } from "@/src/db/schema";
@@ -71,6 +71,12 @@ export async function createSession(userId: string, now: Date = new Date()): Pro
  * Returns null for unknown or expired sessions; an expired row is deleted on the way out
  * so stale rows do not accumulate. A still-valid session inside its final 15 days has its
  * expiry pushed back to a full 30 days and is reported as `renewed`.
+ *
+ * Also returns null once `organizations.suspended_at` is set (Phase 9, D-99): this is the one
+ * place every page, server action and `app/api/*` route passes through on the way to a
+ * `SessionContext`, so the filter here is what makes suspension take effect immediately for
+ * all of them, with no per-caller change. Suspending also deletes the org's `sessions` rows in
+ * the same transaction, so a token that survived a race still resolves to null here.
  */
 export async function resolveSession(
   token: string,
@@ -96,7 +102,7 @@ export async function resolveSession(
     .from(sessions)
     .innerJoin(users, eq(users.id, sessions.userId))
     .innerJoin(organizations, eq(organizations.id, users.orgId))
-    .where(eq(sessions.id, tokenHash))
+    .where(and(eq(sessions.id, tokenHash), isNull(organizations.suspendedAt)))
     .limit(1);
 
   const row = rows[0];

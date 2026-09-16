@@ -8,8 +8,10 @@ import {
   packetFilename,
   packetFooter,
   packetSummaryTitle,
+  PLAN_LABELS,
   sanitiseForFilename,
   SEE_BELOW,
+  STATUS_LABELS,
   summaryFilename,
   TAX_NOTE,
   UI,
@@ -58,6 +60,35 @@ describe("UI copy (R12)", () => {
     expect(lineItemDeleteBlocked("Salary")).toBe(
       '"Salary" has expenses recorded against it and cannot be deleted.',
     );
+  });
+});
+
+describe("admin dashboard strings (Phase 9, verbatim)", () => {
+  it("shows the paused message only after a correct password (§3.5)", () => {
+    expect(UI.orgAccessPaused).toBe(
+      "Your organization's access is paused. Please contact support.",
+    );
+  });
+
+  it("matches the suspend dialog's title and body verbatim (Appendix A §7)", () => {
+    expect(UI.suspendDialogTitle("Eastside Youth Alliance")).toBe(
+      "Suspend Eastside Youth Alliance?",
+    );
+    expect(UI.suspendDialogText).toBe(
+      "Everyone in this organization will be signed out and won't be able to sign in until you reinstate it. None of their data is changed or deleted.",
+    );
+    expect(UI.reinstateDialogTitle("Eastside Youth Alliance")).toBe(
+      "Reinstate Eastside Youth Alliance?",
+    );
+  });
+
+  it("labels every plan and status", () => {
+    expect(PLAN_LABELS.reconciliation).toBe("Reconciliation");
+    expect(PLAN_LABELS.reconciliation_ai).toBe("Reconciliation + AI");
+    expect(STATUS_LABELS.trial).toBe("Trial");
+    expect(STATUS_LABELS.active).toBe("Active");
+    expect(STATUS_LABELS.past_due).toBe("Past due");
+    expect(STATUS_LABELS.cancelled).toBe("Cancelled");
   });
 });
 
