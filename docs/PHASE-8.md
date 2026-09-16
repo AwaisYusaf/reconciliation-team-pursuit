@@ -79,7 +79,7 @@ as it is; **Reconciled** is the new state on top of it. Recorded as **D-96**.
 | 3.2 | **One guard, `monthLocked(tx, orgId, sourceId, months)`**, the first thing inside each write's transaction: for each month's row, in sorted key order, `INSERT … ON CONFLICT DO NOTHING` then `SELECT locked_at … FOR UPDATE`; returns `true` when any is locked, and the action returns `fail(UI.monthLocked(...))` before writing anything. | Inside the transaction is what makes the open-page case and a lock pressed mid-save both hold: lock and save take the same row lock, so one waits for the other and sees its result. `FOR UPDATE` rather than `FOR SHARE` because expense inserts already upgrade to an exclusive lock on this row (§2) — two share locks upgrading would deadlock. Sorted order is one `.sort()` and covers a move that touches two months. A plain boolean, not an exception, because the guard runs before any write. |
 | 3.3 | **The guard creates the month's row if it doesn't exist yet**, before locking it. | A `SELECT … FOR UPDATE` that finds no row does not wait for another transaction's uncommitted insert of it, so without this a lock on a month with no row yet (an empty month, §7 Q4) and that month's first expense saved at the same instant could both succeed. `INSERT … ON CONFLICT DO NOTHING` *does* wait on a conflicting uncommitted insert, so the `FOR UPDATE` after it always sees the lock's committed result. Two statements, in one helper. |
 | 3.4 | **The few writes not in a transaction get one**, because a check outside a transaction is check-then-act: recurring add (insert + reference claim, which also fixes their existing non-atomicity), recurring remove, remove expense file, remove month document. `updateExpenseAction` claims its reference inside the transaction after the guard, not before it. | Required for the guarantee, and fixes a real burn: today a refused move would still spend the target month's reference number. |
-| 3.5 | **Undo "Submitted" needs no transaction**: its update gains `AND locked_at IS NULL` (the lock is on that same row, so one conditional statement is atomic). `markMonthSubmittedAction` is left alone — its button is hidden on a locked month and re-marking changes no expense. | Smallest correct change for both. |
+| 3.5 | **Undo "Submitted" needs no transaction**: its update gains `AND locked_at IS NULL` (the lock is on that same row, so one conditional statement is atomic). `markMonthSubmittedAction` runs the guard in a transaction before its upsert — originally left alone (its button is hidden on a locked month), but a tab opened before the lock could still overwrite `submitted_at` and re-capture a Reconciled month's snapshot (part 3 review fix). | Smallest correct change for both. |
 | 3.6 | **Lock = one upload request** (`target=signed-packet` on the existing upload route), not a Server Action: inspect (must be PDF), store, then one transaction — lock the row, refuse if already locked or if the month has blocking records (§3.7), set `locked_at`, insert the lock event, and — only on a fresh submission (§7 Q1 amendment: not yet submitted, or a lock after an unlock) — set `submitted_at` to now and, after commit, re-capture the snapshot. Refusal cleans up the stored object the way quota refusals already do. **Unlock = a Server Action**: `UPDATE … SET locked_at = NULL WHERE … AND locked_at IS NOT NULL` + insert the unlock event, one transaction. Signed copies are never deleted. | Server Actions can't take a 25 MB body. One request means a lock can't exist without its copy. |
 | 3.7 | **"Missing documents" = the existing blocking list** (`loadPacketReadiness(...).blocking`, R4.3), checked inside the lock's transaction after the row lock is held. | One definition; button and server can't disagree. |
 | 3.8 | **Signed copy = an ordinary upload**: the existing inspection (must come back `application/pdf`), ≤ 25 MB, counted in the quota, key `org/{orgId}/months/{YYYY-MM}/signed-packets/{fundingSourceId}/{eventId}.pdf`, served by `/api/files/[id]`. | Reuses the upload, quota and download paths; no new route. |
@@ -135,7 +135,10 @@ its signed copy and an unlock never does, so the file is the flag.
 All in the existing packet module, which already owns month-level actions and queries:
 
 - **`src/modules/packet/lock.ts`** (new; server-only, no `"use server"`, because the upload route
-  and the expense/recurring modules import it): `monthLocked` guard, `lockMonth`.
+  imports it): `lockMonth`.
+- **`src/modules/packet/month-guard.ts`** (new; server-only, imports only the database): the
+  `monthLocked` guard, imported by `lock.ts`, `documents.ts` and the expense/recurring/packet
+  actions — its own file so `lock.ts` and `documents.ts` don't import each other.
 - **`src/modules/packet/actions.ts`** (existing): `unlockMonthAction(month, fundingSourceId, reason)`,
   beside mark/clear submitted.
 - **`src/modules/packet/queries.ts`** (existing): `loadLockedMonths(orgId, sourceId | null)` → set of
@@ -223,14 +226,18 @@ behaviour they describe.
 
 ## Results (2026-09-15)
 
-Both phases built. Phase 1 (server) is commit `3ff9971`; Phase 2 (screens) follows it. Open
-questions §7 settled as the defaults, recorded in **D-96**.
+Built and merged to `main` in PR #16 (merge `b9fa9aa`), in four commits: part 1, the server
+(`863ea6a`); part 2, the screens (`62d8f21`); part 3, review and browser-testing fixes
+(`bc7a9e0`); part 4, PR #16 review fixes (`236843a`). A follow-up on `main` closed the two test
+gaps the PR review left open (below). Open questions §7 settled as the defaults, recorded in
+**D-96**, with §7 Q1/Q2 amended by **D-97**.
 
 **Phase 1.** Migration `0026` reviewed (additive; composite FK matches `month_statuses` and
 `month_documents`; no unrelated snapshot drift) and applied locally. 29 new integration tests
 against the real database (`src/modules/packet/lock.integration.test.ts`,
 `lock-guard.integration.test.ts`), including every row of the §2 table — each refused with the
-exact message and nothing changed (rows, files, audit events, reference counter), and each proven
+exact message and nothing changed (rows, files, reference counter; audit events are asserted by
+the part 4 race tests), and each proven
 load-bearing by disabling its guard and watching the same write succeed — plus the open-page case
 and the race (a concurrent save shown still pending while the lock's transaction holds the row,
 then refused once it commits).
@@ -251,15 +258,54 @@ Found and fixed in review, before tests:
 - A refused unlock showed its error twice (inline and as a toast behind the dialog).
 - Reporting periods dropped the `·` between "Locked {date} by {name}" and "View signed packet".
 
-**Verified:** typecheck, lint and build clean; full suite 894 passed, 20 skipped. The one failing
-file, `packet-trace.integration.test.ts`, is pre-existing and environmental: it needs Poppler's
-`pdftotext -bbox-layout`, and the development machine has Xpdf.
+**Part 3 — review and browser-testing fixes.**
+- Mark as submitted is guarded too: a tab opened before the lock could otherwise overwrite the
+  Submitted date and re-capture a Reconciled month's snapshot.
+- The Lock dialog can't be dismissed while its upload runs (it used to close and lock anyway);
+  Unlock likewise. `Dialog` gained `dismissDisabled`, which also blocks Escape and the backdrop.
+- "No receipt available" deletes the receipt rows inside the guarded transaction and the stored
+  files only after commit.
+- Attaching a file re-reads the expense's month inside the transaction, guards that, and refuses
+  if it moved again.
+- Lock and Unlock dialogs use a neutral tone; "View signed packet" opens inline; disabled fields
+  look disabled app-wide; Contract Summary shows history whenever a month has more than one event.
 
-**Not verified:** no live browser pass. The browser tool was unavailable in the building session,
-so the screens (Lock/Unlock dialogs, the Reconciled line, disabled controls with their messages,
-Reporting periods) and their look at phone, tablet and desktop widths are verified by typecheck,
-build and code review only. The open-page case is proven at the server by test, not yet clicked
-through in two browser sessions.
+**Part 4 — PR #16 review fixes (D-97).**
+- The first lock of a month already submitted leaves the Submitted date and the "as submitted"
+  figures alone; a lock of an unsubmitted month, or a lock after an unlock, moves both.
+- Update, delete, restore, permanent delete, remove file and recurring Remove each also match the
+  month and funding source the guard checked, so a move landing in between gets
+  "That expense just changed. Try again." instead of writing to a month the guard never checked.
+- The Packet page reads "locked" from `month_statuses.locked_at`.
+- The signed copy accepts a PDF secured with only an owner password (`pdfinfo` decides); one that
+  needs a password to open is still refused.
+- The tour's lock step anchors on the whole lock controls block; Cancel clears the unlock reason;
+  the reason is capped at 700 characters in the box and on the server; a lock shows "Month locked."
+
+**Follow-up on `main` — two test gaps from the PR review.** Both were proven by mutation to pass
+with the bug put back:
+- A guard called on the pooled `db` instead of the write's transaction (a check-then-act bug)
+  passed every refusal test, because a lock that is already committed is seen either way.
+  `lock-guard.integration.test.ts` now runs each of the 13 guarded writes once on an open month
+  and asserts the guard received that write's own transaction, never `db`.
+- Removing the clean-up of a refused lock's stored signed copy passed every test.
+  `lock.integration.test.ts` now asserts a lock refused for missing documents, or for being
+  already locked, leaves no stored signed copy behind.
+
+**Verified:**
+- Typecheck, lint and build clean; full suite green (953 tests, 83 files) after the follow-up.
+- Browser (PR #16 review, two rounds): lock with a signed PDF; lock refused while documents are
+  missing; a secured owner-password PDF refused before part 4 and accepted after it, a
+  password-to-open PDF still refused; the open-page case in two tabs; Add Expense, Recurring and
+  the read-only edit page on a locked month; unlock with and without a reason; lock again with a
+  second copy, the first marked Replaced, both downloadable; the Reporting periods row; the
+  first-lock and lock-after-unlock Submitted/snapshot rules checked against the database.
+
+**Not verified:**
+- Phone and tablet widths, except Trash at phone width (part 3).
+- The Reporting periods Open and Submitted rows in the browser (their logic is only read in the
+  page, not unit-tested).
+- `pdfinfo` in the production container (the image installs `poppler-utils`; checked locally only).
 
 ## 9. Acceptance criteria → where each is proven
 
@@ -274,7 +320,7 @@ through in two browser sessions.
 | Unlock works with or without a reason, shown in history | Phase 1; Phase 2 live |
 | After unlock → fix → lock, both copies download, newest current | Phase 1; Phase 2 live |
 | Reporting periods shows Open, Submitted, Reconciled correctly | Phase 1 (`loadLockEvents` + periods); Phase 2 live |
-| Screens look right on phone, tablet, desktop | Phase 2 viewport pass |
+| Screens look right on phone, tablet, desktop | Desktop live; phone/tablet not yet checked (see Results) |
 
 ---
 

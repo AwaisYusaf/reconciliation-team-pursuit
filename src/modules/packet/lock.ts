@@ -3,10 +3,11 @@ import "server-only";
 /**
  * Locking a reconciled month (R10.7, D-96).
  *
- * Deliberately not `"use server"`: every export in a `"use server"` module becomes a directly
- * invocable endpoint, and `monthLocked` is a guard meant to be called from inside another
- * write's own transaction (the upload route, and — from Phase 1b on — the expense/recurring
- * modules), not from the client.
+ * Exports only `lockMonth`, called by the upload route (`target=signed-packet`) because a signed
+ * copy can be up to 25 MB, more than a Server Action accepts. Deliberately not `"use server"`:
+ * every export of such a module becomes a directly invocable endpoint, and `lockMonth` trusts
+ * the org, user and funding source its caller already verified. The guard every protected write
+ * runs, `monthLocked`, lives in `./month-guard.ts`.
  */
 import { and, eq, isNotNull } from "drizzle-orm";
 import { v7 as uuidv7 } from "uuid";
