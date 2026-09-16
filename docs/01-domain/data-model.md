@@ -24,6 +24,13 @@ Postgres, single database, org-scoped rows (single-tenant-per-org from day one; 
 | complimentary_until | date null | Null → no end. A past date is allowed and shows as ended |
 | suspended_at | timestamptz null | Set → every session for this org is refused and its users can't sign in. Enforced in `resolveSession` (Phase 9 part 2, D-99); written by `suspendOrgAction`/`reinstateOrgAction` and read by `signInAction`'s paused branch |
 
+The five columns above arrive in migration `0027`, which ends with a one-off
+`UPDATE organizations SET subscription_status = 'active', complimentary = true;` — every
+organization that exists when the migration runs becomes Reconciliation · Active ·
+Complimentary with no end date, so nobody loses access on the day this ships. Organizations
+created afterwards take the column defaults (`reconciliation` · `trial` · not complimentary),
+which is also what old code still running between the migration and the restart would insert.
+
 ### users
 Multi-user per org (D-85). Org creation provisions one `admin`; admins create `manager` accounts. User management (add user, reset password) is admin-only, enforced server-side in the action.
 | Field | Type | Notes |
@@ -31,7 +38,7 @@ Multi-user per org (D-85). Org creation provisions one `admin`; admins create `m
 | id | uuid PK | |
 | org_id | uuid FK | |
 | name | text null | Display name for "who did this" (D-89). Null for an account that predates this column; falls back to email at render (`userDisplay`) rather than a guess |
-| email | citext unique | Login identity |
+| email | text, unique index on `lower(email)` | Login identity. Postgres has no `citext` extension here; the case-insensitive uniqueness is the functional index `users_email_lower_uq` |
 | password_hash | text | argon2id; password minimum 12 chars |
 | role | user_role enum | `admin` \| `manager`. No column default — a forgotten role is a type error, not a silent admin (D-85) |
 | last_sign_in_at | timestamptz null | Written from ship date on (Phase 9); null on every account that predates it |
@@ -50,7 +57,7 @@ AB Solutions staff accounts, separate from `users` — they don't belong to any 
 | Field | Type | Notes |
 |---|---|---|
 | id | uuid PK | |
-| email | citext unique | Login identity, unique across both `users` and `staff_users` (`emailInUse`) |
+| email | text, unique index on `lower(email)` | Login identity (`staff_users_email_lower_uq`). Also unique across both `users` and `staff_users`, enforced in application code by `emailInUse()` — no single constraint spans two tables |
 | name | text | |
 | password_hash | text | argon2id, same policy as `users` |
 

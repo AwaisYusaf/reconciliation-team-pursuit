@@ -1,6 +1,13 @@
 # Phase 9 — AB Solutions staff dashboard
 
-Status: **Phases 1-3 committed (`1f139ae`, `dd96b6f`, `e5ee969`); Phase 4 built, not committed; Phase 5 not started** (2026-09-16). The product spec is Appendix A, copied word for word.
+Status: **Finished and verified — not yet deployed** (2026-09-16). All five phases are done:
+Phases 1-4 are committed (`1f139ae`, `dd96b6f`, `e5ee969`, `577201b`) and Phase 5 is this
+document's last Results block. Every "Done when" line in Appendix A was walked in a real
+browser against an organization with real data, and every one passes; the ship gate is clean at
+94 files / 1078 tests. **Releasing this needs one operator step that nothing else in the repo
+needs: `npm run db:create-staff` per AB Solutions staff member, after `db:migrate`** — see
+Phase 5's deploy note below and `docs/TASKS.md` S6. The product spec is Appendix A, copied word
+for word.
 Each build phase in §8 is written to run in a fresh chat: it names its own sources and its own checks.
 
 ---
@@ -556,23 +563,219 @@ no accessibility audit beyond `aria-pressed`/`aria-label`/labelled controls, and
   - `TASKS.md`
 - Deploy note: after `db:migrate` in production, run `db:create-staff` for each AB Solutions staff member. First check that the production image still ships `tsx` for it (`Dockerfile:58`).
 
+**Results — Phase 5 (2026-09-16, branch `implementation/admin-dashboard`)**
+
+Almost no feature code, as planned. One real security finding was fixed (below); everything
+else in this phase is proof and documentation.
+
+#### Security review of the whole feature diff (`git diff 236843a..HEAD`)
+
+Read directly rather than delegated, over every file in the diff plus the surfaces it could
+reach: `services/auth/{store,session}.ts`, `lib/action-session.ts`, `modules/admin/*`,
+`modules/auth/{actions,emails}.ts`, `db/{create-staff,reset-password}.ts`, `proxy.ts`, all five
+`app/api/*` route handlers, all ten `"use server"` modules, and every page under `app/a`,
+`app/r` and `app/(auth)`.
+
+| # | Severity | Finding | Disposition |
+|---|---|---|---|
+| 1 | **Medium** | `signUpAction`'s "already signed in" guard is `requireSession()`, which only sees *customer* sessions. A signed-in staff member had no customer session and went straight through. The signup **page** redirects staff to `/a`, but server actions are directly invocable, and going through the action calls `startSession`, which clears **both** session tables — silently swapping the staff member onto a brand-new customer organization and leaving a junk row in the directory | **Fixed.** `signUpAction` now also refuses a `getStaffSession()`. New test `signUpAction refuses a staff session and creates no organization`; neutralising the check makes it fail with `NEXT_REDIRECT:/onboarding/line-items` and a created organization, restoring it makes it pass. Logged as D-101 |
+| 2 | Low | `requireStaff()` answers a suspended organization's customer with `SESSION_EXPIRED` rather than `FORBIDDEN`, because `getSession()` already returns null for them | **Accepted.** Cosmetic: both are refusals, nothing is written either way, and no `/a` action is reachable by a customer in the first place |
+| 3 | Low | A paused sign-in does not reset the rate-limit buckets, so a suspended org's own users can exhaust their login budget | **Accepted** (deliberate — resetting on a refused sign-in weakens the limiter). Recorded as TASKS P6 |
+| 4 | Low | `createOrgUserAction` answers "email in use" for a staff address, so an org admin can probe whether an address belongs to AB Solutions | **Accepted.** The cross-table check is what §3.3 requires; the action is admin-only and rate-limited. TASKS P7 |
+| 5 | Low | No constraint spans `users` and `staff_users`, so a signup and a `db:create-staff` run for one address at the same instant can both pass `emailInUse()` | **Accepted** (needs an operator script racing a live signup). TASKS P8 |
+| 6 | Low | `withLockedOrg` returns `fail()` from inside `db.transaction`, which commits rather than rolls back | **Accepted** — correct today because every refusal precedes every write; fragile if a future edit writes first. TASKS P9 |
+| 7 | Informational | Login distinguishes unknown-email from wrong-password | **Pre-existing** (TASKS P4, D-25), not introduced here. Phase 9 does not widen it: staff and customer misses return the identical string, and both do one argon2 verify |
+
+Checked and found clean, with the evidence:
+- **Token confusion.** The token hash is the primary key of exactly one of `sessions` /
+  `staff_sessions`; `resolveSession` joins `sessions → users → organizations` and
+  `resolveStaffSession` joins `staff_sessions → staff_users`, neither can see the other's rows,
+  and `startSession`/`startStaffSession`/`endSession` all delete from **both**. Confirmed in a
+  real browser: a staff session at `/r`, `/r/expenses` lands back on `/a`, and
+  `GET /api/files/<uuid>` from a staff session returns **401** — staff genuinely cannot reach a
+  customer's documents, as Appendix A §4 requires.
+- **Nothing reaches data before the gate.** All three `/a` server files call
+  `requireStaffPage()` as their first statement, before any loader; the layout calls it too
+  (Next 16 layouts don't re-render on navigation). Signed out, `/a` and `/a/orgs/<id>` both
+  redirect to `/login`.
+- **Suspension has no bypass.** Guard coverage counted mechanically: all ten `"use server"`
+  modules have at least as many guard calls as exported actions (admin 4/4, auth 8/8, expenses
+  8/8, funding-sources 4/6, line-items 6/6, packet 4/4, recurring 4/4, settings 6/6, tours 3/3,
+  users 4/5). All five `app/api/*` handlers call `getSession()`. Both `/onboarding` pages call
+  `getSession()` and redirect on null. `proxy.ts` only checks cookie *presence* and does no
+  database work, so it neither enforces nor bypasses anything. No `use cache`, no
+  `unstable_cache`, no `revalidate`, and `getSession`/`getStaffSession` use React's
+  per-request `cache()`, so no session survives its own request.
+- **Cross-org id probing.** Staff are authorized on every organization by design, so there is
+  nothing to probe *between* orgs; what matters is that a malformed id cannot escape the
+  contract, and `isUuid` shape-checks it in all four actions and all four `orgId` read models
+  before it reaches a `uuid` column. Verified in the browser at Phase 4: a non-uuid and an
+  unknown uuid both render the not-found page rather than a 500.
+- **Concurrency.** All four actions take `SELECT … FOR UPDATE` on the organization row inside
+  the transaction, so plan/status/complimentary/suspend/reinstate serialize against each other,
+  not just suspend against suspend. `suspendOrgAction`'s session delete is a **subquery**
+  (`sessions.user_id IN (SELECT id FROM users WHERE org_id = …)`), not a JS array, so an
+  organization with no users deletes nothing rather than matching everything.
+- **Injection / XSS / ReDoS.** Plan and status are checked against `enumValues`, notes are
+  length-capped and parameterized, `until` goes through `isValidIsoDate`'s anchored regex, and
+  every History string is React-escaped. The one client-imported module, `admin/directory.ts`,
+  is pure, imports no `db` and carries no data.
+
+#### Browser walk-through — every "Done when" line in Appendix A
+
+Chrome driven over the DevTools Protocol against `next dev`, the same approach Phase 4 used
+(no Playwright in this repo, and the MCP server is not connected), extended with
+`Target.createBrowserContext` so a **staff context and two customer contexts are live at the
+same time** — which is what the suspension check actually needs. A staff account was seeded with
+`db:create-staff` and a throwaway organization created through the real signup form.
+**Crucially, and unlike Phase 4, the usage numbers were checked against Team Pursuit Global —
+78 real expenses across seven months, three funding sources, 31 MB of documents, a submitted
+and locked month — not against an empty new organization.** 112 assertions, all passing.
+
+| # | Done when | Evidence | Verdict |
+|---|---|---|---|
+| 1 | Only AB Solutions staff open the dashboard; customer admins and managers, including Misty, can't | Signed out: `/a` and `/a/orgs/<id>` → `/login`. **The real Team Pursuit Global admin** (the Misty case — an org's own `admin`) signs in to `/r`, then `/a` → `/r` and `/a/orgs/<own id>` → `/r`, with no admin content in the HTML. Staff sign-in → `/a`, header reads "AB Solutions admin / Awais Khan / Log out" and carries no customer nav. Staff at `/r` and `/r/expenses` → `/a`; `GET /api/files/<uuid>` as staff → 401 | **PASS** |
+| 2 | The list shows every org with signup date, plan, status and badges, and the summary counts match the list | 5 rows rendered = 5 rows in `organizations`; the "5 organizations" line equals the rendered rows; the two plan cards sum to 5 and the four status cards sum to 5; ordering newest-first (16 Sep, 14 Sep, 9 Sep, 24 Aug, 18 Aug); headers exactly Organization · Signed up · Plan · Status · Users · Last sign-in | **PASS** |
+| 3 | Search, filters and clicking a summary card all narrow the list correctly | **All eight cards, one at a time:** each filters to exactly its own count, sets `aria-pressed`, leaves every card's count unchanged while filtered (§7 Q10), and clears on a second click — including the four zero-count cards. Search is case-insensitive, trims (`"  TEAM  "`), leaves card counts alone, ANDs with a card filter, and shows "No organizations match these filters." on a miss. Both `Select`s narrow and stay in sync with the cards' pressed state | **PASS** |
+| 4 | An organization's page shows its account details and usage, and the numbers match what is in that organization's app | The side-by-side table below, read from both places in the same session | **PASS** |
+| 5 | Changing the plan or status works and shows in History | Reconciliation/Trial → Reconciliation + AI/Past due with a note: fields written, page updated without a manual reload, exactly one History line ("… changed plan from Reconciliation to Reconciliation + AI and status from Trial to Past due – Upgraded after call with Misty"), `suspended_at` untouched, and reopening the dialog shows the **saved** values. Re-saving the same values writes no event | **PASS** |
+| 6 | Complimentary access can be turned on with or without an end date, and an ended date shows as ended | On with no end → badge `Complimentary`. End date 2026-12-31 → badge `Complimentary until 31 Dec 2026`. End date 2026-01-31 (past) → badge `Complimentary (ended 31 Jan 2026)` in the **warning tone** (`bg-caution/10 text-caution`, `rgb(138, 90, 18)`), not the neutral one. Off → badge gone, both columns cleared. Each step added its own History line | **PASS** |
+| 7 | Suspending signs everyone out and blocks sign-in with the message; reinstating lets them back in with nothing changed | Dialog title "Suspend Team Pursuit Global?" and Appendix A §7's text verbatim; confirm disabled on an empty **and** a whitespace-only reason, enabled once typed. On confirm: TPG's live session rows went **12 → 0**; the customer's already-open `/r/expenses` bounced to `/login` on its very next click; a **wrong** password still got "That password doesn't match this organization email." and the **correct** one got "Your organization's access is paused. Please contact support." with still zero sessions. After Reinstate (with a note), the same credentials signed back in to `/r` and the May 2026 list still showed its 9 rows; expenses/sources/month-statuses were `78/3/7` before and `78/3/7` after | **PASS** |
+| 8 | Suspending one organization doesn't affect any other organization | A second organization's user was signed in throughout: its session rows were 2 before and 2 after TPG's suspension, and its open page still loaded afterwards | **PASS** |
+| 9 | Every change shows in History with who made it, when, and the reason or note | All seven events written during the walk render as `16 Sep 2026, 03:0x – Awais Khan <what> – <note>`; History length always equalled the event count plus one, and "Organization signed up" stayed last. A 701-character note is refused **inside** the dialog ("Keep the note under 700 characters.") | **PASS** |
+| 10 | Existing organizations start as Reconciliation · Active · Complimentary, and new sign-ups start as Reconciliation · Trial | All four pre-existing organizations render `Reconciliation` / `Active` + `Complimentary` (the migration backfill). A throwaway organization created through the **real signup form** came out `reconciliation \| trial \| false` in the database and rendered as `Reconciliation` / `Trial` with no badges | **PASS** |
+| 11 | Screens look right on desktop and tablet | Screenshots at **1280** and **768** of the directory and the org page. Zero page-level horizontal overflow at both widths on both screens (`scrollWidth === clientWidth`); at 768 the cards reflow and only the table scrolls, inside `TableCard`, as §3.11 intends | **PASS** |
+
+#### The usage numbers, side by side — Team Pursuit Global
+
+The point of this phase: not "the query matches its own SQL" (Phase 3 proved that) but "the
+dashboard matches the organization's own screens".
+
+| Line | Staff dashboard says | The organization's own app says | Match |
+|---|---|---|---|
+| Funding sources | `3 active, 0 archived` | Settings → Funding Sources lists exactly three — Community Violence Intervention, Government, Government type Grant — none archived | ✅ |
+| Expenses, total | `78 total` | `/r/expenses` with funding source = **All**, walked across every month the header offers: Feb 38 · May 9 · Jun 14 · Jul 12 · Aug 3 · Sep 1 · Oct 1, every other month 0 — **sum 78**. (The organization also has 3 soft-deleted expenses; both places show 78, not 81, so the deleted-row exclusion is proven live, not just in a unit test) | ✅ |
+| Expenses, this month | `1 in September 2026` | the same list with September 2026 selected shows **1** row | ✅ |
+| Last expense added | `10 Sep 2026` | no customer screen renders an expense's `created_at`, so this one is compared against its source column: `max(created_at) = 2026-09-10`. **Stated as a gap, not a match** | ⚠️ source-only |
+| Storage | `31 MB of 5 GB` | no customer-facing storage screen exists either; compared against the bytes the quota itself enforces — `orgStorageBytes()` = **32,169,310**, and `formatBytes` rounds MB whole, so 31 MB is right. Since Phase 3 the dashboard and the quota call the *same function*, so these cannot drift | ⚠️ quota-only |
+| Months submitted · locked | `1 · 1` | `/r/packet` month by month on the owning funding source: **May 2026** reads "Reconciled · Locked on 9/15/2026 by Team Persuit" and "Submitted 9/15/2026"; June 2026 and February 2026 read neither | ✅ |
+| Packets downloaded | `0`, then `1` | proven by doing it: with the dashboard reading 0, the customer downloaded the May 2026 packet (`GET /api/downloads/packet` → **200**, a real 39-page build through LibreOffice and poppler). `generated_artifacts` packet rows with `downloaded_at` went 0 → 1 and the dashboard then read **1** | ✅ |
+| Users | 4 rows, with roles and last sign-in | Settings → Users lists the same 4 | ✅ |
+
+#### Ship gate
+
+| Gate | Result |
+|---|---|
+| `npm run typecheck` | clean |
+| `npm run lint` | clean |
+| `npm run build` | succeeds; `/a` and `/a/orgs/[id]` compile as dynamic (`ƒ`), as do `/login` and `/signup` now that they resolve a staff session |
+| `npm test` | **94 files, 1078 tests, all passing, 0 skipped, 0 failing** — the 1077 baseline plus the one new test for the D-101 fix, so this phase added 1 test and zero regressions |
+| Fail-before: the D-101 guard | `if (await getStaffSession())` neutralised → the new test fails (`NEXT_REDIRECT:/onboarding/line-items`, and an organization really was created — the finding was live, not theoretical) → restored → 8/8 pass |
+| Diff audit | No `debugger`, no TODO/FIXME/TEMP/XXX/HACK, no `.only`/`.skip`, no stray scratch file in the repo, and lint (which fails on unused imports) is clean. The only `console.*` in the diff are the deliberate operator-CLI prints in `create-staff.ts` and `reset-password.ts` |
+| Test-data cleanup | The seeded staff account, the throwaway organization, all seven `org_account_events`, the downloaded packet artifact and its file, and every session row were deleted; the customer account's password hash, `last_sign_in_at`, active month and active funding source were restored from a snapshot taken first. `diff` of the before/after dumps of `organizations` and `users` is **empty** |
+
+**One flaky failure, investigated rather than waved off.** The first full run reported 1 failure:
+`src/generation/docx-to-pdf.test.ts > leaves no temp directory behind`, expecting `[]` and
+getting `['ngo-soffice-Ppt0J4']`. It is not a regression and not caused by this diff — Phase 9
+touches nothing under `src/generation` except one wording string. The test snapshots the temp
+directory first and then waits up to 10 s for any *new* `ngo-soffice-*` directory to clear,
+because sibling test files convert concurrently and share the prefix; on a loaded machine
+running 94 files in parallel a sibling conversion can outlive that window. `ngo-soffice-Ppt0J4`
+was gone from the temp directory by the time it was checked, which is the definition of
+concurrent rather than leaked, and the immediately following full run was 1078/1078 green.
+Deliberately **not** "fixed" by widening the wait: that is pre-existing test infrastructure
+outside this phase, and it deserves its own change rather than a quiet edit inside a feature
+branch.
+
+#### Docs finished in this change
+
+`data-model.md` (the `0027` backfill and deploy-window note; `email` corrected from "citext" to
+what the schema actually does, a unique index on `lower(email)`, in both `users` and
+`staff_users`) · `domain-rules.md` §12 (audited every `UI.*` key used by `/a` and
+`src/modules/admin` against it — complete, nothing missing) · `architecture.md` §Auth (rewritten:
+the stale `requireOrg()` and `services/auth.ts` names replaced with the real
+`requireSession`/`actionSession`/`requireAdmin`/`requireStaff`/`requireStaffPage`/`assertOrgAccess`
+and their real files, plus the two-account-kinds and suspension models) · `m00-app-shell-auth.md`
+(staff login, the paused message, and its login-error strings corrected to the American spellings
+the app has used since the Phase 9 sweep) · `decisions.md` **D-100** (the Q1-Q11 answers and the
+Phase 3-4 implementation choices) and **D-101** (the security fix) · `README.md` (map row for
+this file, m10's Design gate marked `n/a` with the reason, and the build-progress line) ·
+`TASKS.md` (deploy step S6, the four accepted Phase 9 security findings as P6-P9, the Phase 9
+"recently landed" paragraph, and R6 struck through — the storage cap it calls unimplemented is
+enforced, and this phase verified it live) · `deploy-ec2.md` (the deploy note below).
+
+#### Deploy note — required with this release
+
+There is no staff sign-up, so **until `db:create-staff` has been run at least once, `/a` is
+unreachable by anyone.** That is the safe default, not a failure, but it does mean the release
+is not finished when `deploy.sh` returns. After `deploy.sh` has applied migration `0027`, run
+once per AB Solutions staff member:
+
+```
+docker compose -f docker-compose.prod.yml exec app \
+  npm run db:create-staff -- --email <address> --name "<Full Name>"
+```
+
+With no `--password` a strong one is generated and printed **once** — hand it over out of band.
+The script refuses an address that already belongs to a customer or to another staff account.
+Also recorded as `docs/TASKS.md` S6 and in `deploy-ec2.md` § Operational notes.
+
+**The `tsx` claim was verified, not repeated.** The plan said to check `Dockerfile:58`; the line
+is now **`Dockerfile:60`**, `RUN npm ci --include=dev`, and the comment immediately above it
+(lines 55-59) states that the flag is load-bearing precisely so `drizzle-kit` and `tsx` survive
+`NODE_ENV=production`, "so `db:migrate` and `db:reset-password` would fail in the running
+container" without it. `db:create-staff` is the identical `tsx --conditions=react-server`
+invocation as `db:reset-password`, and `src/db/create-staff.ts` ships via `COPY . .`. One thing
+the plan did not mention and that matters: `.dockerignore` excludes `.env.local`, so — exactly
+as for `db:reset-password` — `DATABASE_URL` has to come from the container's own environment;
+the script's `dotenv` call on a missing file is a no-op that leaves `process.env` alone.
+
+#### Not verified
+
+- **Nothing was run against production data**, and no production deploy or migration was run.
+  The migration was rehearsed on a throwaway database in Phase 1, not on the real one.
+- **"Last expense added" and "Storage" have no customer-facing screen to sit beside**, so those
+  two lines were compared against their source column and against the quota's own function
+  rather than against an organization's own UI. They are marked ⚠️ in the table above rather
+  than claimed as matches.
+- **Archived funding sources were not exercised live.** Team Pursuit Global has three sources and
+  none archived, so the "0 archived" half of that line is a true reading of a zero, not a
+  demonstration of the split; the split itself is covered by the Phase 3 integration test.
+- **No React component test exists for these screens** — this repo runs `environment: "node"` with
+  no React testing library, and one was deliberately not added, so `/a` is proven in a browser
+  rather than in the suite. A refactor that breaks a screen without breaking a query would not be
+  caught by `npm test`.
+- **Concurrency was tested as two simultaneous `suspendOrgAction` calls (Phase 2) and one
+  out-of-band suspend racing an open dialog (Phase 4)**, not as `changePlanAction` racing
+  `suspendOrgAction`, and not under load. The row lock makes that safe by construction, but it
+  was reasoned, not measured.
+- **`loadOrgDirectory` was only ever run against five organizations**, nowhere near the scale
+  §3.9's `ponytail:` note contemplates.
+- **No accessibility audit** beyond `aria-pressed` / `aria-label` / labelled controls, and
+  **nothing below 768px** was checked — the ticket asks for desktop and tablet only.
+- **The staff sign-in does not record a last-sign-in for the staff member themselves.** Not asked
+  for, not built.
+
 ---
 
 ## 9. Acceptance criteria → where each is proven
 
-| Done when | Proven in |
-|---|---|
-| Only staff open the dashboard; Misty can't | P1 `requireStaff` / `requireStaffPage` tests + P4 browser check |
-| List shows every org with signup, plan, status, badges; counts match | P3 `summarize` = `filterOrgs` test + P4 browser |
-| Search, filters, summary cards narrow correctly | P3 unit + P4 browser |
-| Org page numbers match the org's app | P3 usage integration + P5 side-by-side against the org's own screens |
-| Plan/status change works and shows in History | P2 action tests + P4 browser |
-| Complimentary with/without end date; ended shows as ended | P2 + P3 `complimentaryState` edges + P4 |
-| Suspend signs everyone out and blocks sign-in with the message; reinstate restores with nothing changed | P2 suspension tests (including the fail-before proof) |
-| Suspending one org doesn't affect another | P2 two-org session test |
-| Every change shows who, when, reason/note | P2 event-shape assertions + P3 `describeAccountEvent` |
-| Existing orgs = Reconciliation · Active · Complimentary; new = Reconciliation · Trial | P1 backfill + signup test |
-| Desktop and tablet look right | P4 screenshots at 1280 / 768 |
+All eleven are proven and pass. The Phase 5 Results block above carries the browser evidence
+line by line; this table says where each is held down in the suite as well.
+
+| Done when | Proven in | Verdict |
+|---|---|---|
+| Only staff open the dashboard; Misty can't | P1 `requireStaff` / `requireStaffPage` tests + P4 browser check + **P5 browser, against Team Pursuit Global's own admin — the real Misty case — plus a 401 on the file route from a staff session** | ✅ |
+| List shows every org with signup, plan, status, badges; counts match | P3 `summarize` = `filterOrgs` test + P4 browser + **P5: 5 rendered rows = 5 database rows, plan cards sum to 5, status cards sum to 5** | ✅ |
+| Search, filters, summary cards narrow correctly | P3 unit + P4 browser + **P5: all eight cards, both Selects, case-insensitive and trimmed search, card ∧ search, and the empty state** | ✅ |
+| Org page numbers match the org's app | P3 usage integration + **P5 side-by-side against Team Pursuit Global's own screens — 78 expenses summed month by month, 1 in September, 3 funding sources, 1 · 1 months, and a real packet download taking the count 0 → 1** | ✅ |
+| Plan/status change works and shows in History | P2 action tests + P4 browser + **P5** | ✅ |
+| Complimentary with/without end date; ended shows as ended | P2 + P3 `complimentaryState` edges + P4 + **P5, including the warning tone on the ended badge** | ✅ |
+| Suspend signs everyone out and blocks sign-in with the message; reinstate restores with nothing changed | P2 suspension tests (including the fail-before proof) + **P5 end to end in three live browser contexts: 12 sessions → 0, the open page dies on the next click, the paused message on sign-in, and `78/3/7` unchanged across the whole cycle** | ✅ |
+| Suspending one org doesn't affect another | P2 two-org session test + **P5: the other organization's sessions were 2 before and 2 after, and its open page still worked** | ✅ |
+| Every change shows who, when, reason/note | P2 event-shape assertions + P3 `describeAccountEvent` + **P5: seven real events rendered with actor, timestamp and note** | ✅ |
+| Existing orgs = Reconciliation · Active · Complimentary; new = Reconciliation · Trial | P1 backfill + signup test + **P5: four backfilled organizations and one created through the real signup form** | ✅ |
+| Desktop and tablet look right | P4 screenshots at 1280 / 768 + **P5 screenshots of both screens at both widths, zero page-level horizontal overflow** | ✅ |
 
 ---
 

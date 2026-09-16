@@ -27,6 +27,7 @@ import { UI } from "@/src/domain/strings";
 import { fail, ok, SESSION_EXPIRED, type ActionResult } from "@/src/lib/action-result";
 import {
   endSession,
+  getStaffSession,
   requireSession,
   startSession,
   startStaffSession,
@@ -250,6 +251,14 @@ export async function signUpAction(
     return fail("You are already signed in. Log out first to create another organization.");
   } catch {
     // Not signed in, which is the expected case here.
+  }
+
+  // A staff member has no customer session, so the check above doesn't see them. The signup
+  // page already redirects them to `/a`, but server actions are directly invocable, and going
+  // through here would replace their staff session with a customer one (`startSession` clears
+  // both tables) and leave a junk organization in the directory (Phase 9 §3.3).
+  if (await getStaffSession()) {
+    return fail("You are signed in as AB Solutions staff. Log out first to create an organization.");
   }
 
   // Bounded before argon2 is reached: hashing runs on the same threadpool login's

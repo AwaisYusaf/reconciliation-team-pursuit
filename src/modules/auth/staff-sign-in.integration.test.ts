@@ -206,6 +206,43 @@ describe.skipIf(!hasDatabase)("signInAction staff fallback (integration)", async
     expect(row.lastSignInAt).toBeNull();
   });
 
+  // The signup page redirects a staff session to `/a`, but a server action is directly
+  // invocable, so the action has to refuse too — otherwise `startSession` would clear the
+  // staff row (it clears both tables) and swap the staff member onto a junk organization.
+  it("signUpAction refuses a staff session and creates no organization", async () => {
+    const previous = process.env.SIGNUP_ENABLED;
+    process.env.SIGNUP_ENABLED = "true";
+    const { signUpAction } = await import("./actions");
+
+    try {
+      // Signing in puts the staff token in the shared fake cookie jar.
+      await expect(signInAction(IDLE, formWith(staffEmail, staffPassword))).rejects.toThrow("NEXT_REDIRECT:/a");
+
+      const orgName = `Staff Should Not Own This ${Date.now()}`;
+      const form = new FormData();
+      form.set("orgName", orgName);
+      form.set("name", "Staff Person");
+      form.set("email", `staff-signup-${Date.now()}@example.test`);
+      form.set("password", "a-long-enough-password-1");
+      form.set("confirmPassword", "a-long-enough-password-1");
+
+      const result = await signUpAction(IDLE, form);
+      expect(result.ok).toBe(false);
+      expect("error" in result && result.error).toMatch(/AB Solutions staff/);
+
+      // Nothing created, and the staff session survives. Scoped by name/email rather than by a
+      // global count — other test files share this database and run concurrently.
+      expect(
+        await db.select({ id: organizations.id }).from(organizations).where(eq(organizations.name, orgName)),
+      ).toHaveLength(0);
+      expect(await db.select().from(staffSessions).where(eq(staffSessions.staffUserId, staffId))).toHaveLength(1);
+    } finally {
+      if (previous === undefined) delete process.env.SIGNUP_ENABLED;
+      else process.env.SIGNUP_ENABLED = previous;
+      await db.delete(staffSessions).where(eq(staffSessions.staffUserId, staffId));
+    }
+  });
+
   async function customerEmail(): Promise<string> {
     const [row] = await db.select({ email: users.email }).from(users).where(eq(users.id, customerId));
     return row.email;
