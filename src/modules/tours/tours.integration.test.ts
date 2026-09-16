@@ -1,11 +1,11 @@
-/**
+﻿/**
  * `hasSeenTour` / `completeTourAction` / `resetToursAction` against a real database
  * (Phase 7, D-94).
  *
  * The whole feature rests on one guarantee: tour-seen state is per **user**, never per
  * organisation. Two users in the same org must not share it (a teammate added later sees every
  * tour once, same as a brand-new sign-up), and "Show the app guide again" must only ever reset
- * the calling user's own rows. Both are the ★ invariants this file proves. Skipped when
+ * the calling user's own rows. Both are the â˜… invariants this file proves. Skipped when
  * DATABASE_URL is absent.
  */
 import { config } from "dotenv";
@@ -33,7 +33,7 @@ describe.skipIf(!hasDatabase)("tour progress (integration)", async () => {
 
   const createdOrgIds: string[] = [];
   afterAll(async () => {
-    // Cascades through users to user_tour_progress — no separate cleanup needed there.
+    // Cascades through users to user_tour_progress â€” no separate cleanup needed there.
     for (const id of createdOrgIds) {
       await db.delete(organizations).where(eq(organizations.id, id));
     }
@@ -64,6 +64,7 @@ describe.skipIf(!hasDatabase)("tour progress (integration)", async () => {
       activeFundingSourceId: null,
       onboarded: true,
       welcomeDismissed: true,
+      plan: "reconciliation" as const,
     });
   }
 
@@ -82,7 +83,7 @@ describe.skipIf(!hasDatabase)("tour progress (integration)", async () => {
     const { orgId } = await createTestOrg({ name: "Tour Org 2" });
     createdOrgIds.push(orgId);
     const userA = await createUser(orgId);
-    const userB = await createUser(orgId); // same org — the ★ invariant
+    const userB = await createUser(orgId); // same org â€” the â˜… invariant
 
     asUser(orgId, userA);
     const result = await completeTourAction("dashboard");
@@ -91,7 +92,7 @@ describe.skipIf(!hasDatabase)("tour progress (integration)", async () => {
     expect(await hasSeenTour(userA, "dashboard")).toBe(true);
     // A different tour, same user: untouched.
     expect(await hasSeenTour(userA, "add_expense")).toBe(false);
-    // A different user, same org, same tour: untouched — this is the guarantee the whole
+    // A different user, same org, same tour: untouched â€” this is the guarantee the whole
     // "teammates added later see every tour" requirement depends on.
     expect(await hasSeenTour(userB, "dashboard")).toBe(false);
   });
@@ -133,7 +134,7 @@ describe.skipIf(!hasDatabase)("tour progress (integration)", async () => {
 
     expect(await hasSeenTour(userA, "dashboard")).toBe(false);
     expect(await hasSeenTour(userA, "recurring")).toBe(false);
-    // userB's own completion survives userA's reset — not an org-wide clear.
+    // userB's own completion survives userA's reset â€” not an org-wide clear.
     expect(await hasSeenTour(userB, "dashboard")).toBe(true);
   });
 
@@ -194,7 +195,7 @@ describe.skipIf(!hasDatabase)("tour progress (integration)", async () => {
     expect(replay).toMatchObject({ ok: false });
 
     expect(await hasSeenTour(userId, "packet")).toBe(false);
-    // Still seen — neither the reset nor the replay deleted anything.
+    // Still seen â€” neither the reset nor the replay deleted anything.
     expect(await hasSeenTour(userId, "dashboard")).toBe(true);
   });
 });

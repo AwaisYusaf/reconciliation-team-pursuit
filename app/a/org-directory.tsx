@@ -10,7 +10,6 @@ import { useMemo, useState } from "react";
 
 import { Input, Label } from "@/src/components/ui/field";
 import { Select } from "@/src/components/ui/select";
-import { Card, SubsectionTitle } from "@/src/components/ui/surfaces";
 import { TableCard, Td, Th } from "@/src/components/ui/table";
 import type { IsoDate } from "@/src/domain/dates";
 import { formatDateShort, todayIso } from "@/src/domain/dates";
@@ -29,14 +28,22 @@ import { AccountBadges } from "./badges";
 
 type OtherFilter = "complimentary" | "suspended";
 
-function SummaryCard({
+/**
+ * One count, as a filter tile: label on top, the number large beneath it, and the group it
+ * belongs to as a caption at the foot — which is what carries "this is a plan / a status"
+ * without a separate heading row per group. The selected tile fills with the accent, so which
+ * filter is on is readable at a glance from across the table.
+ */
+function SummaryTile({
   label,
   value,
+  caption,
   active,
   onClick,
 }: {
   label: string;
   value: number;
+  caption: string;
   active: boolean;
   onClick: () => void;
 }) {
@@ -46,15 +53,28 @@ function SummaryCard({
       aria-pressed={active}
       onClick={onClick}
       className={cn(
-        // Capped as well as flexed: Appendix A §3 calls these "small cards", and without a
-        // maximum the two-card rows (By plan, Other) stretched to the full content width while
-        // the four-card status row stayed narrow, so the three rows didn't line up.
-        "text-left flex-1 min-w-[160px] max-w-[260px] rounded-[4px] border bg-surface px-5 py-[18px] transition-colors",
-        active ? "border-accent ring-1 ring-accent" : "border-line hover:bg-section",
+        "text-left rounded-[4px] border px-4 py-3.5 transition-colors",
+        active ? "border-accent bg-accent text-surface" : "border-line bg-surface hover:bg-section",
       )}
     >
-      <div className="text-[13px] text-sub leading-snug">{label}</div>
-      <div className="text-xl font-bold tabular-nums mt-2">{value}</div>
+      <div className={cn("text-[13px] leading-snug", active ? "text-surface/85" : "text-sub")}>{label}</div>
+      <div
+        className={cn(
+          "text-[26px] font-bold tabular-nums leading-none mt-1.5",
+          // A zero recedes rather than shouting: most of these are zero most of the time.
+          !active && value === 0 && "text-muted",
+        )}
+      >
+        {value}
+      </div>
+      <div
+        className={cn(
+          "text-[12px] mt-2 uppercase tracking-[0.04em]",
+          active ? "text-surface/75" : "text-muted",
+        )}
+      >
+        {caption}
+      </div>
     </button>
   );
 }
@@ -74,53 +94,44 @@ export function OrgDirectory({ rows, today }: { rows: OrgDirectoryRow[]; today: 
 
   return (
     <div className="flex flex-col gap-6">
-      <Card className="p-4 sm:p-5 flex flex-col gap-4">
-        <div>
-          <SubsectionTitle className="mb-2">By plan</SubsectionTitle>
-          <div className="flex flex-wrap gap-3">
-            {(Object.keys(PLAN_LABELS) as OrgPlan[]).map((key) => (
-              <SummaryCard
-                key={key}
-                label={PLAN_LABELS[key]}
-                value={summary.plan[key]}
-                active={plan === key}
-                onClick={() => setPlan((current) => toggleFilterValue(current, key))}
-              />
-            ))}
-          </div>
-        </div>
-        <div>
-          <SubsectionTitle className="mb-2">By status</SubsectionTitle>
-          <div className="flex flex-wrap gap-3">
-            {(Object.keys(STATUS_LABELS) as SubscriptionStatus[]).map((key) => (
-              <SummaryCard
-                key={key}
-                label={STATUS_LABELS[key]}
-                value={summary.status[key]}
-                active={status === key}
-                onClick={() => setStatus((current) => toggleFilterValue(current, key))}
-              />
-            ))}
-          </div>
-        </div>
-        <div>
-          <SubsectionTitle className="mb-2">Other</SubsectionTitle>
-          <div className="flex flex-wrap gap-3">
-            <SummaryCard
-              label={UI.complimentaryLabel}
-              value={summary.complimentary}
-              active={badge === "complimentary"}
-              onClick={() => setBadge((current) => toggleFilterValue(current, "complimentary"))}
-            />
-            <SummaryCard
-              label={UI.suspendedLabel}
-              value={summary.suspended}
-              active={badge === "suspended"}
-              onClick={() => setBadge((current) => toggleFilterValue(current, "suspended"))}
-            />
-          </div>
-        </div>
-      </Card>
+      {/* Four across on desktop, two on tablet: eight tiles in two tidy rows rather than three
+          ragged group rows of two, four and two. */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        {(Object.keys(PLAN_LABELS) as OrgPlan[]).map((key) => (
+          <SummaryTile
+            key={key}
+            label={PLAN_LABELS[key]}
+            value={summary.plan[key]}
+            caption="Plan"
+            active={plan === key}
+            onClick={() => setPlan((current) => toggleFilterValue(current, key))}
+          />
+        ))}
+        <SummaryTile
+          label={UI.complimentaryLabel}
+          value={summary.complimentary}
+          caption="Access"
+          active={badge === "complimentary"}
+          onClick={() => setBadge((current) => toggleFilterValue(current, "complimentary"))}
+        />
+        <SummaryTile
+          label={UI.suspendedLabel}
+          value={summary.suspended}
+          caption="Access"
+          active={badge === "suspended"}
+          onClick={() => setBadge((current) => toggleFilterValue(current, "suspended"))}
+        />
+        {(Object.keys(STATUS_LABELS) as SubscriptionStatus[]).map((key) => (
+          <SummaryTile
+            key={key}
+            label={STATUS_LABELS[key]}
+            value={summary.status[key]}
+            caption="Status"
+            active={status === key}
+            onClick={() => setStatus((current) => toggleFilterValue(current, key))}
+          />
+        ))}
+      </div>
 
       <div className="flex flex-wrap gap-[18px]">
         <div className="flex-1 min-w-[240px] max-w-[340px]">

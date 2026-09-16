@@ -1,17 +1,17 @@
-/**
+﻿/**
  * `removeRecurringFromMonthAction` and the D-79 fix.
  *
  * The reported bug: creating a recurring item that happens to share a name and line item
  * with an expense the user typed in by hand made the Recurring screen show that expense as
- * "already added," and Remove could delete it — a record the recurring item never created.
+ * "already added," and Remove could delete it â€” a record the recurring item never created.
  * Confirmed live: Metro Parking, $180, May 2026, re-entered by hand after the packet had
  * already gone to DCC.
  *
  * First fix (this session, earlier): route the delete through soft delete instead of a hard
- * delete, so the record was at least recoverable from the trash. That was not enough — the
+ * delete, so the record was at least recoverable from the trash. That was not enough â€” the
  * expense still left its month the moment "Remove anyway" was confirmed. The actual fix:
  * Remove now refuses outright on an expense it did not create. No confirmation is offered for
- * that case at all, so there is no click that can move or delete it — it stays in its
+ * that case at all, so there is no click that can move or delete it â€” it stays in its
  * original month, with its attachments, completely untouched.
  *
  * Skipped when DATABASE_URL is absent.
@@ -66,6 +66,7 @@ describe.skipIf(!hasDatabase)("removeRecurringFromMonthAction (integration)", as
       activeFundingSourceId: null,
       onboarded: true,
       welcomeDismissed: true,
+      plan: "reconciliation" as const,
     });
   }
 
@@ -82,7 +83,7 @@ describe.skipIf(!hasDatabase)("removeRecurringFromMonthAction (integration)", as
 
     await db.insert(paymentSources).values({ orgId, label: "Cash", sortOrder: 0 });
 
-    // A real users row — expenses.created_by_user_id/updated_by_user_id (D-89) are a real
+    // A real users row â€” expenses.created_by_user_id/updated_by_user_id (D-89) are a real
     // FK, so the mocked session's userId has to point at one.
     const [user] = await db
       .insert(users)
@@ -100,10 +101,10 @@ describe.skipIf(!hasDatabase)("removeRecurringFromMonthAction (integration)", as
     if (orgId) await db.delete(organizations).where(eq(organizations.id, orgId));
   });
 
-  it("refuses to touch an expense matched only by name — it stays active, in its month, untouched", async () => {
+  it("refuses to touch an expense matched only by name â€” it stays active, in its month, untouched", async () => {
     asOrg(orgId);
 
-    // Hand-typed directly — no recurring item involved.
+    // Hand-typed directly â€” no recurring item involved.
     const [handTyped] = await db
       .insert(expenses)
       .values({
@@ -122,7 +123,7 @@ describe.skipIf(!hasDatabase)("removeRecurringFromMonthAction (integration)", as
       })
       .returning({ id: expenses.id });
 
-    // Created afterward, with the same name and line item — never touched the hand-typed row.
+    // Created afterward, with the same name and line item â€” never touched the hand-typed row.
     await saveRecurringItemAction({
       name: "Metro Parking",
       amount: "50.00",
@@ -138,14 +139,14 @@ describe.skipIf(!hasDatabase)("removeRecurringFromMonthAction (integration)", as
       .from(recurringItems)
       .where(eq(recurringItems.orgId, orgId));
 
-    // No confirmation offered at all — the action refuses outright, unconfirmed.
+    // No confirmation offered at all â€” the action refuses outright, unconfirmed.
     const unconfirmed = await removeRecurringFromMonthAction(recurringItem.id, MONTH, false);
     expect(unconfirmed.ok).toBe(false);
     if (unconfirmed.ok) throw new Error("unreachable");
     expect(unconfirmed.error).toContain("Metro Parking");
     expect(unconfirmed.error).toContain("wasn't added from this recurring item");
 
-    // Confirmed does not bypass the refusal — there is no click sequence that deletes it.
+    // Confirmed does not bypass the refusal â€” there is no click sequence that deletes it.
     const confirmed = await removeRecurringFromMonthAction(recurringItem.id, MONTH, true);
     expect(confirmed.ok).toBe(false);
 
@@ -216,7 +217,7 @@ describe.skipIf(!hasDatabase)("removeRecurringFromMonthAction (integration)", as
       .select()
       .from(expenseDocuments)
       .where(eq(expenseDocuments.expenseId, expense.id));
-    expect(docs).toHaveLength(1); // still there — the action never touched the expense at all
+    expect(docs).toHaveLength(1); // still there â€” the action never touched the expense at all
 
     const [row] = await db.select().from(expenses).where(eq(expenses.id, expense.id));
     expect(row.deletedAt).toBeNull();
@@ -249,7 +250,7 @@ describe.skipIf(!hasDatabase)("removeRecurringFromMonthAction (integration)", as
       .from(expenses)
       .where(and(eq(expenses.orgId, orgId), eq(expenses.name, "Genuine One-Click Add")));
 
-    // No confirmation needed — freshly created, no documents.
+    // No confirmation needed â€” freshly created, no documents.
     const result = await removeRecurringFromMonthAction(recurringItem.id, MONTH, false);
     expect(result.ok).toBe(true);
 
@@ -262,7 +263,7 @@ describe.skipIf(!hasDatabase)("removeRecurringFromMonthAction (integration)", as
 
   it("review fix: Remove on the old template cannot reach an expense that was since moved to another source", async () => {
     // Exact reported scenario: a recurring template on source A creates an expense in August.
-    // Someone edits that expense and moves it to source B — but it was still linked to
+    // Someone edits that expense and moves it to source B â€” but it was still linked to
     // source A's template (recurringItemId untouched by the move). Clicking Remove on the
     // template in source A for August then trashed the expense sitting in source B.
     asOrg(orgId);
@@ -310,7 +311,7 @@ describe.skipIf(!hasDatabase)("removeRecurringFromMonthAction (integration)", as
     expect(createdExpense.recurringItemId).toBe(template.id);
     expect(createdExpense.fundingSourceId).toBe(fundingSourceId);
 
-    // Move it to source B by editing it — this is what should clear recurringItemId.
+    // Move it to source B by editing it â€” this is what should clear recurringItemId.
     const { updateExpenseAction } = await import("@/src/modules/expenses/actions");
     const moved = await updateExpenseAction({
       id: createdExpense.id,
@@ -335,7 +336,7 @@ describe.skipIf(!hasDatabase)("removeRecurringFromMonthAction (integration)", as
 
     const [afterMove] = await db.select().from(expenses).where(eq(expenses.id, createdExpense.id));
     expect(afterMove.fundingSourceId).toBe(sourceB.id);
-    // The link to the old template is gone — this is the actual fix, not just the query scope
+    // The link to the old template is gone â€” this is the actual fix, not just the query scope
     // below, which is defence in depth for exactly the case where this ever regressed.
     expect(afterMove.recurringItemId).toBeNull();
 

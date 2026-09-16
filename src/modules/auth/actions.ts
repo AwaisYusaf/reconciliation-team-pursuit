@@ -6,7 +6,7 @@
  * Every action authenticates independently — middleware only improves redirect UX and is
  * never the security boundary (architecture §Application layout).
  */
-import { and, eq, sql } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { z } from "zod";
@@ -15,6 +15,7 @@ import { db } from "@/src/db";
 import {
   fundingSources,
   lineItems,
+  orgAccountEvents,
   organizations,
   paymentSources,
   staffUsers,
@@ -205,7 +206,20 @@ export async function signInAction(
   // gets the normal wrong-password message above, so the form can't be used to learn whether
   // an address's organization is suspended. No session, no `last_sign_in_at` write, and the
   // rate limiters stay untouched — this attempt did not prove anything a limiter should forget.
-  if (user.suspendedAt) return fail(UI.orgAccessPaused);
+  if (user.suspendedAt) {
+    // The reason AB Solutions gave, from the suspension that is still in force — the newest
+    // `suspended` event, since an org can have been suspended and reinstated before. Falls back
+    // to the bare message if the row is somehow missing, so sign-in never fails on a message.
+    const [event] = await db
+      .select({ note: orgAccountEvents.note })
+      .from(orgAccountEvents)
+      .where(and(eq(orgAccountEvents.orgId, user.orgId), eq(orgAccountEvents.action, "suspended")))
+      .orderBy(desc(orgAccountEvents.createdAt))
+      .limit(1);
+
+    const reason = event?.note?.trim();
+    return fail(reason ? UI.orgAccessPausedWithReason(reason) : UI.orgAccessPaused);
+  }
 
   reset("loginPerAccount", `${email.toLowerCase()}|${ip}`);
   reset("loginPerIp", ip);

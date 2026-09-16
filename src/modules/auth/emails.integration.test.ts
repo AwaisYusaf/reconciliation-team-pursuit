@@ -1,5 +1,5 @@
-/**
- * `emailInUse()` and its two callers' staff-email rejection (Phase 9, §3.3): `signUpAction`
+﻿/**
+ * `emailInUse()` and its two callers' staff-email rejection (Phase 9, Â§3.3): `signUpAction`
  * refuses to create an organisation for an address that already belongs to AB Solutions staff,
  * and `createOrgUserAction` refuses to add one as an org's user.
  *
@@ -88,7 +88,7 @@ describe.skipIf(!hasDatabase)("staff/customer email uniqueness (integration)", a
     if (existingStaffId) await db.delete(staffUsers).where(eq(staffUsers.id, existingStaffId));
 
     // The signup tests below assert that no org was created. When the guard they cover is
-    // deliberately neutralised — a fail-before proof — signup really does create one, and
+    // deliberately neutralised â€” a fail-before proof â€” signup really does create one, and
     // without this the "Should Not Exist" orgs pile up in the developer's database and then
     // show on the /a dashboard. Only ever matches this suite's own throwaway names.
     await db.delete(organizations).where(like(organizations.name, "Should Not Exist%"));
@@ -239,6 +239,7 @@ describe.skipIf(!hasDatabase)("staff/customer email uniqueness (integration)", a
         activeFundingSourceId: null,
         onboarded: true,
         welcomeDismissed: true,
+        plan: "reconciliation" as const,
       });
 
       const { createOrgUserAction } = await import("@/src/modules/users/actions");

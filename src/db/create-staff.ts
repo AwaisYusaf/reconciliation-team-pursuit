@@ -9,12 +9,18 @@
  *
  * With no --password a strong one is generated and printed once. Run only after confirming
  * the requester's identity out of band.
+ *
+ * `deploy.sh` runs it as `--skip-existing`, reading STAFF_EMAIL, STAFF_NAME and STAFF_PASSWORD
+ * from the environment. That mode is idempotent: an existing account is left exactly as it is,
+ * password included, and no STAFF_EMAIL means there is nothing to create. An address that
+ * belongs to a customer is still refused.
  */
 import { config } from "dotenv";
 
 config({ path: ".env.local", quiet: true });
 
 import { drizzle } from "drizzle-orm/node-postgres";
+import { sql } from "drizzle-orm";
 import { Pool } from "pg";
 import { z } from "zod";
 
@@ -25,14 +31,28 @@ function argument(name: string): string | undefined {
   return index === -1 ? undefined : process.argv[index + 1];
 }
 
+function hasFlag(name: string): boolean {
+  return process.argv.includes(`--${name}`);
+}
+
 const emailSchema = z.string().trim().max(320).email();
 
 async function main() {
-  const rawEmail = argument("email");
-  const rawName = argument("name");
+  // Flags win over the environment, so an operator on the box can always create a second
+  // account by hand without touching .env.
+  const skipExisting = hasFlag("skip-existing");
+  const rawEmail = argument("email") ?? process.env.STAFF_EMAIL;
+  const rawName = argument("name") ?? process.env.STAFF_NAME;
+
+  if (skipExisting && !rawEmail) {
+    console.log("No STAFF_EMAIL configured — no staff account to create.");
+    return;
+  }
+
   if (!rawEmail || !rawName) {
     throw new Error(
-      "Usage: npm run db:create-staff -- --email <address> --name <name> [--password <value>]",
+      "Usage: npm run db:create-staff -- --email <address> --name <name> [--password <value>]\n" +
+        "       (or set STAFF_EMAIL, STAFF_NAME and STAFF_PASSWORD in the environment)",
     );
   }
 
@@ -56,7 +76,8 @@ async function main() {
   );
   const { emailInUse } = await import("@/src/modules/auth/emails");
 
-  const password = argument("password") ?? generatePassword();
+  const suppliedPassword = argument("password") ?? process.env.STAFF_PASSWORD;
+  const password = suppliedPassword ?? generatePassword();
   const policyError = validatePasswordPolicy(password);
   if (policyError) throw new Error(policyError);
 
@@ -64,6 +85,23 @@ async function main() {
   const db = drizzle(pool, { schema });
 
   try {
+    const [existingStaff] = await db
+      .select({ id: schema.staffUsers.id })
+      .from(schema.staffUsers)
+      .where(sql`lower(${schema.staffUsers.email}) = lower(${email})`)
+      .limit(1);
+
+    if (existingStaff) {
+      // Idempotent on a redeploy: left exactly as it is, password included.
+      if (skipExisting) {
+        console.log(`Staff account for ${email} already exists — left unchanged.`);
+        return;
+      }
+      throw new Error(`An account already exists for ${email}`);
+    }
+
+    // A customer owns this address: refused even under --skip-existing, because one address
+    // cannot be both and silently skipping would leave `/a` with no account and no complaint.
     if (await emailInUse(email, db)) {
       throw new Error(`An account already exists for ${email}`);
     }
@@ -87,7 +125,9 @@ async function main() {
     }
 
     console.log(`Staff account created for ${email} (${staffId}).`);
-    if (!argument("password")) {
+    // Only a generated one is printed — a password that came from a flag or the environment is
+    // already known to whoever set it, and printing it would put it in the deploy log.
+    if (!suppliedPassword) {
       console.log(`\nPassword (shown once — hand it over out of band):\n\n  ${password}\n`);
     }
   } finally {

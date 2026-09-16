@@ -10,7 +10,7 @@ import { useState, useTransition } from "react";
 
 import { Button } from "@/src/components/ui/button";
 import { Dialog } from "@/src/components/ui/dialog";
-import { Input, Label, Textarea } from "@/src/components/ui/field";
+import { Helper, Input, Label, Textarea } from "@/src/components/ui/field";
 import { Modal } from "@/src/components/ui/modal";
 import { Select } from "@/src/components/ui/select";
 import { reportResult } from "@/src/components/ui/toast";
@@ -313,7 +313,9 @@ function Suspend({ org }: { org: ActionsOrg }) {
           value={reason}
           onChange={(event) => setReason(event.target.value)}
           placeholder="e.g. Payment 30 days overdue"
+          aria-describedby="suspend-reason-help"
         />
+        <Helper id="suspend-reason-help">{UI.suspendReasonShownToCustomer}</Helper>
         {error && (
           <p className="mt-2 text-sm font-semibold text-danger" role="alert">
             {error}

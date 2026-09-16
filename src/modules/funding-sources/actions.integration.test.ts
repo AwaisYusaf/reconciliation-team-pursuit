@@ -1,8 +1,8 @@
-/**
+﻿/**
  * `createFundingSourceAction` / `updateFundingSourceAction` / `archiveFundingSourceAction` /
  * `unarchiveFundingSourceAction` against a real database (Phase 6, D-93, Phase 3).
  *
- * Admins and managers may both manage funding sources (Appendix A §1) — unlike most settings
+ * Admins and managers may both manage funding sources (Appendix A Â§1) â€” unlike most settings
  * actions, these do not call `requireAdmin()`, so a manager-role test is part of the contract
  * here, not incidental coverage. Skipped when DATABASE_URL is absent.
  */
@@ -58,6 +58,7 @@ describe.skipIf(!hasDatabase)("funding source management actions (integration)",
       activeFundingSourceId: null,
       onboarded: true,
       welcomeDismissed: true,
+      plan: "reconciliation" as const,
     });
   }
 
@@ -104,7 +105,7 @@ describe.skipIf(!hasDatabase)("funding source management actions (integration)",
     expect(result.ok).toBe(false);
   });
 
-  it("★ refuses to update a funding source belonging to another organisation", async () => {
+  it("â˜… refuses to update a funding source belonging to another organisation", async () => {
     const a = await org("Owner Org For Update");
     const b = await org("Other Org For Update");
     asSession(a.orgId);
@@ -274,7 +275,7 @@ describe.skipIf(!hasDatabase)("funding source management actions (integration)",
         .where(eq(fundingSources.orgId, a.orgId));
 
       // Server actions are directly invocable, so a cast simulates a caller that skips the
-      // client-side checkbox entirely — the string "true"/omitted value the DB column can't
+      // client-side checkbox entirely â€” the string "true"/omitted value the DB column can't
       // accept as its NOT NULL boolean.
       const badInput = {
         ...BASE_INPUT,
@@ -334,7 +335,7 @@ describe.skipIf(!hasDatabase)("funding source management actions (integration)",
   });
 
   describe("concurrent archive of the last two active sources (review fix, race)", () => {
-    it("exactly one archive succeeds, the other is refused, and at least one source stays active — run repeatedly", async () => {
+    it("exactly one archive succeeds, the other is refused, and at least one source stays active â€” run repeatedly", async () => {
       for (let i = 0; i < 5; i++) {
         const a = await org(`Race Archive Org ${i}`);
         const [second] = await db
@@ -375,7 +376,7 @@ describe.skipIf(!hasDatabase)("funding source management actions (integration)",
   });
 
   describe("concurrent create with a duplicate name (review fix, race)", () => {
-    it("both calls resolve without throwing; exactly one succeeds; exactly one row exists — run repeatedly", async () => {
+    it("both calls resolve without throwing; exactly one succeeds; exactly one row exists â€” run repeatedly", async () => {
       for (let i = 0; i < 20; i++) {
         const a = await org(`Race Duplicate Name Org ${i}`);
         asSession(a.orgId);
@@ -402,7 +403,7 @@ describe.skipIf(!hasDatabase)("funding source management actions (integration)",
       }
     });
 
-    it("racing a rename onto an existing name: both resolve without throwing, name is never duplicated — run repeatedly", async () => {
+    it("racing a rename onto an existing name: both resolve without throwing, name is never duplicated â€” run repeatedly", async () => {
       for (let i = 0; i < 20; i++) {
         const a = await org(`Race Rename Org ${i}`);
         asSession(a.orgId);

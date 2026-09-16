@@ -1,8 +1,8 @@
-/**
+﻿/**
  * User management (RBAC phase 1), exercised against a real database.
  *
  * `@/src/services/auth/session` is mocked so the test controls which session is "signed
- * in" per call — `actionSession()` (via `requireSession`) and `setUserPasswordAction`'s
+ * in" per call â€” `actionSession()` (via `requireSession`) and `setUserPasswordAction`'s
  * `revokeOtherSessions` both import from this one module, so a single mock covers both.
  * Everything below that (the real `requireAdmin()` role check, org scoping, hashing, and
  * the DB writes) is the real production code running against a real database.
@@ -71,6 +71,7 @@ describe.skipIf(!hasDatabase)("user management (integration)", async () => {
       activeFundingSourceId: null,
       onboarded: true,
       welcomeDismissed: true,
+      plan: "reconciliation" as const,
       ...ctx,
     });
   }
@@ -244,7 +245,7 @@ describe.skipIf(!hasDatabase)("user management (integration)", async () => {
   });
 
   describe("(d) signUpAction's admin-on-signup invariant", () => {
-    // signUpAction itself calls requireSession(), cookies(), a rate limiter, and redirect() —
+    // signUpAction itself calls requireSession(), cookies(), a rate limiter, and redirect() â€”
     // mocking all of that out to drive the action directly is disproportionate for what's
     // really being asserted. Verified instead two ways:
     // 1. Source: src/modules/auth/actions.ts line 266 inserts `role: "admin"` explicitly on
@@ -487,7 +488,7 @@ describe.skipIf(!hasDatabase)("user management (integration)", async () => {
       expect(last.ok).toBe(false);
       if (last.ok) throw new Error("unreachable");
       expect(last.error).toMatch(/^Too many user changes/);
-      // And a manager never even reaches the budget — requireAdmin refuses first.
+      // And a manager never even reaches the budget â€” requireAdmin refuses first.
       asSession({ userId: managerAId, orgId: orgAId, role: "manager" });
       expect(await listOrgUsersAction()).toEqual({ ok: false, error: FORBIDDEN });
     });

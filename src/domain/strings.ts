@@ -161,6 +161,15 @@ export const UI = {
    * whether an address's organization is suspended.
    */
   orgAccessPaused: "Your organization's access is paused. Please contact support.",
+  /**
+   * The same message with the reason AB Solutions gave when suspending. The reason is staff
+   * input, so the suspend dialog says out loud that it is shown here — otherwise an internal
+   * note ("chasing Misty about the invoice") ends up in front of the customer.
+   */
+  orgAccessPausedWithReason: (reason: string) =>
+    `Your organization's access is paused: ${reason}. Please contact support.`,
+  /** App header badge, shown only on the "Reconciliation + AI" plan (Phase 9). */
+  planPlusBadge: "Plus",
   /** Admin action refusal for an unknown or non-uuid org id (Phase 9 §5). */
   orgNoLongerExists: "This organization no longer exists.",
   /** `suspendOrgAction` refusal — already suspended (Phase 9 §5, D-98 decision 10). */
@@ -170,6 +179,10 @@ export const UI = {
   /** `suspendOrgAction` — the reason is required, unlike the optional notes on the other three
    *  admin actions (Phase 9 §7). */
   suspendReasonRequired: "Enter the reason for suspending this organization.",
+  /** Under the suspend dialog's Reason box: this text reaches the customer, so staff must not
+   *  write an internal note there. */
+  suspendReasonShownToCustomer:
+    "Anyone from this organization who tries to sign in will see this reason.",
   /** Admin action note refusal past `ACCOUNT_NOTE_MAX_LENGTH`, mirroring `unlockReasonTooLong`. */
   accountNoteTooLong: (max: number) => `Keep the note under ${max} characters.`,
   /** `setComplimentaryAction` refusal — `until` is neither empty nor a valid ISO date. */

@@ -77,6 +77,7 @@ describe.skipIf(!hasDatabase)("suspension's effect on sessions and sign-in (inte
   // `freshMonth()` helper: cheaper than re-suspending for every assertion, and the sequence only
   // reads state the first test already proved.
   let suspendedUserA: { id: string; email: string };
+  let suspendedOrgIdA: string;
 
   async function orgWithExpense(name: string) {
     const org = await createTestOrg({ name });
@@ -188,6 +189,7 @@ describe.skipIf(!hasDatabase)("suspension's effect on sessions and sign-in (inte
 
     // orgA stays suspended for the next few tests in this file.
     suspendedUserA = userA;
+    suspendedOrgIdA = orgA.orgId;
   });
 
   it("a session token created in the race window (after the suspend commits) resolves to null", async () => {
@@ -208,8 +210,10 @@ describe.skipIf(!hasDatabase)("suspension's effect on sessions and sign-in (inte
       .from(users)
       .where(eq(users.id, userA.id));
 
+    // The reason the suspension was given carries through to the login form, so the customer
+    // is told why rather than only that they are blocked.
     const correct = await signInAction(IDLE, formWith(userA.email, "user-a-password-1"));
-    expect(correct).toEqual({ ok: false, error: UI.orgAccessPaused });
+    expect(correct).toEqual({ ok: false, error: UI.orgAccessPausedWithReason("isolation test") });
 
     const sessionRows = await db.select().from(sessions).where(eq(sessions.userId, userA.id));
     expect(sessionRows).toHaveLength(0);
@@ -222,6 +226,32 @@ describe.skipIf(!hasDatabase)("suspension's effect on sessions and sign-in (inte
 
     const wrong = await signInAction(IDLE, formWith(userA.email, "totally-wrong-password"));
     expect(wrong).toEqual({ ok: false, error: UI.signInWrongPassword });
+  });
+
+  it("the newest suspension's reason is the one shown, and a missing event falls back to the bare message", async () => {
+    const userA = suspendedUserA;
+    const { orgAccountEvents } = await import("@/src/db/schema");
+
+    // A reinstate-then-suspend cycle: the first reason must not resurface.
+    await startStaffSession(staffId);
+    await reinstateOrgAction(suspendedOrgIdA, "");
+    await suspendOrgAction(suspendedOrgIdA, "Payment 30 days overdue");
+    await endSession();
+
+    expect(await signInAction(IDLE, formWith(userA.email, "user-a-password-1"))).toEqual({
+      ok: false,
+      error: UI.orgAccessPausedWithReason("Payment 30 days overdue"),
+    });
+
+    // No suspension event at all (an org suspended by hand in SQL, say): still refused, with
+    // the message that needs no reason rather than a broken sentence.
+    await db.delete(orgAccountEvents).where(eq(orgAccountEvents.orgId, suspendedOrgIdA));
+    expect(await signInAction(IDLE, formWith(userA.email, "user-a-password-1"))).toEqual({
+      ok: false,
+      error: UI.orgAccessPaused,
+    });
+
+    expect(await db.select().from(sessions).where(eq(sessions.userId, userA.id))).toHaveLength(0);
   });
 
   it("app/api/files/[id] and the summary download route reject a suspended org's session", async () => {

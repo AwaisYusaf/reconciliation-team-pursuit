@@ -11,7 +11,7 @@ import { and, eq, isNull, lt, ne } from "drizzle-orm";
 
 import { db } from "@/src/db";
 import { organizations, sessions, staffSessions, staffUsers, users } from "@/src/db/schema";
-import type { UserRole } from "@/src/db/schema";
+import type { OrgPlan, UserRole } from "@/src/db/schema";
 
 import {
   exceedsMaxAge,
@@ -28,6 +28,9 @@ export type SessionContext = {
   email: string;
   role: UserRole;
   orgName: string;
+  /** The org's plan (Phase 9). Carried on the session because the app header renders a badge
+   *  for the AI plan on every page, and a second query per request for one enum is waste. */
+  plan: OrgPlan;
   docName: string;
   activeMonth: string;
   /** Header's current funding source selection (R2.3); null means "All" (Phase 6, D-93). */
@@ -93,6 +96,7 @@ export async function resolveSession(
       role: users.role,
       orgId: organizations.id,
       orgName: organizations.name,
+      plan: organizations.plan,
       docName: organizations.docName,
       activeMonth: organizations.activeMonth,
       activeFundingSourceId: organizations.activeFundingSourceId,
@@ -129,6 +133,7 @@ export async function resolveSession(
       email: row.email,
       role: row.role,
       orgName: row.orgName,
+      plan: row.plan,
       docName: row.docName,
       activeMonth: row.activeMonth,
       activeFundingSourceId: row.activeFundingSourceId,

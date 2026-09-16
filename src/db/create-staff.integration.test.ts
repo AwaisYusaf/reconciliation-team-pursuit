@@ -45,11 +45,11 @@ describe.skipIf(!hasDatabase)("db:create-staff / db:reset-password staff fallbac
     }
   });
 
-  async function runScript(script: string, args: string[]) {
+  async function runScript(script: string, args: string[], extraEnv: Record<string, string> = {}) {
     try {
       const { stdout } = await run("npx", ["tsx", "--conditions=react-server", script, ...args], {
         cwd: process.cwd(),
-        env: process.env,
+        env: { ...process.env, ...extraEnv },
         shell: true,
       });
       return { exitCode: 0, stdout };
@@ -120,6 +120,84 @@ describe.skipIf(!hasDatabase)("db:create-staff / db:reset-password staff fallbac
     expect(result.exitCode).not.toBe(0);
 
     const rows = await db.select({ id: staffUsers.id }).from(staffUsers).where(eq(staffUsers.email, email));
+    expect(rows).toHaveLength(0);
+  }, 30_000);
+
+  /* ----------------------------------------- the deploy path (--skip-existing + env vars) */
+
+  it("--skip-existing with no STAFF_EMAIL does nothing and exits 0", async () => {
+    const result = await runScript("src/db/create-staff.ts", ["--skip-existing"], { STAFF_EMAIL: "" });
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toMatch(/No STAFF_EMAIL configured/);
+  }, 30_000);
+
+  it("--skip-existing creates the account from the environment without printing the password", async () => {
+    const email = `create-staff-deploy-${Date.now()}@example.test`;
+    createdStaffEmails.push(email);
+
+    const result = await runScript("src/db/create-staff.ts", ["--skip-existing"], {
+      STAFF_EMAIL: email,
+      STAFF_NAME: "Deploy Created",
+      STAFF_PASSWORD: "a-configured-password-1",
+    });
+    expect(result.exitCode).toBe(0);
+    // The deploy log must not carry a password someone already knows.
+    expect(result.stdout).not.toMatch(/Password \(shown once/);
+    expect(result.stdout).not.toContain("a-configured-password-1");
+
+    const [row] = await db
+      .select({ name: staffUsers.name, passwordHash: staffUsers.passwordHash })
+      .from(staffUsers)
+      .where(eq(staffUsers.email, email));
+    expect(row.name).toBe("Deploy Created");
+    expect(await verifyPassword(row.passwordHash, "a-configured-password-1")).toBe(true);
+  }, 30_000);
+
+  it("a second --skip-existing run leaves the account and its password untouched", async () => {
+    const email = `create-staff-redeploy-${Date.now()}@example.test`;
+    createdStaffEmails.push(email);
+
+    const first = await runScript("src/db/create-staff.ts", ["--skip-existing"], {
+      STAFF_EMAIL: email,
+      STAFF_NAME: "Original Name",
+      STAFF_PASSWORD: "the-original-password-1",
+    });
+    expect(first.exitCode).toBe(0);
+
+    const [before] = await db
+      .select({ passwordHash: staffUsers.passwordHash })
+      .from(staffUsers)
+      .where(eq(staffUsers.email, email));
+
+    // A redeploy with a different password in .env: the account must NOT be reset to it,
+    // since db:reset-password is the only lever that changes a live password.
+    const second = await runScript("src/db/create-staff.ts", ["--skip-existing"], {
+      STAFF_EMAIL: email.toUpperCase(),
+      STAFF_NAME: "Changed Name",
+      STAFF_PASSWORD: "a-different-password-12",
+    });
+    expect(second.exitCode).toBe(0);
+    expect(second.stdout).toMatch(/already exists — left unchanged/);
+
+    const rows = await db
+      .select({ name: staffUsers.name, passwordHash: staffUsers.passwordHash })
+      .from(staffUsers)
+      .where(eq(staffUsers.email, email));
+    expect(rows).toHaveLength(1);
+    expect(rows[0].name).toBe("Original Name");
+    expect(rows[0].passwordHash).toBe(before.passwordHash);
+    expect(await verifyPassword(rows[0].passwordHash, "the-original-password-1")).toBe(true);
+  }, 60_000);
+
+  it("--skip-existing still refuses an email that belongs to a customer", async () => {
+    const result = await runScript("src/db/create-staff.ts", ["--skip-existing"], {
+      STAFF_EMAIL: customerEmail,
+      STAFF_NAME: "Should Not Be Staff",
+      STAFF_PASSWORD: "a-configured-password-1",
+    });
+    expect(result.exitCode).not.toBe(0);
+
+    const rows = await db.select({ id: staffUsers.id }).from(staffUsers).where(eq(staffUsers.email, customerEmail));
     expect(rows).toHaveLength(0);
   }, 30_000);
 

@@ -15,6 +15,39 @@ import { AccountBadges } from "../../badges";
 
 export const metadata = { title: "Organization — AB Solutions admin" };
 
+/** One usage fact. `caption` is for the rare line that needs explaining, like what a packet
+ *  download count actually counts. */
+function UsageTile({
+  label,
+  caption,
+  className,
+  children,
+}: {
+  label: string;
+  caption?: string;
+  className?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className={`rounded-[4px] border border-line bg-section/60 px-4 py-3.5 ${className ?? ""}`}>
+      <dt className="text-[13px] text-sub leading-snug">{label}</dt>
+      <dd className="mt-1.5">{children}</dd>
+      {caption && <p className="text-[12px] text-muted mt-2 leading-snug">{caption}</p>}
+    </div>
+  );
+}
+
+/** A bare count, sized like the organizations list's tiles. */
+function Figure({ children }: { children: React.ReactNode }) {
+  return <span className="text-[26px] font-bold tabular-nums leading-none">{children}</span>;
+}
+
+/** A fact that is a sentence rather than a number ("3 active, 0 archived") — the wording is
+ *  pinned in domain-rules §12, so it is shown whole rather than split into a big digit. */
+function Sentence({ children }: { children: React.ReactNode }) {
+  return <span className="text-[17px] font-semibold text-ink leading-snug">{children}</span>;
+}
+
 export default async function OrgPage({ params }: { params: Promise<{ id: string }> }) {
   await requireStaffPage();
 
@@ -92,47 +125,42 @@ export default async function OrgPage({ params }: { params: Promise<{ id: string
 
       <Card className="p-4 sm:p-5 lg:p-6">
         <SubsectionTitle className="mb-3">Usage</SubsectionTitle>
-        <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3">
-          <div>
-            <dt className="text-[13px] text-sub">Funding sources</dt>
-            <dd className="text-[15px] text-ink font-medium">
-              {UI.usageFundingSources(usage.fundingSourcesActive, usage.fundingSourcesArchived)}
-            </dd>
-          </div>
-          <div>
-            <dt className="text-[13px] text-sub">Expenses</dt>
-            <dd className="text-[15px] text-ink font-medium">
+        {/* Tiles rather than a two-column list: the list left half the card empty and gave a
+            one-digit count the same weight as a sentence. Same tile language as the
+            organizations list, so the two screens read as one dashboard. */}
+        <dl className="grid grid-cols-2 lg:grid-cols-3 gap-3">
+          <UsageTile label="Funding sources">
+            <Sentence>{UI.usageFundingSources(usage.fundingSourcesActive, usage.fundingSourcesArchived)}</Sentence>
+          </UsageTile>
+          <UsageTile label="Expenses">
+            <Sentence>
               {UI.usageExpenses(usage.expensesTotal, usage.expensesCurrentMonth, monthLabel(usage.currentMonth))}
-            </dd>
-          </div>
-          <div>
-            <dt className="text-[13px] text-sub">Last expense added</dt>
-            <dd className="text-[15px] text-ink font-medium">
+            </Sentence>
+          </UsageTile>
+          <UsageTile label="Last expense added">
+            <Sentence>
               {usage.lastExpenseAt ? formatDateShort(todayIso(usage.lastExpenseAt)) : UI.noneYet}
-            </dd>
-          </div>
-          <div>
-            <dt className="text-[13px] text-sub">Months submitted · locked</dt>
-            <dd className="text-[15px] text-ink font-medium">
-              {usage.monthsSubmitted} · {usage.monthsLocked}
-            </dd>
-          </div>
-          <div className="sm:col-span-2">
-            <dt className="text-[13px] text-sub">Storage</dt>
-            <dd className="text-[15px] text-ink font-medium mb-1.5">{storageSentence}</dd>
+            </Sentence>
+          </UsageTile>
+          <UsageTile label="Months submitted">
+            <Figure>{usage.monthsSubmitted}</Figure>
+          </UsageTile>
+          <UsageTile label="Months locked">
+            <Figure>{usage.monthsLocked}</Figure>
+          </UsageTile>
+          <UsageTile label={UI.packetsDownloadedLabel} caption={UI.packetsDownloadedNote}>
+            <Figure>{usage.packetsDownloaded}</Figure>
+          </UsageTile>
+          <UsageTile label="Storage" className="col-span-2 lg:col-span-3">
+            <Sentence>{storageSentence}</Sentence>
             <div
               role="img"
               aria-label={storageSentence}
-              className="h-2 w-full max-w-[320px] rounded-full bg-section overflow-hidden"
+              className="h-2 w-full max-w-[420px] rounded-full bg-line/50 overflow-hidden mt-2.5"
             >
               <div className="h-full bg-accent rounded-full" style={{ width: `${storagePercent}%` }} />
             </div>
-          </div>
-          <div className="sm:col-span-2">
-            <dt className="text-[13px] text-sub">{UI.packetsDownloadedLabel}</dt>
-            <dd className="text-[15px] text-ink font-medium">{usage.packetsDownloaded}</dd>
-            <p className="text-sm text-sub mt-1">{UI.packetsDownloadedNote}</p>
-          </div>
+          </UsageTile>
         </dl>
       </Card>
 

@@ -1,10 +1,10 @@
-/**
+﻿/**
  * `addLineItemPerformanceAction` / `deleteLineItemPerformanceAction` against a real database
  * (m08).
  *
  * The Performance Grant used to be one hand-maintained figure in Settings (R7.2). It is now
  * built from performances added directly to a line item, each rolling into that line item's
- * effective Scheduled Value via `loadLineItemBudgets` — this proves that roundtrip actually
+ * effective Scheduled Value via `loadLineItemBudgets` â€” this proves that roundtrip actually
  * happens, not just that the row gets inserted. Skipped when DATABASE_URL is absent.
  */
 import { config } from "dotenv";
@@ -51,6 +51,7 @@ describe.skipIf(!hasDatabase)("line item performances (integration)", async () =
       activeFundingSourceId: null,
       onboarded: true,
       welcomeDismissed: true,
+      plan: "reconciliation" as const,
     });
   }
 
@@ -141,7 +142,7 @@ describe.skipIf(!hasDatabase)("line item performances (integration)", async () =
 
     const [budget] = await loadLineItemBudgets(orgId, fundingSourceId);
     expect(budget.scheduledValueCents).toBe(17500000);
-    // The performance-only slice (D-81) — what a renderer needs to show the split — read back
+    // The performance-only slice (D-81) â€” what a renderer needs to show the split â€” read back
     // from the database alongside the combined total, not just derived in a test fixture.
     expect(budget.performanceCents).toBe(17500000);
 
@@ -168,7 +169,7 @@ describe.skipIf(!hasDatabase)("line item performances (integration)", async () =
     // The client's real migrated org: `contract_value_cents` already meant the whole contract,
     // performance grant included, before that money had a line item of its own. Simulated here
     // by inserting a performance directly, the way `drizzle/0015_narrow_diamondback.sql` did,
-    // bypassing the action entirely — `counts_toward_contract_total` must default false, not
+    // bypassing the action entirely â€” `counts_toward_contract_total` must default false, not
     // true, or `loadLineItemBudgets` would report it as money the org's contract value hasn't
     // caught up to yet, and `contractTotalCents` would double it (confirmed against real client
     // data: $940,000 read $1,115,000.00 before this column existed).
@@ -182,14 +183,14 @@ describe.skipIf(!hasDatabase)("line item performances (integration)", async () =
       lineItemId: item.id,
       amountCents: 17500000,
       sortOrder: 0,
-      // No `countsTowardContractTotal` — proving the column's default, not overriding it.
+      // No `countsTowardContractTotal` â€” proving the column's default, not overriding it.
     });
 
     const [migratedBudget] = (await loadLineItemBudgets(orgId, fundingSourceId)).filter((row) => row.id === item.id);
     expect(migratedBudget.performanceCents).toBe(17500000);
     expect(migratedBudget.newPerformanceCents).toBe(0);
 
-    // The row inserted above has no name/date (it predates those columns, D-92) — the
+    // The row inserted above has no name/date (it predates those columns, D-92) â€” the
     // UI-facing query must still load and render it, honestly, rather than crash or guess.
     const { loadLineItemRows } = await import("./queries");
     const [legacyRow] = (await loadLineItemRows(orgId, fundingSourceId)).filter((r) => r.id === item.id);
@@ -241,7 +242,7 @@ describe.skipIf(!hasDatabase)("line item performances (integration)", async () =
     expect(updated.amountCents).toBe(45000);
 
     // The line item's total moved by exactly the amount delta (450 - 300 = 150), not by the
-    // new amount alone — proving this is an update in place, not a second insert.
+    // new amount alone â€” proving this is an update in place, not a second insert.
     expect(after.totalScheduledValueCents - before.totalScheduledValueCents).toBe(15000);
 
     // Clean up so it doesn't leak into the delete/cascade tests below.
@@ -312,7 +313,7 @@ describe.skipIf(!hasDatabase)("line item performances (integration)", async () =
     await deleteLineItemPerformanceAction(target.id);
   });
 
-  it("a migrated performance's amount is locked — name/date still editable, contract total can't drift (D-92)", async () => {
+  it("a migrated performance's amount is locked â€” name/date still editable, contract total can't drift (D-92)", async () => {
     // Inserted directly, like the migration did: `countsTowardContractTotal` defaults false.
     // Editing its amount would move the line item's Scheduled Value but not the contract
     // total (a boolean can't say "only the delta is new money"), so the action refuses it.
@@ -437,7 +438,7 @@ describe.skipIf(!hasDatabase)("line item performances (integration)", async () =
     const confirmed = await deleteLineItemAction(lineItemId, true);
     expect(confirmed.ok).toBe(true);
 
-    // Cascade-deleted with the line item (FK onDelete: "cascade") — nothing orphaned.
+    // Cascade-deleted with the line item (FK onDelete: "cascade") â€” nothing orphaned.
     const remaining = await db
       .select()
       .from(lineItemPerformances)
