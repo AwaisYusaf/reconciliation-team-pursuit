@@ -134,7 +134,7 @@ export function storageQuotaError(usedBytes: number, incomingBytes: number): str
   const usedMb = Math.round(usedBytes / (1024 * 1024));
   const limitMb = Math.round(MAX_ORG_BYTES / (1024 * 1024));
   return (
-    `This organisation is using ${usedMb} MB of its ${limitMb} MB of storage, and this file ` +
+    `This organization is using ${usedMb} MB of its ${limitMb} MB of storage, and this file ` +
     "would take it over. Remove some documents from an earlier month, or contact Mantaq."
   );
 }
@@ -183,7 +183,7 @@ export async function orgStorageError(
   const used = await orgStorageBytes(tx, orgId);
   // No organisation row means the caller's session outlived the org. Treat it as no room
   // rather than destructuring undefined and surfacing a 500.
-  if (used === null) return "That organisation no longer exists.";
+  if (used === null) return "That organization no longer exists.";
   return storageQuotaError(used, incomingBytes);
 }
 
