@@ -117,7 +117,7 @@ Let `opening` = line item's opening previously-billed balance (setup figure), `e
 | blocked-title-line-item (UI) | `Downloads unavailable for this line item.` |
 | blocked-intro (UI) | `The following records are missing a receipt/justification, proof of payment, or narrative:` |
 | delete-blocked (UI) | `"{name}" has expenses recorded against it and cannot be deleted.` |
-| duplicate-email (UI) | `An organisation with that email already exists — sign in instead.` |
+| duplicate-email (UI) | `An organization with that email already exists — sign in instead.` |
 | no-receipt-reason-required (UI) | `Enter the reason no receipt is available.` |
 | expense-missing-narrative (UI) | `Enter a narrative for this expense.` |
 | upload-failed (UI) | `Upload failed — try again.` |

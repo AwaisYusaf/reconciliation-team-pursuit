@@ -32,7 +32,7 @@ export async function updateOrganisationAction(input: {
 
   const name = input.name.trim();
   const docName = input.docName.trim();
-  if (!name) return fail("Enter your organisation's name.");
+  if (!name) return fail("Enter your organization's name.");
   // The document name is part of every generated filename and title, so it cannot be blank.
   if (!docName) return fail("Enter the name to print on documents.");
 

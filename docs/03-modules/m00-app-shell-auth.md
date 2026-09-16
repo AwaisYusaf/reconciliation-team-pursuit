@@ -39,7 +39,7 @@ the app chrome demo).
 
 1) SIGN IN — centered card (max 440px) on the paper background: small serif line "Grant
 Expense Reconciliation", h1 "Sign in to your organisation", fields "Organisation email"
-(placeholder you@yourorganisation.org) and "Password", full-width primary button "Sign in",
+(placeholder you@yourorganization.org) and "Password", full-width primary button "Sign in",
 inline error state example in red ("That password doesn't match this organisation email."),
 a quiet centered line "Forgot your password? Contact Mantaq.", and footer line "Don't have an
 account? Create an account" (link).

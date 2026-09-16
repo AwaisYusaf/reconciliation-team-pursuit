@@ -156,10 +156,9 @@ export const UI = {
   /** Contract Summary's Reporting periods, and the Packet page's own Submitted marker (Appendix A §4). */
   submittedOn: (date: string) => `Submitted ${date}`,
   /**
-   * Login page, correct password on a suspended organisation (Phase 9 §3.5, §7) — shown only
+   * Login page, correct password on a suspended organization (Phase 9 §3.5, §7) — shown only
    * after the password checks out, never for a wrong one, so the form can't be used to learn
-   * whether an address's organisation is suspended. American "organization" is verbatim from
-   * the ticket, unlike the older "organisation" strings above.
+   * whether an address's organization is suspended.
    */
   orgAccessPaused: "Your organization's access is paused. Please contact support.",
   /** Admin action refusal for an unknown or non-uuid org id (Phase 9 §5). */

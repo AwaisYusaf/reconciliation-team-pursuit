@@ -230,7 +230,7 @@ export async function signOutAction(): Promise<void> {
 /* ------------------------------------------------------------------ sign up */
 
 const signUpSchema = z.object({
-  orgName: z.string().trim().min(1, "Enter your organisation's name."),
+  orgName: z.string().trim().min(1, "Enter your organization's name."),
   name: nameSchema,
   email: z.string().trim().email("Enter a valid email address."),
   password: z.string(),
@@ -247,7 +247,7 @@ export async function signUpAction(
   // them onto an empty one and leaves the first orphaned.
   try {
     await requireSession();
-    return fail("You are already signed in. Log out first to create another organisation.");
+    return fail("You are already signed in. Log out first to create another organization.");
   } catch {
     // Not signed in, which is the expected case here.
   }
