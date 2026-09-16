@@ -6,7 +6,7 @@ import "server-only";
  */
 import { and, count, desc, eq, isNotNull, isNull, max, sql } from "drizzle-orm";
 
-import { db } from "@/src/db";
+import { db, type Database } from "@/src/db";
 import {
   expenses,
   fundingSources,
@@ -60,9 +60,79 @@ const ORG_ACCOUNT_COLUMNS = {
   suspendedAt: organizations.suspendedAt,
 };
 
-/** Every organization, one row each, newest signup first (Phase 9 §3, §6). */
-export async function loadOrgDirectory(): Promise<OrgDirectoryRow[]> {
-  return db
+/** Re-exported under the names the screens use, so a page never imports from `db/schema`. */
+export type OrgPlanFilter = OrgPlan;
+export type OrgStatusFilter = SubscriptionStatus;
+
+export type OrgDirectoryFilter = {
+  search?: string;
+  plan?: OrgPlanFilter | null;
+  status?: OrgStatusFilter | null;
+  badge?: "complimentary" | "suspended" | null;
+};
+
+export type OrgDirectoryPage = {
+  rows: OrgDirectoryRow[];
+  total: number;
+  page: number;
+  pageCount: number;
+  pageSize: number;
+};
+
+/** Rows per page on the directory. A pagination bar appears only past this. */
+export const ORG_PAGE_SIZE = 10;
+
+/**
+ * Turns a filter into SQL. Searching, filtering and paging all happen in the database, not in
+ * the browser: the first version loaded every organization and narrowed the array on the
+ * client, so a search matched only whatever had already been fetched — with 200 organizations
+ * on the app, searching for one of them found nothing unless it happened to be on screen.
+ *
+ * `ilike` with the pattern's own wildcards escaped, so a name containing `%` or `_` searches
+ * for those characters rather than matching everything.
+ */
+function directoryWhere(filter: OrgDirectoryFilter) {
+  const clauses = [];
+
+  const search = filter.search?.trim();
+  if (search) {
+    const escaped = search.replace(/[\\%_]/g, (char) => `\\${char}`);
+    clauses.push(sql`${organizations.name} ilike ${`%${escaped}%`}`);
+  }
+  if (filter.plan) clauses.push(eq(organizations.plan, filter.plan));
+  if (filter.status) clauses.push(eq(organizations.subscriptionStatus, filter.status));
+  // The complimentary badge counts every organization with it on, ended or not (§7 Q5) — the
+  // end date only changes how the badge reads.
+  if (filter.badge === "complimentary") clauses.push(eq(organizations.complimentary, true));
+  if (filter.badge === "suspended") clauses.push(isNotNull(organizations.suspendedAt));
+
+  return clauses.length > 0 ? and(...clauses) : undefined;
+}
+
+/**
+ * One page of organizations, newest signup first (Phase 9 §3, §6), with the total the filter
+ * matches so the caller can render a pagination bar.
+ *
+ * A page past the end clamps to the last one rather than rendering an empty table — the usual
+ * way to land there is deleting or filtering after a link was made.
+ */
+export async function loadOrgDirectory(
+  filter: OrgDirectoryFilter = {},
+  page = 1,
+  pageSize = ORG_PAGE_SIZE,
+): Promise<OrgDirectoryPage> {
+  const where = directoryWhere(filter);
+
+  const [totalRow] = await db
+    .select({ total: count() })
+    .from(organizations)
+    .where(where);
+  const total = totalRow?.total ?? 0;
+
+  const pageCount = Math.max(1, Math.ceil(total / pageSize));
+  const current = Math.min(Math.max(1, Math.floor(page) || 1), pageCount);
+
+  const rows = await db
     .select({
       ...ORG_ACCOUNT_COLUMNS,
       // Drizzle's own `count`/`max` rather than a raw `sql<T>` fragment: the generic on a raw
@@ -75,8 +145,62 @@ export async function loadOrgDirectory(): Promise<OrgDirectoryRow[]> {
     })
     .from(organizations)
     .leftJoin(users, eq(users.orgId, organizations.id))
+    .where(where)
     .groupBy(organizations.id)
-    .orderBy(desc(organizations.createdAt), organizations.id);
+    // `id` breaks ties so paging is stable: two organizations created in the same millisecond
+    // could otherwise swap places between page 1 and page 2 and one of them never appear.
+    .orderBy(desc(organizations.createdAt), organizations.id)
+    .limit(pageSize)
+    .offset((current - 1) * pageSize);
+
+  return { rows, total, page: current, pageCount, pageSize };
+}
+
+export type OrgDirectorySummary = {
+  plan: Record<OrgPlan, number>;
+  status: Record<SubscriptionStatus, number>;
+  complimentary: number;
+  suspended: number;
+};
+
+/**
+ * The summary cards' counts, over **every** organization rather than the current page or
+ * filter (§7 Q10) — they are the filters, so narrowing them by themselves would be circular.
+ * One aggregate query rather than counting rows in the browser.
+ */
+export async function loadOrgSummary(
+  // Takes a reader for the same reason `loadPacketReadiness` does: a test can then read this
+  // and the rows it is checking against inside one transaction snapshot, which is the only way
+  // to assert a global count while other work is committing to the same table.
+  reader: Pick<Database, "select"> = db,
+): Promise<OrgDirectorySummary> {
+  const [row] = await reader
+    .select({
+      reconciliation: sql<string>`count(*) filter (where ${organizations.plan} = 'reconciliation')`,
+      reconciliationAi: sql<string>`count(*) filter (where ${organizations.plan} = 'reconciliation_ai')`,
+      trial: sql<string>`count(*) filter (where ${organizations.subscriptionStatus} = 'trial')`,
+      active: sql<string>`count(*) filter (where ${organizations.subscriptionStatus} = 'active')`,
+      pastDue: sql<string>`count(*) filter (where ${organizations.subscriptionStatus} = 'past_due')`,
+      cancelled: sql<string>`count(*) filter (where ${organizations.subscriptionStatus} = 'cancelled')`,
+      complimentary: sql<string>`count(*) filter (where ${organizations.complimentary})`,
+      suspended: sql<string>`count(*) filter (where ${organizations.suspendedAt} is not null)`,
+    })
+    .from(organizations);
+
+  return {
+    plan: {
+      reconciliation: Number(row?.reconciliation ?? 0),
+      reconciliation_ai: Number(row?.reconciliationAi ?? 0),
+    },
+    status: {
+      trial: Number(row?.trial ?? 0),
+      active: Number(row?.active ?? 0),
+      past_due: Number(row?.pastDue ?? 0),
+      cancelled: Number(row?.cancelled ?? 0),
+    },
+    complimentary: Number(row?.complimentary ?? 0),
+    suspended: Number(row?.suspended ?? 0),
+  };
 }
 
 /**
@@ -106,11 +230,33 @@ export type OrgUserRow = {
   lastSignInAt: Date | null;
 };
 
-/** One organization's users, oldest first. */
-export async function loadOrgUsers(orgId: string): Promise<OrgUserRow[]> {
-  if (!isUuid(orgId)) return [];
+/** How many of an organization's users the page shows before "View all". */
+export const ORG_USERS_PREVIEW = 10;
 
-  return db
+/**
+ * The ceiling "View all" raises the list to. Not unbounded: re-introducing an uncapped fetch
+ * behind a link is the same bug as rendering every user by default, one click further away.
+ */
+export const ORG_USERS_MAX = 200;
+
+export type OrgUsersPage = { rows: OrgUserRow[]; total: number };
+
+/**
+ * One organization's users, oldest first — the first {@link ORG_USERS_PREVIEW} unless `all`.
+ *
+ * An organization can have any number of users, and the page has no business rendering all of
+ * them by default: the limit is applied in SQL, so the rows are never fetched in the first
+ * place, and `total` is what the "View all" line counts.
+ */
+export async function loadOrgUsers(orgId: string, all = false): Promise<OrgUsersPage> {
+  if (!isUuid(orgId)) return { rows: [], total: 0 };
+
+  const [totalRow] = await db
+    .select({ total: count() })
+    .from(users)
+    .where(eq(users.orgId, orgId));
+
+  const query = db
     .select({
       id: users.id,
       name: users.name,
@@ -121,6 +267,9 @@ export async function loadOrgUsers(orgId: string): Promise<OrgUserRow[]> {
     .from(users)
     .where(eq(users.orgId, orgId))
     .orderBy(users.createdAt, users.id);
+
+  const rows = await query.limit(all ? ORG_USERS_MAX : ORG_USERS_PREVIEW);
+  return { rows, total: totalRow?.total ?? 0 };
 }
 
 export type OrgUsage = {
@@ -232,7 +381,14 @@ export type OrgAccountEventRow = {
   actorEmail: string | null;
 };
 
-/** One organization's account-change history, newest first. */
+/**
+ * How many history lines the organization page shows. Staff actions are the only thing that
+ * writes one, so an organization accrues a handful a year — but this is the last unbounded
+ * read on the page, and the cap costs a line.
+ */
+export const ORG_HISTORY_LIMIT = 50;
+
+/** One organization's account-change history, newest first, capped at {@link ORG_HISTORY_LIMIT}. */
 export async function loadOrgHistory(orgId: string): Promise<OrgAccountEventRow[]> {
   if (!isUuid(orgId)) return [];
 
@@ -250,6 +406,7 @@ export async function loadOrgHistory(orgId: string): Promise<OrgAccountEventRow[
     .from(orgAccountEvents)
     .leftJoin(staffUsers, eq(staffUsers.id, orgAccountEvents.actorStaffId))
     .where(eq(orgAccountEvents.orgId, orgId))
-    .orderBy(desc(orgAccountEvents.createdAt), desc(orgAccountEvents.id));
+    .orderBy(desc(orgAccountEvents.createdAt), desc(orgAccountEvents.id))
+    .limit(ORG_HISTORY_LIMIT);
 }
 

@@ -5,7 +5,6 @@
  * converter rather than mocking it — a mock would happily "convert" a document that
  * LibreOffice refuses. Skipped when LibreOffice is absent; the deployment container ships it.
  */
-import { readdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 
 import { describe, expect, it } from "vitest";
@@ -96,23 +95,32 @@ describe.skipIf(!available)("convertDocxToPdf", () => {
   }, 200_000);
 
   it("leaves no temp directory behind", async () => {
-    const listDirs = async () =>
-      (await readdir(tmpdir())).filter((name) => name.startsWith("ngo-soffice-"));
+    const { mkdtemp: makeTemp, readdir: readDir, rm: remove } = await import("node:fs/promises");
+    const path = await import("node:path");
 
-    const before = new Set(await listDirs());
-    await convertDocxToPdf(await coverSheet());
+    // This conversion gets a temp root of its own. Sampling the shared `ngo-soffice-` prefix
+    // could only ever see other test files' live directories too, and "wait for them to go
+    // away" was a race the suite lost whenever a sibling conversion ran longer than the wait —
+    // which it does under load, since one conversion here takes 20-40 seconds.
+    //
+    // `os.tmpdir()` reads these variables each call, and vitest gives each test file its own
+    // process, so this redirects only this test's conversion (and the soffice child it spawns).
+    const previous = { TMPDIR: process.env.TMPDIR, TEMP: process.env.TEMP, TMP: process.env.TMP };
+    const root = await makeTemp(path.join(tmpdir(), "ngo-tempcheck-"));
+    process.env.TMPDIR = root;
+    process.env.TEMP = root;
+    process.env.TMP = root;
 
-    // Other test files convert concurrently and share this prefix, so a single sample can
-    // catch someone else's live directory. A leaked directory never disappears; a
-    // concurrent one does — so the assertion waits for the difference to clear.
-    let leaked: string[] = [];
-    for (let attempt = 0; attempt < 40; attempt += 1) {
-      leaked = (await listDirs()).filter((name) => !before.has(name));
-      if (leaked.length === 0) break;
-      await new Promise((resolve) => setTimeout(resolve, 250));
+    try {
+      await convertDocxToPdf(await coverSheet());
+      const leaked = (await readDir(root)).filter((name) => name.startsWith("ngo-soffice-"));
+      expect(leaked).toEqual([]);
+    } finally {
+      process.env.TMPDIR = previous.TMPDIR;
+      process.env.TEMP = previous.TEMP;
+      process.env.TMP = previous.TMP;
+      await remove(root, { recursive: true, force: true });
     }
-
-    expect(leaked).toEqual([]);
   }, 200_000);
 
   /**

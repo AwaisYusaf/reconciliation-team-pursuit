@@ -66,7 +66,7 @@ describe.skipIf(!hasDatabase)("suspension's effect on sessions and sign-in (inte
     "@/src/services/auth/session"
   );
   const { signInAction } = await import("@/src/modules/auth/actions");
-  const { suspendOrgAction, reinstateOrgAction } = await import("./actions");
+  const { suspendOrgAction, reinstateOrgAction, changePlanAction } = await import("./actions");
   const { GET: filesGet } = await import("@/app/api/files/[id]/route");
   const { GET: summaryGet } = await import("@/app/api/downloads/summary/route");
 
@@ -242,6 +242,22 @@ describe.skipIf(!hasDatabase)("suspension's effect on sessions and sign-in (inte
       ok: false,
       error: UI.orgAccessPausedWithReason("Payment 30 days overdue"),
     });
+
+    // A LATER event that is not a suspension must not supply the reason. This is the case that
+    // matters: staff suspend for "Payment 30 days overdue", then change the plan with an
+    // internal note — and the newest event is now that note. Without the action filter on the
+    // lookup, the login page would read an internal note out to the customer.
+    await startStaffSession(staffId);
+    const decoy = "internal only: chasing Misty about the invoice";
+    expect((await changePlanAction(suspendedOrgIdA, "reconciliation_ai", "past_due", decoy)).ok).toBe(true);
+    await endSession();
+
+    const stillSuspensionReason = await signInAction(IDLE, formWith(userA.email, "user-a-password-1"));
+    expect(stillSuspensionReason).toEqual({
+      ok: false,
+      error: UI.orgAccessPausedWithReason("Payment 30 days overdue"),
+    });
+    expect("error" in stillSuspensionReason && stillSuspensionReason.error).not.toContain(decoy);
 
     // No suspension event at all (an org suspended by hand in SQL, say): still refused, with
     // the message that needs no reason rather than a broken sentence.

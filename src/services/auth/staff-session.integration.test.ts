@@ -117,6 +117,15 @@ describe.skipIf(!hasDatabase)("staff session store (integration)", async () => {
     const token = await createStaffSession(staffId);
     const overMaxAge = new Date(Date.now() + SESSION_MAX_AGE_MS + DAY);
 
+    // The expiry is pushed out past the same moment first, so the ordinary 30-day check cannot
+    // be what rejects this row — only the absolute cap can. Without this the test passed with
+    // `exceedsMaxAge` deleted from `resolveStaffSession` altogether, which is the one thing
+    // that ever ends a stolen staff cookie nobody knows about (tokens.ts).
+    await db
+      .update(staffSessions)
+      .set({ expiresAt: new Date(overMaxAge.getTime() + 10 * DAY) })
+      .where(eq(staffSessions.id, hashSessionToken(token)));
+
     expect(await resolveStaffSession(token, overMaxAge)).toBeNull();
     const remaining = await db
       .select()
@@ -174,8 +183,23 @@ describe.skipIf(!hasDatabase)("staff session store (integration)", async () => {
       .set({ expiresAt: new Date(Date.now() - DAY) })
       .where(eq(staffSessions.id, hashSessionToken(staleStaff)));
 
-    const deletedCount = await deleteExpiredSessions();
-    expect(deletedCount).toBeGreaterThanOrEqual(2);
+    // Deliberately not asserting the returned count: `startSession` fires this sweep
+    // opportunistically, so a sibling test file can collect these two rows first and the count
+    // then says nothing about whether the sweep works. The rows themselves are the assertion.
+    await deleteExpiredSessions();
+
+    expect(
+      await db.select().from(sessions).where(eq(sessions.id, hashSessionToken(staleCustomer))),
+    ).toHaveLength(0);
+    expect(
+      await db.select().from(staffSessions).where(eq(staffSessions.id, hashSessionToken(staleStaff))),
+    ).toHaveLength(0);
+    expect(
+      await db.select().from(sessions).where(eq(sessions.id, hashSessionToken(freshCustomer))),
+    ).toHaveLength(1);
+    expect(
+      await db.select().from(staffSessions).where(eq(staffSessions.id, hashSessionToken(freshStaff))),
+    ).toHaveLength(1);
 
     expect(await resolveSession(staleCustomer)).toBeNull();
     expect(await resolveStaffSession(staleStaff)).toBeNull();

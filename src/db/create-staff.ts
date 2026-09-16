@@ -76,15 +76,19 @@ async function main() {
   );
   const { emailInUse } = await import("@/src/modules/auth/emails");
 
-  const suppliedPassword = argument("password") ?? process.env.STAFF_PASSWORD;
-  const password = suppliedPassword ?? generatePassword();
-  const policyError = validatePasswordPolicy(password);
-  if (policyError) throw new Error(policyError);
+  // An unset STAFF_PASSWORD in a `.env` arrives as "" rather than undefined, which `??` passes
+  // straight through to the policy check — so a redeploy with the line present but blank used
+  // to fail on a password nothing was going to use.
+  const rawPassword = argument("password") ?? process.env.STAFF_PASSWORD;
+  const suppliedPassword = rawPassword && rawPassword.trim() !== "" ? rawPassword : undefined;
 
   const pool = new Pool({ connectionString });
   const db = drizzle(pool, { schema });
 
   try {
+    // Existence is checked BEFORE anything to do with the password: on a redeploy the account
+    // already exists and no password is needed at all, so a missing or weak one must not turn
+    // an idempotent no-op into a failed deploy step.
     const [existingStaff] = await db
       .select({ id: schema.staffUsers.id })
       .from(schema.staffUsers)
@@ -105,6 +109,23 @@ async function main() {
     if (await emailInUse(email, db)) {
       throw new Error(`An account already exists for ${email}`);
     }
+
+    // From here an account really is being created, so a password is required.
+    //
+    // Under `--skip-existing` (the deploy path) one is never generated: the only way to hand a
+    // generated password over is to print it, and that would put it in the deploy log and in
+    // whatever CI keeps. An operator running this by hand still gets one printed once.
+    if (skipExisting && !suppliedPassword) {
+      throw new Error(
+        `STAFF_EMAIL is set to ${email} but STAFF_PASSWORD is empty, so no account was created. ` +
+          "Set STAFF_PASSWORD in .env and deploy again, or create the account by hand with " +
+          "npm run db:create-staff -- --email <address> --name <name>",
+      );
+    }
+
+    const password = suppliedPassword ?? generatePassword();
+    const policyError = validatePasswordPolicy(password);
+    if (policyError) throw new Error(policyError);
 
     let staffId: string;
     try {

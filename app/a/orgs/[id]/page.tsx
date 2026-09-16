@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { Card, PageTitle, SubsectionTitle } from "@/src/components/ui/surfaces";
@@ -7,13 +8,23 @@ import { formatBytes, ratio } from "@/src/domain/format";
 import { PLAN_LABELS, UI } from "@/src/domain/strings";
 import { describeAccountEvent } from "@/src/modules/admin/directory";
 import { requireStaffPage } from "@/src/modules/admin/guard";
-import { loadOrgAccount, loadOrgHistory, loadOrgUsage, loadOrgUsers } from "@/src/modules/admin/queries";
+import {
+  loadOrgAccount,
+  loadOrgHistory,
+  loadOrgUsage,
+  loadOrgUsers,
+  ORG_USERS_PREVIEW,
+} from "@/src/modules/admin/queries";
 import { userDisplay } from "@/src/domain/user-display";
 
 import { AccountActions } from "./account-actions";
 import { AccountBadges } from "../../badges";
 
-export const metadata = { title: "Organization — AB Solutions admin" };
+/** Named per organization, so two open tabs are tellable apart. */
+export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
+  const account = await loadOrgAccount((await params).id);
+  return { title: account ? `${account.name} — AB Solutions admin` : "Organization — AB Solutions admin" };
+}
 
 /** One usage fact. `caption` is for the rare line that needs explaining, like what a packet
  *  download count actually counts. */
@@ -48,15 +59,30 @@ function Sentence({ children }: { children: React.ReactNode }) {
   return <span className="text-[17px] font-semibold text-ink leading-snug">{children}</span>;
 }
 
-export default async function OrgPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function OrgPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   await requireStaffPage();
 
   const { id } = await params;
   const account = await loadOrgAccount(id);
   if (!account) notFound();
 
+  const query = await searchParams;
+  // "View all" is a link rather than a button: the extra rows are fetched on the server when
+  // asked for, so an organization with hundreds of users never ships them all by default.
+  const showAllUsers = query.users === "all";
+  // Where the reader came from — a filtered, paged list they should land back on. Only a
+  // relative query string is honoured, so the link can't be turned into an off-site redirect.
+  const rawBack = typeof query.back === "string" ? query.back : "";
+  const backHref = rawBack.startsWith("?") ? `/a${rawBack}` : "/a";
+
   const [users, usage, history] = await Promise.all([
-    loadOrgUsers(id),
+    loadOrgUsers(id, showAllUsers),
     loadOrgUsage(id),
     loadOrgHistory(id),
   ]);
@@ -70,6 +96,21 @@ export default async function OrgPage({ params }: { params: Promise<{ id: string
 
   return (
     <div className="flex flex-col gap-6">
+      <div>
+        <Link href={backHref} className="inline-flex items-center gap-1.5 text-[15px] text-sub hover:text-ink">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+            <path
+              d="M10 3.5 5.5 8l4.5 4.5"
+              stroke="currentColor"
+              strokeWidth="1.75"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+          All organizations
+        </Link>
+      </div>
+
       <Card className="p-4 sm:p-5 lg:p-6">
         <PageTitle className="mb-4">{account.name}</PageTitle>
         <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3 mb-5">
@@ -97,7 +138,7 @@ export default async function OrgPage({ params }: { params: Promise<{ id: string
         </dl>
 
         <SubsectionTitle className="mb-2">Users</SubsectionTitle>
-        {users.length === 0 ? (
+        {users.rows.length === 0 ? (
           <p className="text-[15px] text-sub">{UI.noUsersYet}</p>
         ) : (
           <TableCard minWidth={640}>
@@ -110,7 +151,7 @@ export default async function OrgPage({ params }: { params: Promise<{ id: string
               </tr>
             </thead>
             <tbody>
-              {users.map((user) => (
+              {users.rows.map((user) => (
                 <tr key={user.id}>
                   <Td>{userDisplay(user.name, user.email)}</Td>
                   <Td>{user.email}</Td>
@@ -120,6 +161,27 @@ export default async function OrgPage({ params }: { params: Promise<{ id: string
               ))}
             </tbody>
           </TableCard>
+        )}
+        {users.total > users.rows.length && (
+          <p className="text-[15px] text-sub mt-3">
+            {UI.showingUsers(users.rows.length, users.total)}{" "}
+            <Link
+              href={`/a/orgs/${account.id}?users=all${rawBack ? `&back=${encodeURIComponent(rawBack)}` : ""}`}
+              className="text-accent underline underline-offset-2 hover:no-underline"
+            >
+              View all
+            </Link>
+          </p>
+        )}
+        {showAllUsers && users.total > ORG_USERS_PREVIEW && (
+          <p className="text-[15px] text-sub mt-3">
+            <Link
+              href={`/a/orgs/${account.id}${rawBack ? `?back=${encodeURIComponent(rawBack)}` : ""}`}
+              className="text-accent underline underline-offset-2 hover:no-underline"
+            >
+              Show fewer
+            </Link>
+          </p>
         )}
       </Card>
 

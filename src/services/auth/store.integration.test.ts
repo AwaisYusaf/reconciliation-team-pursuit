@@ -18,7 +18,7 @@ describe.skipIf(!hasDatabase)("session store (integration)", async () => {
   const { organizations, sessions, users } = await import("@/src/db/schema");
   const { createSession, deleteExpiredSessions, deleteOtherSessions, deleteSession, resolveSession } =
     await import("./store");
-  const { hashSessionToken, SESSION_TTL_MS } = await import("./tokens");
+  const { hashSessionToken, SESSION_MAX_AGE_MS, SESSION_TTL_MS } = await import("./tokens");
 
   const DAY = 24 * 60 * 60 * 1000;
   let orgId: string;
@@ -90,6 +90,22 @@ describe.skipIf(!hasDatabase)("session store (integration)", async () => {
     const future = new Date(Date.now() + SESSION_TTL_MS + DAY);
 
     expect(await resolveSession(token, future)).toBeNull();
+    const remaining = await db.select().from(sessions).where(eq(sessions.id, hashSessionToken(token)));
+    expect(remaining).toHaveLength(0);
+  });
+
+  it("rejects a session past the absolute max age and deletes the row, however often it was renewed", async () => {
+    // There was no customer-side max-age test at all: the sliding window renews forever, so
+    // this cap is the only thing that ends a cookie nobody knows was stolen (tokens.ts). The
+    // expiry is pushed past the moment of the check first, so only `exceedsMaxAge` can reject.
+    const token = await createSession(userId);
+    const overMaxAge = new Date(Date.now() + SESSION_MAX_AGE_MS + DAY);
+    await db
+      .update(sessions)
+      .set({ expiresAt: new Date(overMaxAge.getTime() + 10 * DAY) })
+      .where(eq(sessions.id, hashSessionToken(token)));
+
+    expect(await resolveSession(token, overMaxAge)).toBeNull();
     const remaining = await db.select().from(sessions).where(eq(sessions.id, hashSessionToken(token)));
     expect(remaining).toHaveLength(0);
   });

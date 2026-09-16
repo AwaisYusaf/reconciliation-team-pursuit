@@ -116,7 +116,11 @@ export async function changePlanAction(
 
   return withLockedOrg(orgId, async (row, tx) => {
     // Changing plan or status never touches suspension, complimentary access, or each other.
-    if (row.plan === plan && row.subscriptionStatus === status) return ok();
+    // A save that changes nothing is refused rather than reported as saved: there is no event
+    // action for "note only", so History would stay silent while the dialog said "updated".
+    if (row.plan === plan && row.subscriptionStatus === status) {
+      return fail(UI.accountNothingChanged);
+    }
 
     const before = snapshot(row);
     await tx
@@ -159,7 +163,7 @@ export async function setComplimentaryAction(
 
   return withLockedOrg(orgId, async (row, tx) => {
     if (!enabled) {
-      if (!row.complimentary) return ok(); // already off — no-op, no event
+      if (!row.complimentary) return fail(UI.accountNothingChanged); // already off
       const before = snapshot(row);
       await tx
         .update(organizations)
@@ -196,7 +200,7 @@ export async function setComplimentaryAction(
     }
 
     // Already on — only a genuinely different end date is a change.
-    if (row.complimentaryUntil === untilValue) return ok();
+    if (row.complimentaryUntil === untilValue) return fail(UI.accountNothingChanged);
     const before = snapshot(row);
     await tx
       .update(organizations)

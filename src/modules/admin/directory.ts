@@ -38,65 +38,10 @@ export function complimentaryState(
   return org.complimentaryUntil < today ? "ended" : "active";
 }
 
-export type OrgFilter = {
-  search?: string;
-  plan?: OrgPlan | null;
-  status?: SubscriptionStatus | null;
-  badge?: "complimentary" | "suspended" | null;
-};
-
-/**
- * Narrows a directory to the rows matching every supplied criterion (Phase 9 §3.9, §6). All
- * criteria AND together; an unset criterion matches everything. Input order is preserved.
- */
-export function filterOrgs<T extends DirectoryOrg>(
-  rows: readonly T[],
-  filter: OrgFilter,
-  today: IsoDate,
-): T[] {
-  const search = filter.search?.trim().toLocaleLowerCase() ?? "";
-  return rows.filter((row) => {
-    if (search && !row.name.toLocaleLowerCase().includes(search)) return false;
-    if (filter.plan && row.plan !== filter.plan) return false;
-    if (filter.status && row.subscriptionStatus !== filter.status) return false;
-    if (filter.badge === "complimentary" && complimentaryState(row, today) === "none") return false;
-    if (filter.badge === "suspended" && row.suspendedAt === null) return false;
-    return true;
-  });
-}
-
-export type DirectorySummary = {
-  plan: Record<OrgPlan, number>;
-  status: Record<SubscriptionStatus, number>;
-  complimentary: number;
-  suspended: number;
-};
-
-/**
- * The summary cards' counts, always over every row passed in — never a filtered subset (Phase 9
- * §7 Q10). Defined in terms of {@link filterOrgs} itself, so "every card's count equals
- * `filterOrgs(rows, thatCard'sFilter).length`" holds by construction rather than by two pieces
- * of counting logic staying in sync by hand.
- */
-export function summarize<T extends DirectoryOrg>(rows: readonly T[], today: IsoDate): DirectorySummary {
-  const plans = Object.keys(PLAN_LABELS) as OrgPlan[];
-  const statuses = Object.keys(STATUS_LABELS) as SubscriptionStatus[];
-  return {
-    plan: Object.fromEntries(
-      plans.map((plan) => [plan, filterOrgs(rows, { plan }, today).length]),
-    ) as Record<OrgPlan, number>,
-    status: Object.fromEntries(
-      statuses.map((status) => [status, filterOrgs(rows, { status }, today).length]),
-    ) as Record<SubscriptionStatus, number>,
-    complimentary: filterOrgs(rows, { badge: "complimentary" }, today).length,
-    suspended: filterOrgs(rows, { badge: "suspended" }, today).length,
-  };
-}
-
-/** A summary card toggles its own filter: clicking the active one clears it (Phase 9 §6). */
-export function toggleFilterValue<T>(current: T | null, next: T): T | null {
-  return current === next ? null : next;
-}
+// Searching, filtering, counting and paging used to live here as pure functions over an
+// already-fetched array. They are gone: the directory now narrows in SQL (`queries.ts`), so a
+// search covers every organization rather than whichever page the browser happened to hold.
+// What remains here is what is genuinely pure — how a badge reads, and how an event reads.
 
 /** The `loadOrgHistory` row shape this needs — structurally typed, not imported from `queries.ts`. */
 export type AccountEvent = {

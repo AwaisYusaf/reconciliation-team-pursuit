@@ -214,6 +214,56 @@ describe.skipIf(!hasDatabase)("admin account actions (integration, Phase 9 part 
     expect(reinstateNotSuspended).toEqual(fail(UI.orgNotSuspended));
   });
 
+  it("waits on a row lock another transaction holds, and sees that transaction's write once it commits", async () => {
+    asStaff();
+    const orgId = await freshOrg();
+
+    // The previous version of this test fired two suspends with Promise.all and checked that
+    // one won — which passes with or without `FOR UPDATE`, because two pooled statements
+    // usually serialise anyway. This holds the org row locked in a real second transaction,
+    // the way `lock-guard.integration.test.ts` does, so the action can only proceed by taking
+    // the same lock. Remove `.for("update")` in `withLockedOrg` and this fails: the action
+    // reads the pre-suspend row, waits only on the UPDATE, and suspends an org that was
+    // already suspended underneath it — two 'suspended' events for one suspension.
+    let releaseLock: () => void;
+    const holdUntilReleased = new Promise<void>((resolve) => {
+      releaseLock = resolve;
+    });
+    let lockTaken = false;
+
+    const lockTxPromise = db.transaction(async (tx) => {
+      await tx.select().from(organizations).where(eq(organizations.id, orgId)).for("update");
+      await tx
+        .update(organizations)
+        .set({ suspendedAt: new Date() })
+        .where(eq(organizations.id, orgId));
+      lockTaken = true;
+      await holdUntilReleased;
+    });
+
+    while (!lockTaken) await new Promise((r) => setTimeout(r, 5));
+
+    let settled = false;
+    const suspendPromise = suspendOrgAction(orgId, "waited for the lock").then((result) => {
+      settled = true;
+      return result;
+    });
+
+    // Still pending: the action's own SELECT … FOR UPDATE cannot read the row while the other
+    // transaction holds it.
+    await new Promise((r) => setTimeout(r, 200));
+    expect(settled).toBe(false);
+
+    releaseLock!();
+    await lockTxPromise;
+
+    // Once the lock is released the action reads the committed row and refuses, rather than
+    // suspending an already-suspended organization.
+    expect(await suspendPromise).toEqual(fail(UI.orgAlreadySuspended));
+    const events = await eventsFor(orgId);
+    expect(events.filter((e) => e.action === "suspended")).toHaveLength(0);
+  }, 20_000);
+
   it("concurrent suspends: exactly one ok, one orgAlreadySuspended, and exactly one 'suspended' event row", async () => {
     asStaff();
     const orgId = await freshOrg();
@@ -234,28 +284,39 @@ describe.skipIf(!hasDatabase)("admin account actions (integration, Phase 9 part 
 
   /* ------------------------------------------------------------------- no-ops */
 
-  it("no-op changes write no org_account_events row: same plan+status, complimentary already off and disabling, complimentary already on with the same until", async () => {
+  it("a save that changes nothing is refused rather than reported as saved, and writes no event — even with a note", async () => {
     asStaff();
     const orgId = await freshOrg();
 
-    // Fresh org starts plan=reconciliation, status=trial (schema defaults) — same values is a no-op.
-    const samePlan = await changePlanAction(orgId, "reconciliation", "trial", "no-op note");
-    expect(samePlan.ok).toBe(true);
+    // A note on its own has nowhere to go: there is no "note only" event action, so History
+    // would stay empty while the dialog said "updated". The staff member is told instead.
+    // Fresh org starts plan=reconciliation, status=trial (schema defaults).
+    expect(await changePlanAction(orgId, "reconciliation", "trial", "just a note")).toEqual(
+      fail(UI.accountNothingChanged),
+    );
     expect(await eventsFor(orgId)).toHaveLength(0);
 
-    // Complimentary already off, disabling again is a no-op.
-    const alreadyOff = await setComplimentaryAction(orgId, false, "", "no-op note");
-    expect(alreadyOff.ok).toBe(true);
+    // Complimentary already off, disabling again.
+    expect(await setComplimentaryAction(orgId, false, "", "just a note")).toEqual(
+      fail(UI.accountNothingChanged),
+    );
     expect(await eventsFor(orgId)).toHaveLength(0);
 
-    // Turn it on for real, then setting it on again with the same until is a no-op.
-    const turnOn = await setComplimentaryAction(orgId, true, "2027-01-01", "grant it");
-    expect(turnOn.ok).toBe(true);
+    // Turn it on for real, then set it on again with the same end date.
+    expect((await setComplimentaryAction(orgId, true, "2027-01-01", "grant it")).ok).toBe(true);
     expect(await eventsFor(orgId)).toHaveLength(1);
 
-    const sameUntil = await setComplimentaryAction(orgId, true, "2027-01-01", "no-op note");
-    expect(sameUntil.ok).toBe(true);
+    expect(await setComplimentaryAction(orgId, true, "2027-01-01", "just a note")).toEqual(
+      fail(UI.accountNothingChanged),
+    );
     expect(await eventsFor(orgId)).toHaveLength(1); // unchanged — still just the grant
+
+    // Nothing on the row moved through any of it.
+    const row = await orgRow(orgId);
+    expect(row.plan).toBe("reconciliation");
+    expect(row.subscriptionStatus).toBe("trial");
+    expect(row.complimentary).toBe(true);
+    expect(row.complimentaryUntil).toBe("2027-01-01");
   });
 
   it("changing the end date writes complimentary_changed; turning it off writes complimentary_removed and clears the date", async () => {

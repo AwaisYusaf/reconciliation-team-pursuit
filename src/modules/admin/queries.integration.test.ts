@@ -9,7 +9,7 @@ import { config } from "dotenv";
 
 config({ path: ".env.local", quiet: true });
 
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 const hasDatabase = Boolean(process.env.DATABASE_URL);
@@ -41,8 +41,10 @@ describe.skipIf(!hasDatabase)("admin queries (integration, Phase 9 part 3)", asy
     loadOrgAccount,
     loadOrgDirectory,
     loadOrgHistory,
+    loadOrgSummary,
     loadOrgUsage,
     loadOrgUsers,
+    ORG_USERS_PREVIEW,
   } = await import("./queries");
 
   const currentMonth = currentMonthKey();
@@ -214,17 +216,29 @@ describe.skipIf(!hasDatabase)("admin queries (integration, Phase 9 part 3)", asy
 
     it("monthsSubmitted and monthsLocked count month_statuses rows per funding source (Q4)", async () => {
       const month = "2026-06";
+      const otherMonth = "2026-05";
+      // The two counts must differ, or swapping the two `filter (where … is not null)` clauses
+      // passes: a month that is submitted but not locked is the case that tells them apart,
+      // and it is also the ordinary state of a month mid-reconciliation.
       await db.insert(monthStatuses).values([
         { orgId: orgA, fundingSourceId: sourceA1, month, submittedAt: new Date(), lockedAt: new Date() },
         { orgId: orgA, fundingSourceId: sourceA2, month, submittedAt: new Date(), lockedAt: new Date() },
+        { orgId: orgA, fundingSourceId: sourceA1, month: otherMonth, submittedAt: new Date(), lockedAt: null },
       ]);
 
       try {
         const usage = await loadOrgUsage(orgA);
-        expect(usage.monthsSubmitted).toBe(2);
+        expect(usage.monthsSubmitted).toBe(3);
         expect(usage.monthsLocked).toBe(2);
       } finally {
-        await db.delete(monthStatuses).where(and(eq(monthStatuses.orgId, orgA), eq(monthStatuses.month, month)));
+        await db
+          .delete(monthStatuses)
+          .where(
+            and(
+              eq(monthStatuses.orgId, orgA),
+              inArray(monthStatuses.month, [month, otherMonth]),
+            ),
+          );
       }
     });
 
@@ -426,7 +440,7 @@ describe.skipIf(!hasDatabase)("admin queries (integration, Phase 9 part 3)", asy
       // orgB has no users at all — proves the LEFT JOIN.
 
       try {
-        const rows = await loadOrgDirectory();
+        const { rows } = await loadOrgDirectory({}, 1, 1000);
         const aRows = rows.filter((r) => r.id === orgA);
         const bRows = rows.filter((r) => r.id === orgB);
         expect(aRows).toHaveLength(1);
@@ -448,6 +462,241 @@ describe.skipIf(!hasDatabase)("admin queries (integration, Phase 9 part 3)", asy
         expect(created).toEqual(sorted);
       } finally {
         await db.delete(users).where(eq(users.orgId, orgA));
+      }
+    });
+  });
+
+  /* ------------------------------------- server-side search, filters and pagination */
+
+  describe("loadOrgDirectory: filtering and paging happen in SQL, not in the browser", () => {
+    // 25 organizations, more than two pages. The point of every assertion below is that a
+    // match on page 3 is found by a search run on page 1 — the client-side version could only
+    // ever narrow the rows already fetched, so a search found nothing unless it was on screen.
+    const ids: string[] = [];
+    const prefix = `Paged ${unique}`;
+    let needleId: string;
+
+    beforeAll(async () => {
+      for (let i = 0; i < 25; i++) {
+        const [org] = await db
+          .insert(organizations)
+          .values({
+            name: `${prefix} Org ${String(i).padStart(2, "0")}`,
+            docName: "Paged",
+            activeMonth: "2026-02",
+            // Distinct, ascending creation times so "newest first" is deterministic.
+            createdAt: new Date(Date.UTC(2026, 0, i + 1)),
+            plan: i % 5 === 0 ? "reconciliation_ai" : "reconciliation",
+            subscriptionStatus: i % 4 === 0 ? "past_due" : "trial",
+            complimentary: i % 3 === 0,
+            suspendedAt: i % 10 === 0 ? new Date() : null,
+          })
+          .returning({ id: organizations.id });
+        ids.push(org.id);
+      }
+
+      // The needle is the OLDEST, so it lands on the last page and can never be on page 1.
+      const [needle] = await db
+        .insert(organizations)
+        .values({
+          name: `${prefix} Zzz Needle Organization`,
+          docName: "Needle",
+          activeMonth: "2026-02",
+          createdAt: new Date(Date.UTC(2025, 0, 1)),
+        })
+        .returning({ id: organizations.id });
+      needleId = needle.id;
+      ids.push(needle.id);
+    });
+
+    afterAll(async () => {
+      for (const id of ids) await db.delete(organizations).where(eq(organizations.id, id));
+    });
+
+    it("returns one page at a time, with the real total and page count", async () => {
+      const first = await loadOrgDirectory({ search: prefix }, 1, 10);
+      expect(first.rows).toHaveLength(10);
+      expect(first.total).toBe(26);
+      expect(first.pageCount).toBe(3);
+      expect(first.page).toBe(1);
+
+      const last = await loadOrgDirectory({ search: prefix }, 3, 10);
+      expect(last.rows).toHaveLength(6);
+      expect(last.page).toBe(3);
+
+      // No organization appears on two pages, and every one appears somewhere.
+      const second = await loadOrgDirectory({ search: prefix }, 2, 10);
+      const seen = [...first.rows, ...second.rows, ...last.rows].map((r) => r.id);
+      expect(new Set(seen).size).toBe(26);
+    });
+
+    it("finds a match that is not on the first page", async () => {
+      const page1 = await loadOrgDirectory({ search: prefix }, 1, 10);
+      expect(page1.rows.map((r) => r.id)).not.toContain(needleId);
+
+      const found = await loadOrgDirectory({ search: "Zzz Needle" }, 1, 10);
+      expect(found.total).toBe(1);
+      expect(found.rows.map((r) => r.id)).toEqual([needleId]);
+    });
+
+    it("search is case-insensitive, trims, and matches mid-name", async () => {
+      for (const term of ["zzz needle", "  Zzz Needle  ", "Needle Organization"]) {
+        const result = await loadOrgDirectory({ search: term }, 1, 10);
+        expect(result.rows.map((r) => r.id)).toEqual([needleId]);
+      }
+    });
+
+    it("treats % and _ in a search as characters, not wildcards", async () => {
+      // Unescaped, "%" matches every row — the search box would silently return everything.
+      const result = await loadOrgDirectory({ search: "%" }, 1, 10);
+      expect(result.total).toBe(0);
+      const underscore = await loadOrgDirectory({ search: "_" }, 1, 10);
+      expect(underscore.total).toBe(0);
+    });
+
+    it("filters by plan, status and each badge, with the counts the fixture defines", async () => {
+      // Counted from the loop above over the 25 generated rows: plan every 5th, status every
+      // 4th, complimentary every 3rd, suspended every 10th. The needle has the defaults.
+      const ai = await loadOrgDirectory({ search: prefix, plan: "reconciliation_ai" }, 1, 100);
+      expect(ai.total).toBe(5); // i = 0, 5, 10, 15, 20
+
+      const pastDue = await loadOrgDirectory({ search: prefix, status: "past_due" }, 1, 100);
+      expect(pastDue.total).toBe(7); // i = 0, 4, 8, 12, 16, 20, 24
+
+      const complimentary = await loadOrgDirectory({ search: prefix, badge: "complimentary" }, 1, 100);
+      expect(complimentary.total).toBe(9); // i = 0, 3, 6, 9, 12, 15, 18, 21, 24
+
+      const suspended = await loadOrgDirectory({ search: prefix, badge: "suspended" }, 1, 100);
+      expect(suspended.total).toBe(3); // i = 0, 10, 20
+      expect(suspended.rows.every((r) => r.suspendedAt !== null)).toBe(true);
+    });
+
+    it("combines filters with AND, and pages the combined result", async () => {
+      const both = await loadOrgDirectory(
+        { search: prefix, plan: "reconciliation_ai", status: "past_due" },
+        1,
+        100,
+      );
+      expect(both.total).toBe(2); // plan every 5th ∩ status every 4th = i = 0, 20
+      expect(both.rows.every((r) => r.plan === "reconciliation_ai")).toBe(true);
+      expect(both.rows.every((r) => r.subscriptionStatus === "past_due")).toBe(true);
+    });
+
+    it("orders newest signup first, across page boundaries", async () => {
+      const first = await loadOrgDirectory({ search: prefix }, 1, 10);
+      const second = await loadOrgDirectory({ search: prefix }, 2, 10);
+      const times = [...first.rows, ...second.rows].map((r) => r.createdAt.getTime());
+      expect(times).toEqual([...times].sort((a, b) => b - a));
+      // The last row of page 1 is newer than the first row of page 2 — no overlap, no gap.
+      expect(first.rows.at(-1)!.createdAt.getTime()).toBeGreaterThanOrEqual(
+        second.rows[0].createdAt.getTime(),
+      );
+    });
+
+    it("a page past the end clamps to the last page rather than returning nothing", async () => {
+      const beyond = await loadOrgDirectory({ search: prefix }, 99, 10);
+      expect(beyond.page).toBe(3);
+      expect(beyond.rows).toHaveLength(6);
+    });
+
+    it("page 0 and a nonsense page are treated as page 1", async () => {
+      for (const page of [0, -3, Number.NaN]) {
+        const result = await loadOrgDirectory({ search: prefix }, page, 10);
+        expect(result.page).toBe(1);
+        expect(result.rows).toHaveLength(10);
+      }
+    });
+
+    it("loadOrgSummary puts every organization in exactly the right bucket", async () => {
+      // Both sides are read inside ONE repeatable-read snapshot, so sibling test files
+      // committing to `organizations` while this runs cannot move either number — a delta
+      // across two ordinary reads is flaky here no matter how small the window.
+      //
+      // The expected side is counted in JS from the rows themselves, deliberately NOT with a
+      // second copy of the same `count(*) filter (…)` SQL: comparing the query against itself
+      // is the mistake that let the old summary tests pass while trial and active were
+      // swapped, the two plans were swapped, the complimentary filter was dropped and the
+      // suspended one inverted — the numbers AB Solutions reads at a glance, none protected.
+      await db.transaction(
+        async (tx) => {
+          const summary = await loadOrgSummary(tx);
+          const rows = await tx
+            .select({
+              plan: organizations.plan,
+              subscriptionStatus: organizations.subscriptionStatus,
+              complimentary: organizations.complimentary,
+              suspendedAt: organizations.suspendedAt,
+            })
+            .from(organizations);
+
+          const count = (predicate: (r: (typeof rows)[number]) => boolean) => rows.filter(predicate).length;
+
+          expect(summary.plan.reconciliation).toBe(count((r) => r.plan === "reconciliation"));
+          expect(summary.plan.reconciliation_ai).toBe(count((r) => r.plan === "reconciliation_ai"));
+          expect(summary.status.trial).toBe(count((r) => r.subscriptionStatus === "trial"));
+          expect(summary.status.active).toBe(count((r) => r.subscriptionStatus === "active"));
+          expect(summary.status.past_due).toBe(count((r) => r.subscriptionStatus === "past_due"));
+          expect(summary.status.cancelled).toBe(count((r) => r.subscriptionStatus === "cancelled"));
+          expect(summary.complimentary).toBe(count((r) => r.complimentary));
+          expect(summary.suspended).toBe(count((r) => r.suspendedAt !== null));
+
+          // The fixture guarantees each bucket is non-empty and no two are equal by accident,
+          // so a swap between any pair is a real difference rather than 0 === 0.
+          expect(summary.plan.reconciliation_ai).toBeGreaterThanOrEqual(5);
+          expect(summary.status.past_due).toBeGreaterThanOrEqual(7);
+          expect(summary.complimentary).toBeGreaterThanOrEqual(9);
+          expect(summary.suspended).toBeGreaterThanOrEqual(3);
+        },
+        { isolationLevel: "repeatable read" },
+      );
+    });
+
+    it("the summary ignores the filter and the page being shown", async () => {
+      // A one-row page of the narrowest filter on the fixture, then the summary: it still
+      // counts this fixture's 3 suspended and 9 complimentary rows, which are spread across
+      // all three pages.
+      const narrow = await loadOrgDirectory({ search: prefix, badge: "suspended" }, 1, 1);
+      expect(narrow.rows).toHaveLength(1);
+      expect(narrow.total).toBe(3);
+
+      const summary = await loadOrgSummary();
+      const fixtureSuspended = await loadOrgDirectory({ search: prefix, badge: "suspended" }, 1, 100);
+      const fixtureComplimentary = await loadOrgDirectory({ search: prefix, badge: "complimentary" }, 1, 100);
+      expect(summary.suspended).toBeGreaterThanOrEqual(fixtureSuspended.total);
+      expect(summary.complimentary).toBeGreaterThanOrEqual(fixtureComplimentary.total);
+      expect(fixtureSuspended.total).toBe(3);
+      expect(fixtureComplimentary.total).toBe(9);
+    });
+
+    it("pages stably when two organizations share a created_at (the id tiebreak)", async () => {
+      // Without `organizations.id` in the ORDER BY, rows with an identical timestamp can be
+      // returned in a different order per query — one of them then appears on both pages, or
+      // on neither, and is invisible in the directory.
+      const tiePrefix = `Tie ${unique}`;
+      const sameMoment = new Date(Date.UTC(2026, 5, 15, 12, 0, 0));
+      const tieIds: string[] = [];
+      for (let i = 0; i < 3; i++) {
+        const [org] = await db
+          .insert(organizations)
+          .values({
+            name: `${tiePrefix} ${i}`,
+            docName: "Tie",
+            activeMonth: "2026-02",
+            createdAt: sameMoment,
+          })
+          .returning({ id: organizations.id });
+        tieIds.push(org.id);
+      }
+
+      try {
+        const page1 = await loadOrgDirectory({ search: tiePrefix }, 1, 2);
+        const page2 = await loadOrgDirectory({ search: tiePrefix }, 2, 2);
+        const seen = [...page1.rows, ...page2.rows].map((r) => r.id);
+        expect(seen).toHaveLength(3);
+        expect(new Set(seen).size).toBe(3);
+        expect([...seen].sort()).toEqual([...tieIds].sort());
+      } finally {
+        for (const id of tieIds) await db.delete(organizations).where(eq(organizations.id, id));
       }
     });
   });
@@ -483,7 +732,7 @@ describe.skipIf(!hasDatabase)("admin queries (integration, Phase 9 part 3)", asy
       await db.insert(users).values({ orgId: orgB, email: `ub-${unique}@example.test`, passwordHash: "x", role: "admin" });
 
       try {
-        const rows = await loadOrgUsers(orgA);
+        const { rows } = await loadOrgUsers(orgA);
         expect(rows).toHaveLength(2);
         expect(rows.map((r) => r.email)).toEqual([`u1-${unique}@example.test`, `u2-${unique}@example.test`]);
         expect(rows[0].role).toBe("admin");
@@ -496,9 +745,39 @@ describe.skipIf(!hasDatabase)("admin queries (integration, Phase 9 part 3)", asy
       }
     });
 
-    it("returns [] for a non-uuid and for an absent orgId, without throwing", async () => {
-      await expect(loadOrgUsers("not-a-uuid")).resolves.toEqual([]);
-      await expect(loadOrgUsers("00000000-0000-7000-8000-000000000000")).resolves.toEqual([]);
+    it("returns no rows for a non-uuid and for an absent orgId, without throwing", async () => {
+      await expect(loadOrgUsers("not-a-uuid")).resolves.toEqual({ rows: [], total: 0 });
+      await expect(loadOrgUsers("00000000-0000-7000-8000-000000000000")).resolves.toEqual({
+        rows: [],
+        total: 0,
+      });
+    });
+
+    it("shows only the first ten users by default, with the real total, and all of them on request", async () => {
+      // The page used to render every user an organization had. The cap is applied in SQL, so
+      // the rows past it are never fetched, and `total` is what the "View all" line counts.
+      const many = Array.from({ length: 13 }, (_, i) => ({
+        orgId: orgB,
+        email: `many-${i}-${unique}@example.test`,
+        passwordHash: "x",
+        role: "manager" as const,
+        createdAt: new Date(Date.UTC(2026, 0, i + 1)),
+      }));
+      await db.insert(users).values(many);
+
+      try {
+        const preview = await loadOrgUsers(orgB);
+        expect(preview.rows).toHaveLength(ORG_USERS_PREVIEW);
+        expect(preview.total).toBe(13);
+        // Oldest first, so the preview is the first ten created.
+        expect(preview.rows.map((r) => r.email)).toEqual(many.slice(0, 10).map((u) => u.email));
+
+        const all = await loadOrgUsers(orgB, true);
+        expect(all.rows).toHaveLength(13);
+        expect(all.total).toBe(13);
+      } finally {
+        await db.delete(users).where(eq(users.orgId, orgB));
+      }
     });
   });
 

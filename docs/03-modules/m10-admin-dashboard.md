@@ -13,24 +13,35 @@ plan, complimentary access, suspend, reinstate) that write an `org_account_event
 Desktop and tablet only; no tours.
 
 ## Data
-Reads `src/modules/admin/queries.ts`'s five read models (`loadOrgDirectory`, `loadOrgAccount`,
-`loadOrgUsers`, `loadOrgUsage`, `loadOrgHistory`) and the pure helpers in
-`src/modules/admin/directory.ts` (`complimentaryState`, `summarize`, `filterOrgs`,
-`describeAccountEvent`, `toggleFilterValue`). Writes go through the four `"use server"` actions
-in `src/modules/admin/actions.ts` — this module adds no new server logic beyond the screens
-themselves.
+Reads `src/modules/admin/queries.ts`'s read models (`loadOrgDirectory`, `loadOrgSummary`,
+`loadOrgAccount`, `loadOrgUsers`, `loadOrgUsage`, `loadOrgHistory`) and the pure helpers in
+`src/modules/admin/directory.ts` (`complimentaryState`, `describeAccountEvent`). Writes go
+through the four `"use server"` actions in `src/modules/admin/actions.ts` — this module adds no
+new server logic beyond the screens themselves.
+
+**Every narrowing happens in the database, never in the browser** (D-102): the filter lives in
+the URL (`q`, `plan`, `status`, `badge`, `page`) and each read is its own query. Nothing on
+either screen renders more rows than it asks for: ten organizations per page
+(`ORG_PAGE_SIZE`), ten users with "View all" raising it to `ORG_USERS_MAX`
+(`ORG_USERS_PREVIEW`), fifty history lines (`ORG_HISTORY_LIMIT`).
 
 ## Behavior
-- **Directory (`/a`)**: three rows of summary cards (By plan, By status, Other), always counted
-  over every organization regardless of the table's own filter (Phase 9 §7 Q10). Clicking a card
-  sets the matching filter; clicking the active card again clears it
-  (`toggleFilterValue`). A search box and two `Select`s narrow the same list, all combined with
-  AND. The table shows Organization · Signed up · Plan · Status (+ badges) · Users · Last
-  sign-in, newest signup first, with a row count line above it and a "No organizations match
-  these filters." empty state. Each organization name is a real link to its own page.
-- **Organization page (`/a/orgs/[id]`)**: a non-uuid or unknown id renders `notFound()`.
-  Account details (name, doc name, signed up, setup finished, plan/status/badges, a users
-  table), a Usage card (funding sources, expenses, last expense, a storage bar, months
+- **Directory (`/a`)**: eight summary tiles in one grid, four across, each captioned with its
+  group (Plan / Status / Access) — D-104, chosen over the spec's three labelled rows after the
+  client rejected them on sight. Counts come from `loadOrgSummary()` over every organization,
+  never the page or the filter (Phase 9 §7 Q10). Each tile is a link that applies its filter,
+  and the active one clears it. A search box and two `Select`s narrow the same list, all
+  combined with AND; search runs two seconds after typing stops, or immediately on Enter, with
+  a line under the box saying which. The table shows Organization (pinned) · Signed up · Plan ·
+  Status (+ badges) · Users · Last sign-in, newest signup first, ten per page with a pagination
+  bar past that, a row count line above it, and two distinct empty states — "No organizations
+  match these filters." when a filter is set, "No organizations yet." when none is. Each
+  organization name links to its own page, carrying the current query as `?back=`.
+- **Organization page (`/a/orgs/[id]`)**: a non-uuid or unknown id renders `notFound()`, which
+  `app/a/not-found.tsx` answers so the way out stays inside `/a`. A chevron back link returns
+  to the list the reader came from, filter and page included. Then account details (name, doc
+  name, signed up, setup finished, plan/status/badges, the first ten users with "View all"),
+  a Usage card (funding sources, expenses, last expense, a storage bar, months
   submitted/locked, packets downloaded), the four action dialogs, and a History list — newest
   first, with "Organization signed up" always last since it isn't a real event row.
 - **Complimentary badge**: no end date → "Complimentary"; a future or today's end date →
@@ -41,10 +52,12 @@ themselves.
   `router.refresh()` — the same pattern as `month-lock.tsx`'s lock/unlock dialogs.
 
 ## Acceptance
-Only staff reach either route (Phase 9 P1 tests + a manual customer-admin check). The directory's
-summary counts equal `filterOrgs` over the same criteria (P3 unit test, since `summarize` is
-defined in terms of `filterOrgs`). Search, plan/status filters and summary-card clicks all narrow
-the table the same way. An organization's Usage numbers match the read models proven in P3.
+Only staff reach either route (Phase 9 P1 tests + a manual customer-admin check). Search, the
+plan and status filters, the tile filters and paging all narrow in SQL and are proven against a
+26-organization fixture spanning three pages, with the search target deliberately on the last
+one — including that `%` and `_` are searched as characters, that a page past the end clamps,
+and that the summary counts ignore both the filter and the page
+(`queries.integration.test.ts`). An organization's Usage numbers match the read models proven in P3.
 Every one of the four actions shows up in History with who, when, and the reason/note (P2 action
 tests). Screens hold together at 1280px and 768px.
 

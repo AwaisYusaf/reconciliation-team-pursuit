@@ -168,12 +168,27 @@ export const UI = {
    */
   orgAccessPausedWithReason: (reason: string) =>
     `Your organization's access is paused: ${reason}. Please contact support.`,
+  /** Under the directory's search box while the query is in flight (Phase 9). */
+  searching: "Searching…",
+  /** Under the search box while the debounce is still counting down, so a two-second wait
+   *  doesn't read as a dead control (Phase 9). */
+  searchPendingHint: "Press Enter to search now.",
+  /** Directory table, no organizations on the app at all — distinct from "none match", which
+   *  would describe a filter the reader has not set (Phase 9). */
+  noOrganizationsYet: "No organizations yet.",
+  /** Directory pagination bar, shown only past one page (Phase 9). */
+  pageOf: (page: number, pageCount: number) => `Page ${page} of ${pageCount}`,
+  /** Under a truncated users table on an organization's page (Phase 9). */
+  showingUsers: (shown: number, total: number) => `Showing ${shown} of ${total} users.`,
   /** App header badge, shown only on the "Reconciliation + AI" plan (Phase 9). */
   planPlusBadge: "Plus",
   /** Admin action refusal for an unknown or non-uuid org id (Phase 9 §5). */
   orgNoLongerExists: "This organization no longer exists.",
   /** `suspendOrgAction` refusal — already suspended (Phase 9 §5, D-98 decision 10). */
   orgAlreadySuspended: "This organization is already suspended.",
+  /** Admin action refusal when the dialog was saved without changing anything. A note on its
+   *  own writes no History line, so claiming "updated" would be a lie the History contradicts. */
+  accountNothingChanged: "Nothing changed. A note on its own is not saved.",
   /** `reinstateOrgAction` refusal — not suspended. */
   orgNotSuspended: "This organization is not suspended.",
   /** `suspendOrgAction` — the reason is required, unlike the optional notes on the other three

@@ -176,12 +176,25 @@ data is touched.
 
 - **`app/a/layout.tsx`**: a staff shell with the header "AB Solutions admin", the staff name,
   Log out and `AppToaster`. No month or funding-source selectors, no `AppNav`, no tour button.
-- **`app/a/page.tsx`** (server) → **`org-directory.tsx`** (client):
-  - Three rows of summary cards: By plan, By status, Other (Complimentary / Suspended). Clicking a card sets the matching filter; clicking it again clears it.
-  - A search input, plus plan and status `Select`s.
-  - A `TableCard` with Organization · Signed up · Plan · Status (+ badges) · Users · Last sign-in, newest sign-up first. Clicking a row goes to the org page (it is a real link, so it works from the keyboard).
-- **`app/a/orgs/[id]/page.tsx`**. `params` is a Promise in Next 16. A non-uuid or unknown id → `notFound()`.
-  - **Account details** card: name / doc name, signed up, setup finished or "Not finished", and the plan · status · badges line. Also a users table with name, email, role and last sign-in, or "Not recorded yet".
+- **`app/a/page.tsx`** (server) → **`directory-filters.tsx`** (client, the search box and two
+  selects only). **Searching, filtering, counting and paging all run in SQL** — the first
+  version narrowed an already-fetched array in the browser, so a search only ever looked at
+  the rows on screen (client review, 2026-09-16). The filter lives in the URL (`q`, `plan`,
+  `status`, `badge`, `page`), so a filtered view is linkable and Back works:
+  - Eight summary tiles in one grid, four across (two at tablet), each carrying its group as a
+    caption — Plan, Status or Access. Each is a `<Link>` that sets its filter, and the active
+    one clears it. Counts come from `loadOrgSummary()`, one aggregate over **every**
+    organization, never the current page (§7 Q10).
+  - The search box waits **two seconds** after typing stops (client request), or Enter runs it
+    at once; a line under the box says which is happening.
+  - A `TableCard` with Organization (pinned) · Signed up · Plan · Status (+ badges) · Users ·
+    Last sign-in, newest sign-up first, **ten per page** (`ORG_PAGE_SIZE`) with a pagination
+    bar past that. The organization name is the link, and it carries the current query as
+    `?back=` so the org page can return the reader to the list they came from.
+- **`app/a/orgs/[id]/page.tsx`**. `params` is a Promise in Next 16. A non-uuid or unknown id →
+  `notFound()`, rendered by `app/a/not-found.tsx` so the way out stays inside `/a`. A chevron
+  back link sits above the first card.
+  - **Account details** card: name / doc name, signed up, setup finished or "Not finished", and the plan · status · badges line. Also a users table with name, email, role and last sign-in, or "Not recorded yet" — the **first ten users** (`ORG_USERS_PREVIEW`), with "View all" raising it to `ORG_USERS_MAX`; both caps are applied in SQL.
   - **Usage** card:
     - funding sources "2 active, 1 archived"
     - expenses "412 total · 38 in September 2026"
@@ -191,7 +204,7 @@ data is touched.
     - packets downloaded
   - **Actions** (client): Change plan (`Modal` with two `Select`s + note), Complimentary access (`Modal`: checkbox, `<Input type="date">`, note), Suspend (`Dialog tone="danger"`, reason required, confirm disabled until filled), Reinstate (`Dialog tone="neutral"`, optional note).
     - Errors show inside the dialog. On success: `reportResult` + `router.refresh()`, as in `month-lock.tsx:99-114`.
-  - **History** card, newest first. The "Organization signed up" line is always last.
+  - **History** card, newest first, capped at `ORG_HISTORY_LIMIT` (50). The "Organization signed up" line is always last.
 - **Badge:** a local pill copied from `settings-sections.tsx:484-497`. Ended complimentary access uses the warning tone.
 - **`app/(auth)/login/page.tsx` and `signup/page.tsx`:** a staff session → `redirect("/a")`.
 - **Spec:** `docs/03-modules/m10-admin-dashboard.md` (Purpose / Scope / Data / Behavior / Acceptance / Claude Design prompt, per `m03-expenses-list.md`), plus a new row in the README module table.

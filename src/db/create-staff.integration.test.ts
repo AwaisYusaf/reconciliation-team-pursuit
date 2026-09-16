@@ -189,6 +189,90 @@ describe.skipIf(!hasDatabase)("db:create-staff / db:reset-password staff fallbac
     expect(await verifyPassword(rows[0].passwordHash, "the-original-password-1")).toBe(true);
   }, 60_000);
 
+  it("--skip-existing with a blank STAFF_PASSWORD refuses to invent one, and creates nothing", async () => {
+    const email = `create-staff-nopass-${Date.now()}@example.test`;
+
+    // A `.env` line that exists but is empty arrives as "", not undefined. Generating a
+    // password here would mean printing it, and the only place that output goes is the deploy
+    // log — so the deploy path refuses instead.
+    const result = await runScript("src/db/create-staff.ts", ["--skip-existing"], {
+      STAFF_EMAIL: email,
+      STAFF_NAME: "No Password",
+      STAFF_PASSWORD: "",
+    });
+    expect(result.exitCode).not.toBe(0);
+    expect(`${result.stdout}${result.stderr ?? ""}`).toMatch(/STAFF_PASSWORD/);
+    expect(result.stdout).not.toMatch(/Password \(shown once/);
+
+    const rows = await db.select({ id: staffUsers.id }).from(staffUsers).where(eq(staffUsers.email, email));
+    expect(rows).toHaveLength(0);
+  }, 30_000);
+
+  it("a whitespace-only STAFF_PASSWORD is treated as unset, not as a password", async () => {
+    const email = `create-staff-spaces-${Date.now()}@example.test`;
+
+    // `"   "` is a `.env` line someone left half-typed. Treated as a real password it reaches
+    // the policy check and fails the deploy with a confusing "too short" instead of the
+    // message that says what to set.
+    const result = await runScript("src/db/create-staff.ts", ["--skip-existing"], {
+      STAFF_EMAIL: email,
+      STAFF_NAME: "Whitespace Password",
+      STAFF_PASSWORD: "   ",
+    });
+    expect(result.exitCode).not.toBe(0);
+    expect(`${result.stdout}${result.stderr ?? ""}`).toMatch(/STAFF_PASSWORD/);
+
+    const rows = await db.select({ id: staffUsers.id }).from(staffUsers).where(eq(staffUsers.email, email));
+    expect(rows).toHaveLength(0);
+  }, 30_000);
+
+  it("a blank STAFF_PASSWORD on a redeploy is fine: the existing account is left alone, not refused", async () => {
+    const email = `create-staff-blankpass-${Date.now()}@example.test`;
+    createdStaffEmails.push(email);
+
+    const create = await runScript("src/db/create-staff.ts", ["--email", email, "--name", "Already Here", "--password", "the-original-password-1"]);
+    expect(create.exitCode).toBe(0);
+
+    // Existence is checked before anything to do with the password, so an empty one on a
+    // redeploy is a no-op rather than a failed deploy step.
+    const redeploy = await runScript("src/db/create-staff.ts", ["--skip-existing"], {
+      STAFF_EMAIL: email,
+      STAFF_NAME: "Already Here",
+      STAFF_PASSWORD: "",
+    });
+    expect(redeploy.exitCode).toBe(0);
+    expect(redeploy.stdout).toMatch(/already exists — left unchanged/);
+
+    const [row] = await db
+      .select({ passwordHash: staffUsers.passwordHash })
+      .from(staffUsers)
+      .where(eq(staffUsers.email, email));
+    expect(await verifyPassword(row.passwordHash, "the-original-password-1")).toBe(true);
+  }, 60_000);
+
+  it("run by hand with a blank STAFF_PASSWORD in the environment: generates one rather than failing the policy check", async () => {
+    const email = `create-staff-blankenv-${Date.now()}@example.test`;
+    createdStaffEmails.push(email);
+
+    // An empty STAFF_PASSWORD is "not set", not "the empty password". Passing "" through to
+    // the policy check refused to create an account an operator was creating by hand, because
+    // of a variable they never meant to supply.
+    const result = await runScript("src/db/create-staff.ts", ["--email", email, "--name", "Blank Env"], {
+      STAFF_PASSWORD: "",
+    });
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toMatch(/Password \(shown once/);
+
+    const passwordMatch = result.stdout.match(/Password \(shown once[^\n]*\n\n\s*(\S+)/);
+    expect(passwordMatch).not.toBeNull();
+
+    const [row] = await db
+      .select({ passwordHash: staffUsers.passwordHash })
+      .from(staffUsers)
+      .where(eq(staffUsers.email, email));
+    expect(await verifyPassword(row.passwordHash, passwordMatch![1])).toBe(true);
+  }, 30_000);
+
   it("--skip-existing still refuses an email that belongs to a customer", async () => {
     const result = await runScript("src/db/create-staff.ts", ["--skip-existing"], {
       STAFF_EMAIL: customerEmail,
