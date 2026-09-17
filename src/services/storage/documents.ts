@@ -107,7 +107,7 @@ type Queryable = Pick<typeof db, "select" | "execute">;
  * two uploads that then both insert past the cap.
  *
  * Keyed on the **organisation**, not the expense: the per-parent caps would only need the
- * parent, but the 500 MB quota is org-wide, so uploads to two different expenses race on it
+ * parent, but the 5 GB quota is org-wide, so uploads to two different expenses race on it
  * just as readily. One lock covering both is simpler than two with an ordering rule, and
  * uploads are not a throughput path.
  *
@@ -134,31 +134,22 @@ export function storageQuotaError(usedBytes: number, incomingBytes: number): str
   const usedMb = Math.round(usedBytes / (1024 * 1024));
   const limitMb = Math.round(MAX_ORG_BYTES / (1024 * 1024));
   return (
-    `This organisation is using ${usedMb} MB of its ${limitMb} MB of storage, and this file ` +
+    `This organization is using ${usedMb} MB of its ${limitMb} MB of storage, and this file ` +
     "would take it over. Remove some documents from an earlier month, or contact Mantaq."
   );
 }
 
 /**
- * Whether the organisation has room for another file (R13.1).
+ * An organisation's total stored bytes (R13.1): expense documents, month documents and signed
+ * packets, including thumbnails. Generated artifacts are excluded — they are the system's own
+ * output and can be regenerated, so charging the organisation for them would make a month
+ * unmanageable as its packet grew. `null` means no such organisation row.
  *
- * Summed from the document rows rather than from the bucket: the rows are the record of
- * what this organisation is actually responsible for, and a stray object left behind by a
- * failed write should not count against them. Generated artifacts are excluded for the same
- * reason — they are the system's own output and can be regenerated, so charging the
- * organisation for them would make a month unmanageable as its packet grew.
- *
- * Takes the executor so the authoritative check can run inside the upload lock; called on
- * the bare connection first only as a cheap rejection.
- *
- * Exported for `lockMonth` (`src/modules/packet/lock.ts`), which charges the signed copy
- * against this same quota rather than a separate one.
+ * Shared by `orgStorageError` (the quota check) and `loadOrgUsage` (`src/modules/admin/
+ * queries.ts`, Phase 9), so the number the admin dashboard shows is the same one the quota
+ * enforces by construction, rather than by two copies of this SQL staying in sync by hand.
  */
-export async function orgStorageError(
-  tx: Queryable,
-  orgId: string,
-  incomingBytes: number,
-): Promise<string | null> {
+export async function orgStorageBytes(tx: Queryable, orgId: string): Promise<number | null> {
   const rows = await tx
     .select({
       used: sql<number>`
@@ -171,10 +162,29 @@ export async function orgStorageError(
     .where(eq(organizations.id, orgId))
     .limit(1);
 
+  if (!rows[0]) return null;
+  return Number(rows[0].used);
+}
+
+/**
+ * Whether the organisation has room for another file (R13.1).
+ *
+ * Takes the executor so the authoritative check can run inside the upload lock; called on
+ * the bare connection first only as a cheap rejection.
+ *
+ * Exported for `lockMonth` (`src/modules/packet/lock.ts`), which charges the signed copy
+ * against this same quota rather than a separate one.
+ */
+export async function orgStorageError(
+  tx: Queryable,
+  orgId: string,
+  incomingBytes: number,
+): Promise<string | null> {
+  const used = await orgStorageBytes(tx, orgId);
   // No organisation row means the caller's session outlived the org. Treat it as no room
   // rather than destructuring undefined and surfacing a 500.
-  if (!rows[0]) return "That organisation no longer exists.";
-  return storageQuotaError(Number(rows[0].used), incomingBytes);
+  if (used === null) return "That organization no longer exists.";
+  return storageQuotaError(used, incomingBytes);
 }
 
 /** Size and declared-type check before the (possibly expensive) inspection. Exported for

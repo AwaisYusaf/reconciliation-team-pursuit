@@ -85,6 +85,27 @@ export const artifactType = pgEnum("artifact_type", [
 /** users.role — admin = the org-creating account and anyone it promotes; manager = expenses/grants only. */
 export const userRole = pgEnum("user_role", ["admin", "manager"]);
 
+/** organizations.plan — from the landing page. A label only; it doesn't turn features on or off (Phase 9). */
+export const orgPlan = pgEnum("org_plan", ["reconciliation", "reconciliation_ai"]);
+
+/** organizations.subscription_status — hand-set until Stripe is connected (Phase 9). */
+export const subscriptionStatus = pgEnum("subscription_status", [
+  "trial",
+  "active",
+  "past_due",
+  "cancelled",
+]);
+
+/** org_account_events.action — the six account changes AB Solutions staff can make (Phase 9). */
+export const orgAccountEventAction = pgEnum("org_account_event_action", [
+  "plan_changed",
+  "complimentary_granted",
+  "complimentary_changed",
+  "complimentary_removed",
+  "suspended",
+  "reinstated",
+]);
+
 /** expense_audit_events.action — the five expense mutations this audit trail covers. */
 export const expenseAuditAction = pgEnum("expense_audit_action", [
   "created",
@@ -136,6 +157,17 @@ export const organizations = pgTable("organizations", {
   onboardedAt: timestamp("onboarded_at", { withTimezone: true }),
   /** First-run banner dismissal (m00). */
   welcomeDismissedAt: timestamp("welcome_dismissed_at", { withTimezone: true }),
+  /** Hand-set until Stripe is connected (Phase 9). */
+  plan: orgPlan().notNull().default("reconciliation"),
+  subscriptionStatus: subscriptionStatus("subscription_status").notNull().default("trial"),
+  /** Free access, independent of `subscriptionStatus` (Phase 9). */
+  complimentary: boolean().notNull().default(false),
+  /** Null → no end. Past dates are allowed and show as ended (Phase 9). */
+  complimentaryUntil: date("complimentary_until"),
+  /** Set → every session for this org is refused and its users can't sign in. Enforced in
+   *  `resolveSession` (Phase 9 part 2, D-99); written by `suspendOrgAction`/`reinstateOrgAction`
+   *  (`src/modules/admin/actions.ts`) and read by `signInAction`'s paused branch. */
+  suspendedAt: timestamp("suspended_at", { withTimezone: true }),
   createdAt: createdAt(),
   updatedAt: updatedAt(),
 });
@@ -162,6 +194,8 @@ export const users = pgTable(
      *  No column default on purpose, same reason as expenses.referenceSeq: a default makes this
      *  optional on insert, and a forgotten role would silently mint an admin. */
     role: userRole().notNull(),
+    /** Written from ship date on (Phase 9); null on every account that predates it. */
+    lastSignInAt: timestamp("last_sign_in_at", { withTimezone: true }),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
@@ -190,6 +224,82 @@ export const sessions = pgTable(
     createdAt: createdAt(),
   },
   (t) => [index("sessions_user_idx").on(t.userId), index("sessions_expires_idx").on(t.expiresAt)],
+);
+
+/* ------------------------------------------------------------ staff users */
+
+/**
+ * AB Solutions staff accounts (Phase 9, D-98). Separate from `users` on purpose: they don't
+ * belong to any organisation and must never resolve through the customer session path — see
+ * `staff_sessions` below. Created by the developer; there is no sign-up.
+ */
+export const staffUsers = pgTable(
+  "staff_users",
+  {
+    id: id(),
+    email: text().notNull(),
+    name: text().notNull(),
+    passwordHash: text("password_hash").notNull(),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [uniqueIndex("staff_users_email_lower_uq").on(sql`lower(${t.email})`)],
+);
+
+/**
+ * Staff sessions (Phase 9, D-98). Same cookie, token, TTL and renewal rules as `sessions` —
+ * `getStaffSession()` looks here instead of there, so a customer token can never resolve as
+ * staff and a staff token can never resolve through `resolveSession`.
+ */
+export const staffSessions = pgTable(
+  "staff_sessions",
+  {
+    id: text().primaryKey(),
+    staffUserId: uuid("staff_user_id")
+      .notNull()
+      .references(() => staffUsers.id, { onDelete: "cascade" }),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    index("staff_sessions_staff_user_idx").on(t.staffUserId),
+    index("staff_sessions_expires_idx").on(t.expiresAt),
+  ],
+);
+
+/**
+ * The account-fields snapshot `org_account_events` stores before/after (Phase 9). Declared
+ * here for the same reason as `ExpenseAuditSnapshot` above: both jsonb columns can be typed
+ * without a modules → db import.
+ */
+export type OrgAccountSnapshot = {
+  plan: OrgPlan;
+  status: SubscriptionStatus;
+  complimentary: boolean;
+  complimentaryUntil: string | null;
+  suspended: boolean;
+};
+
+/**
+ * History of every account change staff make (Phase 9, §3.8), written by the four admin
+ * actions in `src/modules/admin/actions.ts` (Phase 2).
+ */
+export const orgAccountEvents = pgTable(
+  "org_account_events",
+  {
+    id: id(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    /** Null shows "Unknown" — the acting staff account may since have been removed. */
+    actorStaffId: uuid("actor_staff_id").references(() => staffUsers.id, { onDelete: "set null" }),
+    action: orgAccountEventAction().notNull(),
+    before: jsonb("before").$type<OrgAccountSnapshot>().notNull(),
+    after: jsonb("after").$type<OrgAccountSnapshot>().notNull(),
+    note: text(),
+    createdAt: createdAt(),
+  },
+  (t) => [index("org_account_events_org_idx").on(t.orgId, t.createdAt)],
 );
 
 /* ------------------------------------------------------- contract settings */
@@ -1021,6 +1131,9 @@ export const userTourProgress = pgTable(
 export type Organization = typeof organizations.$inferSelect;
 export type User = typeof users.$inferSelect;
 export type Session = typeof sessions.$inferSelect;
+export type StaffUser = typeof staffUsers.$inferSelect;
+export type StaffSession = typeof staffSessions.$inferSelect;
+export type OrgAccountEvent = typeof orgAccountEvents.$inferSelect;
 export type ContractSettings = typeof contractSettings.$inferSelect;
 export type FundingSource = typeof fundingSources.$inferSelect;
 export type PaymentSource = typeof paymentSources.$inferSelect;
@@ -1047,3 +1160,6 @@ export type FundingSourceType = (typeof fundingSourceType.enumValues)[number];
 export type TourKey = (typeof tourKey.enumValues)[number];
 export type UserRole = (typeof userRole.enumValues)[number];
 export type ExpenseAuditActionType = (typeof expenseAuditAction.enumValues)[number];
+export type OrgPlan = (typeof orgPlan.enumValues)[number];
+export type SubscriptionStatus = (typeof subscriptionStatus.enumValues)[number];
+export type OrgAccountEventAction = (typeof orgAccountEventAction.enumValues)[number];

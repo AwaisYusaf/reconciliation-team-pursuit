@@ -296,6 +296,6 @@ describe("filename (R10.3)", () => {
   });
 
   it("falls back to a usable name when the organisation has none", () => {
-    expect(summaryWorkbookName("", FEB)).toBe("Organisation_February_2026_Summary.xlsx");
+    expect(summaryWorkbookName("", FEB)).toBe("Organization_February_2026_Summary.xlsx");
   });
 });

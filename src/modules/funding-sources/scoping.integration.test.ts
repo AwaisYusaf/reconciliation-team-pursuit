@@ -14,7 +14,7 @@ import { config } from "dotenv";
 
 config({ path: ".env.local", quiet: true });
 
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 const hasDatabase = Boolean(process.env.DATABASE_URL);
@@ -172,10 +172,13 @@ describe.skipIf(!hasDatabase)("funding source isolation across loaders (integrat
     expect(monthExpenses.every((e) => e.fundingSourceId === sourceA)).toBe(true);
     expect(monthExpenses.some((e) => e.name === "B's expense")).toBe(false);
 
+    // Scoped to this suite's own org: two other integration files create an expense with the
+    // same name, and a bare name match would soft-delete one of theirs mid-run — which failed
+    // this test and theirs at random, depending on which files vitest happened to interleave.
     const [bExpense] = await db
       .select({ id: expenses.id })
       .from(expenses)
-      .where(eq(expenses.name, "B's expense"));
+      .where(and(eq(expenses.orgId, orgId), eq(expenses.name, "B's expense")));
     await db.update(expenses).set({ deletedAt: new Date() }).where(eq(expenses.id, bExpense.id));
 
     const trashedForA = await loadTrashedExpenses(orgId, sourceA);

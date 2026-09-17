@@ -1,5 +1,5 @@
-/**
- * Every write path refuses a locked month (R10.7, D-96) — `docs/PHASE-8.md` §8 Phase 1.
+﻿/**
+ * Every write path refuses a locked month (R10.7, D-96) â€” `docs/PHASE-8.md` §8 Phase 1.
  *
  * Table-driven over the §2 write table: each row is refused on a locked month with the exact
  * `UI.monthLocked` message and leaves every row it would have touched untouched. Each row also
@@ -12,7 +12,7 @@
  *
  * Kept separate from `lock.integration.test.ts`, which does not need to touch `monthLocked`
  * itself. Locks here are set directly on `month_statuses` (`lockDirectly`) rather than through
- * `lockMonth` — `lockMonth`'s own correctness (blocking documents, PDF-only, quota, the
+ * `lockMonth` â€” `lockMonth`'s own correctness (blocking documents, PDF-only, quota, the
  * Submitted interplay) is already proven there; this file is only about what a locked row does
  * to every *other* write.
  *
@@ -107,6 +107,7 @@ describe.skipIf(!hasDatabase)("every write path refuses a locked month (integrat
       activeFundingSourceId: null,
       onboarded: true,
       welcomeDismissed: true,
+      plan: "reconciliation" as const,
     };
   }
   function asUser() {
@@ -632,7 +633,7 @@ describe.skipIf(!hasDatabase)("every write path refuses a locked month (integrat
     // Someone else locks the month while that page is still open.
     await lockDirectly(sourceA, month);
 
-    // The open page then saves — with the exact values it read, unchanged.
+    // The open page then saves â€” with the exact values it read, unchanged.
     const result = await updateExpenseAction(
       validExpenseInput({
         id,
@@ -662,7 +663,7 @@ describe.skipIf(!hasDatabase)("every write path refuses a locked month (integrat
     let lockTaken = false;
 
     const lockTxPromise = db.transaction(async (tx) => {
-      // The exact row lock the guard itself takes — proves the two really contend on the same
+      // The exact row lock the guard itself takes â€” proves the two really contend on the same
       // row, not just on application logic. `monthLocked` here is the mocked binding, but with
       // no queued override it runs its default implementation, the real function.
       await monthLocked(tx, orgId, [{ fundingSourceId: sourceA, month }]);
@@ -691,7 +692,7 @@ describe.skipIf(!hasDatabase)("every write path refuses a locked month (integrat
       return result;
     });
 
-    // Still pending while the locking transaction holds the row — the guard's SELECT ... FOR
+    // Still pending while the locking transaction holds the row â€” the guard's SELECT ... FOR
     // UPDATE cannot proceed until it commits.
     await new Promise((r) => setTimeout(r, 200));
     expect(updateSettled).toBe(false);
@@ -785,7 +786,7 @@ describe.skipIf(!hasDatabase)("every write path refuses a locked month (integrat
     // Reproduces the exact race the fix closes: the old code deleted receipt rows in a
     // separate, unguarded step AFTER the guarded update transaction had already committed.
     // `carryNarrativeToTemplate` runs at precisely that point in both the old and the fixed
-    // code (right after the transaction, before the old code's now-removed delete step) — it
+    // code (right after the transaction, before the old code's now-removed delete step) â€” it
     // is used here purely as a timing hook into that exact spot, not because its own behaviour
     // matters (it no-ops for a non-recurring expense).
     const month = freshMonth();
@@ -811,7 +812,7 @@ describe.skipIf(!hasDatabase)("every write path refuses a locked month (integrat
       const rows = await db.select().from(expenseDocuments).where(eq(expenseDocuments.expenseId, id));
       rowCountAtHook = rows.length;
       // A lock landing right after the update committed must not stop the receipt row from
-      // already being gone — it was deleted atomically with the update, before this ran.
+      // already being gone â€” it was deleted atomically with the update, before this ran.
       await lockDirectly(sourceA, month);
       return realCarry(input);
     });
@@ -834,7 +835,7 @@ describe.skipIf(!hasDatabase)("every write path refuses a locked month (integrat
     >("@/src/services/storage/inspect");
 
     inspectSpy.mockImplementationOnce(async (input) => {
-      // The expense moves to a locked month while the (slow) inspection is running — landing
+      // The expense moves to a locked month while the (slow) inspection is running â€” landing
       // after the stale pre-inspection read this ingestion took, before its transaction opens.
       await db.update(expenses).set({ month: lockedMonth }).where(eq(expenses.id, id));
       await lockDirectly(sourceA, lockedMonth);
@@ -917,14 +918,14 @@ describe.skipIf(!hasDatabase)("every write path refuses a locked month (integrat
   /**
    * Fix 2 (PR #16 review): every guarded write's own WHERE now pins the (month, fundingSourceId)
    * the guard just checked, so a move that commits between the guard's row lock and the write
-   * matches nothing — the row moved out from under it — rather than the write going through on
+   * matches nothing â€” the row moved out from under it â€” rather than the write going through on
    * an id-only match. Each test below arranges that exact race with `guardSpy`: it runs the
    * REAL guard (so "not locked" is the genuine answer, not a stub), then, still inside the
    * guard's own transaction (`tx`), moves the target expense to a different month before
-   * returning. Old code (id-only WHERE) let the write through anyway — the three explicitly
+   * returning. Old code (id-only WHERE) let the write through anyway â€” the three explicitly
    * marked below were confirmed to fail on the pre-fix code by hand-reverting the relevant hunk.
    */
-  it("update: raced by a move between the guard and the write — refused as 'just changed', name unchanged, no audit event (fail-before confirmed)", async () => {
+  it("update: raced by a move between the guard and the write â€” refused as 'just changed', name unchanged, no audit event (fail-before confirmed)", async () => {
     const month = freshMonth();
     const otherMonth = freshMonth();
     const id = await insertExpenseDirect(sourceA, itemA, month, { name: "Original" });
@@ -952,7 +953,7 @@ describe.skipIf(!hasDatabase)("every write path refuses a locked month (integrat
     expect(events).toHaveLength(0);
   });
 
-  it("delete: raced by a move between the guard and the write — refused as 'just changed', not trashed, no audit event (fail-before confirmed)", async () => {
+  it("delete: raced by a move between the guard and the write â€” refused as 'just changed', not trashed, no audit event (fail-before confirmed)", async () => {
     const month = freshMonth();
     const otherMonth = freshMonth();
     const id = await insertExpenseDirect(sourceA, itemA, month);
@@ -978,7 +979,7 @@ describe.skipIf(!hasDatabase)("every write path refuses a locked month (integrat
     expect(events).toHaveLength(0);
   });
 
-  it("restore: raced by a move between the guard and the write — refused as 'just changed', stays trashed, no audit event", async () => {
+  it("restore: raced by a move between the guard and the write â€” refused as 'just changed', stays trashed, no audit event", async () => {
     const month = freshMonth();
     const otherMonth = freshMonth();
     const id = await insertExpenseDirect(sourceA, itemA, month, { deletedAt: new Date() });
@@ -1004,7 +1005,7 @@ describe.skipIf(!hasDatabase)("every write path refuses a locked month (integrat
     expect(events).toHaveLength(0);
   });
 
-  it("permanently delete: raced by a move between the guard and the write — refused as 'just changed', row still exists, no audit event (transaction rolled back)", async () => {
+  it("permanently delete: raced by a move between the guard and the write â€” refused as 'just changed', row still exists, no audit event (transaction rolled back)", async () => {
     const month = freshMonth();
     const otherMonth = freshMonth();
     const id = await insertExpenseDirect(sourceA, itemA, month, { deletedAt: new Date() });
@@ -1027,12 +1028,12 @@ describe.skipIf(!hasDatabase)("every write path refuses a locked month (integrat
     expect(row).toBeDefined();
 
     // The audit event was inserted before the WHERE found nothing, inside the same transaction
-    // that then threw and rolled back — it must not survive that rollback.
+    // that then threw and rolled back â€” it must not survive that rollback.
     const events = await db.select().from(expenseAuditEvents).where(eq(expenseAuditEvents.expenseId, id));
     expect(events).toHaveLength(0);
   });
 
-  it("remove an expense file: raced by a move between the guard and the re-read — refused as 'just changed', file and row remain", async () => {
+  it("remove an expense file: raced by a move between the guard and the re-read â€” refused as 'just changed', file and row remain", async () => {
     const month = freshMonth();
     const otherMonth = freshMonth();
     const id = await insertExpenseDirect(sourceA, itemA, month);
@@ -1069,7 +1070,7 @@ describe.skipIf(!hasDatabase)("every write path refuses a locked month (integrat
     expect(await storage().exists(doc.key)).toBe(true);
   });
 
-  it("recurring 'Remove': raced by a move between the guard and the write — refused as 'just changed', expense stays (fail-before confirmed: old code returned ok on zero rows updated)", async () => {
+  it("recurring 'Remove': raced by a move between the guard and the write â€” refused as 'just changed', expense stays (fail-before confirmed: old code returned ok on zero rows updated)", async () => {
     const month = freshMonth();
     const otherMonth = freshMonth();
     const [item] = await db

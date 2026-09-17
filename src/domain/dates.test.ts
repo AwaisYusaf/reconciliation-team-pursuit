@@ -4,6 +4,8 @@ import {
   compareMonthKeys,
   currentMonthKey,
   daysInMonthKey,
+  formatDateShort,
+  formatDateTimeShort,
   formatDateTimeUS,
   formatDateUS,
   invoicePeriod,
@@ -132,6 +134,55 @@ describe("date-only formatting", () => {
     expect(isValidIsoDate("2026-04-31")).toBe(false);
     expect(isValidIsoDate("2026-13-01")).toBe(false);
     expect(isValidIsoDate("3/2/2026")).toBe(false);
+  });
+});
+
+describe("formatDateShort (Phase 9 §5, §6)", () => {
+  it("formats a plain date", () => {
+    expect(formatDateShort("2026-08-16")).toBe("16 Aug 2026");
+  });
+
+  it("does not zero-pad a single-digit day", () => {
+    expect(formatDateShort("2026-01-05")).toBe("5 Jan 2026");
+  });
+
+  it("every month abbreviation is exactly three letters (guards against a 'Sept' regression)", () => {
+    for (let month = 1; month <= 12; month++) {
+      const iso = `2026-${String(month).padStart(2, "0")}-01`;
+      const [, abbrev] = formatDateShort(iso).split(" ");
+      expect(abbrev).toHaveLength(3);
+    }
+  });
+
+  it("formats the first and last day of a year", () => {
+    expect(formatDateShort("2026-01-01")).toBe("1 Jan 2026");
+    expect(formatDateShort("2026-12-31")).toBe("31 Dec 2026");
+  });
+});
+
+describe("formatDateTimeShort (Phase 9 §5, §6, ORG_TIME_ZONE)", () => {
+  it("formats a known instant, 24-hour, in the org timezone", () => {
+    // 2026-09-15T14:42:00Z is 10:42 EDT (Detroit is UTC-4 in September).
+    expect(formatDateTimeShort(new Date("2026-09-15T14:42:00Z"))).toBe("15 Sep 2026, 10:42");
+  });
+
+  it("renders the Detroit day, not the UTC day, at the day boundary", () => {
+    // 2026-09-16T03:30:00Z is 2026-09-16 UTC but still 2026-09-15 23:30 EDT.
+    expect(formatDateTimeShort(new Date("2026-09-16T03:30:00Z"))).toBe("15 Sep 2026, 23:30");
+  });
+
+  it("renders Detroit midnight as 00:xx, never 24:xx", () => {
+    // 2026-09-16T04:00:00Z is exactly 00:00 EDT.
+    expect(formatDateTimeShort(new Date("2026-09-16T04:00:00Z"))).toBe("16 Sep 2026, 00:00");
+  });
+
+  it("zero-pads a minute under 10", () => {
+    expect(formatDateTimeShort(new Date("2026-09-15T14:05:00Z"))).toBe("15 Sep 2026, 10:05");
+  });
+
+  it("handles a standard-time (EST, winter) instant, whose offset differs from DST", () => {
+    // 2026-01-15T12:00:00Z is 07:00 EST (Detroit is UTC-5 outside DST).
+    expect(formatDateTimeShort(new Date("2026-01-15T12:00:00Z"))).toBe("15 Jan 2026, 07:00");
   });
 });
 

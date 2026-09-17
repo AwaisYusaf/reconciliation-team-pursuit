@@ -7,6 +7,7 @@ import { TourReplayButton } from "@/src/components/app-shell/tour-replay-button"
 import { Button } from "@/src/components/ui/button";
 import { AppToaster } from "@/src/components/ui/toast";
 import { loadSelectableMonths } from "@/src/db/months";
+import { PLAN_LABELS, UI } from "@/src/domain/strings";
 import { signOutAction } from "@/src/modules/auth/actions";
 import { loadSourceContext } from "@/src/modules/funding-sources/queries";
 import { getSession } from "@/src/services/auth/session";
@@ -47,6 +48,23 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             </div>
           </div>
           <div className="shrink-0 flex items-center gap-2.5">
+            {/* Only the AI plan gets a badge: on the plain plan a badge saying so would be
+                noise on every page, forever (Phase 9). */}
+            {session.plan === "reconciliation_ai" && (
+              <span
+                title={PLAN_LABELS.reconciliation_ai}
+                // The one gradient in the app: design-language.md says no gradients, and this
+                // is the deliberate exception, so the AI plan reads as a product tier rather
+                // than another brown control. Inline because it is single-use.
+                style={{
+                  backgroundImage:
+                    "linear-gradient(135deg, #6E4633 0%, var(--color-accent) 55%, var(--color-accent-dark) 100%)",
+                }}
+                className="rounded-full text-surface px-3.5 py-1.5 text-[14px] font-bold leading-none tracking-[0.01em]"
+              >
+                {UI.planPlusBadge}
+              </span>
+            )}
             <TourReplayButton />
             <form action={signOutAction}>
               <Button type="submit" variant="secondary" className="min-h-11 sm:min-h-12 text-[15px]">

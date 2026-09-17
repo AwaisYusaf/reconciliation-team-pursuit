@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { formatMoney, formatPercent, percentValue, ratio, roundHalfAwayFromZero } from "./format";
+import { formatBytes, formatMoney, formatPercent, percentValue, ratio, roundHalfAwayFromZero } from "./format";
 
 describe("formatMoney (R1.2)", () => {
   it("always shows two decimals and thousands separators", () => {
@@ -99,5 +99,46 @@ describe("percentages that land exactly on a half (R1.5)", () => {
 
   it("rounds negative halves away from zero too", () => {
     expect(formatPercent(-0.575)).toBe("-58%");
+  });
+});
+
+describe("formatBytes (Phase 9 §5, §6)", () => {
+  const KB = 1024;
+  const MB = KB * 1024;
+  const GB = MB * 1024;
+  const MAX_ORG_BYTES = 5 * GB;
+
+  it("formats zero and byte-scale values", () => {
+    expect(formatBytes(0)).toBe("0 B");
+    expect(formatBytes(512)).toBe("512 B");
+    expect(formatBytes(1023)).toBe("1023 B");
+  });
+
+  it("formats exact KB and MB boundaries", () => {
+    expect(formatBytes(1024)).toBe("1 KB");
+    expect(formatBytes(MB)).toBe("1 MB");
+  });
+
+  it("formats an arbitrary MB value", () => {
+    expect(formatBytes(212 * MB)).toBe("212 MB");
+  });
+
+  it("formats exactly 1 GB and exactly 5 GB (MAX_ORG_BYTES) with no trailing .0", () => {
+    expect(formatBytes(GB)).toBe("1 GB");
+    expect(formatBytes(MAX_ORG_BYTES)).toBe("5 GB");
+  });
+
+  it("formats a fractional GB value", () => {
+    expect(formatBytes(4.8 * GB)).toBe("4.8 GB");
+  });
+
+  it("rounds the roll-up boundary into GB rather than printing an impossible 1024 MB", () => {
+    expect(formatBytes(1023.6 * MB)).toBe("1 GB");
+  });
+
+  it("treats negative, NaN and Infinity as 0 B", () => {
+    expect(formatBytes(-1)).toBe("0 B");
+    expect(formatBytes(Number.NaN)).toBe("0 B");
+    expect(formatBytes(Number.POSITIVE_INFINITY)).toBe("0 B");
   });
 });

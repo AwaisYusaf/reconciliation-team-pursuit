@@ -1,12 +1,12 @@
-/**
- * Month locking (R10.7, D-96) — Phase 1, `docs/PHASE-8.md` §8.
+﻿/**
+ * Month locking (R10.7, D-96) â€” Phase 1, `docs/PHASE-8.md` §8.
  *
  * The lock/unlock lifecycle against a real database and the local storage driver: storing the
  * signed copy, refusing to lock, the Reconciled/Submitted interplay, per-source isolation,
  * cross-organisation refusal, unlock history, quota accounting and Reporting periods.
  *
  * The table-driven "every write path refuses a locked month" proof, the open-page case and the
- * concurrency race live in `lock-guard.integration.test.ts` — kept separate because that file
+ * concurrency race live in `lock-guard.integration.test.ts` â€” kept separate because that file
  * spies on `monthLocked` itself, which this file does not need.
  *
  * Skipped when DATABASE_URL is absent.
@@ -89,6 +89,7 @@ describe.skipIf(!hasDatabase)("month locking (integration, R10.7)", async () => 
       activeFundingSourceId: null,
       onboarded: true,
       welcomeDismissed: true,
+      plan: "reconciliation" as const,
     };
   }
 
@@ -182,7 +183,7 @@ describe.skipIf(!hasDatabase)("month locking (integration, R10.7)", async () => 
     return expense.id;
   }
 
-  /** An expense with no receipt, no proof and no narrative override — blocks the month. */
+  /** An expense with no receipt, no proof and no narrative override â€” blocks the month. */
   async function blockingExpense(sourceId: string, month: string, itemId: string) {
     const [expense] = await db
       .insert(expenses)
@@ -410,7 +411,7 @@ describe.skipIf(!hasDatabase)("month locking (integration, R10.7)", async () => 
 
     // (c) Unlock, change the amount while unlocked, and re-lock with a new copy. PR #16 review:
     // a lock after an unlock is treated as a fresh submission (a prior lock event already
-    // exists), so submitted_at moves to now AND the snapshot is re-captured — the old behaviour
+    // exists), so submitted_at moves to now AND the snapshot is re-captured â€” the old behaviour
     // (submitted_at frozen at the first lock forever, snapshot always re-captured) let the
     // figures and the printed date disagree after an unlock/re-lock cycle.
     asUser(orgId, userId);
@@ -446,7 +447,7 @@ describe.skipIf(!hasDatabase)("month locking (integration, R10.7)", async () => 
     const billedBeforeLock = await snapshotBilledCentsOf(sourceA, month);
     expect(billedBeforeLock).toBeGreaterThan(0);
 
-    // Change the amount AFTER submitting but BEFORE the first lock — a first lock of an
+    // Change the amount AFTER submitting but BEFORE the first lock â€” a first lock of an
     // already-submitted month must not pick this up: the figures and the date it was submitted
     // must keep agreeing (plan §7 Q1/Q2).
     await new Promise((r) => setTimeout(r, 5)); // distinguishable timestamp if the bug existed
@@ -495,7 +496,7 @@ describe.skipIf(!hasDatabase)("month locking (integration, R10.7)", async () => 
     expect(lockedSet.has(`${sourceA}:${month}`)).toBe(true);
 
     // Clear locked_at directly, without going through unlockMonthAction (so no unlock event is
-    // recorded) — the newest lock event on file is still a lock, but the month is open.
+    // recorded) â€” the newest lock event on file is still a lock, but the month is open.
     await db
       .update(monthStatuses)
       .set({ lockedAt: null })
@@ -575,7 +576,7 @@ describe.skipIf(!hasDatabase)("month locking (integration, R10.7)", async () => 
     const unlockResult = await unlockMonthAction(month, sourceA, "");
     expect(unlockResult.ok).toBe(false);
 
-    // Still locked — the attacker changed nothing.
+    // Still locked â€” the attacker changed nothing.
     const status = await lockedAtOf(sourceA, month);
     expect(status?.lockedAt).not.toBeNull();
   });
@@ -671,7 +672,7 @@ describe.skipIf(!hasDatabase)("month locking (integration, R10.7)", async () => 
           eq(monthSnapshotTotals.month, month),
         ),
       );
-    // The "as submitted" snapshot lockMonth captured is still there — clearMonthSubmittedAction
+    // The "as submitted" snapshot lockMonth captured is still there â€” clearMonthSubmittedAction
     // was refused before it could discard it.
     expect(snapshotRows).toHaveLength(1);
   });
@@ -692,7 +693,7 @@ describe.skipIf(!hasDatabase)("month locking (integration, R10.7)", async () => 
     expect(row.size).toBeGreaterThan(0);
 
     const quotaError = await orgStorageError(db, orgId, MAX_ORG_BYTES);
-    // Signed copy already used some bytes, so the org is not empty — asking for the entire cap
+    // Signed copy already used some bytes, so the org is not empty â€” asking for the entire cap
     // again must be refused, proving the earlier signed copy is counted.
     expect(quotaError).not.toBeNull();
   });
@@ -737,10 +738,10 @@ describe.skipIf(!hasDatabase)("month locking (integration, R10.7)", async () => 
       return new Request(url, { headers: { "Sec-Fetch-Site": "same-origin" } });
     }
 
-    // Packet and summary: an empty month (plan §7 Q4, "a month with no expenses can be locked —
+    // Packet and summary: an empty month (plan §7 Q4, "a month with no expenses can be locked â€”
     // nothing blocks its download either"). Deliberately NOT using an expense-bearing month for
     // the *packet* route here: building a real cover-sheet section shells out to `pdftotext
-    // -bbox-layout` (`coverSheetAnchors`), which this machine's Xpdf build does not support —
+    // -bbox-layout` (`coverSheetAnchors`), which this machine's Xpdf build does not support â€”
     // the same pre-existing environmental gap `packet-trace.integration.test.ts` documents. An
     // empty month has no line-item sections at all, so the packet still builds and this test
     // stays about the lock, not about that environment gap.

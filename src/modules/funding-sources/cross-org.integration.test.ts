@@ -1,5 +1,5 @@
-/**
- * P7.2 — cross-org sweep (docs/PHASE-6.md §5 Phase 7, §4 ★ "A source id from the client
+﻿/**
+ * P7.2 â€” cross-org sweep (docs/PHASE-6.md §5 Phase 7, §4 â˜… "A source id from the client
  * belongs to the session's org").
  *
  * Every server action and route handler that accepts a `fundingSourceId` (or the id of a
@@ -9,8 +9,8 @@
  * org A's row is re-read and found untouched.
  *
  * `updateFundingSourceAction` already has this exact proof in
- * `funding-sources/actions.integration.test.ts` ("★ refuses to update a funding source
- * belonging to another organisation") — not duplicated here.
+ * `funding-sources/actions.integration.test.ts` ("â˜… refuses to update a funding source
+ * belonging to another organisation") â€” not duplicated here.
  *
  * Skipped when DATABASE_URL is absent.
  */
@@ -104,16 +104,17 @@ describe.skipIf(!hasDatabase)("cross-organisation funding source sweep (P7.2)", 
       activeFundingSourceId: null,
       onboarded: true,
       welcomeDismissed: true,
+      plan: "reconciliation" as const,
     };
   }
 
-  /** Every action-facing session mock, pointed at org B — the attacker in every test below. */
+  /** Every action-facing session mock, pointed at org B â€” the attacker in every test below. */
   function asOrgB() {
     actionSessionMock.mockResolvedValue(sessionContext(orgB, userB));
     requireSessionMock.mockResolvedValue(sessionContext(orgB, userB));
   }
 
-  /** A legitimate action-facing session in org A — for the tests that aren't about crossing an
+  /** A legitimate action-facing session in org A â€” for the tests that aren't about crossing an
    *  organisation boundary at all, but about what A's own user may do to A's own archived
    *  source. */
   function asOrgA() {
@@ -126,7 +127,7 @@ describe.skipIf(!hasDatabase)("cross-organisation funding source sweep (P7.2)", 
     getSessionMock.mockResolvedValue(sessionContext(orgB, userB));
   }
 
-  /** A legitimate session in org A, for the missing-`source`-param tests below — those are
+  /** A legitimate session in org A, for the missing-`source`-param tests below â€” those are
    *  not an attack scenario, just a malformed request from A's own signed-in user. */
   function routeSessionAsOrgA() {
     getSessionMock.mockResolvedValue(sessionContext(orgA, userA));
@@ -310,7 +311,7 @@ describe.skipIf(!hasDatabase)("cross-organisation funding source sweep (P7.2)", 
           eq(monthStatuses.month, MONTH),
         ),
       );
-    // Still submitted — B's clear attempt did not undo it.
+    // Still submitted â€” B's clear attempt did not undo it.
     expect(status.submittedAt).not.toBeNull();
   });
 
@@ -424,7 +425,7 @@ describe.skipIf(!hasDatabase)("cross-organisation funding source sweep (P7.2)", 
   });
 
   // Review-requested coverage: a `source` query parameter is required on every download
-  // route (Phase 6 step 1) — this was already true in code (the route treats a missing param
+  // route (Phase 6 step 1) â€” this was already true in code (the route treats a missing param
   // the same as an unowned one: `findFundingSource` gets `""`, finds nothing, 404s) but had
   // no test proving it, under a legitimate same-org session rather than a cross-org attacker.
   it("the packet download route 404s when the source param is missing entirely", async () => {

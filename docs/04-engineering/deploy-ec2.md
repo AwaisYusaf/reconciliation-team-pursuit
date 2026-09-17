@@ -71,7 +71,31 @@ shared network, which stays `external`.
   dropped.
 - **Operator password reset** (D-24 — the only recovery path):
   `docker compose -f docker-compose.prod.yml exec app npm run db:reset-password -- --email <address>`.
-  It sets a new hash and revokes every session for that user.
+  It sets a new hash and revokes every session for that user. Since Phase 9 it falls back to
+  `staff_users`/`staff_sessions`, so the same command recovers an AB Solutions staff account.
+- **Creating AB Solutions staff accounts** (Phase 9, D-98 — there is no staff sign-up).
+  **One-off, the first time Phase 9 is released:** after `deploy.sh` has run `db:migrate`, run
+  this once per AB Solutions staff member, then hand each password over out of band:
+
+  ```
+  docker compose -f docker-compose.prod.yml exec app \
+    npm run db:create-staff -- --email <address> --name "<Full Name>"
+  ```
+
+  With no `--password` a strong one is generated and printed **once**. The script refuses an
+  address that already belongs to a customer account or to another staff account. Until at
+  least one staff account exists, `/a` is unreachable by anyone — which is the safe default,
+  not a failure.
+
+  *Verified, not assumed:* the production image does ship `tsx`, which this script needs.
+  `Dockerfile:60` is `RUN npm ci --include=dev`, and the comment above it (lines 55-59) says
+  the flag is load-bearing precisely so `drizzle-kit` and `tsx` survive `NODE_ENV=production`
+  and `db:migrate`/`db:reset-password` keep working in the running container. `db:create-staff`
+  is the same `tsx --conditions=react-server` invocation as `db:reset-password`, and
+  `src/db/create-staff.ts` is copied in by `COPY . .`. `.dockerignore` excludes `.env.local`,
+  so — exactly as for `db:reset-password` — `DATABASE_URL` must come from the container's own
+  environment; the script's `dotenv` call on a missing `.env.local` is a no-op that leaves it
+  alone.
 - **Rotating `AUTH_SECRET`** invalidates every session at once. That is the intended response
   to a suspected cookie compromise.
 

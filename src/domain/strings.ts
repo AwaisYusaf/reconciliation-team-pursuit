@@ -155,11 +155,145 @@ export const UI = {
   reportingPeriodsTitle: "Reporting periods",
   /** Contract Summary's Reporting periods, and the Packet page's own Submitted marker (Appendix A §4). */
   submittedOn: (date: string) => `Submitted ${date}`,
+  /**
+   * Login page, correct password on a suspended organization (Phase 9 §3.5, §7) — shown only
+   * after the password checks out, never for a wrong one, so the form can't be used to learn
+   * whether an address's organization is suspended.
+   */
+  orgAccessPaused: "Your organization's access is paused. Please contact support.",
+  /**
+   * The same message with the reason AB Solutions gave when suspending. The reason is staff
+   * input, so the suspend dialog says out loud that it is shown here — otherwise an internal
+   * note ("chasing Misty about the invoice") ends up in front of the customer.
+   */
+  orgAccessPausedWithReason: (reason: string) =>
+    `Your organization's access is paused: ${reason}. Please contact support.`,
+  /** Under the directory's search box while the query is in flight (Phase 9). */
+  searching: "Searching…",
+  /** Under the search box while the debounce is still counting down, so a two-second wait
+   *  doesn't read as a dead control (Phase 9). */
+  searchPendingHint: "Press Enter to search now.",
+  /** Directory table, no organizations on the app at all — distinct from "none match", which
+   *  would describe a filter the reader has not set (Phase 9). */
+  noOrganizationsYet: "No organizations yet.",
+  /** Directory pagination bar, shown only past one page (Phase 9). */
+  pageOf: (page: number, pageCount: number) => `Page ${page} of ${pageCount}`,
+  /** Under a truncated users table on an organization's page (Phase 9). */
+  showingUsers: (shown: number, total: number) => `Showing ${shown} of ${total} users.`,
+  /** The same, once "View all" has been used and the list has hit its ceiling — there is no
+   *  further page to link to (Phase 9). */
+  usersCapped: (shown: number, total: number) =>
+    `Showing the first ${shown} of ${total} users. The list stops here.`,
+  /** App header badge, shown only on the "Reconciliation + AI" plan (Phase 9). */
+  planPlusBadge: "Plus",
+  /** Admin action refusal for an unknown or non-uuid org id (Phase 9 §5). */
+  orgNoLongerExists: "This organization no longer exists.",
+  /** `suspendOrgAction` refusal — already suspended (Phase 9 §5, D-98 decision 10). */
+  orgAlreadySuspended: "This organization is already suspended.",
+  /** Admin action refusal when the dialog was saved without changing anything. A note on its
+   *  own writes no History line, so claiming "updated" would be a lie the History contradicts. */
+  accountNothingChanged: "Nothing changed. A note on its own is not saved.",
+  /** `reinstateOrgAction` refusal — not suspended. */
+  orgNotSuspended: "This organization is not suspended.",
+  /** `suspendOrgAction` — the reason is required, unlike the optional notes on the other three
+   *  admin actions (Phase 9 §7). */
+  suspendReasonRequired: "Enter the reason for suspending this organization.",
+  /** Under the suspend dialog's Reason box: this text reaches the customer, so staff must not
+   *  write an internal note there. */
+  suspendReasonShownToCustomer:
+    "Anyone from this organization who tries to sign in will see this reason.",
+  /** Admin action note refusal past `ACCOUNT_NOTE_MAX_LENGTH`, mirroring `unlockReasonTooLong`. */
+  accountNoteTooLong: (max: number) => `Keep the note under ${max} characters.`,
+  /** `setComplimentaryAction` refusal — `until` is neither empty nor a valid ISO date. */
+  complimentaryUntilInvalid: "Enter a valid end date.",
+  /** Suspend dialog (Phase 9 §7, verbatim). */
+  suspendDialogTitle: (orgName: string) => `Suspend ${orgName}?`,
+  suspendDialogText:
+    "Everyone in this organization will be signed out and won't be able to sign in until you reinstate it. None of their data is changed or deleted.",
+  /** Reinstate dialog (Phase 9 §7). */
+  reinstateDialogTitle: (orgName: string) => `Reinstate ${orgName}?`,
+  /** History's last line (Phase 9 §3.8, §6) — built from `organizations.created_at`, no event row. */
+  orgSignedUp: "Organization signed up",
+  /** `describeAccountEvent` (Phase 9 §5) — `plan_changed` covers plan, status, or both. */
+  historyPlanChanged: (fromPlan: string, toPlan: string) =>
+    `changed plan from ${fromPlan} to ${toPlan}`,
+  historyStatusChanged: (fromStatus: string, toStatus: string) =>
+    `changed status from ${fromStatus} to ${toStatus}`,
+  historyPlanAndStatusChanged: (fromPlan: string, toPlan: string, fromStatus: string, toStatus: string) =>
+    `changed plan from ${fromPlan} to ${toPlan} and status from ${fromStatus} to ${toStatus}`,
+  /** Fallback for a `plan_changed` event where before/after are identical — the no-op guard in
+   *  `changePlanAction` never writes one, but a dangling sentence is worse than a plain one. */
+  historyPlanUnchanged: "changed plan",
+  historyComplimentaryGranted: "gave complimentary access",
+  historyComplimentaryGrantedUntil: (date: string) => `gave complimentary access until ${date}`,
+  historyComplimentaryChangedUntil: (date: string) => `changed complimentary access to end ${date}`,
+  historyComplimentaryChangedNoEnd: "changed complimentary access to no end date",
+  historyComplimentaryRemoved: "removed complimentary access",
+  historySuspended: "suspended access",
+  historyReinstated: "reinstated access",
+  /** `/a` last sign-in / org-page fields with no value yet (Phase 9 §5, §6). */
+  notRecordedYet: "Not recorded yet",
+  /** Account details' "Setup finished" field, unset (Phase 9 §6, Appendix A §4). */
+  setupNotFinished: "Not finished",
+  /** Badge row (Phase 9 §6, D-98): complimentary with no end date. */
+  complimentaryLabel: "Complimentary",
+  /** Badge row: complimentary with a future (or today's) end date (Appendix A §6). */
+  complimentaryUntil: (date: string) => `Complimentary until ${date}`,
+  /** Badge row: complimentary whose end date has passed — warning tone (Appendix A §6, §7 Q5). */
+  complimentaryEnded: (date: string) => `Complimentary (ended ${date})`,
+  /** Badge row: an org with `suspended_at` set (Phase 9 §6). */
+  suspendedLabel: "Suspended",
+  /** Complimentary access dialog checkbox (Appendix A §6, verbatim). */
+  complimentaryCheckboxLabel: "Give this organization free access",
+  /** Actions row / modal title, reused by both the trigger button and the `Modal` (Appendix A §5). */
+  changePlanTitle: "Change plan",
+  /** Actions row / modal title (Appendix A §6). */
+  complimentaryAccessTitle: "Complimentary access",
+  /** Org page usage card (Phase 9 §6, Appendix A §4): "2 active, 1 archived". */
+  usageFundingSources: (active: number, archived: number) => `${active} active, ${archived} archived`,
+  /** Org page usage card: "412 total · 38 in September 2026". */
+  usageExpenses: (total: number, monthCount: number, currentMonthLabel: string) =>
+    `${total} total · ${monthCount} in ${currentMonthLabel}`,
+  /** Org page usage card: "212 MB of 5 GB", and its storage-bar `aria-label`. */
+  usageStorage: (used: string, limit: string) => `${used} of ${limit}`,
+  /** Org page usage card — no expense recorded yet. */
+  noneYet: "None yet",
+  /** Org page usage card label (Phase 9 §7 Q2). */
+  packetsDownloadedLabel: "Packets downloaded",
+  /** Org page usage card helper, explaining the §7 Q2 counting rule. */
+  packetsDownloadedNote: "Counts each packet the first time it was downloaded.",
+  /** Directory table's row count line, above the table (Phase 9 §7 Q10). */
+  organizationsCount: (n: number) => `${n} organization${n === 1 ? "" : "s"}`,
+  /** Directory table empty state (Phase 9 §6). */
+  noOrganizationsMatch: "No organizations match these filters.",
+  /** Org page users table empty state. */
+  noUsersYet: "No users yet.",
 } as const;
 
 /** Longest unlock reason — long enough for a real explanation, short enough that nobody pastes a
  *  whole email. Shared so the box's `maxLength` and the server's refusal can't drift apart. */
 export const UNLOCK_REASON_MAX_LENGTH = 700;
+
+/** Longest admin note/reason on an org account action — same length and reasoning as
+ *  `UNLOCK_REASON_MAX_LENGTH` (Phase 9 §5). */
+export const ACCOUNT_NOTE_MAX_LENGTH = 700;
+
+/**
+ * Plan and subscription-status labels for the `/a` dashboard (Phase 9 §2). Kept structurally
+ * matched to `OrgPlan`/`SubscriptionStatus` (`src/db/schema.ts`) rather than importing those
+ * types here, so this domain module stays free of a `db` dependency.
+ */
+export const PLAN_LABELS: Record<"reconciliation" | "reconciliation_ai", string> = {
+  reconciliation: "Reconciliation",
+  reconciliation_ai: "Reconciliation + AI",
+};
+
+export const STATUS_LABELS: Record<"trial" | "active" | "past_due" | "cancelled", string> = {
+  trial: "Trial",
+  active: "Active",
+  past_due: "Past due",
+  cancelled: "Cancelled",
+};
 
 /** Inline explanation beside a disabled download button (m07, R4.3). */
 export function downloadBlockedReason(count: number): string {

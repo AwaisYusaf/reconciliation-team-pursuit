@@ -27,6 +27,7 @@ Last reviewed: 2026-08-20. The application is deployed and serving at
 | S3 | Add the cron entry for it | `deploy-ec2.md` § Backups |
 | S4 | Apply the S3 lifecycle rules (30 daily, 13 months monthly) | `deploy-ec2.md` § Backups → Retention |
 | S5 | **Execute the restore drill once.** This is what actually closes D-07 — the procedure is proven on a dev database, not yet on the instance | `deploy-ec2.md` § Backups → The drill |
+| S6 | **After deploying Phase 9 (the AB Solutions staff dashboard), create one staff account per AB Solutions staff member.** There is no staff sign-up, so until this is run nobody can open `/a` at all. Run it once each, after `deploy.sh` has applied migration `0027` | `docker compose -f docker-compose.prod.yml exec app npm run db:create-staff -- --email <address> --name "<Full Name>"` — see `deploy-ec2.md` § Operational notes. The password is printed once; hand it over out of band |
 
 Until S2–S5 are done there is still no working backup regime, only the machinery for one.
 
@@ -41,7 +42,7 @@ Until S2–S5 are done there is still no working backup regime, only the machine
 | R3 | **Wall-clock bound on a whole build** | Only per-child timeouts exist. `maxDuration` is platform metadata that `next start` does not enforce, so a wedged build has no ceiling | outputs review |
 | R4 | **Packet memory is ~3× the output** | pdf-lib holds every embedded image until `save()`. Bounding it means streaming assembly or a page cap. Matters on a 3.7 GB box shared with another service | outputs review |
 | R5 | **The size ladder rebuilds the whole packet per step** | Re-runs LibreOffice once per line item on each retry — up to 3× the whole build for an oversize month | outputs review |
-| R6 | **R13.1's org-wide 500 MB storage cap is unimplemented** | Declared in the domain rules and not enforced anywhere | board review |
+| ~~R6~~ | ~~**R13.1's org-wide storage cap is unimplemented**~~ **Done.** `MAX_ORG_BYTES` (5 GB, not the 500 MB this line quoted) is enforced in `orgStorageError` inside the upload lock, and since Phase 9 the same `orgStorageBytes()` feeds the staff dashboard's storage bar, so the number shown is the number enforced. Verified live against Team Pursuit Global | `services/storage/documents.ts`, D-100 Q1 |
 
 ---
 
@@ -68,6 +69,10 @@ a year of real records.
 | P3 | Signup is now open with no email verification — your call, but it means anyone who finds the URL can create an organisation | D-15 |
 | P4 | Login copy distinguishes unknown-email from wrong-password. Equalising it alone would leave a timing oracle, since the unknown-email path returns before `verifyPassword` — both halves must change together | D-25, auth review |
 | P5 | No token rotation on password change; no maximum password length; no rehash-on-login when argon2 parameters change | auth review |
+| P6 | **Phase 9: a paused sign-in does not reset the rate-limit buckets**, so a suspended organisation's own users can exhaust their login budget while support is on the phone. Deliberate — resetting on a refused sign-in weakens the limiter | PHASE-9 Phase 2 |
+| P7 | **Phase 9: `createOrgUserAction` answers "email in use" for an AB Solutions staff address too**, so an org admin can probe whether an address belongs to staff. The cross-table check is what the spec asks for, and the action is admin-only and rate-limited | PHASE-9 §3.3 |
+| P8 | **Phase 9: nothing spans `users` and `staff_users`**, so a customer signup and a `db:create-staff` run for the same address at the same instant can both pass `emailInUse()`. Needs an operator script racing a live signup | `modules/auth/emails.ts` `ponytail:` note |
+| P9 | **Phase 9: `withLockedOrg` returns a `fail()` from inside `db.transaction`, which commits rather than rolls back.** Correct today because every refusal in the four admin actions happens before any write — fragile if a future edit writes first | PHASE-9 Phase 2 |
 
 ---
 
@@ -96,3 +101,13 @@ full searchable, paginated screen at `/settings/vendors` · the month-documents 
 styled as a real button · the login page's forgot-password text made a real link · unusual
 expense amounts (tax above subtotal, a zero subtotal) now warn rather than block. Suite is at
 446 tests.
+
+**Phase 9 — the AB Solutions staff dashboard** (`docs/PHASE-9.md`, D-98 to D-101), built and
+verified, **not yet deployed**: staff accounts in their own `staff_users`/`staff_sessions`
+tables with a shared login form and the `/a` gate that finally keeps an organisation's own
+admin out; suspension enforced in `resolveSession` with the paused sign-in message;
+plan · status · complimentary access, each with a `org_account_events` history line carrying
+who, when and why; the organizations directory with summary cards, search and filters; and the
+per-organisation account/usage page. Every "Done when" line in the ticket was walked in a real
+browser at 1280 and 768 against an organisation with real data — see PHASE-9 § Results —
+Phase 5. Suite is at 1078 tests. Deploy step S6 above is required with this release.

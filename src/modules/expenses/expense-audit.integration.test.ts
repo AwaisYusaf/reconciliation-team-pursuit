@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Per-expense audit trail (admin-only).
  *
  * Drives the real server actions and `loadExpenseAuditHistory` against a real database, in
@@ -10,7 +10,7 @@
 import { config } from "dotenv";
 
 vi.mock("next/cache", () => ({ revalidatePath: () => {} }));
-// FORBIDDEN's exact wording is stable/public (see src/lib/action-session.ts) — restated here
+// FORBIDDEN's exact wording is stable/public (see src/lib/action-session.ts) â€” restated here
 // since mocking the whole module below shadows the real export.
 const FORBIDDEN = "You do not have permission to do that.";
 vi.mock("@/src/lib/action-session", () => ({ actionSession: vi.fn(), requireAdmin: vi.fn() }));
@@ -90,9 +90,10 @@ describe.skipIf(!hasDatabase)("expense audit events (integration)", async () => 
       activeFundingSourceId: null,
       onboarded: true,
       welcomeDismissed: true,
+      plan: "reconciliation" as const,
     };
     session.mockResolvedValue(context);
-    // requireAdmin() is a separate export on the same mocked module — actions.ts that call it
+    // requireAdmin() is a separate export on the same mocked module â€” actions.ts that call it
     // (loadExpenseHistoryAction) need it wired to the same session, not left undefined.
     adminGate.mockResolvedValue(role === "admin" ? context : { denied: { ok: false, error: FORBIDDEN } });
   }
@@ -100,7 +101,7 @@ describe.skipIf(!hasDatabase)("expense audit events (integration)", async () => 
   let sortCounter = 0;
   async function insertExpense(overrides: { orgId: string; lineItemId: string; month?: string }) {
     const month = overrides.month ?? MONTH;
-    // The expense's source is its line item's source (Phase 6, D-93) — resolved here so the
+    // The expense's source is its line item's source (Phase 6, D-93) â€” resolved here so the
     // ~20 call sites stay unchanged; this is setup, not an assertion.
     const [item] = await db
       .select({ fundingSourceId: lineItems.fundingSourceId })
@@ -282,7 +283,7 @@ describe.skipIf(!hasDatabase)("expense audit events (integration)", async () => 
       await deleteExpenseAction(id);
 
       asUser(orgId, userB);
-      // Captured by row id, not by actorUserId — other tests in this same describe block also
+      // Captured by row id, not by actorUserId â€” other tests in this same describe block also
       // act as userA against this same org, so filtering by actor alone would pick up
       // unrelated events from other expenses and give a false pass/fail.
       const before = await eventsFor(id);
@@ -453,11 +454,11 @@ describe.skipIf(!hasDatabase)("expense audit events (integration)", async () => 
   });
 
   describe("role gating (caller-level contract)", () => {
-    it("loadOrgAuditHistory itself has no role check — gating is the caller's job, not the query's", async () => {
+    it("loadOrgAuditHistory itself has no role check â€” gating is the caller's job, not the query's", async () => {
       // This proves what is actually testable at the module level without a browser: the
       // query function performs no role check and will happily return data for any orgId
       // it's called with, regardless of the caller's role. `loadExpenseHistoryAction` is the
-      // gate — its `requireAdmin()` refuses a manager before this query is ever reached, and
+      // gate â€” its `requireAdmin()` refuses a manager before this query is ever reached, and
       // the tests below assert exactly that. What stays untested here is the UI side: that
       // the row menu hides "History" from a manager is client rendering, not reachable from
       // this suite, and it is defence in depth rather than the boundary either way.
@@ -605,7 +606,7 @@ describe.skipIf(!hasDatabase)("expense audit events (integration)", async () => 
         actionType: "not_a_real_action" as unknown as ExpenseAuditActionType,
       });
       // The guard (`expenseAuditAction.enumValues.includes`) must treat an unrecognised value
-      // exactly like "no filter" — same result set as calling with no actionType at all.
+      // exactly like "no filter" â€” same result set as calling with no actionType at all.
       expect(bogus.events.map((event) => event.id)).toEqual(unfiltered.events.map((event) => event.id));
 
       const validFiltered = await loadOrgAuditHistory(orgId, { page: 1, actionType: "deleted" });

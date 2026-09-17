@@ -1,6 +1,6 @@
-/**
+﻿/**
  * `createExpenseAction` / `updateExpenseAction` against a real database (Phase 6, D-93,
- * Phase 4) — the invariants named in docs/PHASE-6.md §5 Phase 4 step 7 and §4's ★ row
+ * Phase 4) â€” the invariants named in docs/PHASE-6.md §5 Phase 4 step 7 and §4's â˜… row
  * "Saving against another source's line item is impossible."
  *
  * Skipped when DATABASE_URL is absent.
@@ -37,7 +37,7 @@ describe.skipIf(!hasDatabase)("expense create/update and funding sources (integr
     }
   });
 
-  /** A real users row — `expense_audit_events.actor_user_id` carries a NOT NULL FK to it. */
+  /** A real users row â€” `expense_audit_events.actor_user_id` carries a NOT NULL FK to it. */
   async function insertUser(orgId: string) {
     const [row] = await db
       .insert(users)
@@ -63,6 +63,7 @@ describe.skipIf(!hasDatabase)("expense create/update and funding sources (integr
       activeFundingSourceId: null,
       onboarded: true,
       welcomeDismissed: true,
+      plan: "reconciliation" as const,
     });
   }
 
@@ -125,7 +126,7 @@ describe.skipIf(!hasDatabase)("expense create/update and funding sources (integr
     return { orgId, userId, sourceA, sourceB, itemA: itemA.id, itemB: itemB.id };
   }
 
-  it("★ refuses to create an expense against another source's line item", async () => {
+  it("â˜… refuses to create an expense against another source's line item", async () => {
     const { orgId, userId, sourceA, itemB } = await twoSourceOrg("Cross Source Create Org");
     asOrg(orgId, userId);
 
@@ -169,9 +170,9 @@ describe.skipIf(!hasDatabase)("expense create/update and funding sources (integr
     expect(after.referenceSeq).toBe(1);
 
     // A reference already claimed and printed is never reissued (R2.6), so a fresh expense
-    // under source A continues from `originalRef + 1` — not `originalRef` again. What this
+    // under source A continues from `originalRef + 1` â€” not `originalRef` again. What this
     // proves is the more important half: the move away from source A did not burn a *second*
-    // number there (which would have skipped to +2) — the counter only ever advanced once,
+    // number there (which would have skipped to +2) â€” the counter only ever advanced once,
     // for the original create.
     const second = await createExpenseAction(
       baseInput({ fundingSourceId: sourceA, lineItemId: itemA }),
@@ -232,11 +233,11 @@ describe.skipIf(!hasDatabase)("expense create/update and funding sources (integr
 
   it("a new expense's default reimbursement rules match its funding source's rules", async () => {
     // Review fix: the previous version of this test hardcoded taxReimbursable/feesReimbursable
-    // in the input and then asserted the saved row matched — that would still pass even if the
+    // in the input and then asserted the saved row matched â€” that would still pass even if the
     // source's rules were ignored entirely, since createExpenseAction never derives the flags
     // itself (the form pre-fills them; the server just persists whatever it is given). This
-    // version instead reads source B's rules from `loadExpenseFormOptions` — the same query the
-    // form calls to pre-fill the checkboxes — and only then uses *those* values, so a bug that
+    // version instead reads source B's rules from `loadExpenseFormOptions` â€” the same query the
+    // form calls to pre-fill the checkboxes â€” and only then uses *those* values, so a bug that
     // broke the source-to-form link (e.g. always returning ORIGINAL_RULES, or another source's
     // rules) would make this test fail rather than silently agree with itself.
     const { orgId, userId, sourceB, itemB } = await twoSourceOrg("Source Defaults Org");

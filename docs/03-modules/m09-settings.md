@@ -37,7 +37,7 @@ h1 "Settings". Stacked bordered white cards, each with a Georgia 20px section ti
 in a 2-column grid (stack on mobile), and its own primary "Save" button bottom-right with a
 small green "Saved" confirmation example in one card.
 
-Card 1 "Organisation": "Organisation name" = "Team Pursuit Global"; "Document display name" =
+Card 1 "Organization": "Organization name" = "Team Pursuit Global"; "Document display name" =
 "Team Pursuit" with helper "Printed on cover sheets and the packet."
 
 Card 2 "Contract": Project name = "Community Violence Intervention"; Contract number =

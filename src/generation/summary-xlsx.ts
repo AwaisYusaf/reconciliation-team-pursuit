@@ -253,5 +253,5 @@ export async function buildSummaryWorkbook(snapshot: MonthSnapshot): Promise<Buf
 
 /** `{DocName}_{Month}_{YYYY}_Summary.xlsx` — delegates to the canonical helper (R10.3). */
 export function summaryWorkbookName(docName: string, month: MonthKey, sourceName?: string | null): string {
-  return summaryFilename(docName || "Organisation", monthLabel(month), sourceName);
+  return summaryFilename(docName || "Organization", monthLabel(month), sourceName);
 }

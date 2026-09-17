@@ -1,8 +1,8 @@
-/**
+﻿/**
  * Archived funding sources take no new expenses or templates (Phase 6, D-93 review fix).
  *
  * `saveRecurringItemAction` creates/edits a *template*, and `addRecurringToMonthAction` uses
- * one to insert an expense — both must refuse once the line item's funding source is archived,
+ * one to insert an expense â€” both must refuse once the line item's funding source is archived,
  * exactly like `createExpenseAction` already does, and must write nothing when they refuse.
  *
  * Skipped when DATABASE_URL is absent.
@@ -49,6 +49,7 @@ describe.skipIf(!hasDatabase)("recurring actions refuse archived funding sources
       activeFundingSourceId: null,
       onboarded: true,
       welcomeDismissed: true,
+      plan: "reconciliation" as const,
     });
   }
 

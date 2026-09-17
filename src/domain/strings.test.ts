@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { formatBytes } from "./format";
 import {
   coverSheetFilename,
   coverSheetTitle,
@@ -8,8 +9,10 @@ import {
   packetFilename,
   packetFooter,
   packetSummaryTitle,
+  PLAN_LABELS,
   sanitiseForFilename,
   SEE_BELOW,
+  STATUS_LABELS,
   summaryFilename,
   TAX_NOTE,
   UI,
@@ -58,6 +61,35 @@ describe("UI copy (R12)", () => {
     expect(lineItemDeleteBlocked("Salary")).toBe(
       '"Salary" has expenses recorded against it and cannot be deleted.',
     );
+  });
+});
+
+describe("admin dashboard strings (Phase 9, verbatim)", () => {
+  it("shows the paused message only after a correct password (§3.5)", () => {
+    expect(UI.orgAccessPaused).toBe(
+      "Your organization's access is paused. Please contact support.",
+    );
+  });
+
+  it("matches the suspend dialog's title and body verbatim (Appendix A §7)", () => {
+    expect(UI.suspendDialogTitle("Eastside Youth Alliance")).toBe(
+      "Suspend Eastside Youth Alliance?",
+    );
+    expect(UI.suspendDialogText).toBe(
+      "Everyone in this organization will be signed out and won't be able to sign in until you reinstate it. None of their data is changed or deleted.",
+    );
+    expect(UI.reinstateDialogTitle("Eastside Youth Alliance")).toBe(
+      "Reinstate Eastside Youth Alliance?",
+    );
+  });
+
+  it("labels every plan and status", () => {
+    expect(PLAN_LABELS.reconciliation).toBe("Reconciliation");
+    expect(PLAN_LABELS.reconciliation_ai).toBe("Reconciliation + AI");
+    expect(STATUS_LABELS.trial).toBe("Trial");
+    expect(STATUS_LABELS.active).toBe("Active");
+    expect(STATUS_LABELS.past_due).toBe("Past due");
+    expect(STATUS_LABELS.cancelled).toBe("Cancelled");
   });
 });
 
@@ -261,5 +293,81 @@ describe("filenames (R10.3)", () => {
     expect(packetFilename("Team Pursuit", "February 2026", undefined)).toBe(
       "Team_Pursuit_February_2026_Packet.pdf",
     );
+  });
+});
+
+describe("`/a` staff dashboard UI strings (Phase 9 Phase 4)", () => {
+  it("organizationsCount is singular only at exactly 1", () => {
+    expect(UI.organizationsCount(0)).toBe("0 organizations");
+    expect(UI.organizationsCount(1)).toBe("1 organization");
+    expect(UI.organizationsCount(2)).toBe("2 organizations");
+  });
+
+  it("usageFundingSources pins the exact sentence, including the all-zero boundary", () => {
+    expect(UI.usageFundingSources(2, 1)).toBe("2 active, 1 archived");
+    expect(UI.usageFundingSources(0, 0)).toBe("0 active, 0 archived");
+  });
+
+  it("usageExpenses pins the exact sentence, including the all-zero boundary", () => {
+    expect(UI.usageExpenses(412, 38, "September 2026")).toBe("412 total · 38 in September 2026");
+    expect(UI.usageExpenses(0, 0, "September 2026")).toBe("0 total · 0 in September 2026");
+  });
+
+  it("usageStorage composes with the real formatBytes, at the zero and multi-GB boundaries", () => {
+    const MB = 1024 * 1024;
+    const GB = 1024 * MB;
+    expect(UI.usageStorage(formatBytes(212 * MB), formatBytes(5 * GB))).toBe("212 MB of 5 GB");
+    expect(UI.usageStorage(formatBytes(0), formatBytes(5 * GB))).toBe("0 B of 5 GB");
+  });
+
+  it("American spelling guard: no UI/PLAN_LABELS/STATUS_LABELS value ever regresses to 'organisation'", () => {
+    // Plausible args for every function-valued UI entry, so its output text is checked too,
+    // not just the literal entries.
+    const sampleValues: string[] = [
+      ...Object.values(PLAN_LABELS),
+      ...Object.values(STATUS_LABELS),
+      ...Object.entries(UI).map(([key, value]) => {
+        if (typeof value === "string") return value;
+        switch (key) {
+          case "suspendDialogTitle":
+          case "reinstateDialogTitle":
+            return (value as (name: string) => string)("Eastside Youth Alliance");
+          case "noReceiptNote":
+            return (value as (reason: string) => string)("reason");
+          case "complimentaryUntil":
+          case "complimentaryEnded":
+            return (value as (date: string) => string)("1 Jan 2027");
+          case "usageFundingSources":
+            return (value as (a: number, b: number) => string)(2, 1);
+          case "usageExpenses":
+            return (value as (t: number, m: number, label: string) => string)(412, 38, "September 2026");
+          case "usageStorage":
+            return (value as (used: string, limit: string) => string)("212 MB", "5 GB");
+          case "organizationsCount":
+            return (value as (n: number) => string)(2);
+          case "historyPlanChanged":
+            return (value as (from: string, to: string) => string)("Reconciliation", "Reconciliation + AI");
+          case "historyStatusChanged":
+            return (value as (from: string, to: string) => string)("Trial", "Active");
+          case "historyPlanAndStatusChanged":
+            return (value as (a: string, b: string, c: string, d: string) => string)(
+              "Reconciliation",
+              "Reconciliation + AI",
+              "Trial",
+              "Active",
+            );
+          case "historyComplimentaryGrantedUntil":
+          case "historyComplimentaryChangedUntil":
+            return (value as (date: string) => string)("30 Jun 2027");
+          default:
+            // Any other function-valued entry: call with a generic string arg as a best effort.
+            return (value as (...args: unknown[]) => string)("x");
+        }
+      }),
+    ];
+
+    for (const text of sampleValues) {
+      expect(text.toLowerCase()).not.toContain("organisation");
+    }
   });
 });

@@ -117,7 +117,7 @@ Let `opening` = line item's opening previously-billed balance (setup figure), `e
 | blocked-title-line-item (UI) | `Downloads unavailable for this line item.` |
 | blocked-intro (UI) | `The following records are missing a receipt/justification, proof of payment, or narrative:` |
 | delete-blocked (UI) | `"{name}" has expenses recorded against it and cannot be deleted.` |
-| duplicate-email (UI) | `An organisation with that email already exists — sign in instead.` |
+| duplicate-email (UI) | `An organization with that email already exists — sign in instead.` |
 | no-receipt-reason-required (UI) | `Enter the reason no receipt is available.` |
 | expense-missing-narrative (UI) | `Enter a narrative for this expense.` |
 | upload-failed (UI) | `Upload failed — try again.` |
@@ -135,6 +135,38 @@ Let `opening` = line item's opening previously-billed balance (setup figure), `e
 | reconciled-line (UI) | `Reconciled · Locked on {date} by {name} · View signed packet · Unlock` (R10.7) |
 | lock-history (UI) | `Locked {date} by {name} · View signed packet`, with `Replaced on {date}` (Packet) or `(replaced)` (Reporting periods) for an earlier copy; `Unlocked {date} by {name} — "{reason}"` (R10.7) |
 | reporting-periods (UI) | `Reporting periods` · statuses `Open` / `Submitted` / `Reconciled` · `Submitted {date}` (R10.7) |
+| org-access-paused (UI) | `Your organization's access is paused. Please contact support.` — shown only after a correct password (Phase 9 §3.5) |
+| org-no-longer-exists (UI) | `This organization no longer exists.` (Phase 9 §5) |
+| org-already-suspended (UI) | `This organization is already suspended.` (Phase 9) |
+| org-not-suspended (UI) | `This organization is not suspended.` (Phase 9) |
+| suspend-reason-required (UI) | `Enter the reason for suspending this organization.` (Phase 9) |
+| account-note-too-long (UI) | `Keep the note under {max} characters.` (Phase 9) |
+| complimentary-until-invalid (UI) | `Enter a valid end date.` (Phase 9) |
+| suspend-dialog (UI) | `Suspend {orgName}?` — `Everyone in this organization will be signed out and won't be able to sign in until you reinstate it. None of their data is changed or deleted.` (Phase 9 Appendix A §7) |
+| reinstate-dialog (UI) | `Reinstate {orgName}?` (Phase 9 Appendix A §7) |
+| plan-labels (UI) | `Reconciliation` · `Reconciliation + AI` (Phase 9 §2) |
+| status-labels (UI) | `Trial` · `Active` · `Past due` · `Cancelled` (Phase 9 §2) |
+| org-signed-up (UI) | `Organization signed up` — History's last line, built from `organizations.created_at`, no event row (Phase 9 §3.8, §6) |
+| history-plan-changed (UI) | `{actor} changed plan from {Plan} to {Plan}`, `… changed status from {Status} to {Status}`, or both joined with "and" when a `plan_changed` event changed both (Phase 9 §5) |
+| history-complimentary-granted (UI) | `{actor} gave complimentary access`, or `… until {date}` when an end date is set (Phase 9 §5) |
+| history-complimentary-changed (UI) | `{actor} changed complimentary access to end {date}`, or `… to no end date` (Phase 9 §5) |
+| history-complimentary-removed (UI) | `{actor} removed complimentary access` (Phase 9 §5) |
+| history-suspended / history-reinstated (UI) | `{actor} suspended access` · `{actor} reinstated access` (Phase 9 §5) |
+| not-recorded-yet (UI) | `Not recorded yet` — an org page field with no value yet (Phase 9 §5, §6) |
+| setup-not-finished (UI) | `Not finished` — Account details' "Setup finished" field, unset (Phase 9 §6, Appendix A §4) |
+| complimentary-badge (UI) | `Complimentary` (no end date) · `Complimentary until {date}` · `Complimentary (ended {date})` in the warning tone (Phase 9 §6, Appendix A §6, §7 Q5) |
+| suspended-badge (UI) | `Suspended` (Phase 9 §6) |
+| complimentary-checkbox (UI) | `Give this organization free access` (Phase 9 Appendix A §6, verbatim) |
+| change-plan-title (UI) | `Change plan` — action button and dialog title (Phase 9 Appendix A §5) |
+| complimentary-access-title (UI) | `Complimentary access` — action button and dialog title (Phase 9 Appendix A §6) |
+| usage-funding-sources (UI) | `{active} active, {archived} archived` (Phase 9 §6, Appendix A §4) |
+| usage-expenses (UI) | `{total} total · {monthCount} in {Month YYYY}` (Phase 9 §6, Appendix A §4, §7 Q3) |
+| usage-storage (UI) | `{used} of {limit}` — e.g. `212 MB of 5 GB` (Phase 9 §6, §7 Q1) |
+| none-yet (UI) | `None yet` — org page's "Last expense added" with no expenses (Phase 9 §6) |
+| packets-downloaded (UI) | `Packets downloaded` — label, with helper `Counts each packet the first time it was downloaded.` (Phase 9 §6, §7 Q2) |
+| organizations-count (UI) | `{n} organization` / `{n} organizations` — directory table's row count line (Phase 9 §7 Q10) |
+| no-organizations-match (UI) | `No organizations match these filters.` (Phase 9 §6) |
+| no-users-yet (UI) | `No users yet.` — org page's users table, empty (Phase 9 §6) |
 
 ## 13. Limits (enforced at presign/save; friendly errors)
 

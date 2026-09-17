@@ -147,6 +147,43 @@ export function formatDateTimeUS(at: Date): string {
   return DATE_TIME_PARTS.format(at);
 }
 
+/**
+ * Short display form of a date-only value: `2026-08-16` → `16 Aug 2026` (Phase 9 §5, §6).
+ * Built from the parsed parts, never through `new Date(iso)` (UTC, shifts the day) — a
+ * date-only value has no timezone to convert, so no `Intl` call is needed at all.
+ */
+export function formatDateShort(date: IsoDate): string {
+  const [year, month, day] = date.split("-").map(Number);
+  return `${day} ${MONTH_NAMES[month - 1].slice(0, 3)} ${year}`;
+}
+
+const DATE_TIME_SHORT_PARTS = new Intl.DateTimeFormat("en-CA", {
+  timeZone: ORG_TIME_ZONE,
+  year: "numeric",
+  month: "numeric",
+  day: "numeric",
+  hour: "numeric",
+  minute: "2-digit",
+  hour12: false,
+});
+
+/**
+ * Short display form of a timestamp, in the organisation's timezone (24-hour):
+ * `2026-09-16T03:30:00Z` → `15 Sep 2026, 23:30` (Phase 9 §5, §6). Takes a real instant, not a
+ * date-only string, so it goes through `Intl` with an explicit timeZone, same as
+ * `formatDateTimeUS` — but reads the parts as plain numbers rather than trusting a locale's
+ * month/hour spelling (`en-GB` prints "Sept" and can render midnight as "24:00").
+ */
+export function formatDateTimeShort(at: Date): string {
+  const parts = DATE_TIME_SHORT_PARTS.formatToParts(at);
+  const get = (type: Intl.DateTimeFormatPartTypes) =>
+    Number(parts.find((part) => part.type === type)?.value ?? "0");
+  const month = MONTH_NAMES[get("month") - 1].slice(0, 3);
+  const hour = String(get("hour") % 24).padStart(2, "0");
+  const minute = String(get("minute")).padStart(2, "0");
+  return `${get("day")} ${month} ${get("year")}, ${hour}:${minute}`;
+}
+
 /** First and last calendar dates of a month, as ISO strings. */
 export function monthBounds(key: MonthKey): { start: IsoDate; end: IsoDate } {
   const { year, month } = splitMonthKey(key);

@@ -7,6 +7,7 @@ Docs-first, AI-native project. **These files are the source of truth.** Code ser
 | Path | What it is |
 |---|---|
 | `TASKS.md` | **Outstanding work** — everything unfinished, why it matters, and what is blocked on whom |
+| `PHASE-9.md` | **Phase 9** — the AB Solutions staff dashboard at `/a`: staff accounts in their own tables, the staff gate, plan/status/complimentary/suspension with a history, and the organizations directory; the product spec verbatim (Appendix A), the five-phase build plan and the Results of each, including the Phase 5 browser walk-through of every "Done when" line (built and verified; **not yet deployed** — see the deploy note in §8 Phase 5) |
 | `PHASE-8.md` | **Phase 8** — locking a reconciled month: signed copy storage, the lock guard on every month-scoped write, Reconciled state and reporting periods; build plan and Results (built; not yet deployed) |
 | `PHASE-7.md` | **Phase 7** — guided first-run tours for Dashboard, Add Expense, Recurring and Month-End Packet: persistence model, tour engine decision, phased build plan (not started) |
 | `PHASE-6.md` | **Phase 6** — multiple funding sources per organisation: data model, migration, phased build plan, acceptance proof, and the Results of the migration/rollback rehearsal (built; not yet deployed) |
@@ -21,7 +22,7 @@ Docs-first, AI-native project. **These files are the source of truth.** Code ser
 | `02-outputs/summary-excel-spec.md` | Excel contract summary format spec |
 | `02-outputs/packet-pdf-spec.md` | Merged month-end packet PDF: canonical order, rasterization, footer |
 | `03-modules/design-language.md` | Shared visual language + the paste-first Claude Design preamble |
-| `03-modules/m00…m09-*.md` | Per-module spec + self-contained Claude Design prompt |
+| `03-modules/m00…m10-*.md` | Per-module spec + self-contained Claude Design prompt |
 | `03-modules/design-review.md` | Fetched-design analysis: dc format, per-screen verdicts, adopted patterns, refetch instructions |
 | `04-engineering/architecture.md` | Stack, layers, folder conventions, generation engine, ops, testing |
 | `04-engineering/decisions.md` | Decision log — settled and open |
@@ -65,6 +66,11 @@ Each `03-modules/m*.md` is one unit of work that flows through five gates:
 | m07 Contract summary | ✅ | ✅ | ✅ | ✅ | ✅ |
 | m08 Line items | ✅ | ✅ | ✅ | ✅ | ✅ |
 | m09 Settings | ✅ | ✅ | ✅ | ✅ | ✅ |
+| m10 Admin dashboard | ✅ | ✅ | n/a | ✅ | ✅ |
+
+m10's Design gate is `n/a` deliberately: the prompt is written in the module file, but no
+Claude Design pass was run — the screens were built from the existing component kit, since
+`/a` is a staff-only tool with no client-facing visual requirement (D-100, Phase 9 §7 Q11).
 
 Output generators (cover sheets, Excel, packet) are backend work items specced in `02-outputs/` and wired during m04/m06/m07.
 
@@ -85,7 +91,7 @@ Working software so far, all verified against a running app with a real database
 | Foundation | Drizzle schema (14 tables) + migrations + seed + dev fixture; custom session auth; Tailwind design tokens and the shared component library; m00 auth/onboarding/app shell |
 | Domain | money · format · dates · strings · budget-math (R3) · gate (R4) · summary (R7) · line-item-rules (R9) · recurring-rules (R8) — all pure, all unit-tested |
 | Storage | Driver abstraction (S3 + local, D-29), key rules, upload inspection, server-proxied ingestion (D-30), download-by-id route |
-| Screens | All ten: m00 shell/auth · m01 dashboard · m02 expense entry · m03 expenses list · m04 cover sheets · m05 recurring · m06 month-end packet · m07 contract summary · m08 line items · m09 settings |
+| Screens | All ten customer screens: m00 shell/auth · m01 dashboard · m02 expense entry · m03 expenses list · m04 cover sheets · m05 recurring · m06 month-end packet · m07 contract summary · m08 line items · m09 settings — plus m10, the AB Solutions staff dashboard at `/a` (Phase 9), which customers of any role cannot reach |
 | Generators | All three outputs: summary workbook (xlsx) · cover sheet (docx canonical + PDF) · month-end packet (merged, ordered, footer-stamped, size ladder). Shared month snapshot, rasterization (pdftoppm 150 DPI, page-at-a-time), artifact cache with inputs-hash and download pinning (R10.4, R10.6), gated download routes |
 
 Every module has shipped and the twelve end-to-end scenarios in `scenarios.md` all

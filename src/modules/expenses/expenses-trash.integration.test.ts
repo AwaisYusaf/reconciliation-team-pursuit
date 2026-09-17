@@ -1,9 +1,9 @@
-/**
+﻿/**
  * Soft delete for expenses (trash / restore / permanent delete).
  *
  * Drives the real server actions against a real database. `actionSession()` is mocked so
- * the test controls which organisation is "signed in" per call — this is what the
- * cross-org scoping tests need — and `next/cache`'s `revalidatePath` is stubbed because it
+ * the test controls which organisation is "signed in" per call â€” this is what the
+ * cross-org scoping tests need â€” and `next/cache`'s `revalidatePath` is stubbed because it
  * throws outside a real Next.js request (`Invariant: static generation store missing`).
  *
  * Skipped when DATABASE_URL is absent.
@@ -58,7 +58,7 @@ describe.skipIf(!hasDatabase)("expense trash (integration)", async () => {
 
   const MONTH = "2099-01";
 
-  /** A real users row per org — actor_user_id now carries a NOT NULL FK to it. */
+  /** A real users row per org â€” actor_user_id now carries a NOT NULL FK to it. */
   async function insertUser(orgId: string, role: "admin" | "manager" = "admin") {
     const [row] = await db
       .insert(users)
@@ -84,11 +84,12 @@ describe.skipIf(!hasDatabase)("expense trash (integration)", async () => {
       activeFundingSourceId: null,
       onboarded: true,
       welcomeDismissed: true,
+      plan: "reconciliation" as const,
     });
   }
 
   let sortCounter = 0;
-  /** Insert an expense row directly, bypassing the action layer — setup, not the thing tested. */
+  /** Insert an expense row directly, bypassing the action layer â€” setup, not the thing tested. */
   async function insertExpense(overrides: {
     orgId: string;
     lineItemId: string;
@@ -96,7 +97,7 @@ describe.skipIf(!hasDatabase)("expense trash (integration)", async () => {
     name?: string;
   }) {
     const month = overrides.month ?? MONTH;
-    // The expense's source is its line item's source (Phase 6, D-93) — resolved here so the
+    // The expense's source is its line item's source (Phase 6, D-93) â€” resolved here so the
     // call sites stay unchanged; this is setup, not an assertion.
     const [item] = await db
       .select({ fundingSourceId: lineItems.fundingSourceId })
@@ -326,7 +327,7 @@ describe.skipIf(!hasDatabase)("expense trash (integration)", async () => {
       // The bug this proves fixed: expenseDocuments cascades away the instant the expense
       // row is deleted (onDelete: "cascade"), so a cleanup step that looks the row back up
       // by id *after* that delete finds nothing and silently never touches storage. A real
-      // object has to actually exist in the driver for that gap to be provable — a
+      // object has to actually exist in the driver for that gap to be provable â€” a
       // database row with a made-up key, like `attachDummyDocument` above uses, would pass
       // even on the old, buggy code, since nothing ever checked whether the key was real.
       asOrg(orgId);
@@ -540,7 +541,7 @@ describe.skipIf(!hasDatabase)("expense trash (integration)", async () => {
       expect(row.expenseCount).toBe(1);
       expect(planLineItemDelete({ ...row, performanceTotalCents: 0 }).allowed).toBe(false);
 
-      // And the database itself refuses the delete via the restrict FK — deleting the trash
+      // And the database itself refuses the delete via the restrict FK â€” deleting the trash
       // is not enough to bypass it without going through permanent delete first.
       const rejection = await db
         .delete(lineItems)

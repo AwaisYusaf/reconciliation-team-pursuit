@@ -8,8 +8,8 @@ import "server-only";
  * session looks like to a form, rather than five that have to be kept in agreement.
  */
 import { fail, SESSION_EXPIRED, type ActionResult } from "@/src/lib/action-result";
-import { requireSession, UnauthenticatedError } from "@/src/services/auth/session";
-import type { SessionContext } from "@/src/services/auth/store";
+import { getSession, getStaffSession, requireSession, UnauthenticatedError } from "@/src/services/auth/session";
+import type { SessionContext, StaffSessionContext } from "@/src/services/auth/store";
 
 export type ActionSession = SessionContext | { expired: ActionResult<never> };
 
@@ -47,4 +47,25 @@ export async function requireAdmin(): Promise<AdminSession> {
   if ("expired" in session) return { denied: session.expired };
   if (session.role !== "admin") return { denied: fail(FORBIDDEN) };
   return session;
+}
+
+export type StaffActionSession = StaffSessionContext | { denied: ActionResult<never> };
+
+/**
+ * Staff-only variant of `actionSession()`, for `/a` actions (Phase 9, D-98).
+ *
+ * Returns a typed failure rather than throwing, same reasoning as `requireAdmin()`: server
+ * actions are directly invocable, so this is the real enforcement point. A signed-in customer
+ * gets `FORBIDDEN` rather than `SESSION_EXPIRED` — they are authenticated, just not allowed
+ * here, and "expired" would wrongly invite them to sign in again for an account that can
+ * never reach this action.
+ */
+export async function requireStaff(): Promise<StaffActionSession> {
+  const staff = await getStaffSession();
+  if (staff) return staff;
+
+  const customer = await getSession();
+  if (customer) return { denied: fail(FORBIDDEN) };
+
+  return { denied: fail(SESSION_EXPIRED) };
 }

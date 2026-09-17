@@ -2,7 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { signupEnabled } from "@/src/modules/auth/config";
-import { getSession } from "@/src/services/auth/session";
+import { getSession, getStaffSession } from "@/src/services/auth/session";
 
 import { PageTitle } from "@/src/components/ui/surfaces";
 
@@ -14,6 +14,7 @@ export default async function LoginPage() {
   // Real check, independent of proxy.ts.
   const session = await getSession();
   if (session) redirect(session.onboarded ? "/r" : "/onboarding/line-items");
+  if (await getStaffSession()) redirect("/a");
 
   return (
     <div className="w-full max-w-[440px] bg-surface border border-line rounded-[4px] px-8 pt-9 pb-8">

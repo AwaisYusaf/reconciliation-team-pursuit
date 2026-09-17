@@ -71,6 +71,7 @@ main() {
   echo "==> Starting / updating stack"
   $COMPOSE up -d
 
+  ensure_staff
   finish
   echo
   echo "Deployed $previous -> $(git rev-parse --short HEAD)"
@@ -115,6 +116,19 @@ preflight() {
     echo "warning: no swap configured. A build here can OOM-kill the-pride-api." >&2
     echo "         See docs/04-engineering/deploy-ec2.md, prerequisite 2." >&2
   fi
+}
+
+# The AB Solutions admin account. Creates it if missing, leaves it alone if it exists, does
+# nothing when STAFF_EMAIL is unset. Advisory like the smoke test: it cannot fail a release,
+# but /a stays shut until an account exists, so it prints loudly.
+ensure_staff() {
+  echo "==> AB Solutions admin account"
+  if $COMPOSE exec -T app npm run --silent db:create-staff -- --skip-existing; then
+    return 0
+  fi
+  echo "warning: the admin account was not created — nobody can open /a until it exists." >&2
+  echo "         Check STAFF_EMAIL / STAFF_NAME / STAFF_PASSWORD in .env, then re-run:" >&2
+  echo "         $COMPOSE exec app npm run db:create-staff -- --skip-existing" >&2
 }
 
 # Prove the container can actually RENDER, not merely serve a page. Every generation defect

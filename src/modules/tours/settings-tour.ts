@@ -31,7 +31,7 @@ export const SETTINGS_TOUR_STEPS: readonly TourStep[] = [
     target: "settings-funding-sources-list",
     autoOpen: "settings-tab-fundingSources",
     title: "Funding sources",
-    body: "Every funder your organisation tracks money for, each with its own budget, expenses and packet. Archive one instead of deleting it — its history stays intact and viewable.",
+    body: "Every funder your organization tracks money for, each with its own budget, expenses and packet. Archive one instead of deleting it — its history stays intact and viewable.",
   },
   {
     target: "settings-labels",
@@ -49,7 +49,7 @@ export const SETTINGS_TOUR_STEPS: readonly TourStep[] = [
     target: "settings-users",
     autoOpen: "settings-tab-users",
     title: "Users",
-    body: "Everyone with access to this organisation's data. Only an admin can add, remove, or change another user's role.",
+    body: "Everyone with access to this organization's data. Only an admin can add, remove, or change another user's role.",
   },
   {
     target: "settings-app-guide",

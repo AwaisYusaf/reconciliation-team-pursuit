@@ -6,25 +6,37 @@
  * Every action authenticates independently — middleware only improves redirect UX and is
  * never the security boundary (architecture §Application layout).
  */
-import { and, eq, sql } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 
 import { db } from "@/src/db";
-import { fundingSources, lineItems, organizations, paymentSources, supportingDocTypes, users } from "@/src/db/schema";
+import {
+  fundingSources,
+  lineItems,
+  orgAccountEvents,
+  organizations,
+  paymentSources,
+  staffUsers,
+  supportingDocTypes,
+  users,
+} from "@/src/db/schema";
 import { currentMonthKey, isValidMonthKey } from "@/src/domain/dates";
 import { parseMoneyToCents } from "@/src/domain/money";
 import { UI } from "@/src/domain/strings";
 import { fail, ok, SESSION_EXPIRED, type ActionResult } from "@/src/lib/action-result";
 import {
   endSession,
+  getStaffSession,
   requireSession,
   startSession,
+  startStaffSession,
   UnauthenticatedError,
   type SessionContext,
 } from "@/src/services/auth/session";
 import { hashPassword, validatePasswordPolicy, verifyPassword } from "@/src/services/auth/passwords";
+import { emailInUse } from "@/src/modules/auth/emails";
 import { ORIGINAL_RULES } from "@/src/modules/expenses/reimbursement";
 import { primaryFundingSourceId, requireOwnedFundingSource } from "@/src/modules/funding-sources/queries";
 import { consume, reset } from "@/src/services/rate-limit";
@@ -157,6 +169,7 @@ export async function signInAction(
       passwordHash: users.passwordHash,
       orgId: users.orgId,
       onboardedAt: organizations.onboardedAt,
+      suspendedAt: organizations.suspendedAt,
     })
     .from(users)
     .innerJoin(organizations, eq(organizations.id, users.orgId))
@@ -164,14 +177,53 @@ export async function signInAction(
     .limit(1);
 
   const user = found[0];
-  if (!user) return fail(UI.signInUnknownEmail);
+
+  // Staff and customer accounts share one login form and the same wording either way, so the
+  // form can't be used to tell staff addresses from customer ones (Phase 9 §3.3).
+  if (!user) {
+    const [staff] = await db
+      .select({ id: staffUsers.id, passwordHash: staffUsers.passwordHash })
+      .from(staffUsers)
+      .where(sql`lower(${staffUsers.email}) = lower(${email})`)
+      .limit(1);
+
+    if (!staff) return fail(UI.signInUnknownEmail);
+    if (!(await verifyPassword(staff.passwordHash, password))) {
+      return fail(UI.signInWrongPassword);
+    }
+
+    reset("loginPerAccount", `${email.toLowerCase()}|${ip}`);
+    reset("loginPerIp", ip);
+    await startStaffSession(staff.id);
+    redirect("/a");
+  }
 
   if (!(await verifyPassword(user.passwordHash, password))) {
     return fail(UI.signInWrongPassword);
   }
 
+  // Only after the password checks out (Phase 9 §3.5) — a wrong password on a suspended org
+  // gets the normal wrong-password message above, so the form can't be used to learn whether
+  // an address's organization is suspended. No session, no `last_sign_in_at` write, and the
+  // rate limiters stay untouched — this attempt did not prove anything a limiter should forget.
+  if (user.suspendedAt) {
+    // The reason AB Solutions gave, from the suspension that is still in force — the newest
+    // `suspended` event, since an org can have been suspended and reinstated before. Falls back
+    // to the bare message if the row is somehow missing, so sign-in never fails on a message.
+    const [event] = await db
+      .select({ note: orgAccountEvents.note })
+      .from(orgAccountEvents)
+      .where(and(eq(orgAccountEvents.orgId, user.orgId), eq(orgAccountEvents.action, "suspended")))
+      .orderBy(desc(orgAccountEvents.createdAt))
+      .limit(1);
+
+    const reason = event?.note?.trim();
+    return fail(reason ? UI.orgAccessPausedWithReason(reason) : UI.orgAccessPaused);
+  }
+
   reset("loginPerAccount", `${email.toLowerCase()}|${ip}`);
   reset("loginPerIp", ip);
+  await db.update(users).set({ lastSignInAt: new Date() }).where(eq(users.id, user.id));
   await startSession(user.id);
 
   // Onboarding is resumable: an abandoned signup lands back here until it completes.
@@ -193,7 +245,7 @@ export async function signOutAction(): Promise<void> {
 /* ------------------------------------------------------------------ sign up */
 
 const signUpSchema = z.object({
-  orgName: z.string().trim().min(1, "Enter your organisation's name."),
+  orgName: z.string().trim().min(1, "Enter your organization's name."),
   name: nameSchema,
   email: z.string().trim().email("Enter a valid email address."),
   password: z.string(),
@@ -210,9 +262,17 @@ export async function signUpAction(
   // them onto an empty one and leaves the first orphaned.
   try {
     await requireSession();
-    return fail("You are already signed in. Log out first to create another organisation.");
+    return fail("You are already signed in. Log out first to create another organization.");
   } catch {
     // Not signed in, which is the expected case here.
+  }
+
+  // A staff member has no customer session, so the check above doesn't see them. The signup
+  // page already redirects them to `/a`, but server actions are directly invocable, and going
+  // through here would replace their staff session with a customer one (`startSession` clears
+  // both tables) and leave a junk organization in the directory (Phase 9 §3.3).
+  if (await getStaffSession()) {
+    return fail("You are signed in as AB Solutions staff. Log out first to create an organization.");
   }
 
   // Bounded before argon2 is reached: hashing runs on the same threadpool login's
@@ -240,12 +300,9 @@ export async function signUpAction(
     return fail("Check the highlighted fields.", { confirmPassword: "Passwords don't match." });
   }
 
-  const existing = await db
-    .select({ id: users.id })
-    .from(users)
-    .where(sql`lower(${users.email}) = lower(${email})`)
-    .limit(1);
-  if (existing.length > 0) return fail("Check the highlighted fields.", { email: UI.duplicateEmail });
+  if (await emailInUse(email)) {
+    return fail("Check the highlighted fields.", { email: UI.duplicateEmail });
+  }
 
   const passwordHash = await hashPassword(password);
 
