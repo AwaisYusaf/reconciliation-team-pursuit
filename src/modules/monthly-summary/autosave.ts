@@ -61,6 +61,19 @@ export type AutosaveScheduler = {
   dispose: () => void;
 };
 
+/**
+ * Whether the download buttons should be disabled and why (Phase 11 §7.4, P13): a download must
+ * build from the saved text, so it's blocked while a save is running and while there's unsaved
+ * text waiting to autosave. `null` once the on-screen text matches what's saved.
+ */
+export function downloadBlock(
+  snapshot: Pick<AutosaveSnapshot, "dirty" | "status">,
+): "saving" | "unsaved" | null {
+  if (snapshot.status === "saving") return "saving";
+  if (snapshot.dirty) return "unsaved";
+  return null;
+}
+
 export function createAutosaveScheduler(deps: AutosaveDeps): AutosaveScheduler {
   const delayMs = deps.delayMs ?? 3000;
 

@@ -443,6 +443,17 @@ export const UI = {
   /** Visually-hidden label for the plain `<textarea>` (accessibility; no visible label in the
    *  design — the reminder and title already say what it is). Wording to review. */
   summaryTextareaLabel: "Monthly summary text",
+
+  /* ------------------------------------------------ Phase 11 build phase 4: Word and PDF */
+
+  /** Download button labels (Appendix A §5 for Word, verbatim; PDF added by C4). */
+  summaryDownloadWord: "Download Word",
+  summaryDownloadPdf: "Download PDF",
+  /** Both download buttons' disabled reason while there's unsaved text (P13). Wording to review. */
+  summaryDownloadUnsaved: "Save your changes to download them.",
+  /** PDF conversion failure — the download route's 503 body (P13, Appendix A "Download Word" as
+   *  the fallback). Wording to review. */
+  summaryPdfFailed: "The PDF couldn't be made right now. Download Word instead.",
 } as const;
 
 /**
@@ -689,3 +700,40 @@ export const SUMMARY_SECTION_TITLES = [
   "Changes from last month",
   "Items to note",
 ] as const;
+
+/**
+ * Monthly summary document title (Phase 11 §7.4): `Team Pursuit March 2026 Monthly Summary`, or
+ * with a source name (given only when the organisation has more than one funding source),
+ * `Team Pursuit City of Detroit March 2026 Monthly Summary`. Empty parts are skipped rather than
+ * leaving a doubled space.
+ */
+export function monthlySummaryTitle(docName: string, monthLabel: string, sourceName?: string | null): string {
+  return [docName, sourceName, monthLabel, "Monthly Summary"]
+    .filter((part) => part && `${part}`.trim())
+    .join(" ");
+}
+
+/**
+ * `Team Pursuit March 2026 Monthly Summary.docx` (or `.pdf`); with a `sourceName`,
+ * `Team Pursuit City of Detroit March 2026 Monthly Summary.docx`. Shaped and sanitised exactly
+ * like `coverSheetFilename`: the month and "Monthly Summary" are never shortened, only the
+ * source name gives way, and the whole title is sanitised once, joined, so a boundary character
+ * inside one part is not treated as if it sat at the edge of the filename.
+ */
+export function monthlySummaryFilename(
+  docName: string,
+  monthLabel: string,
+  extension: "docx" | "pdf",
+  sourceName?: string | null,
+): string {
+  const budgetParts = [
+    sanitiseForFilename(docName, STEM_MAX),
+    sanitiseForFilename(monthLabel, STEM_MAX),
+    "Monthly Summary",
+  ].filter(Boolean);
+  const source = fitSourceName(sourceName, budgetParts);
+  const title = source
+    ? [docName, source, monthLabel, "Monthly Summary"].filter((part) => part && `${part}`.trim()).join(" ")
+    : monthlySummaryTitle(docName, monthLabel);
+  return `${sanitiseForFilename(title, STEM_MAX)}.${extension}`;
+}

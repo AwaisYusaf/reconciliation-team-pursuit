@@ -15,11 +15,13 @@ import { useRouter } from "next/navigation";
 
 import { Button } from "@/src/components/ui/button";
 import { ConfirmButton } from "@/src/components/ui/confirm-button";
+import { DownloadButton } from "@/src/components/ui/download-button";
 import { Textarea } from "@/src/components/ui/field";
 import { PLUS_FRAME_STYLE } from "@/src/components/ui/plus-badge";
 import { Card, DangerPanel, SectionTitle } from "@/src/components/ui/surfaces";
 import { toast } from "@/src/components/ui/toast";
 import { UI } from "@/src/domain/strings";
+import { downloadBlock } from "@/src/modules/monthly-summary/autosave";
 import { saveSummaryAction } from "@/src/modules/monthly-summary/actions";
 import { copySummary, type ClipboardLike } from "@/src/modules/monthly-summary/copy";
 
@@ -196,6 +198,7 @@ function SummaryBody({
     },
   });
   const snapshot = scheduler.getSnapshot();
+  const block = downloadBlock(snapshot);
 
   async function handleWriteAgain() {
     // Read-only first, then hold saves: a pending edit is dropped (the confirm said so) and
@@ -299,6 +302,26 @@ function SummaryBody({
         <Button variant="secondary" onClick={() => void handleCopy()}>
           {UI.summaryCopyText}
         </Button>
+
+        <DownloadButton
+          variant="secondary"
+          disabled={block !== null || writing}
+          href={`/api/downloads/monthly-summary?source=${encodeURIComponent(sourceId)}&month=${encodeURIComponent(month)}&format=docx`}
+        >
+          {UI.summaryDownloadWord}
+        </DownloadButton>
+        <DownloadButton
+          variant="secondary"
+          disabled={block !== null || writing}
+          href={`/api/downloads/monthly-summary?source=${encodeURIComponent(sourceId)}&month=${encodeURIComponent(month)}&format=pdf`}
+        >
+          {UI.summaryDownloadPdf}
+        </DownloadButton>
+        {block && (
+          <span className="text-[15px] text-sub">
+            {block === "saving" ? UI.summarySaving : UI.summaryDownloadUnsaved}
+          </span>
+        )}
 
         {canWrite &&
           (writing ? (

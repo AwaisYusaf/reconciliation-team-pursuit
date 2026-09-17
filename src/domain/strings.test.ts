@@ -5,6 +5,8 @@ import {
   coverSheetFilename,
   coverSheetTitle,
   lineItemDeleteBlocked,
+  monthlySummaryFilename,
+  monthlySummaryTitle,
   noReceiptNote,
   packetFilename,
   packetFooter,
@@ -292,6 +294,70 @@ describe("filenames (R10.3)", () => {
     );
     expect(packetFilename("Team Pursuit", "February 2026", undefined)).toBe(
       "Team_Pursuit_February_2026_Packet.pdf",
+    );
+  });
+});
+
+describe("monthly summary title and filename (Phase 11 §7.4, U-21)", () => {
+  it("builds the title and filename with no source name", () => {
+    expect(monthlySummaryTitle("Team Pursuit", "March 2026")).toBe(
+      "Team Pursuit March 2026 Monthly Summary",
+    );
+    expect(monthlySummaryFilename("Team Pursuit", "March 2026", "docx")).toBe(
+      "Team Pursuit March 2026 Monthly Summary.docx",
+    );
+    expect(monthlySummaryFilename("Team Pursuit", "March 2026", "pdf")).toBe(
+      "Team Pursuit March 2026 Monthly Summary.pdf",
+    );
+  });
+
+  it("inserts the source name between the doc name and the month when given", () => {
+    expect(monthlySummaryTitle("Team Pursuit", "March 2026", "City of Detroit")).toBe(
+      "Team Pursuit City of Detroit March 2026 Monthly Summary",
+    );
+    expect(monthlySummaryFilename("Team Pursuit", "March 2026", "docx", "City of Detroit")).toBe(
+      "Team Pursuit City of Detroit March 2026 Monthly Summary.docx",
+    );
+  });
+
+  it("empty-string docName override: no leading space", () => {
+    expect(monthlySummaryFilename("", "March 2026", "docx")).toBe(
+      "March 2026 Monthly Summary.docx",
+    );
+    expect(monthlySummaryTitle("", "March 2026")).toBe("March 2026 Monthly Summary");
+  });
+
+  it("shortens only a very long source name, keeping the month and 'Monthly Summary' whole", () => {
+    const longSource = "A".repeat(300);
+    const name = monthlySummaryFilename("Team Pursuit", "March 2026", "docx", longSource);
+    expect(name.startsWith("Team Pursuit ")).toBe(true);
+    expect(name.endsWith(" March 2026 Monthly Summary.docx")).toBe(true);
+    expect(name.length - ".docx".length).toBeLessThanOrEqual(150);
+  });
+
+  it("strips unsafe filename characters from every part", () => {
+    const name = monthlySummaryFilename(
+      'Team/Pursuit\\:*?"<>|',
+      "March 2026",
+      "docx",
+      "../../etc\r\nSource",
+    );
+    expect(name).not.toMatch(/[\\/:*?"<>|]/);
+    expect(name).not.toContain("..");
+    expect(name).not.toContain("\r");
+    expect(name).not.toContain("\n");
+    expect(name.endsWith("March 2026 Monthly Summary.docx")).toBe(true);
+  });
+
+  it("skips empty parts in the title rather than leaving a doubled space", () => {
+    expect(monthlySummaryTitle("Team Pursuit", "March 2026", null)).toBe(
+      "Team Pursuit March 2026 Monthly Summary",
+    );
+    expect(monthlySummaryTitle("Team Pursuit", "March 2026", "")).toBe(
+      "Team Pursuit March 2026 Monthly Summary",
+    );
+    expect(monthlySummaryTitle("Team Pursuit", "March 2026", "   ")).toBe(
+      "Team Pursuit March 2026 Monthly Summary",
     );
   });
 });

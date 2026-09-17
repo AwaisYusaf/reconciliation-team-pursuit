@@ -1,6 +1,6 @@
 # Phase 11 — Monthly summary (AI draft)
 
-Status: **Phases 1–3 built** (2026-09-17). Builds on Phase 10 (`implementation/ai-receipt-reading`,
+Status: **Phases 1–4 built** (2026-09-17). Builds on Phase 10 (`implementation/ai-receipt-reading`,
 not yet merged): branch from it, or rebase once it merges. The product spec is Appendix A, copied
 word for word. The team changed parts of it while planning (a screen of its own instead of a
 section, a plain Markdown editor, Word **and** PDF); §2 records every one of those changes with
@@ -517,6 +517,72 @@ Checks: U-23, U-24, I-3, I-5, I-9..I-16, I-23..I-30, I-34; browser B-1..B-12, B-
 Markdown-to-Word builder with bullets, PDF via `convertDocxToPdf`, filenames, download route.
 Checks: U-21, U-22, I-20, I-32, I-35, I-36; the Word file opened in Word, Google Docs and
 LibreOffice; the PDF in a browser and a PDF viewer.
+
+**Results (2026-09-17).**
+- Built: `src/generation/monthly-summary-docx.ts` (`buildMonthlySummaryDocx({ title, markdown })`
+  through `parseSummaryMarkdown`: Title, `#`–`###` → Heading 1–3, paragraphs, bullets via the
+  repo's first `numbering` config, bold/italic runs; Aptos, Letter, 1 in margins, `lineRule: AUTO`
+  as the cover sheet). `monthlySummaryTitle` and `monthlySummaryFilename` in `strings.ts` (same
+  shape as `coverSheetFilename`; only the source name shortens). `loadSummaryForDownload` in
+  `queries.ts` (docName `source ?? org`). `GET /api/downloads/monthly-summary`: session 401 →
+  `Sec-Fetch-Site` 403 → `generate` limit 429 → `summariesAccessForOrg().use` 403 (plan note) →
+  month 400 → format exactly `docx`/`pdf` 400 → owned source 404 → saved summary 404; source name
+  only when the org has more than one source (archived count); PDF via `convertDocxToPdf`, failure
+  503 with the §12 text; docx build failure 500; `Cache-Control: private, no-store`, nosniff; no
+  lock or archive check (P8, P9); no cache, nothing from `packet-*` or `cache-key`. Pure
+  `downloadBlock(snapshot)` in `autosave.ts` (P13). Screen: **Download Word** and **Download PDF**
+  after Copy text, disabled while saving, unsaved or writing, with "Saving…" / "Save your changes
+  to download them."; the 503 text shows through the existing download toast. Strings
+  `summaryDownloadWord`, `summaryDownloadPdf`, `summaryDownloadUnsaved`, `summaryPdfFailed`.
+- Tests: 51 new, 3 replaced. `monthly-summary-docx.test.ts` 12 (U-22: package, Letter and margins, Aptos,
+  `lineRule`, heading styles, headings bold and black, numbering present and used by every item,
+  one paragraph per item, bold/italic per run, control characters, literal `<script>`/link/table/
+  code, unicode and emoji), `strings.test.ts` +6 (U-21), `autosave.test.ts` +8 (download rule,
+  table plus a scheduler-driven case), `screen.test.ts` 3 replacing the Phase 3 "no download"
+  check, `download-route.integration.test.ts` 21 (I-20 including a real PDF 200 when LibreOffice
+  is present, locked month, archived source, manager, saved content served, docName override and
+  empty override; I-32 snapshot and `inputsHash` unchanged with a summary present),
+  `download-route-pdf-failure.integration.test.ts` 1 (I-35), `download-isolation.test.ts` 2
+  (route and builder import nothing from `packet-*`/`cache-key`),
+  `monthly-summary-docx-to-pdf.integration.test.ts` 1 (I-36; ran locally, emoji excluded because
+  the PDF font substitution can't be relied on to keep them). Full suite 1511 passed, 20 skipped;
+  one pre-existing failure, `packet-trace` (local `pdftotext` lacks `-bbox-layout`). Typecheck,
+  lint and `npm run build` clean.
+- Mutation checks, each caught and restored: session, site, rate limit, `.use`, month, format,
+  source ownership, no-summary 404, the one-source filename rule, the 503 catch, `Cache-Control`;
+  builder numbering reference, heading mapping, bold flag, italic flag, control-character
+  stripping (both replaces); `downloadBlock` saving and dirty branches; `??` → `||` in
+  `loadSummaryForDownload` (not caught by the first version of the test, which asserted on an id
+  that could never appear; rewritten, then caught).
+- Found in review and fixed: the `docx` package's built-in Heading styles are blue and not bold, and
+  the 12 pt title was smaller than a 14 pt heading (headings now bold and black; title 16 pt,
+  headings 14/12/11 pt); the first bold/italic test could not fail (the title run is already bold);
+  the I-32 `packetContents` half compared a pure function with itself and was replaced by comparing
+  the snapshot.
+- Security review (authz, org scoping, month and format validation, header injection, conversion
+  cost). Clean: every query is scoped by the session's org; a foreign, malformed or missing source
+  id is the same 404; month uses the strict key check and format an exact match; the filename goes
+  through `sanitiseForFilename` then `attachmentHeader`, and a docName of `Team\r\nSet-Cookie: x=1`
+  with a source of `A"; filename=evil.exe` came out as one quoted ASCII name with no CR, LF, quote
+  or `;`; error bodies carry no internals and logs carry ids and the converter error only. Found and
+  fixed: **XML-illegal control characters** (U+000B, which Word puts in copied text, U+0007,
+  U+0001, U+FFFE) went into `document.xml` unescaped, which makes a file Word calls corrupt; the
+  builder now turns vertical tab and form feed into a space and drops the rest. Still open (low,
+  same as the cover sheet route): a conversion can run up to 180 s and the `generate` limit is
+  6 per minute per org with no global cap, and a base-plan org's refused calls use up its own
+  shared `generate` budget before the plan check.
+- Deviations: a missing `format` is a 400, not a default to Word (the screen always sends it). The
+  title is 16 pt instead of the cover sheet's 12 pt, because this document has headings under it.
+  New wording to review: the 500 text "The summary couldn't be prepared right now. Please try
+  again."
+- Not verified: opening the files in Word and Google Docs, and the PDF in a browser, is left to
+  the user; sample files were generated for that. Locally LibreOffice substituted Aptos with
+  BodoniMTBlack and LiberationSerif, so the local PDF's look is not what the container (Aptos →
+  Carlito, D-78) produces; no PDF was made in the container. The screen's buttons were not seen
+  in a browser (B-12 download-disabled-while-saving). **Sibling risk not fixed (outside this
+  phase):** the cover sheet builder writes expense names and narratives to the docx the same way,
+  so the same control characters there most likely produce a cover sheet Word calls corrupt; not
+  tested, including whether LibreOffice still converts it for the packet.
 
 ### Phase 5 — Dashboard link, tour, docs
 Dashboard link, packet tour step, strings, `m06` module doc, `data-model.md`, decisions D-107 and

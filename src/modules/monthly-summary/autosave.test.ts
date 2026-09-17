@@ -5,7 +5,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { createAutosaveScheduler, type SaveResult } from "./autosave";
+import { createAutosaveScheduler, downloadBlock, type SaveResult } from "./autosave";
 
 const CONFLICT = "Someone else wrote a new summary while you were editing.";
 
@@ -471,6 +471,43 @@ describe("subscribe / getSnapshot", () => {
     const first = s.getSnapshot();
     const second = s.getSnapshot();
     expect(first).toBe(second);
+  });
+});
+
+describe("downloadBlock (Phase 11 §7.4, P13)", () => {
+  it.each<[Parameters<typeof downloadBlock>[0], ReturnType<typeof downloadBlock>]>([
+    [{ status: "idle", dirty: false }, null],
+    [{ status: "idle", dirty: true }, "unsaved"],
+    [{ status: "saving", dirty: false }, "saving"],
+    [{ status: "saving", dirty: true }, "saving"],
+    [{ status: "failed", dirty: true }, "unsaved"],
+    [{ status: "conflict", dirty: true }, "unsaved"],
+    [{ status: "saved", dirty: false }, null],
+  ])("%j -> %s", (snapshot, expected) => {
+    expect(downloadBlock(snapshot)).toBe(expected);
+  });
+
+  it("scheduler-driven: edit -> unsaved, timer fires -> saving, save resolves -> null", async () => {
+    const save = vi.fn<(text: string, version: number) => Promise<SaveResult>>();
+    let resolveSave!: (r: SaveResult) => void;
+    save.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveSave = resolve;
+        }),
+    );
+    const s = createAutosaveScheduler(deps({ save }));
+
+    expect(downloadBlock(s.getSnapshot())).toBeNull();
+
+    s.edit("changed");
+    expect(downloadBlock(s.getSnapshot())).toBe("unsaved");
+
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(downloadBlock(s.getSnapshot())).toBe("saving");
+
+    resolveSave({ ok: true, data: { version: 2 } });
+    await vi.waitFor(() => expect(downloadBlock(s.getSnapshot())).toBeNull());
   });
 });
 

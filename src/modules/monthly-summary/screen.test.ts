@@ -38,14 +38,27 @@ describe("no dangerouslySetInnerHTML anywhere in the new screen or the packet ca
   });
 });
 
-describe("no download buttons/links on the Monthly summary screen (Phase 4 scope)", () => {
-  it.each([
-    "app/r/monthly-summary/page.tsx",
-    "app/r/monthly-summary/summary-editor.tsx",
-    "app/r/monthly-summary/saved-summaries.tsx",
-  ])("%s", (relPath) => {
-    const source = read(relPath).toLowerCase();
-    expect(source).not.toContain("download");
+describe("Word/PDF download wiring on the Monthly summary screen (Phase 4, P13)", () => {
+  const source = read("app/r/monthly-summary/summary-editor.tsx");
+
+  it("gates both DownloadButtons on downloadBlock, imported from the autosave module", () => {
+    expect(source).toMatch(/import\s*\{[^}]*downloadBlock[^}]*\}\s*from\s*"@\/src\/modules\/monthly-summary\/autosave"/);
+    expect(source).toContain("downloadBlock(snapshot)");
+  });
+
+  it("links both formats to /api/downloads/monthly-summary", () => {
+    expect(source).toContain("/api/downloads/monthly-summary?source=");
+    expect(source).toMatch(/format=docx/);
+    expect(source).toMatch(/format=pdf/);
+  });
+
+  it("disables both DownloadButtons when blocked or while writing", () => {
+    const matches = [...source.matchAll(/<DownloadButton[\s\S]*?disabled=\{([^}]+)\}/g)];
+    expect(matches.length).toBeGreaterThanOrEqual(2);
+    for (const match of matches) {
+      expect(match[1]).toContain("block !== null");
+      expect(match[1]).toContain("writing");
+    }
   });
 });
 

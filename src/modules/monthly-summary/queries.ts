@@ -252,6 +252,53 @@ export async function loadSummaryCard(
   return { use: true, writtenAt: row?.writtenAt ?? null };
 }
 
+/**
+ * The saved summary's content and the two names a title/filename needs (Phase 11 §7.4, P13).
+ * `null` for an invalid month key, a non-uuid source id, a source not owned by this
+ * organisation, or no summary for that month — every case the route treats as "not found".
+ *
+ * `docName` follows the same override rule as `loadMonthFacts`/`month-snapshot.ts:263`:
+ * `source.docName ?? org.docName`, `??` and not `||` because an empty-string override is a real,
+ * deliberate value.
+ */
+export async function loadSummaryForDownload(
+  orgId: string,
+  sourceId: string,
+  month: MonthKey,
+): Promise<{ contentMarkdown: string; docName: string; sourceName: string } | null> {
+  if (!isValidMonthKey(month)) return null;
+  if (!isUuid(sourceId)) return null;
+
+  const [row] = await db
+    .select({
+      contentMarkdown: monthlySummaries.contentMarkdown,
+      sourceDocName: fundingSources.docName,
+      sourceName: fundingSources.name,
+      orgDocName: organizations.docName,
+    })
+    .from(monthlySummaries)
+    .innerJoin(
+      fundingSources,
+      and(eq(fundingSources.id, monthlySummaries.fundingSourceId), eq(fundingSources.orgId, orgId)),
+    )
+    .innerJoin(organizations, eq(organizations.id, orgId))
+    .where(
+      and(
+        eq(monthlySummaries.orgId, orgId),
+        eq(monthlySummaries.fundingSourceId, sourceId),
+        eq(monthlySummaries.month, month),
+      ),
+    )
+    .limit(1);
+  if (!row) return null;
+
+  return {
+    contentMarkdown: row.contentMarkdown,
+    docName: row.sourceDocName ?? row.orgDocName,
+    sourceName: row.sourceName,
+  };
+}
+
 /** The viewer's display name for the meta line (§6) — `userDisplay` needs the user's own
  *  name/email, which the session doesn't carry (only `email`). Missing user (deleted mid
  *  session) falls back to the session's email, same as `userDisplay` would once trimmed. */
