@@ -1,11 +1,11 @@
 {
-  "id": "7f50bfc5-0615-4368-a9ce-2a48a7d9ea0f",
+  "id": "dc989a43-96f8-4c7d-9dbd-85615def8c4b",
   "prevId": "4142b1d3-4bde-4d5b-a7d3-ed7b9c15d5b6",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
-    "public.amount_reads": {
-      "name": "amount_reads",
+    "public.ai_usage_events": {
+      "name": "ai_usage_events",
       "schema": "",
       "columns": {
         "id": {
@@ -26,23 +26,16 @@
           "primaryKey": false,
           "notNull": false
         },
-        "source": {
-          "name": "source",
-          "type": "amount_read_source",
-          "typeSchema": "public",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "document_kind": {
-          "name": "document_kind",
-          "type": "amount_read_document_kind",
+        "feature": {
+          "name": "feature",
+          "type": "ai_usage_feature",
           "typeSchema": "public",
           "primaryKey": false,
           "notNull": true
         },
         "outcome": {
           "name": "outcome",
-          "type": "amount_read_outcome",
+          "type": "ai_usage_outcome",
           "typeSchema": "public",
           "primaryKey": false,
           "notNull": true
@@ -71,6 +64,20 @@
           "primaryKey": false,
           "notNull": false
         },
+        "document_source": {
+          "name": "document_source",
+          "type": "ai_usage_document_source",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "document_kind": {
+          "name": "document_kind",
+          "type": "ai_usage_document_kind",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": false
+        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -80,8 +87,8 @@
         }
       },
       "indexes": {
-        "amount_reads_org_idx": {
-          "name": "amount_reads_org_idx",
+        "ai_usage_events_org_idx": {
+          "name": "ai_usage_events_org_idx",
           "columns": [
             {
               "expression": "org_id",
@@ -103,9 +110,9 @@
         }
       },
       "foreignKeys": {
-        "amount_reads_org_id_organizations_id_fk": {
-          "name": "amount_reads_org_id_organizations_id_fk",
-          "tableFrom": "amount_reads",
+        "ai_usage_events_org_id_organizations_id_fk": {
+          "name": "ai_usage_events_org_id_organizations_id_fk",
+          "tableFrom": "ai_usage_events",
           "tableTo": "organizations",
           "columnsFrom": [
             "org_id"
@@ -116,9 +123,9 @@
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
-        "amount_reads_user_id_users_id_fk": {
-          "name": "amount_reads_user_id_users_id_fk",
-          "tableFrom": "amount_reads",
+        "ai_usage_events_user_id_users_id_fk": {
+          "name": "ai_usage_events_user_id_users_id_fk",
+          "tableFrom": "ai_usage_events",
           "tableTo": "users",
           "columnsFrom": [
             "user_id"
@@ -133,7 +140,12 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "ai_usage_events_amount_read_ck": {
+          "name": "ai_usage_events_amount_read_ck",
+          "value": "\"ai_usage_events\".\"feature\" <> 'amount_read' OR (\"ai_usage_events\".\"document_source\" IS NOT NULL AND \"ai_usage_events\".\"document_kind\" IS NOT NULL AND \"ai_usage_events\".\"outcome\" IN ('found', 'none', 'failed'))"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.contract_settings": {
@@ -3602,29 +3614,39 @@
     }
   },
   "enums": {
-    "public.amount_read_document_kind": {
-      "name": "amount_read_document_kind",
+    "public.ai_usage_document_kind": {
+      "name": "ai_usage_document_kind",
       "schema": "public",
       "values": [
         "receipt",
         "proof"
       ]
     },
-    "public.amount_read_outcome": {
-      "name": "amount_read_outcome",
-      "schema": "public",
-      "values": [
-        "found",
-        "none",
-        "failed"
-      ]
-    },
-    "public.amount_read_source": {
-      "name": "amount_read_source",
+    "public.ai_usage_document_source": {
+      "name": "ai_usage_document_source",
       "schema": "public",
       "values": [
         "upload",
         "attached"
+      ]
+    },
+    "public.ai_usage_feature": {
+      "name": "ai_usage_feature",
+      "schema": "public",
+      "values": [
+        "amount_read",
+        "monthly_summary"
+      ]
+    },
+    "public.ai_usage_outcome": {
+      "name": "ai_usage_outcome",
+      "schema": "public",
+      "values": [
+        "found",
+        "none",
+        "failed",
+        "success",
+        "rejected"
       ]
     },
     "public.artifact_type": {

@@ -40,7 +40,7 @@ const hasDatabase = Boolean(process.env.DATABASE_URL);
 
 describe.skipIf(!hasDatabase)("read amounts (integration, Phase 10)", async () => {
   const { db } = await import("@/src/db");
-  const { amountReads, expenses, lineItems, organizations, supportingDocTypes } = await import(
+  const { aiUsageEvents, expenses, lineItems, organizations, supportingDocTypes } = await import(
     "@/src/db/schema"
   );
   const { createTestOrg } = await import("@/src/db/test-org");
@@ -157,9 +157,9 @@ describe.skipIf(!hasDatabase)("read amounts (integration, Phase 10)", async () =
   async function latestAmountRead(org: string) {
     const [row] = await db
       .select()
-      .from(amountReads)
-      .where(eq(amountReads.orgId, org))
-      .orderBy(desc(amountReads.createdAt))
+      .from(aiUsageEvents)
+      .where(eq(aiUsageEvents.orgId, org))
+      .orderBy(desc(aiUsageEvents.createdAt))
       .limit(1);
     return row ?? null;
   }
@@ -307,8 +307,9 @@ describe.skipIf(!hasDatabase)("read amounts (integration, Phase 10)", async () =
 
       const row = await latestAmountRead(orgId);
       expect(row).not.toBeNull();
+      expect(row!.feature).toBe("amount_read");
       expect(row!.outcome).toBe("found");
-      expect(row!.source).toBe("upload");
+      expect(row!.documentSource).toBe("upload");
       expect(row!.documentKind).toBe("receipt");
       expect(row!.inputTokens).toBe(1000);
       expect(row!.outputTokens).toBe(100);
@@ -365,7 +366,7 @@ describe.skipIf(!hasDatabase)("read amounts (integration, Phase 10)", async () =
 
       const row = await latestAmountRead(orgId);
       expect(row!.outcome).toBe("failed");
-      expect(row!.source).toBe("upload");
+      expect(row!.documentSource).toBe("upload");
     });
 
     it("bad kind ('supporting' or unknown) → 400, no row written", async () => {
@@ -525,8 +526,30 @@ describe.skipIf(!hasDatabase)("read amounts (integration, Phase 10)", async () =
       expect(after).toEqual(before); // the route never writes `expenses`
 
       const row = await latestAmountRead(orgId);
-      expect(row!.source).toBe("attached");
+      expect(row!.documentSource).toBe("attached");
       expect(row!.documentKind).toBe("receipt");
+    });
+  });
+
+  describe("ai_usage_events constraints (D-106)", () => {
+    it("refuses an amount_read row without its document source or kind, or with a summary outcome", async () => {
+      const base = { orgId, feature: "amount_read" as const, model: "test-model" };
+      // Each insert must fail on the check constraint, not on anything else.
+      const refused = async (values: Record<string, unknown>) => {
+        const error = await db
+          .insert(aiUsageEvents)
+          .values({ ...base, ...values } as typeof aiUsageEvents.$inferInsert)
+          .then(() => null, (e: unknown) => e);
+        expect(String((error as { cause?: unknown })?.cause ?? error)).toContain("ai_usage_events_amount_read_ck");
+      };
+      await refused({ outcome: "found", documentKind: "receipt" });
+      await refused({ outcome: "found", documentSource: "upload" });
+      await refused({ outcome: "success", documentSource: "upload", documentKind: "receipt" });
+
+      // And the well-formed row is accepted.
+      await db
+        .insert(aiUsageEvents)
+        .values({ ...base, outcome: "none", documentSource: "attached", documentKind: "proof" });
     });
   });
 

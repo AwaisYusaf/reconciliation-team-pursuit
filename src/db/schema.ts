@@ -1131,29 +1131,47 @@ export const userTourProgress = pgTable(
   (t) => [primaryKey({ columns: [t.userId, t.tour] })],
 );
 
-/* --------------------------------------------------------------- amount reads */
-
-/** amount_reads.source — a freshly-picked file, or one already attached to the expense
- *  (Phase 10, D-105). */
-export const amountReadSource = pgEnum("amount_read_source", ["upload", "attached"]);
-
-/** amount_reads.document_kind — only receipts and proofs are ever read (Phase 10 §1). */
-export const amountReadDocumentKind = pgEnum("amount_read_document_kind", ["receipt", "proof"]);
-
-/** amount_reads.outcome — what the OpenAI call produced for this one file. */
-export const amountReadOutcome = pgEnum("amount_read_outcome", ["found", "none", "failed"]);
+/* ------------------------------------------------------------ AI usage events */
 
 /**
- * Usage log for the AI amount-reading feature (Phase 10, D-105) — one row per file read,
- * organisation-scoped and cost-bearing, so usage can be seen per organisation once the feature
- * moves to a paid plan.
+ * ai_usage_events.feature — which AI feature made the call (D-106).
  *
- * Deliberately carries no filename, no amount and no document content: what was read and what
- * it said are not needed to answer "how much did this organisation use, and what did it cost",
- * and keeping them out keeps this table free of anything that would need redacting later.
+ * `monthly_summary` is declared now, before Phase 11 uses it: Postgres cannot add an enum value
+ * and use it in the same migration transaction, and Phase 11's migration needs to reference it in
+ * a check constraint.
  */
-export const amountReads = pgTable(
-  "amount_reads",
+export const aiUsageFeature = pgEnum("ai_usage_feature", ["amount_read", "monthly_summary"]);
+
+/**
+ * ai_usage_events.outcome. `found`/`none`/`failed` are amount reads (Phase 10); `success` and
+ * `rejected` (the figure check failed after a retry) are monthly summaries (Phase 11), declared now
+ * for the same reason as `monthly_summary` above. Which outcomes a feature may use is enforced by
+ * the table's check constraints.
+ */
+export const aiUsageOutcome = pgEnum("ai_usage_outcome", ["found", "none", "failed", "success", "rejected"]);
+
+/** ai_usage_events.document_source — amount reads only: a freshly-picked file, or one already
+ *  attached to the expense (Phase 10, D-105). */
+export const aiUsageDocumentSource = pgEnum("ai_usage_document_source", ["upload", "attached"]);
+
+/** ai_usage_events.document_kind — amount reads only: receipts and proofs are the only documents
+ *  ever read (Phase 10 §1). */
+export const aiUsageDocumentKind = pgEnum("ai_usage_document_kind", ["receipt", "proof"]);
+
+/**
+ * One usage log for every AI call (D-106) — one row per amount read (Phase 10, D-105) and, from
+ * Phase 11, per monthly summary run. Organisation-scoped and cost-bearing, so AI usage and cost
+ * can be seen per organisation in one place once the features move to a paid plan.
+ *
+ * Deliberately carries no filename, no amount and no document or summary content: none of that is
+ * needed to answer "how much did this organisation use, and what did it cost", and keeping it out
+ * keeps this table free of anything that would need redacting later.
+ *
+ * Feature-specific columns are nullable, with a check constraint per feature saying which must be
+ * present. Phase 11 adds its own columns (funding source, month, trigger) and constraint.
+ */
+export const aiUsageEvents = pgTable(
+  "ai_usage_events",
   {
     id: id(),
     orgId: uuid("org_id")
@@ -1161,19 +1179,30 @@ export const amountReads = pgTable(
       .references(() => organizations.id, { onDelete: "cascade" }),
     /** Null when the acting user's account has since been removed. */
     userId: uuid("user_id").references(() => users.id, { onDelete: "set null" }),
-    source: amountReadSource().notNull(),
-    documentKind: amountReadDocumentKind("document_kind").notNull(),
-    outcome: amountReadOutcome().notNull(),
-    /** `OPENAI_READ_MODEL` at the time of this read — a server setting, not written into the
-     *  code, so a later model switch doesn't need a migration to keep old rows honest. */
+    feature: aiUsageFeature().notNull(),
+    outcome: aiUsageOutcome().notNull(),
+    /** The model setting at the time of the call — a server setting, not written into the code,
+     *  so a later model switch doesn't need a migration to keep old rows honest. */
     model: text().notNull(),
     inputTokens: integer("input_tokens"),
     outputTokens: integer("output_tokens"),
     /** From `costMicroUsd` — null when either token count or either price setting is missing. */
     costMicroUsd: integer("cost_micro_usd"),
+    /** Amount reads only. */
+    documentSource: aiUsageDocumentSource("document_source"),
+    /** Amount reads only. */
+    documentKind: aiUsageDocumentKind("document_kind"),
     createdAt: createdAt(),
   },
-  (t) => [index("amount_reads_org_idx").on(t.orgId, t.createdAt)],
+  (t) => [
+    index("ai_usage_events_org_idx").on(t.orgId, t.createdAt),
+    // An amount read always records what kind of document it read and where it came from, and
+    // only has amount-read outcomes. Phase 11 adds the equivalent constraint for summaries.
+    check(
+      "ai_usage_events_amount_read_ck",
+      sql`${t.feature} <> 'amount_read' OR (${t.documentSource} IS NOT NULL AND ${t.documentKind} IS NOT NULL AND ${t.outcome} IN ('found', 'none', 'failed'))`,
+    ),
+  ],
 );
 
 /* -------------------------------------------------------------------- types */
@@ -1201,7 +1230,7 @@ export type GeneratedArtifact = typeof generatedArtifacts.$inferSelect;
 export type UserTourProgress = typeof userTourProgress.$inferSelect;
 export type MonthSnapshotRow = typeof monthSnapshots.$inferSelect;
 export type MonthSnapshotTotals = typeof monthSnapshotTotals.$inferSelect;
-export type AmountRead = typeof amountReads.$inferSelect;
+export type AiUsageEvent = typeof aiUsageEvents.$inferSelect;
 
 export type DocumentKind = (typeof documentKind.enumValues)[number];
 export type DocumentStatus = (typeof documentStatus.enumValues)[number];
@@ -1214,6 +1243,7 @@ export type ExpenseAuditActionType = (typeof expenseAuditAction.enumValues)[numb
 export type OrgPlan = (typeof orgPlan.enumValues)[number];
 export type SubscriptionStatus = (typeof subscriptionStatus.enumValues)[number];
 export type OrgAccountEventAction = (typeof orgAccountEventAction.enumValues)[number];
-export type AmountReadSource = (typeof amountReadSource.enumValues)[number];
-export type AmountReadDocumentKind = (typeof amountReadDocumentKind.enumValues)[number];
-export type AmountReadOutcome = (typeof amountReadOutcome.enumValues)[number];
+export type AiUsageFeature = (typeof aiUsageFeature.enumValues)[number];
+export type AiUsageOutcome = (typeof aiUsageOutcome.enumValues)[number];
+export type AiUsageDocumentSource = (typeof aiUsageDocumentSource.enumValues)[number];
+export type AiUsageDocumentKind = (typeof aiUsageDocumentKind.enumValues)[number];

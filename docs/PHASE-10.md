@@ -99,11 +99,14 @@ only decide what to render.
 ### 3.2 Data (one migration)
 
 - `organizations.read_amounts_enabled boolean not null default true`.
-- New table `amount_reads`: `id`, `org_id` (fk cascade), `user_id` (fk set null),
-  `source` enum-ish text (`upload` | `attached`), `document_kind` (`receipt` | `proof`),
-  `outcome` (`found` | `none` | `failed`), `model` text, `input_tokens` int null,
-  `output_tokens` int null, `cost_micro_usd` int null, `created_at`. Index on
-  `(org_id, created_at)`. **No file names, no amounts, no document content** — nothing PII.
+- New table `ai_usage_events` (planned as `amount_reads`; renamed before either AI feature
+  shipped, D-106, so Phase 11's monthly summaries log to the same table): `id`, `org_id` (fk
+  cascade), `user_id` (fk set null), `feature` (`amount_read` here), `outcome` (`found` | `none` |
+  `failed` for amount reads), `model` text, `input_tokens` int null, `output_tokens` int null,
+  `cost_micro_usd` int null, `document_source` (`upload` | `attached`), `document_kind`
+  (`receipt` | `proof`), `created_at`. A check constraint requires both document columns and an
+  amount-read outcome on every amount-read row. Index on `(org_id, created_at)`. **No file names,
+  no amounts, no document content** — nothing PII.
 
 ### 3.3 Reading service — `src/services/openai/read-amounts.ts`
 
@@ -133,7 +136,7 @@ then `canReadAmounts` from the DB (403 when off). Two inputs:
   receipt or proof, expense not trashed; read bytes from the storage driver.
 
 Returns `{ ok: true, data: { found, subtotalCents, taxCents, feesCents, totalCents } }` or
-`{ ok: false, error }`. Writes one `amount_reads` row either way (except auth/origin/rate
+`{ ok: false, error }`. Writes one `ai_usage_events` row either way (except auth/origin/rate
 failures).
 
 ### 3.5 Pure aggregation — `src/domain/amount-suggestion.ts` (unit-tested)
