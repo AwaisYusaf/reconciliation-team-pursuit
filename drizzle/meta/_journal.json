@@ -204,6 +204,13 @@
       "when": 1789633454977,
       "tag": "0028_jittery_white_queen",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1789634937007,
+      "tag": "0029_majestic_kid_colt",
+      "breakpoints": true
     }
   ]
 }

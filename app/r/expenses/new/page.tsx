@@ -6,7 +6,7 @@ import { TourGuide } from "@/src/components/ui/tour";
 import { loadExpenseAmounts, loadLineItemBudgets } from "@/src/db/queries";
 import { allLineItemStats } from "@/src/domain/budget-math";
 import { monthLabel, monthWindow, todayIso } from "@/src/domain/dates";
-import { readAmountsAllowedForOrg } from "@/src/modules/amount-reading/access";
+import { readAmountsAllowedForOrg } from "@/src/modules/ai/access";
 import { ExpenseForm } from "@/src/modules/expenses/expense-form";
 import { loadExpenseFormOptions } from "@/src/modules/expenses/queries";
 import { loadSourceContext } from "@/src/modules/funding-sources/queries";

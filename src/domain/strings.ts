@@ -600,3 +600,16 @@ function fitSourceName(sourceName: string | null | undefined, otherParts: readon
   const wholeWords = lastSpace > budget * 0.6 ? cut.slice(0, lastSpace) : cut;
   return wholeWords.trim();
 }
+
+/**
+ * Monthly summary section headings, in order (Phase 11, Appendix A §4). The one place this list
+ * exists: `checkSummaryStructure` (src/domain/summary-markdown.ts) compares against it, and the
+ * prompt and Word builder must read it from here too.
+ */
+export const SUMMARY_SECTION_TITLES = [
+  "Overview",
+  "Spending by line item",
+  "Budget position",
+  "Changes from last month",
+  "Items to note",
+] as const;

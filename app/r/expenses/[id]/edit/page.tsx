@@ -9,7 +9,7 @@ import { monthStatuses } from "@/src/db/schema";
 import { allLineItemStats } from "@/src/domain/budget-math";
 import { formatDateUS, todayIso } from "@/src/domain/dates";
 import { reimbursableCents } from "@/src/domain/money";
-import { readAmountsAllowedForOrg } from "@/src/modules/amount-reading/access";
+import { readAmountsAllowedForOrg } from "@/src/modules/ai/access";
 import { ExpenseForm } from "@/src/modules/expenses/expense-form";
 import { loadExpense, loadExpenseFormOptions } from "@/src/modules/expenses/queries";
 import { loadSourceContext } from "@/src/modules/funding-sources/queries";

@@ -319,34 +319,63 @@ of the org, including staff added later. "Show the app guide again" in Settings 
 user's own rows (`resetToursAction`), which re-arms all nine tours on next visit; the header's
 (i) button (`replayTourAction`, D-95) does the same for just the current screen's tour.
 
-### ai_usage_events (Phase 10, D-105, D-106)
-One usage log for every AI call. Phase 10 writes one row per amount read; Phase 11 will write one
-row per monthly summary run and add its own columns and constraint.
+### ai_usage_events (Phase 10, D-105, D-106; Phase 11, D-107)
+One usage log for every AI call. Phase 10 writes one row per amount read; Phase 11 writes one row
+per monthly summary run, carrying its own columns and constraint.
 
 | Field | Type | Notes |
 |---|---|---|
 | id | uuid PK | |
 | org_id | uuid FK | cascade delete with organization |
 | user_id | uuid FK null | **set null** when the acting user's account is removed |
-| feature | ai_usage_feature enum | `amount_read` \| `monthly_summary` (the second is declared ahead of Phase 11 — see D-106) |
-| outcome | ai_usage_outcome enum | amount reads: `found` \| `none` \| `failed`; monthly summaries (Phase 11): `success` \| `rejected` \| `failed` |
-| model | text | the model setting at the time of the call (`OPENAI_READ_MODEL` for amount reads) |
+| feature | ai_usage_feature enum | `amount_read` \| `monthly_summary` |
+| outcome | ai_usage_outcome enum | amount reads: `found` \| `none` \| `failed`; monthly summaries: `success` \| `rejected` \| `failed` |
+| model | text | the model setting at the time of the call (`OPENAI_READ_MODEL` for amount reads, `OPENAI_SUMMARY_MODEL` for summaries) |
 | input_tokens | integer null | From the OpenAI response's `usage.input_tokens`; null when not numeric |
 | output_tokens | integer null | Same, `usage.output_tokens` |
 | cost_micro_usd | integer null | From `costMicroUsd` — null when either token count or either price env setting is missing |
 | document_source | ai_usage_document_source enum null | amount reads only: `upload` (a freshly-picked file) \| `attached` (already on the expense) |
 | document_kind | ai_usage_document_kind enum null | amount reads only: `receipt` \| `proof` — supporting documents are never read |
+| funding_source_id | uuid FK null | monthly summaries only; **set null** when the funding source is deleted |
+| month | char(7) null | monthly summaries only |
+| trigger | summary_trigger enum null | monthly summaries only: `first` (Write draft summary) \| `again` (Write again) |
 | created_at | timestamptz | |
 
 Index `(org_id, created_at)`. Check `ai_usage_events_amount_read_ck`: a row with
 `feature = 'amount_read'` must have `document_source` and `document_kind`, and an amount-read
-outcome. Append-only, one row per call whatever the outcome — the usage log for features billed
-per organization once they move off the plan gate. Deliberately carries no filename, amount,
-document or summary content: nothing here ever needs redacting.
+outcome. Check `ai_usage_events_monthly_summary_ck`: a row with `feature = 'monthly_summary'`
+must have `funding_source_id`, `month` and `trigger`, and a summary outcome
+(`success`/`rejected`/`failed`). Append-only, one row per call whatever the outcome — the usage
+log for features billed per organization once they move off the plan gate. Deliberately carries
+no filename, amount, document or summary content: nothing here ever needs redacting.
+
+### monthly_summaries (Phase 11, D-107)
+One AI-drafted summary per funding source per month, following the header the same way the
+packet does. Write again replaces `content_markdown`, `expenses_fingerprint`, `written_*` and
+`model` in place and clears `edited_*` — older drafts are not kept (out of scope).
+
+| Field | Type | Notes |
+|---|---|---|
+| id | uuid PK | |
+| org_id | uuid FK | cascade delete with organization |
+| funding_source_id | uuid | composite FK `(funding_source_id, org_id) → funding_sources(id, org_id)`, **no action** — funding sources are never deleted, so only the org cascade above ever removes a summary (D-93 2.3) |
+| month | char(7) | check `month ~ '^\d{4}-(0[1-9]\|1[0-2])$'`; `isValidMonthKey` in app too |
+| content_markdown | text | as typed by the user, never rewritten by the app (P6); check `char_length(content_markdown) <= 60000` |
+| version | integer, default 1 | optimistic concurrency (P10) — every save and every Write again sends the version it started from; +1 on each |
+| expenses_fingerprint | char(64) | sha256 hex of the canonical JSON of the month's live expenses at write time (P7); recomputed on load to show the changed-records notice; editing never touches it, only Write again does |
+| written_at | timestamptz | "Draft written …" |
+| written_by | uuid FK null | set null when the writing account is removed |
+| model | text | the model of the current draft (`OPENAI_SUMMARY_MODEL` at write time) |
+| edited_at | timestamptz null | null until the first save after a write |
+| edited_by | uuid FK null | set null when the editing account is removed |
+| created_at / updated_at | timestamptz | |
+
+Unique `(org_id, funding_source_id, month)` — one summary per source per month; this index also
+serves the saved-months list (ordered by month desc), so there is no separate `written_at` index.
 
 ## Relationships summary
 
-organizations 1—1 contract_settings (deprecated) · 1—n users, payment_sources, supporting_doc_types, funding_sources, line_items, expenses, month_documents, month_statuses, month_lock_events, vendor_defaults, recurring_items, generated_artifacts, ai_usage_events (cascade delete). funding_sources 1—n line_items, expenses, month_documents, month_statuses, month_lock_events, generated_artifacts. expenses 1—n expense_documents. line_items 1—n expenses (restrict), recurring_items (cascade after confirm), vendor_defaults (set null). users 1—n user_tour_progress (cascade delete), month_lock_events (set null on delete), ai_usage_events (set null on delete).
+organizations 1—1 contract_settings (deprecated) · 1—n users, payment_sources, supporting_doc_types, funding_sources, line_items, expenses, month_documents, month_statuses, month_lock_events, vendor_defaults, recurring_items, generated_artifacts, ai_usage_events, monthly_summaries (cascade delete). funding_sources 1—n line_items, expenses, month_documents, month_statuses, month_lock_events, generated_artifacts, monthly_summaries (no action; funding sources are never deleted), ai_usage_events (set null on delete). expenses 1—n expense_documents. line_items 1—n expenses (restrict), recurring_items (cascade after confirm), vendor_defaults (set null). users 1—n user_tour_progress (cascade delete), month_lock_events (set null on delete), ai_usage_events (set null on delete), monthly_summaries as written_by/edited_by (set null on delete).
 
 ## S3 layout (private bucket)
 

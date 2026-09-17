@@ -1,6 +1,6 @@
 # Phase 11 — Monthly summary (AI draft)
 
-Status: **Planned, not started** (2026-09-17). Builds on Phase 10 (`implementation/ai-receipt-reading`,
+Status: **Phase 1 built** (2026-09-17). Builds on Phase 10 (`implementation/ai-receipt-reading`,
 not yet merged): branch from it, or rebase once it merges. The product spec is Appendix A, copied
 word for word. The team changed parts of it while planning (a screen of its own instead of a
 section, a plain Markdown editor, Word **and** PDF); §2 records every one of those changes with
@@ -93,7 +93,7 @@ works on locked months.
 |---|---|---|
 | id | uuid pk | |
 | org_id | uuid not null, fk organizations cascade | |
-| funding_source_id | uuid not null | composite fk `(funding_source_id, org_id)` → `funding_sources(id, org_id)` cascade, like other source-scoped tables |
+| funding_source_id | uuid not null | composite fk `(funding_source_id, org_id)` → `funding_sources(id, org_id)`, no action on delete, like other source-scoped tables (sources are archived, never deleted, D-93; the org's own cascade removes summaries) |
 | month | char(7) not null | check `month ~ '^\d{4}-(0[1-9]\|1[0-2])$'`; `isValidMonthKey` in app too |
 | content_markdown | text not null | as typed (P6); check `char_length(content_markdown) <= 60000` |
 | version | integer not null default 1 | P10; +1 on every save and every write |
@@ -105,8 +105,9 @@ works on locked months.
 | edited_by | uuid null, fk users set null | |
 | created_at / updated_at | timestamptz | |
 
-Unique `(org_id, funding_source_id, month)`; index `(org_id, funding_source_id, written_at desc)`
-for the saved-months list. Write again **replaces** content, fingerprint, `written_*` and `model`,
+Unique `(org_id, funding_source_id, month)`, which also serves the saved-months list: that list
+is ordered by `month desc` (calendar month, newest first), which Postgres reads backwards off this
+index, so no second index is needed. Write again **replaces** content, fingerprint, `written_*` and `model`,
 and clears `edited_*` (Appendix A: keeping older versions is out of scope).
 
 ### `ai_usage_events` additions (P12)
@@ -302,6 +303,44 @@ Access split (P1) into `src/modules/ai/access.ts`, Phase 10 imports updated. Mig
 `monthly_summaries` + the `ai_usage_events` additions. `buildMonthFacts`, `summary-verifier`,
 `summary-markdown` parser, fingerprint.
 Checks: U-1..U-13, U-18..U-20; Phase 10 suite green; db-migration-reviewer pass.
+
+**Results (2026-09-17).**
+- Built: `src/modules/ai/access.ts` (moved from `amount-reading`; `aiPlanAllowed`,
+  `canUseSummaries`, `canWriteSummaries`, `summariesAccessForOrg`; receipt checks unchanged),
+  `src/domain/monthly-summary-facts.ts`, `src/domain/summary-verifier.ts`,
+  `src/domain/summary-markdown.ts`, `src/modules/monthly-summary/queries.ts` (`loadMonthFacts`),
+  `src/modules/monthly-summary/fingerprint.ts`. Migration `0029_majestic_kid_colt`:
+  `monthly_summaries`, `summary_trigger` enum, `ai_usage_events` summary columns and
+  `ai_usage_events_monthly_summary_ck`. Decision D-107.
+- Tests: 131 new (facts 32, verifier 14, Markdown 24, fingerprint 20, access 25 in total,
+  `loadMonthFacts` integration 16 — figures equal the Dashboard's `loadSourceBudget` for a seeded
+  month with a refund, excluded tax, a performance, a prior-month expense and a trashed expense).
+  Full suite 1323 passed, 20 skipped; one pre-existing failure, `packet-trace` (local `pdftotext`
+  lacks `-bbox-layout`). Typecheck and lint clean.
+- Mutation checks, each caught and restored: P18 thresholds `>=` → `>`; the non-uuid source guard
+  removed; the trashed-expense filter removed; `<` escaping removed from `toHtml`; the receipt
+  switch added to `canWriteSummaries`; the P16 cut boundary off by one.
+- Migration review: approved with notes. No blocking issues. The new FK and CHECK are added
+  without `NOT VALID`, which is safe only because `ai_usage_events` is new on this branch (don't
+  copy the pattern onto a busy table). No down script yet; the reviewer's draft is below, **not
+  yet rehearsed**. The saved-months index was dropped in favour of the unique index (§3 updated).
+- Deviation: none from the design; the §3 wording on the source FK and the index was corrected
+  to match what was built.
+- Not verified: the down script; anything from Phase 2 onward.
+
+Down script for `0029` (reviewer's draft, untested — rehearse `up` → `down` → schema diff before
+relying on it):
+
+```sql
+ALTER TABLE "ai_usage_events" DROP CONSTRAINT "ai_usage_events_monthly_summary_ck";
+ALTER TABLE "ai_usage_events" DROP CONSTRAINT "ai_usage_events_funding_source_id_funding_sources_id_fk";
+ALTER TABLE "ai_usage_events" DROP COLUMN "trigger";
+ALTER TABLE "ai_usage_events" DROP COLUMN "month";
+ALTER TABLE "ai_usage_events" DROP COLUMN "funding_source_id";
+DROP INDEX "monthly_summaries_source_month_uq";
+DROP TABLE "monthly_summaries";
+DROP TYPE "public"."summary_trigger";
+```
 
 ### Phase 2 — Writing
 `write-summary.ts` with the fixed prompt, response parser, `writeSummaryAction`, single-flight,

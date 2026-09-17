@@ -5,7 +5,7 @@ import { db } from "@/src/db";
 import { aiUsageEvents, expenseDocuments, expenses, type AiUsageDocumentKind } from "@/src/db/schema";
 import { isUuid } from "@/src/lib/ids";
 import { sameOrigin } from "@/src/lib/same-origin";
-import { readAmountsAllowedForOrg } from "@/src/modules/amount-reading/access";
+import { readAmountsAllowedForOrg } from "@/src/modules/ai/access";
 import { consume } from "@/src/services/rate-limit";
 import { getSession } from "@/src/services/auth/session";
 import { costMicroUsd, readAmounts } from "@/src/services/openai/read-amounts";

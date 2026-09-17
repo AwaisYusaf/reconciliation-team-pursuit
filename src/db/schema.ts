@@ -170,7 +170,7 @@ export const organizations = pgTable("organizations", {
   suspendedAt: timestamp("suspended_at", { withTimezone: true }),
   /** Settings → Organization switch (Phase 10, D-105). On by default; admin-only to change.
    *  Combined with the plan and the server's OpenAI configuration in
-   *  `src/modules/amount-reading/access.ts#canReadAmounts` — this column alone does not decide
+   *  `src/modules/ai/access.ts#canReadAmounts` — this column alone does not decide
    *  whether the feature is available. */
   readAmountsEnabled: boolean("read_amounts_enabled").notNull().default(true),
   createdAt: createdAt(),
@@ -1158,17 +1158,21 @@ export const aiUsageDocumentSource = pgEnum("ai_usage_document_source", ["upload
  *  ever read (Phase 10 §1). */
 export const aiUsageDocumentKind = pgEnum("ai_usage_document_kind", ["receipt", "proof"]);
 
+/** ai_usage_events.trigger — monthly summaries only: the first draft, or a Write again
+ *  (Phase 11, D-107, P12). */
+export const summaryTrigger = pgEnum("summary_trigger", ["first", "again"]);
+
 /**
- * One usage log for every AI call (D-106) — one row per amount read (Phase 10, D-105) and, from
- * Phase 11, per monthly summary run. Organisation-scoped and cost-bearing, so AI usage and cost
- * can be seen per organisation in one place once the features move to a paid plan.
+ * One usage log for every AI call (D-106) — one row per amount read (Phase 10, D-105) and one row
+ * per monthly summary run (Phase 11, D-107). Organisation-scoped and cost-bearing, so AI usage
+ * and cost can be seen per organisation in one place once the features move to a paid plan.
  *
  * Deliberately carries no filename, no amount and no document or summary content: none of that is
  * needed to answer "how much did this organisation use, and what did it cost", and keeping it out
  * keeps this table free of anything that would need redacting later.
  *
  * Feature-specific columns are nullable, with a check constraint per feature saying which must be
- * present. Phase 11 adds its own columns (funding source, month, trigger) and constraint.
+ * present.
  */
 export const aiUsageEvents = pgTable(
   "ai_usage_events",
@@ -1192,16 +1196,87 @@ export const aiUsageEvents = pgTable(
     documentSource: aiUsageDocumentSource("document_source"),
     /** Amount reads only. */
     documentKind: aiUsageDocumentKind("document_kind"),
+    /** Monthly summaries only. Single-column FK, nullable, set null on delete. Funding sources are
+     *  archived rather than deleted (D-93), so this only matters defensively: a usage row should
+     *  never block or be removed by a source's removal. */
+    fundingSourceId: uuid("funding_source_id").references(() => fundingSources.id, {
+      onDelete: "set null",
+    }),
+    /** Monthly summaries only. */
+    month: char({ length: 7 }),
+    /** Monthly summaries only: the first draft, or a Write again. */
+    trigger: summaryTrigger(),
     createdAt: createdAt(),
   },
   (t) => [
     index("ai_usage_events_org_idx").on(t.orgId, t.createdAt),
     // An amount read always records what kind of document it read and where it came from, and
-    // only has amount-read outcomes. Phase 11 adds the equivalent constraint for summaries.
+    // only has amount-read outcomes.
     check(
       "ai_usage_events_amount_read_ck",
       sql`${t.feature} <> 'amount_read' OR (${t.documentSource} IS NOT NULL AND ${t.documentKind} IS NOT NULL AND ${t.outcome} IN ('found', 'none', 'failed'))`,
     ),
+    // A monthly summary run always records the source, month and trigger it ran for, and only
+    // has summary outcomes (Phase 11, D-107).
+    check(
+      "ai_usage_events_monthly_summary_ck",
+      sql`${t.feature} <> 'monthly_summary' OR (${t.fundingSourceId} IS NOT NULL AND ${t.month} IS NOT NULL AND ${t.trigger} IS NOT NULL AND ${t.outcome} IN ('success', 'rejected', 'failed'))`,
+    ),
+  ],
+);
+
+/* ----------------------------------------------------------- monthly summaries */
+
+/**
+ * One AI-drafted monthly summary per funding source per month (Phase 11, D-107).
+ *
+ * `version` and `expensesFingerprint` are the two fields everything else in the module builds
+ * on: `version` drives optimistic concurrency (P10) — every save sends the version it started
+ * from, and a mismatch is a conflict rather than a silent overwrite — while
+ * `expensesFingerprint` is a sha256 of the month's live expenses at write time (P7), recomputed
+ * on load to show the "records changed since this was written" notice. Editing the Markdown
+ * never touches the fingerprint; only Write again does, because only Write again re-reads the
+ * records. Write again replaces `content_markdown`, `expenses_fingerprint`, `written_*` and
+ * `model` in place and clears `edited_*` — older drafts are not kept (out of scope).
+ */
+export const monthlySummaries = pgTable(
+  "monthly_summaries",
+  {
+    id: id(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    fundingSourceId: uuid("funding_source_id").notNull(),
+    month: char({ length: 7 }).notNull(),
+    /** As typed by the user — never rewritten by the app (P6). */
+    contentMarkdown: text("content_markdown").notNull(),
+    /** Optimistic concurrency (P10): +1 on every save and every write. */
+    version: integer().notNull().default(1),
+    /** sha256 hex of the month's live expenses at write time (P7). */
+    expensesFingerprint: char("expenses_fingerprint", { length: 64 }).notNull(),
+    writtenAt: timestamp("written_at", { withTimezone: true }).notNull(),
+    /** Null when the writing account has since been removed. */
+    writtenBy: uuid("written_by").references(() => users.id, { onDelete: "set null" }),
+    /** The model setting at the time of the write — same reasoning as ai_usage_events.model. */
+    model: text().notNull(),
+    /** Null until the first save after a write. */
+    editedAt: timestamp("edited_at", { withTimezone: true }),
+    editedBy: uuid("edited_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    // One summary per funding source per month; also serves the saved-months list (newest
+    // first), so no separate written_at index is needed.
+    uniqueIndex("monthly_summaries_source_month_uq").on(t.orgId, t.fundingSourceId, t.month),
+    // Same pattern as every other source-scoped table (D-93 2.3): NO ACTION, because funding
+    // sources are never deleted — only the org's cascade above ever removes a summary.
+    foreignKey({
+      columns: [t.fundingSourceId, t.orgId],
+      foreignColumns: [fundingSources.id, fundingSources.orgId],
+    }),
+    check("monthly_summaries_month_ck", sql`${t.month} ~ '^\\d{4}-(0[1-9]|1[0-2])$'`),
+    check("monthly_summaries_content_length_ck", sql`char_length(${t.contentMarkdown}) <= 60000`),
   ],
 );
 
@@ -1231,6 +1306,7 @@ export type UserTourProgress = typeof userTourProgress.$inferSelect;
 export type MonthSnapshotRow = typeof monthSnapshots.$inferSelect;
 export type MonthSnapshotTotals = typeof monthSnapshotTotals.$inferSelect;
 export type AiUsageEvent = typeof aiUsageEvents.$inferSelect;
+export type MonthlySummary = typeof monthlySummaries.$inferSelect;
 
 export type DocumentKind = (typeof documentKind.enumValues)[number];
 export type DocumentStatus = (typeof documentStatus.enumValues)[number];
@@ -1247,3 +1323,4 @@ export type AiUsageFeature = (typeof aiUsageFeature.enumValues)[number];
 export type AiUsageOutcome = (typeof aiUsageOutcome.enumValues)[number];
 export type AiUsageDocumentSource = (typeof aiUsageDocumentSource.enumValues)[number];
 export type AiUsageDocumentKind = (typeof aiUsageDocumentKind.enumValues)[number];
+export type SummaryTrigger = (typeof summaryTrigger.enumValues)[number];
