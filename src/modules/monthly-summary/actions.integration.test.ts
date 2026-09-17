@@ -39,7 +39,8 @@ let monthSeq = 0;
 function freshMonth(): string {
   monthSeq += 1;
   const mm = String((monthSeq % 12) + 1).padStart(2, "0");
-  return `209${6 + Math.floor(monthSeq / 12)}-${mm}`;
+  const year = 2096 + Math.floor(monthSeq / 12);
+  return `${year}-${mm}`;
 }
 
 describe.skipIf(!hasDatabase)("monthly-summary actions (integration, Phase 11)", async () => {
@@ -64,7 +65,7 @@ describe.skipIf(!hasDatabase)("monthly-summary actions (integration, Phase 11)",
   const { actionSession } = await import("@/src/lib/action-session");
   const { writeSummary } = await import("@/src/services/openai/write-summary");
   const { writeSummaryAction, saveSummaryAction } = await import("./actions");
-  const { loadMonthlySummaryScreen, loadMonthFacts } = await import("./queries");
+  const { loadMonthlySummaryScreen, loadMonthFacts, loadSummaryCard } = await import("./queries");
   const {
     createExpenseAction,
     deleteExpenseAction,
@@ -956,7 +957,7 @@ describe.skipIf(!hasDatabase)("monthly-summary actions (integration, Phase 11)",
     expect(save).toEqual({ ok: false, error: UI.summaryPlanNote });
 
     const screen = await loadMonthlySummaryScreen(org.orgId, org.fundingSourceId, org.month);
-    expect(screen).toEqual({ access: { use: false, write: false }, summary: null, stale: false, liveExpenseCount: 0, savedMonths: [] });
+    expect(screen).toEqual({ access: { use: false, write: false }, summary: null, stale: false, liveExpenseCount: 0, savedMonths: [], writing: false });
 
     expect(await summaryRow(org.orgId, org.fundingSourceId, org.month)).not.toBeNull();
   });
@@ -1090,6 +1091,111 @@ describe.skipIf(!hasDatabase)("monthly-summary actions (integration, Phase 11)",
       await db.update(expenses).set({ deletedAt: new Date() }).where(eq(expenses.id, org.expenseId));
       const screen = await loadMonthlySummaryScreen(org.orgId, org.fundingSourceId, org.month);
       expect(screen!.liveExpenseCount).toBe(0);
+    });
+
+    it("I-3: server not configured (no key/model) on the AI plan → access.write=false while access.use stays true and an existing summary still loads", async () => {
+      const org = await makeOrgWithExpense(freshMonth());
+      asSession(org.orgId, org.userId);
+      const write = await writeSummaryAction({ sourceId: org.fundingSourceId, month: org.month, expectedVersion: null });
+      if (!write.ok) throw new Error("unreachable");
+
+      vi.unstubAllEnvs();
+      vi.stubEnv("OPENAI_API_KEY", "");
+      vi.stubEnv("OPENAI_SUMMARY_MODEL", "gpt-5.6-terra");
+
+      const screen = await loadMonthlySummaryScreen(org.orgId, org.fundingSourceId, org.month);
+      expect(screen!.access).toEqual({ use: true, write: false });
+      expect(screen!.summary!.contentMarkdown).toBe(write.data.contentMarkdown);
+    });
+
+    it("`writing` is true while a write is in flight (this container) and false once it finishes", async () => {
+      const org = await makeOrgWithExpense(freshMonth());
+      asSession(org.orgId, org.userId);
+
+      let resolveDeferred!: (value: Awaited<ReturnType<typeof writeSummary>>) => void;
+      const deferred = new Promise<Awaited<ReturnType<typeof writeSummary>>>((resolve) => {
+        resolveDeferred = resolve;
+      });
+      writeSummaryMock.mockImplementation(() => deferred);
+
+      const inFlight = writeSummaryAction({ sourceId: org.fundingSourceId, month: org.month, expectedVersion: null });
+      await new Promise((resolve) => setTimeout(resolve, 20)); // let it register the in-flight lock
+      const whileWriting = await loadMonthlySummaryScreen(org.orgId, org.fundingSourceId, org.month);
+      expect(whileWriting!.writing).toBe(true);
+
+      resolveDeferred({ outcome: "written", markdown: goodDraft(), inputTokens: 1, outputTokens: 1 });
+      const result = await inFlight;
+      expect(result.ok).toBe(true);
+
+      const afterWriting = await loadMonthlySummaryScreen(org.orgId, org.fundingSourceId, org.month);
+      expect(afterWriting!.writing).toBe(false);
+    });
+  });
+
+  describe("I-34: a saved draft with no five headings is stored exactly as typed", () => {
+    it("succeeds even without the model's required section structure — the structure check only applies to the model's own draft, not a human edit", async () => {
+      const org = await makeOrgWithExpense(freshMonth());
+      asSession(org.orgId, org.userId);
+      const write = await writeSummaryAction({ sourceId: org.fundingSourceId, month: org.month, expectedVersion: null });
+      if (!write.ok) throw new Error("unreachable");
+
+      const markdown = "just some free-form notes, no headings at all";
+      const result = await saveSummaryAction({
+        sourceId: org.fundingSourceId,
+        month: org.month,
+        markdown,
+        expectedVersion: write.data.version,
+      });
+      expect(result.ok).toBe(true);
+
+      const row = await summaryRow(org.orgId, org.fundingSourceId, org.month);
+      expect(row!.contentMarkdown).toBe(markdown);
+    });
+  });
+
+  describe("loadSummaryCard", () => {
+    it("base plan → {use:false, writtenAt:null}, even with a summary row already in the database", async () => {
+      const org = await makeOrgWithExpense(freshMonth());
+      asSession(org.orgId, org.userId);
+      const write = await writeSummaryAction({ sourceId: org.fundingSourceId, month: org.month, expectedVersion: null });
+      if (!write.ok) throw new Error("unreachable");
+
+      await db.update(organizations).set({ plan: "reconciliation" }).where(eq(organizations.id, org.orgId));
+      const card = await loadSummaryCard(org.orgId, org.fundingSourceId, org.month);
+      expect(card).toEqual({ use: false, writtenAt: null });
+    });
+
+    it("AI plan, no summary for the month yet → use:true, writtenAt:null", async () => {
+      const org = await makeOrgWithExpense(freshMonth());
+      const card = await loadSummaryCard(org.orgId, org.fundingSourceId, org.month);
+      expect(card).toEqual({ use: true, writtenAt: null });
+    });
+
+    it("AI plan with a written summary → use:true, writtenAt matches the stored writtenAt", async () => {
+      const org = await makeOrgWithExpense(freshMonth());
+      asSession(org.orgId, org.userId);
+      const write = await writeSummaryAction({ sourceId: org.fundingSourceId, month: org.month, expectedVersion: null });
+      if (!write.ok) throw new Error("unreachable");
+
+      const card = await loadSummaryCard(org.orgId, org.fundingSourceId, org.month);
+      expect(card!.use).toBe(true);
+      expect(card!.writtenAt).not.toBeNull();
+      const row = await summaryRow(org.orgId, org.fundingSourceId, org.month);
+      expect(card!.writtenAt).toEqual(row!.writtenAt);
+    });
+
+    it("another org's source id → null", async () => {
+      const org = await makeOrgWithExpense(freshMonth());
+      const other = await createTestOrg({ name: `Summary card other org ${Date.now()}` });
+      createdOrgIds.push(other.orgId);
+      const card = await loadSummaryCard(other.orgId, org.fundingSourceId, org.month);
+      expect(card).toBeNull();
+    });
+
+    it("an invalid month key → null", async () => {
+      const org = await makeOrgWithExpense(freshMonth());
+      const card = await loadSummaryCard(org.orgId, org.fundingSourceId, "not-a-month");
+      expect(card).toBeNull();
     });
   });
 });

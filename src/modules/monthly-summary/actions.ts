@@ -22,6 +22,12 @@ import { actionSession } from "@/src/lib/action-session";
 import { summariesAccessForOrg } from "@/src/modules/ai/access";
 import { requireOwnedFundingSource } from "@/src/modules/funding-sources/queries";
 import { loadMonthFacts } from "@/src/modules/monthly-summary/queries";
+import {
+  beginSummaryWrite,
+  endSummaryWrite,
+  isSummaryWriting,
+  summaryWriteKey,
+} from "@/src/modules/monthly-summary/single-flight";
 import { costMicroUsd } from "@/src/services/openai/responses";
 import { retryFeedbackFor, writeSummary } from "@/src/services/openai/write-summary";
 import { consume } from "@/src/services/rate-limit";
@@ -31,14 +37,6 @@ import { consume } from "@/src/services/rate-limit";
 const GENERIC_REFUSAL = "Choose a funding source.";
 
 type Executor = Database | Parameters<Parameters<Database["transaction"]>[0]>[0];
-
-/**
- * P11: one run at a time per (org, source, month).
- *
- * ponytail: in-process, single container — same ceiling as `rate-limit.ts`. Upgrade to a
- * shared lock (e.g. a Postgres advisory lock) if this ever runs on more than one container.
- */
-const inFlight = new Set<string>();
 
 export type WriteSummaryActionData = {
   contentMarkdown: string;
@@ -74,9 +72,11 @@ export async function writeSummaryAction(
   if (!access.use) return fail(UI.summaryPlanNote);
   if (!access.write) return fail(UI.summaryWriteFailed);
 
-  const key = `${current.orgId}:${source.id}:${month}`;
-  if (inFlight.has(key)) return fail(UI.summaryAlreadyWriting(monthLabel(month)));
-  inFlight.add(key);
+  const key = summaryWriteKey(current.orgId, source.id, month);
+  if (isSummaryWriting(current.orgId, source.id, month)) {
+    return fail(UI.summaryAlreadyWriting(monthLabel(month)));
+  }
+  beginSummaryWrite(key);
 
   try {
     const limit = consume("summaryWrite", current.orgId);
@@ -115,7 +115,7 @@ export async function writeSummaryAction(
       return fail(UI.summaryWriteFailed);
     }
   } finally {
-    inFlight.delete(key);
+    endSummaryWrite(key);
   }
 }
 

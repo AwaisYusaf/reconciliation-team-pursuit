@@ -19,6 +19,7 @@ import { UI } from "@/src/domain/strings";
 import { packetContents } from "@/src/generation/packet-order";
 import { loadTrashedExpenses } from "@/src/modules/expenses/queries";
 import { loadSourceContext } from "@/src/modules/funding-sources/queries";
+import { loadSummaryCard } from "@/src/modules/monthly-summary/queries";
 import { loadLockedMonths, loadLockEvents, loadPacketReadiness } from "@/src/modules/packet/queries";
 import { PACKET_TOUR_STEPS } from "@/src/modules/tours/packet-tour";
 import { hasSeenTour } from "@/src/modules/tours/queries";
@@ -26,6 +27,7 @@ import { getSession } from "@/src/services/auth/session";
 
 import { LockHistory, MonthLockControls } from "./month-lock";
 import { MonthDocuments } from "./month-documents";
+import { MonthlySummaryCard } from "./monthly-summary-card";
 import { PacketDownloadButtons, type DeletedItem } from "./packet-download-buttons";
 
 export const metadata = { title: "Month-End Packet — Grant Expense Reconciliation" };
@@ -64,12 +66,13 @@ export default async function PacketPage() {
     );
   }
 
-  const [readiness, deletedInMonth, seenPacketTour, events, lockedMonths] = await Promise.all([
+  const [readiness, deletedInMonth, seenPacketTour, events, lockedMonths, summaryCard] = await Promise.all([
     loadPacketReadiness(session.orgId, fundingSourceId, month),
     loadTrashedExpenses(session.orgId, fundingSourceId, month),
     hasSeenTour(session.userId, "packet"),
     loadLockEvents(session.orgId, fundingSourceId, month),
     loadLockedMonths(session.orgId, fundingSourceId),
+    loadSummaryCard(session.orgId, fundingSourceId, month),
   ]);
 
   // Locked state comes from `month_statuses.locked_at`, not from the newest event (PR #16
@@ -270,6 +273,8 @@ export default async function PacketPage() {
           />
         </div>
       </div>
+
+      <MonthlySummaryCard card={summaryCard ?? { use: false, writtenAt: null }} monthLabel={label} />
     </div>
   );
 }

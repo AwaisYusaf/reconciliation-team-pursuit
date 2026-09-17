@@ -389,6 +389,60 @@ export const UI = {
   summaryTooLong: "This summary is longer than 60,000 characters. Shorten it to save.",
   /** `saveSummaryAction` — no row for this org/source/month at all. Wording to review. */
   summaryNotFound: (monthLabel: string) => `There is no summary for ${monthLabel} yet.`,
+
+  /* ---------------------------------------------------- Phase 11 build phase 3: the screen */
+
+  /** Screen and packet-card title (§7.5). Wording to review. */
+  summaryTitle: "Monthly summary",
+  /** Header on "All" (Appendix A §2, verbatim). */
+  summaryPickSource: "Pick a funding source to write its monthly summary.",
+  /** Before any summary exists (Appendix A §3, verbatim). */
+  summaryIntro: (monthLabel: string) =>
+    `Write a draft summary of ${monthLabel} from this month's expenses, descriptions and narratives. You can edit everything before using it.`,
+  /** The one generation button before a summary exists (Appendix A §3, verbatim). */
+  summaryWriteButton: "Write draft summary",
+  /** The one generation button once a summary exists (Appendix A §5, verbatim). */
+  summaryWriteAgainButton: "Write again",
+  /** While writing (Appendix A §3, verbatim). */
+  summaryWriting: "Writing your summary… this can take up to a minute.",
+  /** Meta line, first part (Appendix A §5, verbatim form). */
+  summaryMetaWritten: (date: string) => `Draft written ${date}`,
+  /** Meta line, second part — omitted (not appended) until the first save; the editor's name
+   *  is omitted, not the whole clause, when that account was deleted (I-30). */
+  summaryMetaEdited: (date: string, name: string | null) =>
+    name ? ` · Last edited ${date} by ${name}` : ` · Last edited ${date}`,
+  /** Reminder shown above the text box (Appendix A §5, verbatim). */
+  summaryAiReminder:
+    "This is a draft written by AI from your records. Check every figure and fill in anything in [brackets] before using it.",
+  /** Changed-records notice (P7, Appendix A §5, verbatim). */
+  summaryChangedNotice: (monthLabel: string) =>
+    `Expenses in ${monthLabel} have changed since this summary was written. Write again to include the changes, or edit the text yourself.`,
+  /** Copy button label (Appendix A §5, verbatim). */
+  summaryCopyText: "Copy text",
+  /** Write again confirm dialog (Appendix A §5, verbatim, split for `ConfirmButton`'s title/body). */
+  summaryWriteAgainTitle: "Replace this summary with a new draft?",
+  summaryWriteAgainBody: "Your edits will be lost.",
+  /** Packet card link to the screen (§7.5). Wording to review. */
+  summaryOpenLink: "Open monthly summary",
+  /** Packet card, no summary yet for this month (§7.5). Wording to review. */
+  summaryNoneForMonth: (monthLabel: string) => `No summary for ${monthLabel} yet`,
+  /** Saved-months list heading (§7.1). Wording to review. */
+  summarySavedHeading: "Saved summaries",
+  /** One saved-months row (§7.1). Wording to review. */
+  summarySavedRow: (monthLabel: string, date: string, edited: boolean) =>
+    `${monthLabel} · ${edited ? "Last edited" : "Draft written"} ${date}`,
+  /** Autosave/Save status (§7.2). Wording to review. */
+  summarySave: "Save",
+  summarySaving: "Saving…",
+  summarySaved: "Saved",
+  summarySaveFailed: "Couldn't save. Your text is still here.",
+  summaryRetry: "Retry",
+  /** Copy text outcomes (§7.3, Appendix A wording for the success case). */
+  summaryCopied: "Summary copied.",
+  summaryCopyRefused: "Couldn't copy. Select the text and copy it yourself.",
+  /** Visually-hidden label for the plain `<textarea>` (accessibility; no visible label in the
+   *  design — the reminder and title already say what it is). Wording to review. */
+  summaryTextareaLabel: "Monthly summary text",
 } as const;
 
 /**

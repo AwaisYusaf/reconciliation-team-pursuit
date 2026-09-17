@@ -22,6 +22,7 @@ import { summariesAccessForOrg } from "@/src/modules/ai/access";
 import { findFundingSource } from "@/src/modules/funding-sources/queries";
 
 import { expensesFingerprint } from "./fingerprint";
+import { isSummaryWriting } from "./single-flight";
 
 /**
  * The facts for one funding source's month, and the fingerprint of the expenses they were built
@@ -117,6 +118,10 @@ export type MonthlySummaryScreen = {
   stale: boolean;
   liveExpenseCount: number;
   savedMonths: Array<{ month: MonthKey; writtenAt: Date; editedAt: Date | null }>;
+  /** P11: a run for this org/source/month is in flight right now, in this container — read
+   *  from the single-flight set with the DB-resolved `source.id`, not the caller's raw id.
+   *  Always false on the base plan (P15: nothing here to be writing). */
+  writing: boolean;
 };
 
 const writers = alias(users, "monthly_summary_writers");
@@ -146,7 +151,7 @@ export async function loadMonthlySummaryScreen(
   // Base plan (P15): the note only. Data is kept and reappears on upgrade, but nothing is
   // loaded for a plan that can't see it.
   if (!access.use) {
-    return { access, summary: null, stale: false, liveExpenseCount: 0, savedMonths: [] };
+    return { access, summary: null, stale: false, liveExpenseCount: 0, savedMonths: [], writing: false };
   }
 
   const [row] = await db
@@ -203,5 +208,59 @@ export async function loadMonthlySummaryScreen(
     .where(and(eq(monthlySummaries.orgId, orgId), eq(monthlySummaries.fundingSourceId, sourceId)))
     .orderBy(desc(monthlySummaries.month));
 
-  return { access, summary, stale, liveExpenseCount, savedMonths };
+  return {
+    access,
+    summary,
+    stale,
+    liveExpenseCount,
+    savedMonths,
+    writing: isSummaryWriting(orgId, source.id, month),
+  };
+}
+
+/**
+ * The packet card's needs (§7): whether the plan can see summaries at all, and when the
+ * current month's summary was written — cheap, one `select` beyond the access check. `null`
+ * for an invalid month key or a source not owned by this organisation, same "not found"
+ * convention as every other entry point here.
+ */
+export async function loadSummaryCard(
+  orgId: string,
+  sourceId: string,
+  month: MonthKey,
+): Promise<{ use: boolean; writtenAt: Date | null } | null> {
+  if (!isValidMonthKey(month)) return null;
+
+  const source = await findFundingSource(orgId, sourceId);
+  if (!source) return null;
+
+  const access = await summariesAccessForOrg(orgId);
+  if (!access.use) return { use: false, writtenAt: null };
+
+  const [row] = await db
+    .select({ writtenAt: monthlySummaries.writtenAt })
+    .from(monthlySummaries)
+    .where(
+      and(
+        eq(monthlySummaries.orgId, orgId),
+        eq(monthlySummaries.fundingSourceId, sourceId),
+        eq(monthlySummaries.month, month),
+      ),
+    )
+    .limit(1);
+
+  return { use: true, writtenAt: row?.writtenAt ?? null };
+}
+
+/** The viewer's display name for the meta line (§6) — `userDisplay` needs the user's own
+ *  name/email, which the session doesn't carry (only `email`). Missing user (deleted mid
+ *  session) falls back to the session's email, same as `userDisplay` would once trimmed. */
+export async function loadViewerDisplay(userId: string, fallbackEmail: string): Promise<string> {
+  const [row] = await db
+    .select({ name: users.name, email: users.email })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+  if (!row) return fallbackEmail;
+  return userDisplay(row.name, row.email);
 }

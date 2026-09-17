@@ -1,6 +1,6 @@
 # Phase 11 — Monthly summary (AI draft)
 
-Status: **Phases 1–2 built** (2026-09-17). Builds on Phase 10 (`implementation/ai-receipt-reading`,
+Status: **Phases 1–3 built** (2026-09-17). Builds on Phase 10 (`implementation/ai-receipt-reading`,
 not yet merged): branch from it, or rebase once it merges. The product spec is Appendix A, copied
 word for word. The team changed parts of it while planning (a screen of its own instead of a
 section, a plain Markdown editor, Word **and** PDF); §2 records every one of those changes with
@@ -412,6 +412,106 @@ Screen states, saved-months list, text box, Save + autosave, status, meta line, 
 notice, Write again confirm, Copy text, packet card, Plus styling.
 Checks: U-23, U-24, I-3, I-5, I-9..I-16, I-23..I-30, I-34; browser B-1..B-12, B-14, B-15 at
 1280 / 768 / 375 px.
+
+**Results (2026-09-17).**
+- Built: `app/r/monthly-summary/page.tsx` (plan note → "All" pick-a-source → screen),
+  `summary-editor.tsx` (every §7.1 state; the one generation button; meta line; AI reminder;
+  changed-records notice; Markdown `<textarea>`; Save, status, Retry; Copy text; Write again
+  confirm), `use-autosave.ts` (thin hook: `useSyncExternalStore`, `visibilitychange` flush,
+  `beforeunload` warning, flush on unmount), `saved-summaries.tsx` (newest first, current month
+  highlighted, `setActiveMonthAction` then refresh; above the editor below `lg`, beside it on
+  desktop). Pure `src/modules/monthly-summary/autosave.ts` (the scheduler) and `copy.ts`
+  (`copySummary`). `src/modules/monthly-summary/single-flight.ts` (P11's set moved out of
+  `actions.ts`, unchanged). `queries.ts`: `writing` on `loadMonthlySummaryScreen`,
+  `loadSummaryCard`, `loadViewerDisplay`. `POST /api/monthly-summary/write`. Packet card
+  `app/r/packet/monthly-summary-card.tsx` (`data-tour="packet-monthly-summary"`, ready for
+  Phase 5). The `UI.summary*` screen strings.
+- Tests: 65 new. `autosave.test.ts` 26 (U-24: debounce restart at 2,999/3,000 ms, no save when
+  unchanged, single flight with one follow-up carrying the latest text and new version, Save
+  cancels the timer, conflict stops everything, failure and thrown save, Retry, visibility flush,
+  `settle` waits and holds saves, `release`, `reset`, no stuck "Saving…"), `copy.test.ts` 10
+  (both MIME parts, escaped HTML, `writeText` fallback, refusal), `screen.test.ts` 13 (source
+  reading: loader used, editor keyed by source and month, no `dangerouslySetInnerHTML`, no
+  download controls yet, card after the "All" return, route checks before calling the action,
+  the client writes through the route), `write-route.test.ts` 7 (401, 403, 413, 400,
+  pass-through), U-23 1, integration 8 (I-3 screen with the key missing, I-34, `writing` true
+  during a run and false after, `loadSummaryCard` x5). I-5, I-9..I-16, I-23, I-24, I-26..I-30
+  were already covered by Phase 2. The Phase 2 suite's `freshMonth()` helper produced a 5-digit
+  year after 48 calls; fixed (test code only). Full suite 1460 passed, 20 skipped; one
+  pre-existing failure, `packet-trace` (local `pdftotext` lacks `-bbox-layout`). Typecheck, lint
+  and `npm run build` clean.
+- Mutation checks, each caught and restored: debounce not restarting; single-flight check in the
+  scheduler; conflict stop; the hold in the save path; route `sameOrigin`; route session check;
+  `toHtml` escaping; `loadSummaryCard` ownership. **Not independently observable:** the hold
+  checks in `edit` and `flush`, since the save path's own check already blocks the save (kept as
+  defence in depth); settler release on the early return, which the hold makes unreachable today.
+- Found in review before testing and fixed: the editor wasn't keyed by source and month (the
+  scheduler, and so autosave's target, would have stayed on the previous month after a switch);
+  the saved list's `order` classes had no effect below `lg` (list showed under the editor on
+  phone); a queued follow-up could leave Write again waiting forever; a save could land during
+  Write again and turn the new draft into a false conflict (saves are now held from `settle` until
+  the write finishes); "Saving…" could stick after text was edited back; server save errors
+  (signed out, too long) weren't shown; Retry was under 44 px; the first-draft button vanished
+  instead of being disabled while writing.
+- Security review (HTML rendering, clipboard, client-supplied ids, CSRF, cross-org reads,
+  autosave data loss). Clean: the Markdown is only ever a `<textarea>` value and toast/error
+  text is rendered as text; clipboard HTML goes through the escaping `toHtml`; `sourceId`/`month`
+  sent by the client reach only `writeSummaryAction`/`saveSummaryAction`, which validate
+  ownership and month; the screen and card read the org, source and month from the session;
+  month switching uses `setActiveMonthAction`; the route checks same-origin like the other
+  cookie-authenticated routes. Found and fixed: (1) the route read the JSON body before any
+  session check, and a chunked body has no `content-length` for the 10 KB cap to see, so a
+  signed-out client could make the server buffer an arbitrary body; the session is now checked
+  first (401). (2) the `writing` flag used the caller's source id while its comment said the
+  database's; it now uses `source.id`. Still open (low): a signed-in user can send a large chunked
+  body to the route, the same exposure as the existing upload route.
+- Deviations: **writing goes through `POST /api/monthly-summary/write`, not a Server Action
+  call.** Next dispatches Server Actions one at a time per tab
+  (`node_modules/next/dist/docs/01-app/02-guides/server-actions.md`), so a run of up to about four
+  minutes would hold up the month selector, autosave and every form until it finished; Phase 10's
+  read-amounts route exists for the same reason. The route only adds session, origin and size
+  checks, then calls `writeSummaryAction` unchanged. The base-plan note shows even when the
+  header is on "All" (there is nothing to pick a source for). No Download Word/PDF buttons yet
+  (Phase 4), so P13 is not wired. When another tab or an earlier visit started the run, the
+  screen shows the writing state from the server's `writing` flag and refreshes every 5 s until
+  it finishes. The meta line updates locally after a save; the saved-months row updates on the
+  next page load. The AI reminder and the changed-records notice both use
+  `DangerPanel tone="notice"`.
+- **Browser pass, run 2026-09-17** (local dev, Team Pursuit on Reconciliation + AI, three test
+  summaries inserted locally because the OpenAI account has no credit):
+  - Passed: the no-summary state and one button; a real Write draft summary click showed the
+    writing state, then OpenAI refused (no credit) and the screen showed the failure message and
+    re-enabled the button, with one `failed` `monthly_summary` usage row and nothing saved; the
+    month selector stayed usable during the write; the saved-months list switched the header
+    month and showed the right text; typing autosaved ("Saved") and the meta line gained "Last
+    edited … by …"; the edit survived a reload; `<script>` stayed plain text; the changed-records
+    notice showed for a month with a stale fingerprint and not for an up-to-date one; a locked
+    month stayed editable and autosaved; two tabs editing the same summary gave the later tab the
+    conflict message and kept the earlier tab's text; the browser warned on reload after the
+    conflict; Write again showed Appendix A's confirm and "Keep it" left the text untouched; Copy
+    text gave "Summary copied." and plain text without `#`; at 375 and 768 px the saved list sat
+    above the editor, no horizontal scroll, 48 px buttons; the packet card showed "Draft written
+    …" and its link opened the screen.
+  - Changed after the pass: the card title repeated "Monthly summary" under the page title; it now
+    shows the month ("May 2026"). The notice styling was kept: it is the same `tone="notice"` the
+    submitted-month warning uses.
+  - Not run in the browser: offline and expired-session saves, reload within 3 s of typing, Write
+    again with a pending edit, leaving mid-write and returning, pasting into a mail client or
+    Google Docs, clipboard refused, browser Back after editing. These are covered by the unit
+    tests (U-24, copy) but not seen in a browser.
+- Original browser checklist, for reference: layout at
+  1280 / 768 / 375 (list above the editor below `lg`, no horizontal scroll, wrapping buttons,
+  text box height); whether the red notice styling reads as too alarming for the AI reminder;
+  the autosave status sequence while typing; reload or close within 3 s (flush and the browser
+  warning); offline and expired session showing "Couldn't save" plus the reason, then Retry;
+  Write again with a pending edit (no false conflict, text replaced); leaving the screen
+  mid-write and returning (writing state, then the summary appears); the month selector staying
+  usable during a write; a saved-months click switching month everywhere with the right text;
+  two browsers (the later save gets the conflict and autosave stops); Copy into a mail client and
+  Google Docs; clipboard refused; `<script>` typed shows as text; browser Back after editing (the
+  router's cached page may carry the old version and show a false conflict).
+- Not verified: anything in a real browser (above); a real OpenAI call; whether the production
+  reverse proxy allows a request of several minutes to the write route.
 
 ### Phase 4 — Word and PDF
 Markdown-to-Word builder with bullets, PDF via `convertDocxToPdf`, filenames, download route.

@@ -108,6 +108,16 @@ describe("toPlainText / toHtml", () => {
     expect(html).toBe("<p>Tom &amp; Jerry &lt;b&gt;&quot;quoted&quot;&lt;/b&gt; it&#39;s</p>");
   });
 
+  it("toPlainText leaves no #, **, *, or - markers across all three heading levels and both bullet markers (U-23)", () => {
+    const text = toPlainText(
+      "# H1\n\n## H2\n\n### H3\n\n**bold** and *italic*\n\n- dash bullet\n* star bullet",
+    );
+    expect(text).not.toContain("#");
+    expect(text).not.toMatch(/\*/);
+    expect(text).not.toMatch(/^-\s/m);
+    expect(text).toBe("H1\n\nH2\n\nH3\n\nbold and italic\n\n• dash bullet\n• star bullet");
+  });
+
   it("toHtml renders headings, lists, bold and italic with the right tags, and never executes a <script>", () => {
     const html = toHtml("## Title\n\n- **bold item**\n\n<script>alert(1)</script>");
     expect(html).toBe(
