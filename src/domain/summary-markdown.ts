@@ -14,6 +14,10 @@
  */
 import { SUMMARY_SECTION_TITLES } from "./strings";
 
+/** Longest a summary's Markdown may be (P6, data model `monthly_summaries_content_length_ck`).
+ *  Counted in code points, matching Postgres `char_length` — the check the app must agree with. */
+export const SUMMARY_MAX_CHARS = 60_000;
+
 export type Inline = { text: string; bold: boolean; italic: boolean };
 
 export type Block =

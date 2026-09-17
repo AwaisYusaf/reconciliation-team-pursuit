@@ -8,14 +8,18 @@ import "server-only";
  * instant. Reuses the Dashboard/Contract Summary loaders (`loadLineItemBudgets`,
  * `loadExpenseAmounts`, `loadFundingSourceSettings`) rather than querying budget figures again.
  */
-import { and, asc, eq, isNull } from "drizzle-orm";
+import { and, asc, desc, eq, isNull } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 
 import { db } from "@/src/db";
 import { loadExpenseAmounts, loadFundingSourceSettings, loadLineItemBudgets } from "@/src/db/queries";
-import { expenses, fundingSources, organizations } from "@/src/db/schema";
+import { expenses, fundingSources, monthlySummaries, organizations, users } from "@/src/db/schema";
 import { isValidMonthKey, type MonthKey } from "@/src/domain/dates";
 import { buildMonthFacts, type MonthFacts, type SummaryExpense } from "@/src/domain/monthly-summary-facts";
+import { userDisplay } from "@/src/domain/user-display";
 import { isUuid } from "@/src/lib/ids";
+import { summariesAccessForOrg } from "@/src/modules/ai/access";
+import { findFundingSource } from "@/src/modules/funding-sources/queries";
 
 import { expensesFingerprint } from "./fingerprint";
 
@@ -96,4 +100,108 @@ export async function loadMonthFacts(
     },
     { isolationLevel: "repeatable read", accessMode: "read only" },
   );
+}
+
+export type MonthlySummaryScreen = {
+  access: { use: boolean; write: boolean };
+  summary: {
+    contentMarkdown: string;
+    version: number;
+    writtenAt: Date;
+    writtenByName: string | null;
+    editedAt: Date | null;
+    editedByName: string | null;
+    model: string;
+  } | null;
+  /** P7: the stored fingerprint no longer matches the month's live expenses. */
+  stale: boolean;
+  liveExpenseCount: number;
+  savedMonths: Array<{ month: MonthKey; writtenAt: Date; editedAt: Date | null }>;
+};
+
+const writers = alias(users, "monthly_summary_writers");
+const editors = alias(users, "monthly_summary_editors");
+
+/**
+ * Everything the Monthly summary screen needs for one funding source's month (Phase 11 §6).
+ * `null` for an invalid month key or a source not owned by this organisation — the caller's
+ * "not found", same as every other entry point here.
+ *
+ * Takes `orgId` directly rather than a session, and is not `"use server"`: unlike the actions
+ * beside it, this is read by a Server Component with the session already resolved, and must
+ * not itself become a directly invocable endpoint.
+ */
+export async function loadMonthlySummaryScreen(
+  orgId: string,
+  sourceId: string,
+  month: MonthKey,
+): Promise<MonthlySummaryScreen | null> {
+  if (!isValidMonthKey(month)) return null;
+
+  const source = await findFundingSource(orgId, sourceId);
+  if (!source) return null;
+
+  const access = await summariesAccessForOrg(orgId);
+
+  // Base plan (P15): the note only. Data is kept and reappears on upgrade, but nothing is
+  // loaded for a plan that can't see it.
+  if (!access.use) {
+    return { access, summary: null, stale: false, liveExpenseCount: 0, savedMonths: [] };
+  }
+
+  const [row] = await db
+    .select({
+      contentMarkdown: monthlySummaries.contentMarkdown,
+      version: monthlySummaries.version,
+      writtenAt: monthlySummaries.writtenAt,
+      writerName: writers.name,
+      writerEmail: writers.email,
+      editedAt: monthlySummaries.editedAt,
+      editorName: editors.name,
+      editorEmail: editors.email,
+      model: monthlySummaries.model,
+      expensesFingerprint: monthlySummaries.expensesFingerprint,
+    })
+    .from(monthlySummaries)
+    .leftJoin(writers, eq(writers.id, monthlySummaries.writtenBy))
+    .leftJoin(editors, eq(editors.id, monthlySummaries.editedBy))
+    .where(
+      and(
+        eq(monthlySummaries.orgId, orgId),
+        eq(monthlySummaries.fundingSourceId, sourceId),
+        eq(monthlySummaries.month, month),
+      ),
+    )
+    .limit(1);
+
+  // `source` above already confirms `sourceId` is a valid, owned funding source and `month` is
+  // already validated, so `loadMonthFacts` cannot return null here.
+  const loaded = await loadMonthFacts(orgId, sourceId, month);
+  const liveExpenseCount = loaded?.facts.overview.expenseCount ?? 0;
+
+  const summary = row
+    ? {
+        contentMarkdown: row.contentMarkdown,
+        version: row.version,
+        writtenAt: row.writtenAt,
+        writtenByName: row.writerEmail === null ? null : userDisplay(row.writerName, row.writerEmail),
+        editedAt: row.editedAt,
+        editedByName: row.editorEmail === null ? null : userDisplay(row.editorName, row.editorEmail),
+        model: row.model,
+      }
+    : null;
+
+  const stale = row !== undefined && loaded !== null && row.expensesFingerprint !== loaded.fingerprint;
+
+  const savedMonths = await db
+    .select({
+      month: monthlySummaries.month,
+      writtenAt: monthlySummaries.writtenAt,
+      editedAt: monthlySummaries.editedAt,
+    })
+    .from(monthlySummaries)
+    .where(and(eq(monthlySummaries.orgId, orgId), eq(monthlySummaries.fundingSourceId, sourceId)))
+    .orderBy(desc(monthlySummaries.month));
+
+  return { access, summary, stale, liveExpenseCount, savedMonths };
 }

@@ -838,6 +838,35 @@ describe("P16 — field cut at exactly SUMMARY_FIELD_MAX_CHARS", () => {
   });
 });
 
+describe("P16 — expense names are cut in Items to note too", () => {
+  it("no-receipt, refund and not-reimbursed names are cut like the spending section's", () => {
+    const longName = "n".repeat(SUMMARY_FIELD_MAX_CHARS + 5);
+    const cut = `${"n".repeat(SUMMARY_FIELD_MAX_CHARS)}…[cut]`;
+    const facts = buildMonthFacts({
+      orgDocName: ORG_DOC_NAME,
+      source: SOURCE,
+      month: "2097-03",
+      lineItems: [lineItem({ id: "a", name: "X", scheduledValueCents: 10_000 })],
+      expensesUpToMonth: [expenseAmount({ lineItemId: "a", month: "2097-03", subtotalCents: -100 })],
+      monthExpenses: [
+        summaryExpense({
+          id: "e1",
+          lineItemId: "a",
+          name: longName,
+          subtotalCents: -100,
+          taxCents: 50,
+          noReceipt: true,
+          noReceiptReason: "lost",
+        }),
+      ],
+      settings: NO_SETTINGS,
+    });
+    expect(facts.itemsToNote.noReceipt[0].name).toBe(cut);
+    expect(facts.itemsToNote.refunds[0].name).toBe(cut);
+    expect(facts.itemsToNote.notReimbursed[0].name).toBe(cut);
+  });
+});
+
 describe("serializeFactsForPrompt", () => {
   const items: LineItemBudget[] = [lineItem({ id: "a", name: "X", scheduledValueCents: 10_000 })];
   function baseFacts(monthExpenses: SummaryExpense[]) {

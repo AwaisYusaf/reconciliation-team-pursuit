@@ -7,9 +7,14 @@ import "server-only";
  * enough surface to justify an SDK. Never throws: every failure path (bad key, timeout, non-2xx,
  * a refusal, unparsable output) resolves to `outcome: "failed"`, so one file's read can never
  * take down the others (Phase 10 §4).
+ *
+ * The envelope itself (usage extraction, the completed/refusal/incomplete walk) lives in
+ * `./responses.ts`, shared with `write-summary.ts` (Phase 11 §5).
  */
 import type { ReadAmounts, ReadKind } from "@/src/domain/amount-suggestion";
 import { parseMoneyToCents } from "@/src/domain/money";
+
+import { completedOutputText, isRecord, readUsage } from "./responses";
 
 export type ReadAmountsOutcome =
   | { outcome: "found"; amounts: ReadAmounts }
@@ -168,26 +173,9 @@ function toFilePart(
 export function parseReadAmountsResponse(json: unknown): ReadAmountsResult {
   const usage = readUsage(json);
 
-  // An `incomplete` response (e.g. cut off at a token limit) may still carry partial text.
-  if (isRecord(json) && typeof json.status === "string" && json.status !== "completed") {
-    return failed(usage);
-  }
-  const output = isRecord(json) && Array.isArray(json.output) ? json.output : null;
-  if (!output) return failed(usage);
-
-  let outputText: string | null = null;
-  for (const item of output) {
-    if (!isRecord(item)) continue;
-    if (typeof item.status === "string" && item.status !== "completed") {
-      return failed(usage);
-    }
-    const content = Array.isArray(item.content) ? item.content : [];
-    for (const part of content) {
-      if (!isRecord(part)) continue;
-      if (part.type === "refusal") return failed(usage);
-      if (part.type === "output_text" && typeof part.text === "string") outputText = part.text;
-    }
-  }
+  // An `incomplete` response, an incomplete output item, or a refusal — `completedOutputText`
+  // returns null for all three, same as it always did inline here.
+  const outputText = completedOutputText(json);
   if (outputText === null) return failed(usage);
 
   let parsed: unknown;
@@ -233,48 +221,9 @@ function failed(usage: { inputTokens: number | null; outputTokens: number | null
   return { outcome: "failed", ...usage };
 }
 
-function readUsage(json: unknown): { inputTokens: number | null; outputTokens: number | null } {
-  const usage = isRecord(json) && isRecord(json.usage) ? json.usage : null;
-  const inputTokens = usage && typeof usage.input_tokens === "number" ? usage.input_tokens : null;
-  const outputTokens = usage && typeof usage.output_tokens === "number" ? usage.output_tokens : null;
-  return { inputTokens, outputTokens };
-}
-
 /** `undefined` means "not a valid string-or-null field", distinct from a legitimate `null`. */
 function toNullableString(value: unknown): string | null | undefined {
   if (value === null) return null;
   if (typeof value === "string") return value;
   return undefined;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
-
-/**
- * Cost in micro-USD from token counts and the two optional price-per-million-token env
- * settings (Phase 10 §3.3, §3.8). `null` when either token count or either price is missing —
- * usage is still logged, cost simply isn't computed (Phase 10 §2 "design choices").
- */
-export function costMicroUsd(
-  inputTokens: number | null,
-  outputTokens: number | null,
-  env: NodeJS.ProcessEnv = process.env,
-): number | null {
-  if (inputTokens === null || outputTokens === null) return null;
-
-  const inputPrice = toPositiveNumber(env.OPENAI_READ_PRICE_INPUT_PER_MTOK);
-  const outputPrice = toPositiveNumber(env.OPENAI_READ_PRICE_OUTPUT_PER_MTOK);
-  if (inputPrice === null || outputPrice === null) return null;
-
-  // price is dollars per 1,000,000 tokens; micro-USD is 1e-6 dollars, so tokens * price is
-  // already micro-USD per token-million cancelled against the 1e6 token unit.
-  const micro = inputTokens * inputPrice + outputTokens * outputPrice;
-  return Math.round(micro);
-}
-
-function toPositiveNumber(value: string | undefined): number | null {
-  if (value === undefined || value.trim() === "") return null;
-  const n = Number(value);
-  return Number.isFinite(n) && n >= 0 ? n : null;
 }

@@ -4,7 +4,8 @@
  */
 import { describe, expect, it, vi } from "vitest";
 
-import { costMicroUsd, parseReadAmountsResponse, readAmounts } from "./read-amounts";
+import { parseReadAmountsResponse, readAmounts } from "./read-amounts";
+import { costMicroUsd } from "./responses";
 
 function responsesBody(outputText: unknown, opts: { status?: string; itemStatus?: string } = {}) {
   return {

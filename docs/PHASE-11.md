@@ -1,6 +1,6 @@
 # Phase 11 — Monthly summary (AI draft)
 
-Status: **Phase 1 built** (2026-09-17). Builds on Phase 10 (`implementation/ai-receipt-reading`,
+Status: **Phases 1–2 built** (2026-09-17). Builds on Phase 10 (`implementation/ai-receipt-reading`,
 not yet merged): branch from it, or rebase once it merges. The product spec is Appendix A, copied
 word for word. The team changed parts of it while planning (a screen of its own instead of a
 section, a plain Markdown editor, Word **and** PDF); §2 records every one of those changes with
@@ -346,6 +346,66 @@ DROP TYPE "public"."summary_trigger";
 `write-summary.ts` with the fixed prompt, response parser, `writeSummaryAction`, single-flight,
 rate limit, usage logging.
 Checks: U-14..U-17, I-1, I-2, I-4, I-6, I-7, I-8, I-17..I-22, I-31, I-33. Security review of the action.
+
+**Results (2026-09-17).**
+- Built: `src/services/openai/responses.ts` (shared Responses API helpers moved out of
+  `read-amounts.ts`: `readUsage`, `completedOutputText`, and `costMicroUsd` generalised with a
+  `feature: "read" | "summary"` argument, defaulting to `"read"` so receipt pricing is unchanged);
+  `src/services/openai/write-summary.ts` (`SUMMARY_PROMPT`, `SUMMARY_PROMPT_VERSION`,
+  `writeSummary`, `parseWriteSummaryResponse`, `retryFeedbackFor`); `src/modules/monthly-summary/actions.ts`
+  (`writeSummaryAction`, `saveSummaryAction`); `loadMonthlySummaryScreen` in
+  `src/modules/monthly-summary/queries.ts`; `LIMITS.summaryWrite` (30/hour per org); the
+  `UI.summary*` strings; `SUMMARY_MAX_CHARS`; `.env.example` `OPENAI_SUMMARY_*`.
+- Tests: 72 new. `write-summary.test.ts` 31 (parser: valid, refusal, incomplete, item incomplete,
+  malformed JSON, missing/non-string/empty markdown; request shape; HTTP error, network, timeout,
+  non-JSON, not configured; request size ceiling at the exact boundary; retry feedback cap;
+  summary pricing), `actions.integration.test.ts` 40 (I-1..I-19, I-21..I-24, I-26..I-31, I-33,
+  plus a persist-time race for Write again and `loadMonthlySummaryScreen` ordering and scoping;
+  I-9..I-15 through the real expense, recurring and document actions), facts 1 (names cut in Items
+  to note). U-14..U-17 were already covered by Phase 1's verifier and facts tests. Full suite 1395
+  passed, 20 skipped; one pre-existing failure, `packet-trace` (local `pdftotext` lacks
+  `-bbox-layout`). Typecheck and lint clean.
+- Mutation checks, each caught and restored: source ownership check removed from save; `use`
+  check removed (write, save); `write` check removed; single-flight `has` check and its `finally`
+  release removed; rate limit removed; no-expenses check removed; retry removed; token summing
+  reduced to one attempt; `version = expectedVersion` removed from save and from Write again;
+  `edited_*` clearing removed; code-point length check removed; lost first-draft race returning the
+  loser's own text; `description` dropped from the fingerprint; request size ceiling off by one;
+  Items to note name cut removed. **Not observable:** removing the ownership check from
+  `writeSummaryAction` alone. Every later query is scoped by the session's org, so a foreign source
+  id still ends in the same refusal. The check stays as the first line of defence.
+- Security review (authz, org scoping, month validation, prompt injection, cost abuse,
+  concurrency). Clean: every query is scoped by the session's `orgId`; the source id is resolved
+  from the database, so the single-flight key can't be dodged by id casing; month keys use the
+  strict regex; roles are only admin and manager; the prompt goes in `instructions` and the facts
+  in a delimited user block, with the verifier and structure check as the real controls (P17);
+  logs carry ids and status only; `loadMonthlySummaryScreen` takes `orgId` and lives outside the
+  `"use server"` file, so it can't be called from the browser. Found and fixed: (1) expense and
+  line item names have no length limit, and neither Items to note nor the P16 fallback trimmed
+  them, so a month built to be huge could cross the long-context price tier. Fixed with
+  `SUMMARY_REQUEST_MAX_CHARS` (400,000): past it the run fails without calling OpenAI (logged
+  `failed`, no tokens). (2) Items to note sent expense names uncut; they are now cut like the
+  Spending section's. (3) Found in review before testing: a first draft that lost the insert race
+  returned its own discarded text instead of the winner's; fixed and covered by I-22.
+- Decisions taken in the build (no new D-number; recorded here): a run whose draft passed the
+  checks is logged `success` even when saving then hits a version conflict, because the tokens
+  were billed; the conflict message is returned and nothing is saved. Write with
+  `expectedVersion: null` when a summary already exists returns it without calling the model; Write
+  again with a stale version is refused before the model call. A transport failure or refusal is
+  not retried; only a draft that fails the checks gets the one retry. If the retry fails in
+  transport, the run is `failed`.
+- Deviations: `loadMonthlySummaryScreen` is in `queries.ts`, not `actions.ts` (§6 lists it under the
+  module; a `"use server"` export taking `orgId` would be callable with any org id). On the base
+  plan it returns the access state only (no summary, no saved months), per P15. `saveSummaryAction`'s
+  unexpected-error message reuses the write failure text. New wording to review:
+  `summaryTooLong`, `summaryNotFound`.
+- Not verified: any real OpenAI call (all mocked; E-1..E-5 are Phase 6), so `SUMMARY_PROMPT`'s
+  effect, `max_output_tokens` 16,000 being enough for reasoning plus the draft, and the 400,000
+  character ceiling against real token counts are untested. `SUMMARY_PROMPT_VERSION` is defined but
+  not stored anywhere yet (no column). Single-flight is in-process only (one container, same
+  ceiling as `rate-limit.ts`). Worst-case spend per org is bounded by 30 runs × 2 attempts per hour,
+  not by a money cap. I-15 inserts the document row directly instead of going through the upload
+  route.
 
 ### Phase 3 — Screen, editing and autosave
 Screen states, saved-months list, text box, Save + autosave, status, meta line, changed-records

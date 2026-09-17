@@ -367,6 +367,28 @@ export const UI = {
   /** Generic dialog dismiss label — no existing `UI.cancel` before Phase 10; reused here for the
    *  "Replace the amounts you typed?" dialog rather than adding a feature-specific word for it. */
   cancel: "Cancel",
+
+  /* --------------------------------------------------------- Phase 11: monthly summaries */
+
+  /** Base-plan note, in place of the button (Appendix A §1, verbatim). */
+  summaryPlanNote: "Monthly summaries are part of the Reconciliation + AI plan.",
+  /** Write draft summary refusal — the month has no live expenses (Appendix A §3, verbatim). */
+  summaryNoExpenses: "Add expenses to this month first.",
+  /** Write/Write again refusal — another run for this org/source/month is already in flight
+   *  (P11). Wording to review. */
+  summaryAlreadyWriting: (monthLabel: string) => `A summary for ${monthLabel} is already being written.`,
+  /** Write/Write again refusal — the model failed, timed out, refused, or was rejected twice
+   *  (Appendix A §3, verbatim). */
+  summaryWriteFailed: "The summary couldn't be written right now. Please try again.",
+  /** Save/write conflict — someone else's version won (P10, Appendix A §5 wording). */
+  summaryConflict:
+    "This summary was changed by someone else. Copy your text, then reload to see their version.",
+  /** Write refusal — the per-org rate limit (P11). Wording to review. */
+  summaryRateLimited: "Too many summaries at once. Try again shortly.",
+  /** Save refusal — over `SUMMARY_MAX_CHARS` (P6, I-26). Wording to review. */
+  summaryTooLong: "This summary is longer than 60,000 characters. Shorten it to save.",
+  /** `saveSummaryAction` — no row for this org/source/month at all. Wording to review. */
+  summaryNotFound: (monthLabel: string) => `There is no summary for ${monthLabel} yet.`,
 } as const;
 
 /**

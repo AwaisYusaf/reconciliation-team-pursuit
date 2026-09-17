@@ -90,6 +90,14 @@ export const LIMITS = {
    * far more than a person reviewing receipts reaches, and every call is logged regardless.
    */
   readAmounts: { limit: 200, windowMs: 60 * 60 * 1000 },
+  /**
+   * Writing a monthly summary (Phase 11), per organisation.
+   *
+   * Same reasoning as `readAmounts`: each call reaches OpenAI and is billed. 30/hour is far
+   * more than a real write-plus-one-retry workflow reaches for any one org, and every run is
+   * logged regardless (P11).
+   */
+  summaryWrite: { limit: 30, windowMs: 60 * 60 * 1000 },
 } as const;
 
 export type LimitName = keyof typeof LIMITS;

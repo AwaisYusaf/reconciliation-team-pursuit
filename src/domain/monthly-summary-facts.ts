@@ -256,18 +256,18 @@ export function buildMonthFacts(input: {
     noReceipt: input.monthExpenses
       .filter((expense) => expense.noReceipt)
       .map((expense) => ({
-        name: expense.name,
+        name: cutText(expense.name),
         amount: money(reimbursableCents(expense)),
         reason: cutText(expense.noReceiptReason ?? ""),
       })),
     refunds: input.monthExpenses
       .filter((expense) => reimbursableCents(expense) < 0)
-      .map((expense) => ({ name: expense.name, amount: money(reimbursableCents(expense)) })),
+      .map((expense) => ({ name: cutText(expense.name), amount: money(reimbursableCents(expense)) })),
     notReimbursed: input.monthExpenses
       .map((expense) => ({ expense, excluded: excludedParts(expense) }))
       .filter(({ excluded }) => excluded.length > 0)
       .map(({ expense, excluded }) => ({
-        name: expense.name,
+        name: cutText(expense.name),
         receiptTotal: money(receiptTotalCents(expense)),
         parts: excluded.map((part) => ({
           part,
