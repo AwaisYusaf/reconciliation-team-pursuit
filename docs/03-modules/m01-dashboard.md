@@ -16,9 +16,11 @@ Per source: reads that source's `line_items` + calculation service (R3.1–R3.6)
 - Remaining cell when `remaining/budget < 0.10`: bold `#8A2A22` on `#F6E7E4` (R3.6). Negative remaining shows the same treatment.
 - Page subtext: `Budget status for {Month YYYY}.` Per-section buttons: primary `Add Expense`, secondary `View Month-End Packet` (with "All", `/r/packet` asks the visitor to pick a source).
 - First-run banner + empty state come from m00; the welcome banner stays page-level, not per section.
+- **Monthly summary ready link (Phase 11 §7.5).** On Reconciliation + AI, once a summary exists for that source's active month, a quiet `Monthly summary ready` link follows the two buttons. From "All" (or another source's section) it first switches the header's active funding source, then opens `/r/monthly-summary`, since that screen follows the header. Base plan or no summary for the month: nothing shown.
 
 ## Server surface
 `loadSourceBudget(orgId, fundingSourceId, month)` (`src/modules/dashboard/queries.ts`): dashboard rows for one (org, source, month). Called once per section shown.
+`loadReadySummarySourceIds(orgId, sourceIds, month)` (`src/modules/monthly-summary/queries.ts`): one query for every section shown, not one per source.
 
 ## Acceptance
 Figures match Excel sheet 1 for the same data (R10.2); switching month re-renders instantly; low-budget styling triggers at exactly <10%.

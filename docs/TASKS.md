@@ -28,6 +28,7 @@ Last reviewed: 2026-08-20. The application is deployed and serving at
 | S4 | Apply the S3 lifecycle rules (30 daily, 13 months monthly) | `deploy-ec2.md` § Backups → Retention |
 | S5 | **Execute the restore drill once.** This is what actually closes D-07 — the procedure is proven on a dev database, not yet on the instance | `deploy-ec2.md` § Backups → The drill |
 | S6 | **After deploying Phase 9 (the AB Solutions staff dashboard), create one staff account per AB Solutions staff member.** There is no staff sign-up, so until this is run nobody can open `/a` at all. Run it once each, after `deploy.sh` has applied migration `0027` | `docker compose -f docker-compose.prod.yml exec app npm run db:create-staff -- --email <address> --name "<Full Name>"` — see `deploy-ec2.md` § Operational notes. The password is printed once; hand it over out of band |
+| S7 | **Before deploying Phase 11 (monthly summaries), set `OPENAI_SUMMARY_MODEL`, `OPENAI_SUMMARY_PRICE_INPUT_PER_MTOK`, `OPENAI_SUMMARY_PRICE_OUTPUT_PER_MTOK` in the live `.env` by hand, and check the reverse proxy (Caddy) allows a request of several minutes to `POST /api/monthly-summary/write`.** A deploy never updates the live `.env`; untested against the real proxy | `PHASE-11 Phase 5`, see `PHASE-11.md` §11 |
 
 Until S2–S5 are done there is still no working backup regime, only the machinery for one.
 
@@ -43,6 +44,10 @@ Until S2–S5 are done there is still no working backup regime, only the machine
 | R4 | **Packet memory is ~3× the output** | pdf-lib holds every embedded image until `save()`. Bounding it means streaming assembly or a page cap. Matters on a 3.7 GB box shared with another service | outputs review |
 | R5 | **The size ladder rebuilds the whole packet per step** | Re-runs LibreOffice once per line item on each retry — up to 3× the whole build for an oversize month | outputs review |
 | ~~R6~~ | ~~**R13.1's org-wide storage cap is unimplemented**~~ **Done.** `MAX_ORG_BYTES` (5 GB, not the 500 MB this line quoted) is enforced in `orgStorageError` inside the upload lock, and since Phase 9 the same `orgStorageBytes()` feeds the staff dashboard's storage bar, so the number shown is the number enforced. Verified live against Team Pursuit Global | `services/storage/documents.ts`, D-100 Q1 |
+| R7 | **The cover sheet builder likely writes XML-illegal control characters** (U+000B etc.) from expense names/narratives into the docx, the same bug the monthly summary builder had before its own fix — Word may call the cover sheet corrupt. Untested | PHASE-11 Phase 4 |
+| R8 | **The monthly summary's single-flight lock is in-process only**, the same ceiling as `rate-limit.ts` — a second container would allow two paid writes for the same (org, source, month) at once | PHASE-11 Phase 2 |
+| R9 | **The Markdown parser is line-based, no nesting** (`src/domain/summary-markdown.ts`): a text line directly under a bullet starts a new paragraph instead of continuing that bullet, so a wrapped bullet typed on two lines comes out split in Word, PDF and Copy text | PHASE-11 Phase 1 |
+| R10 | **`SUMMARY_PROMPT_VERSION` is not stored with the summary** — no column carries which prompt version wrote a given draft | PHASE-11 Phase 2 |
 
 ---
 
@@ -54,6 +59,8 @@ Until S2–S5 are done there is still no working backup regime, only the machine
 | T2 | **DB integration tests silently skip on every dev machine** | vitest does not load `.env.local`, so `DATABASE_URL` is unset and every integration test skips. The suite is green while the database layer is untested — which is how the eager-connect bug reached production |
 | T3 | **No end-to-end tests** | 418 unit tests, zero Playwright. No test drives a real browser through sign-in → add expense → download packet |
 | T4 | **Visual half of the February test** | Blocked on C1. Note the approved packet is rasterized — no extractable text on 131 of 133 pages — so this can only ever be a visual page-by-page comparison, never an automated text diff |
+| T5 | **Migration `0029`'s down script is the reviewer's draft, never rehearsed** (up → down → schema diff) | PHASE-11 Phase 1 |
+| T6 | **No real OpenAI evaluation yet**, E-1..E-5 | PHASE-11 Phase 6 |
 
 ---
 
@@ -73,6 +80,8 @@ a year of real records.
 | P7 | **Phase 9: `createOrgUserAction` answers "email in use" for an AB Solutions staff address too**, so an org admin can probe whether an address belongs to staff. The cross-table check is what the spec asks for, and the action is admin-only and rate-limited | PHASE-9 §3.3 |
 | P8 | **Phase 9: nothing spans `users` and `staff_users`**, so a customer signup and a `db:create-staff` run for the same address at the same instant can both pass `emailInUse()`. Needs an operator script racing a live signup | `modules/auth/emails.ts` `ponytail:` note |
 | P9 | **Phase 9: `withLockedOrg` returns a `fail()` from inside `db.transaction`, which commits rather than rolls back.** Correct today because every refusal in the four admin actions happens before any write — fragile if a future edit writes first | PHASE-9 Phase 2 |
+| P10 | **A signed-in user can send a large chunked body to the monthly summary write route**, the same exposure as the existing upload route | PHASE-11 Phase 3 |
+| P11 | **The monthly summary PDF conversion can run 180 s under the org's `generate` limit with no global cap, and a base-plan org's refused download calls use its `generate` budget before the plan check** | PHASE-11 Phase 4 |
 
 ---
 

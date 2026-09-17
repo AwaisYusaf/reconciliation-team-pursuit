@@ -8,8 +8,9 @@ import { UI } from "@/src/domain/strings";
 
 /**
  * The Month-End Packet tab's Monthly summary card (Phase 11 §7.5). Server-renderable — nothing
- * here needs client JS. `data-tour="packet-monthly-summary"` is for Phase 5's tour step;
- * harmless before that step exists.
+ * here needs client JS. `data-tour="packet-monthly-summary"` is only carried on Reconciliation +
+ * AI (`card.use`): the base plan renders no target, so the packet tour's last step is simply
+ * absent there, like any other dropped step.
  */
 export function MonthlySummaryCard({
   card,
@@ -19,7 +20,7 @@ export function MonthlySummaryCard({
   monthLabel: string;
 }) {
   return (
-    <div data-tour="packet-monthly-summary" className="max-w-[460px] mt-8">
+    <div data-tour={card.use ? "packet-monthly-summary" : undefined} className="max-w-[460px] mt-8">
       <Card style={card.use ? PLUS_FRAME_STYLE : undefined} className="p-4 sm:p-5">
         <div className="flex items-center gap-2.5 mb-2">
           <SectionTitle>{UI.summaryTitle}</SectionTitle>

@@ -8,7 +8,7 @@ import "server-only";
  * instant. Reuses the Dashboard/Contract Summary loaders (`loadLineItemBudgets`,
  * `loadExpenseAmounts`, `loadFundingSourceSettings`) rather than querying budget figures again.
  */
-import { and, asc, desc, eq, isNull } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 
 import { db } from "@/src/db";
@@ -297,6 +297,38 @@ export async function loadSummaryForDownload(
     docName: row.sourceDocName ?? row.orgDocName,
     sourceName: row.sourceName,
   };
+}
+
+/**
+ * Which of the given funding source ids have a monthly summary for this month — batched for the
+ * Dashboard (Phase 11 §7.5) so rendering "All" costs one query, not one per section (no N+1).
+ * Scoped by org so a foreign source id can never match.
+ */
+export async function loadReadySummarySourceIds(
+  orgId: string,
+  sourceIds: readonly string[],
+  month: MonthKey,
+): Promise<Set<string>> {
+  if (!isValidMonthKey(month)) return new Set();
+
+  const ids = sourceIds.filter(isUuid);
+  if (ids.length === 0) return new Set();
+
+  const access = await summariesAccessForOrg(orgId);
+  if (!access.use) return new Set();
+
+  const rows = await db
+    .select({ fundingSourceId: monthlySummaries.fundingSourceId })
+    .from(monthlySummaries)
+    .where(
+      and(
+        eq(monthlySummaries.orgId, orgId),
+        inArray(monthlySummaries.fundingSourceId, ids),
+        eq(monthlySummaries.month, month),
+      ),
+    );
+
+  return new Set(rows.map((row) => row.fundingSourceId));
 }
 
 /** The viewer's display name for the meta line (§6) — `userDisplay` needs the user's own

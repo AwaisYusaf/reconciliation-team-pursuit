@@ -7,7 +7,7 @@ Docs-first, AI-native project. **These files are the source of truth.** Code ser
 | Path | What it is |
 |---|---|
 | `TASKS.md` | **Outstanding work** — everything unfinished, why it matters, and what is blocked on whom |
-| `PHASE-11.md` | **Phase 11** — AI-drafted monthly summary (Reconciliation + AI plan): facts computed by the app, figure verification, per-source-per-month storage, its own screen with saved months, plain Markdown editing with autosave, Word and PDF download, change notice; agreed changes to the ticket, edge cases mapped to tests, six build phases (Phases 1–4 built: foundations, writing, the screen with autosave and the packet card, Word and PDF download) |
+| `PHASE-11.md` | **Phase 11** — AI-drafted monthly summary (Reconciliation + AI plan): facts computed by the app, figure verification, per-source-per-month storage, its own screen with saved months, plain Markdown editing with autosave, Word and PDF download, change notice; agreed changes to the ticket, edge cases mapped to tests, six build phases (Phases 1–5 built: foundations, writing, the screen with autosave and the packet card, Word and PDF download, the Dashboard link, the packet tour step and module doc) |
 | `PHASE-10.md` | **Phase 10** — reading Subtotal/Tax/Fees/Total from receipts and proofs with OpenAI: the plan gate (`canReadAmounts`), the `ai_usage_events` usage log (renamed from `amount_reads`, D-106), the read route, the Add/Edit panel and Settings switch; the product spec verbatim (Appendix A), decisions taken before building, design, and the verification record (built and browser-verified; real OpenAI test waiting on account credit) |
 | `PHASE-9.md` | **Phase 9** — the AB Solutions staff dashboard at `/a`: staff accounts in their own tables, the staff gate, plan/status/complimentary/suspension with a history, and the organizations directory; the product spec verbatim (Appendix A), the five-phase build plan and the Results of each, including the Phase 5 browser walk-through of every "Done when" line (built and verified; **not yet deployed** — see the deploy note in §8 Phase 5) |
 | `PHASE-8.md` | **Phase 8** — locking a reconciled month: signed copy storage, the lock guard on every month-scoped write, Reconciled state and reporting periods; build plan and Results (built; not yet deployed) |
@@ -24,7 +24,7 @@ Docs-first, AI-native project. **These files are the source of truth.** Code ser
 | `02-outputs/summary-excel-spec.md` | Excel contract summary format spec |
 | `02-outputs/packet-pdf-spec.md` | Merged month-end packet PDF: canonical order, rasterization, footer |
 | `03-modules/design-language.md` | Shared visual language + the paste-first Claude Design preamble |
-| `03-modules/m00…m10-*.md` | Per-module spec + self-contained Claude Design prompt |
+| `03-modules/m00…m11-*.md` | Per-module spec + self-contained Claude Design prompt |
 | `03-modules/design-review.md` | Fetched-design analysis: dc format, per-screen verdicts, adopted patterns, refetch instructions |
 | `04-engineering/architecture.md` | Stack, layers, folder conventions, generation engine, ops, testing |
 | `04-engineering/decisions.md` | Decision log — settled and open |
@@ -69,10 +69,13 @@ Each `03-modules/m*.md` is one unit of work that flows through five gates:
 | m08 Line items | ✅ | ✅ | ✅ | ✅ | ✅ |
 | m09 Settings | ✅ | ✅ | ✅ | ✅ | ✅ |
 | m10 Admin dashboard | ✅ | ✅ | n/a | ✅ | ✅ |
+| m11 Monthly summary | ✅ | n/a | n/a | ✅ | ✅ |
 
 m10's Design gate is `n/a` deliberately: the prompt is written in the module file, but no
 Claude Design pass was run — the screens were built from the existing component kit, since
 `/a` is a staff-only tool with no client-facing visual requirement (D-100, Phase 9 §7 Q11).
+m11 likewise had no Claude Design pass — built from the existing component kit and Phase 10's
+Plus styling (PHASE-11.md §9 Phase 3).
 
 Output generators (cover sheets, Excel, packet) are backend work items specced in `02-outputs/` and wired during m04/m06/m07.
 

@@ -1,0 +1,73 @@
+# m11 — Monthly summary
+
+## Purpose
+An AI-drafted narrative summary of one funding source's month — Overview, Spending by line
+item, Budget position, Changes from last month, Items to note — written from the same figures
+the Dashboard and Contract Summary use, for the team to check, edit and download.
+
+## Scope
+Route `/r/monthly-summary`, Reconciliation + AI only. Admins and managers. Follows the header's
+active funding source and month, like every other tab, so one source's one month is shown at a
+time — no "All" view (`PickFundingSource` when the header is on "All"). No top navigation tab:
+reached from the Month-End Packet card and a Dashboard link. It never enters the packet, never
+leaves the app on its own, and works on locked and archived months/sources. Full design and
+decisions: `docs/PHASE-11.md`.
+
+## Data
+Reads `src/domain/monthly-summary-facts.ts`'s `buildMonthFacts`, fed by the same loaders the
+Dashboard and Contract Summary use (`loadLineItemBudgets`, `loadExpenseAmounts`,
+`loadFundingSourceSettings`), so every figure matches them exactly (PHASE-11 §4, P2). Writes
+`monthly_summaries`, one row per (org, funding source, month), with optimistic-concurrency
+`version` and a stored `expenses_fingerprint` for the changed-records notice (PHASE-11 §3, P7,
+P10). Usage is logged to `ai_usage_events` (PHASE-11 §3, P12).
+
+## Behavior
+- Base plan: title, Plus badge and the plan note only — no button, no list (P15: data is kept,
+  not deleted, and reappears on upgrade).
+- AI plan, no summary yet: intro text plus **Write draft summary**, disabled with "Add expenses
+  to this month first." when the month has none.
+- Writing: "Writing your summary… this can take up to a minute."; the rest of the app stays
+  usable; leaving the screen doesn't cancel the run (PHASE-11 §7.1, §6).
+- Summary exists: meta line, AI reminder, changed-records notice when the stored fingerprint no
+  longer matches the month's live expenses, a plain Markdown `<textarea>` (no preview — C2),
+  Save with 3-second autosave, Copy text, Download Word, Download PDF, and Write again (confirm,
+  replaces the text).
+- A **Saved summaries** list, newest month first, one row per month with a summary for this
+  source; clicking a row calls `setActiveMonthAction` so the header, this screen and the rest of
+  the app agree on the month.
+- Month-End Packet tab: a **Monthly summary** card below Month documents (Plus: last-written
+  date and an **Open monthly summary** link; base plan: the plan note). The card only carries
+  its tour target on Reconciliation + AI (`app/r/packet/monthly-summary-card.tsx`).
+- Dashboard: once a summary exists for a source's active month, a quiet **Monthly summary
+  ready** link after the two action buttons. From "All" (or another source's section) it first
+  switches the header's active funding source, then opens the screen, since the screen follows
+  the header (`app/r/monthly-summary-ready-link.tsx`, `summaryLinkNeedsSourceSwitch`).
+
+## Server surface
+- `loadMonthlySummaryScreen(orgId, sourceId, month)` — everything the screen needs: access
+  state, the summary or null, the stale flag, live expense count, writer/editor names, saved
+  months.
+- `loadSummaryCard(orgId, sourceId, month)` — the packet card's needs.
+- `loadReadySummarySourceIds(orgId, sourceIds, month)` — batched for the Dashboard, one query
+  for every section shown, not one per source.
+- `writeSummaryAction({ sourceId, month, expectedVersion })` and
+  `POST /api/monthly-summary/write` — the route adds session/origin/size checks in front of the
+  action, since a run of up to about four minutes would otherwise block every other Server
+  Action in the tab (PHASE-11 Phase 3 deviation).
+- `saveSummaryAction({ sourceId, month, markdown, expectedVersion })` — Save and autosave.
+- `GET /api/downloads/monthly-summary?source=&month=&format=docx|pdf` — Word from the saved
+  Markdown, PDF via the existing `convertDocxToPdf` pipeline.
+
+## Acceptance
+Every figure in a summary equals the Dashboard's and Contract Summary's own figures for the same
+(source, month). The five section headings are always present, in order, on a saved draft
+written by the model; a user may rename or remove them afterwards. Downloads are disabled while
+an edit is unsaved. The Dashboard link and the packet card both route to the same screen and
+month. Full test mapping: `docs/PHASE-11.md` §8–§10.
+
+---
+
+## Claude Design prompt
+
+Not applicable — built from the existing component kit and Phase 10's Plus styling
+(`PlusBadge`, `PLUS_FRAME_STYLE`), like m10's admin dashboard; no Claude Design pass was run.

@@ -7,6 +7,7 @@ import type { FundingSource } from "@/src/db/schema";
 import { monthLabel, monthShortLabel, type MonthKey } from "@/src/domain/dates";
 import { formatMoney, formatPercent } from "@/src/domain/format";
 import { loadSourceBudget } from "@/src/modules/dashboard/queries";
+import { MonthlySummaryReadyLink } from "./monthly-summary-ready-link";
 
 /** Wording for each figure the drift notice can report (R3.8). */
 const DRIFT_LABEL: Record<"opening" | "spent" | "closing", string> = {
@@ -27,11 +28,15 @@ export async function SourceBudgetSection({
   source,
   month,
   showTitle,
+  summaryReady,
+  selectedId,
 }: {
   orgId: string;
   source: FundingSource;
   month: MonthKey;
   showTitle: boolean;
+  summaryReady: boolean;
+  selectedId: string | null;
 }) {
   const { lineItems, stats, positions, grant, drift } = await loadSourceBudget(orgId, source.id, month);
 
@@ -155,6 +160,9 @@ export async function SourceBudgetSection({
             <Link href="/r/packet" className={buttonClassName("secondary")}>
               View Month-End Packet
             </Link>
+            {summaryReady && (
+              <MonthlySummaryReadyLink sourceId={source.id} selectedId={selectedId} />
+            )}
           </div>
         </>
       )}

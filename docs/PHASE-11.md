@@ -1,6 +1,6 @@
 # Phase 11 — Monthly summary (AI draft)
 
-Status: **Phases 1–4 built** (2026-09-17). Builds on Phase 10 (`implementation/ai-receipt-reading`,
+Status: **Phases 1–5 built** (2026-09-17). Builds on Phase 10 (`implementation/ai-receipt-reading`,
 not yet merged): branch from it, or rebase once it merges. The product spec is Appendix A, copied
 word for word. The team changed parts of it while planning (a screen of its own instead of a
 section, a plain Markdown editor, Word **and** PDF); §2 records every one of those changes with
@@ -588,6 +588,47 @@ LibreOffice; the PDF in a browser and a PDF viewer.
 Dashboard link, packet tour step, strings, `m06` module doc, `data-model.md`, decisions D-107 and
 on, `README.md`, `.env.example`, TASKS.md.
 Checks: B-13, tour tests.
+
+**Results (2026-09-17).**
+- Built: `loadReadySummarySourceIds(orgId, sourceIds, month)` in `queries.ts` (invalid month or no
+  uuid ids → empty, no query; base plan → empty without reading summaries; otherwise one `inArray`
+  select scoped by org and month), called once in `app/r/page.tsx` for every section shown.
+  Pure `summaryLinkNeedsSourceSwitch` (`dashboard-link.ts`). Client
+  `app/r/monthly-summary-ready-link.tsx`: a quiet `Monthly summary ready` link in the section's
+  action row; when the header is on "All" or another source it calls
+  `setActiveFundingSourceAction` first, then `router.push` + `router.refresh()` (the header's
+  selector is in the shared layout, which a push alone doesn't re-render; same as
+  `expense-form.tsx`). Packet tour step 6, `packet-monthly-summary`, with
+  `UI.tourSummaryCardTitle`/`tourSummaryCardBody`; the card carries that target only when
+  `card.use`, so the base plan drops the step. Strings `summaryReadyLink` (Appendix A verbatim)
+  and the two tour strings (wording to review). Docs: new `03-modules/m11-monthly-summary.md`,
+  `m01`, `m06`, `README.md` (map, module table), `TASKS.md` (S7, R7–R10, T5–T6, P10–P11 from the
+  open items in Phases 1–4). `.env.example` and `data-model.md` were already complete. No new
+  decision; `domain-rules.md` §12 unchanged, since Phase 10/11 UI strings live in `strings.ts`
+  only and §12 carries just the printed section titles.
+- Tests: 22 new. `ready-ids.integration.test.ts` 12 (right set across three sources, other month
+  excluded, base plan empty with data present, another org's id, empty list, non-uuid, invalid
+  month, duplicates; no N+1: 1 and 3 source ids both send exactly 2 SQL statements, invalid month
+  and empty list send 0, counted on `pg.Pool.query` because `db` is a Proxy `vi.spyOn` can't wrap),
+  `dashboard-link.test.ts` 5, `dashboard-wiring.test.ts` 3 (loader called once in the page, never
+  in the section; link only under `summaryReady`), `packet-tour.test.ts` +2 and updated (6 steps,
+  conditional card target, step last with the UI strings, `resolveOneStep`/`countResolvableAfter`
+  drop only this step when its target is absent). Full suite 1533 passed, 20 skipped; one
+  pre-existing failure, `packet-trace` (local `pdftotext` lacks `-bbox-layout`). Typecheck, lint
+  and `npm run build` clean.
+- Mutation checks, each caught and restored: loader plan check; org condition; month condition;
+  switch rule changed to `selectedId === null`; card target made unconditional; `summaryReady`
+  gate removed; a second loader call in the page.
+- Security pass (inline): the only browser-supplied value is `sourceId`, which reaches
+  `setActiveFundingSourceAction` and its existing ownership check; the loader is `server-only`,
+  not `"use server"`, takes the session's org and filters by it; the navigation target is a
+  constant. Nothing found.
+- Deviations: none from §7.5. The link sits in the action row, which only renders when the source
+  has line items; a summary without line items (every expense and line item deleted after
+  writing) shows no link. The link has no Plus badge.
+- Not verified: B-13 in a browser (the click from a single source and from "All", the header
+  selector updating after the switch, the tour step on Plus and its absence on the base plan);
+  the link click path is covered only by the pure function and source-reading tests (no jsdom).
 
 ### Phase 6 — Verification and evaluation
 Red-team/security pass over actions and route; E-1..E-5 on the real model; full browser pass;

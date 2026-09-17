@@ -6,6 +6,7 @@ import { EmptyState, PageTitle, Subtext } from "@/src/components/ui/surfaces";
 import { TourGuide } from "@/src/components/ui/tour";
 import { monthLabel } from "@/src/domain/dates";
 import { loadSourceContext } from "@/src/modules/funding-sources/queries";
+import { loadReadySummarySourceIds } from "@/src/modules/monthly-summary/queries";
 import { DASHBOARD_TOUR_STEPS } from "@/src/modules/tours/dashboard-tour";
 import { hasSeenTour } from "@/src/modules/tours/queries";
 import { getSession } from "@/src/services/auth/session";
@@ -37,6 +38,12 @@ export default async function DashboardPage() {
   // preserves that order). There is deliberately no combined total anywhere: different
   // funders' money is not one budget (Appendix A §5).
   const shown = selected ? [selected] : activeSources;
+  // Batched once here, not per section (no N+1) — see `loadReadySummarySourceIds`'s own doc.
+  const readySummaryIds = await loadReadySummarySourceIds(
+    session.orgId,
+    shown.map((s) => s.id),
+    month,
+  );
 
   return (
     <div>
@@ -62,6 +69,8 @@ export default async function DashboardPage() {
             source={source}
             month={month}
             showTitle={!single}
+            summaryReady={readySummaryIds.has(source.id)}
+            selectedId={selectedId}
           />
         ))
       )}

@@ -454,6 +454,15 @@ export const UI = {
   /** PDF conversion failure — the download route's 503 body (P13, Appendix A "Download Word" as
    *  the fallback). Wording to review. */
   summaryPdfFailed: "The PDF couldn't be made right now. Download Word instead.",
+
+  /* ------ Phase 11 build phase 5: Dashboard link and tour */
+
+  /** Dashboard action row, once a summary exists for that source and month (Appendix A, verbatim). */
+  summaryReadyLink: "Monthly summary ready",
+  /** Packet tour's last step, Plus only (§7.5, B). */
+  tourSummaryCardTitle: "Monthly summary",
+  tourSummaryCardBody:
+    "Included with Plus. Opens the summary screen, where AI writes a draft of this month's summary from your expenses for you to check and edit. It's never part of the packet.",
 } as const;
 
 /**
