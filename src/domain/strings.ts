@@ -6,6 +6,8 @@
  * module so wording can never drift between the app, the Word cover sheet, the Excel
  * summary and the packet PDF. Do not inline these strings anywhere.
  */
+import type { ReadAmounts } from "@/src/domain/amount-suggestion";
+import { formatMoney } from "@/src/domain/format";
 
 /** Printed on a cover sheet heading whenever tax > 0 (R6.5). Exact text — singular "Statement". */
 export const TAX_NOTE = "(Note: Statement includes tax which was excluded from reimbursement amount)";
@@ -70,6 +72,28 @@ export function noReceiptNote(reason: string): string {
 }
 
 /* ------------------------------------------------------------------- UI copy */
+
+/** Phase 10 amounts-panel field words, shared by the summary line and each per-file line
+ *  (Appendix A §2) — kept as one set so "Subtotal"/"Tax"/"Fees" can never read differently
+ *  between the two. */
+const AMOUNT_FIELD_LABELS = { subtotal: "Subtotal", tax: "Tax", fees: "Fees" } as const;
+const TOTAL_PAID_LABEL = "Total paid";
+const TOTAL_LABEL = "Total";
+
+function amountsLineParts(amounts: ReadAmounts, totalLabel: string): { lead: string; total: string } {
+  return {
+    lead:
+      `${AMOUNT_FIELD_LABELS.subtotal} ${formatMoney(amounts.subtotalCents)} · ` +
+      `${AMOUNT_FIELD_LABELS.tax} ${formatMoney(amounts.taxCents)} · ` +
+      `${AMOUNT_FIELD_LABELS.fees} ${formatMoney(amounts.feesCents)} · `,
+    total: `${totalLabel} ${formatMoney(amounts.totalCents)}`,
+  };
+}
+
+function amountsLine(amounts: ReadAmounts, totalLabel: string): string {
+  const { lead, total } = amountsLineParts(amounts, totalLabel);
+  return lead + total;
+}
 
 export const UI = {
   /** Add Expense reimbursable box (R1.3). */
@@ -268,7 +292,93 @@ export const UI = {
   noOrganizationsMatch: "No organizations match these filters.",
   /** Org page users table empty state. */
   noUsersYet: "No users yet.",
+
+  /* --------------------------------------------------------- Phase 10: reading amounts */
+
+  /** Add Expense amounts panel, while files are being read (Appendix A §2). */
+  readingDocuments: (n: number) => `Reading ${n} document${n === 1 ? "" : "s"}…`,
+  /** Amounts panel title, once reading finishes with at least one figure found (Appendix A §2). */
+  amountsFoundTitle: "Amounts found in your documents",
+  /** The panel's summary line, and the "Replace the amounts you typed?" dialog body (Appendix
+   *  A §2): `Subtotal $150.00 · Tax $9.00 · Fees $6.00 · Total paid $165.00`. */
+  amountsSummary: (amounts: ReadAmounts) => amountsLine(amounts, TOTAL_PAID_LABEL),
+  /** One receipt's own line (Appendix A §2): `Subtotal $110.00 · Tax $6.60 · Fees $3.40 · Total $120.00`. */
+  receiptLineAmounts: (amounts: ReadAmounts) => amountsLine(amounts, TOTAL_LABEL),
+  /** Tag after a proof-of-payment file's name in the panel list (Appendix A §2). */
+  proofOfPaymentTag: "(proof of payment)",
+  /** After a proof line's amount, when it agrees with the receipts' total (Appendix A §2). */
+  proofMatches: "✓ matches",
+  /** A file the model could not find an amount in, or that failed to read — shown the same way
+   *  (Phase 10 §2 "Unreadable and no-amount are shown the same way"). */
+  noAmountFound: "No amount found",
+  /** Every file in the panel came back with nothing to read (Appendix A §2). */
+  /** Amounts panel primary button (Appendix A §2). */
+  useTheseAmounts: "Use these amounts",
+  /** Amounts panel secondary button (Appendix A §2, §3.5 "Dismiss"). */
+  dismiss: "Dismiss",
+  /** Confirm dialog before "Use these amounts" overwrites fields already typed (Appendix A §2). */
+  replaceTypedAmounts: "Replace the amounts you typed?",
+  /** Edit Expense button that starts a read on request (Appendix A §3). */
+  readAmountsFromDocuments: "Read amounts from documents",
+  /** Settings → Organization switch label (Appendix A §4). */
+  readAmountsSwitchLabel: "Read amounts from uploaded documents",
+  /** Settings → Organization switch help text (Appendix A §4). */
+  readAmountsSwitchHelp:
+    "Receipts and proofs of payment are sent to OpenAI to suggest amounts. OpenAI doesn't use them for training. Nothing is saved until you confirm.",
+  /** Amounts panel, when some files were read and others were not (Phase 10 §3.5 table — not in
+   *  Appendix A, added so an incomplete total is never used unnoticed). */
+  amountsLeftOut: "Documents marked No amount found are left out of these totals.",
+  /** Receipt line whose total doesn't match its own subtotal + tax + fees (Appendix A §1). */
+  receiptDoesNotAddUp: "The amounts on this receipt don't add up. Please check them.",
+  /** Receipts vs. proofs disagree (Appendix A §1, verbatim with the two figures substituted). */
+  proofsDifferWarning: (receipts: string, proofs: string) =>
+    `Receipts add up to ${receipts} but proofs of payment show ${proofs}. Check the amounts before saving.`,
+  /** Add Expense tour's amounts step, unchanged text — kept when reading is unavailable
+   *  (Appendix A §6). */
+  tourAmountsBody:
+    "Enter the amounts from the receipt. If there's tax or fees, you'll be asked whether the funder pays for them.",
+  /** Add Expense tour's amounts step, once reading is available (Appendix A §6). */
+  tourAmountsBodyWithReading:
+    "Enter the amounts from the receipt, or use the amounts we find in the receipt you added above. If there's tax or fees, you'll be asked whether the funder pays for them.",
+  /** Plus upload section note on Add — reading starts on its own (Appendix A §2). */
+  aiUploadNoteAdd: "AI reads the amounts when you add a file.",
+  /** Plus upload section note on Edit — reading only on request (Appendix A §3). */
+  aiUploadNoteEdit: "AI reads the amounts when you press Read amounts from documents.",
+  /** A file row's AI status while its read is running. */
+  aiFileReading: "Reading amounts…",
+  /** A file row's AI status once amounts were found. */
+  aiFileFound: (total: string) => `Amounts found · Total ${total}`,
+  /** Add Expense tour's proof step, unchanged — kept when reading is unavailable. */
+  tourProofBody:
+    "Always required. Add a bank transaction or payment screenshot. Without it, the month's packet can't be downloaded.",
+  /** Add Expense tour's proof step on Plus: what AI does with a proof. */
+  tourProofBodyWithReading:
+    "Always required. Add a bank transaction or payment screenshot. Without it, the month's packet can't be downloaded. With Plus, AI reads the amount paid and checks it against your receipts.",
+  /** Add Expense tour's receipt step, unchanged — kept when reading is unavailable. */
+  tourReceiptBody:
+    "Add the receipt, invoice or timesheet. If there isn't one, tick No receipt available and give a reason. The reason prints on the cover sheet.",
+  /** Add Expense tour's receipt step on Plus: where the amounts appear and that nothing fills itself. */
+  tourReceiptBodyWithReading:
+    "Add the receipt, invoice or timesheet. With Plus, AI reads its amounts and shows them under Subtotal, Tax and Fees. Nothing is filled in until you press Use these amounts. If there isn't a receipt, tick No receipt available and give a reason.",
+  /** Settings tour step for the Plus reading switch (only shown where the switch exists). */
+  tourReadAmountsSwitchTitle: "Read amounts with AI",
+  tourReadAmountsSwitchBody:
+    "Included with Plus. When it's on, receipts and proofs of payment added to an expense are read by AI to suggest the amounts. Nothing is filled in until someone chooses to use them. Only an admin can change this.",
+  /** Generic dialog dismiss label — no existing `UI.cancel` before Phase 10; reused here for the
+   *  "Replace the amounts you typed?" dialog rather than adding a feature-specific word for it. */
+  cancel: "Cancel",
 } as const;
+
+/**
+ * `UI.amountsSummary` split just before "Total paid", so the panel can render that part bold
+ * without parsing the joined sentence back apart. A plain export rather than a `UI` entry: the
+ * American-spelling guard (`strings.test.ts`) calls every `UI` function expecting a string
+ * back, and this one returns a pair.
+ */
+export function amountsSummaryParts(amounts: ReadAmounts): { lead: string; totalPaid: string } {
+  const { lead, total } = amountsLineParts(amounts, TOTAL_PAID_LABEL);
+  return { lead, totalPaid: total };
+}
 
 /** Longest unlock reason — long enough for a real explanation, short enough that nobody pastes a
  *  whole email. Shared so the box's `maxLength` and the server's refusal can't drift apart. */

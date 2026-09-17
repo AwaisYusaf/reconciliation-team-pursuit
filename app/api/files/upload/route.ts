@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 import { isValidMonthKey } from "@/src/domain/dates";
+import { sameOrigin } from "@/src/lib/same-origin";
 import { consume } from "@/src/services/rate-limit";
 import { getSession } from "@/src/services/auth/session";
 import { findFundingSource } from "@/src/modules/funding-sources/queries";
@@ -149,19 +150,5 @@ export async function POST(request: NextRequest) {
       { ok: false, error: "That file could not be saved. Try again." },
       { status: 500 },
     );
-  }
-}
-
-/**
- * Origin check for a cookie-authenticated mutation. Server Actions get this from Next.js;
- * route handlers have to do it themselves (architecture §Auth).
- */
-function sameOrigin(request: NextRequest): boolean {
-  const origin = request.headers.get("origin");
-  if (!origin) return request.headers.get("sec-fetch-site") === "same-origin";
-  try {
-    return new URL(origin).host === request.headers.get("host");
-  } catch {
-    return false;
   }
 }

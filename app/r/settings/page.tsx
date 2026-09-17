@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 
 import { PageTitle } from "@/src/components/ui/surfaces";
 import { TourGuide } from "@/src/components/ui/tour";
+import { readAmountsPlanAllowed } from "@/src/modules/amount-reading/access";
 import { loadSettings } from "@/src/modules/settings/queries";
 import { getSession } from "@/src/services/auth/session";
 import { listOrgUsersAction } from "@/src/modules/users/actions";
@@ -76,6 +77,11 @@ export default async function SettingsPage() {
         isAdmin={isAdmin}
         users={users}
         usersError={usersError}
+        readAmounts={
+          data.plan && readAmountsPlanAllowed(data.plan)
+            ? { enabled: data.readAmountsEnabled }
+            : null
+        }
       />
     </div>
   );

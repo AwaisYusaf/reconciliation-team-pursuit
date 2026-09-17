@@ -168,6 +168,11 @@ export const organizations = pgTable("organizations", {
    *  `resolveSession` (Phase 9 part 2, D-99); written by `suspendOrgAction`/`reinstateOrgAction`
    *  (`src/modules/admin/actions.ts`) and read by `signInAction`'s paused branch. */
   suspendedAt: timestamp("suspended_at", { withTimezone: true }),
+  /** Settings → Organization switch (Phase 10, D-105). On by default; admin-only to change.
+   *  Combined with the plan and the server's OpenAI configuration in
+   *  `src/modules/amount-reading/access.ts#canReadAmounts` — this column alone does not decide
+   *  whether the feature is available. */
+  readAmountsEnabled: boolean("read_amounts_enabled").notNull().default(true),
   createdAt: createdAt(),
   updatedAt: updatedAt(),
 });
@@ -1126,6 +1131,51 @@ export const userTourProgress = pgTable(
   (t) => [primaryKey({ columns: [t.userId, t.tour] })],
 );
 
+/* --------------------------------------------------------------- amount reads */
+
+/** amount_reads.source — a freshly-picked file, or one already attached to the expense
+ *  (Phase 10, D-105). */
+export const amountReadSource = pgEnum("amount_read_source", ["upload", "attached"]);
+
+/** amount_reads.document_kind — only receipts and proofs are ever read (Phase 10 §1). */
+export const amountReadDocumentKind = pgEnum("amount_read_document_kind", ["receipt", "proof"]);
+
+/** amount_reads.outcome — what the OpenAI call produced for this one file. */
+export const amountReadOutcome = pgEnum("amount_read_outcome", ["found", "none", "failed"]);
+
+/**
+ * Usage log for the AI amount-reading feature (Phase 10, D-105) — one row per file read,
+ * organisation-scoped and cost-bearing, so usage can be seen per organisation once the feature
+ * moves to a paid plan.
+ *
+ * Deliberately carries no filename, no amount and no document content: what was read and what
+ * it said are not needed to answer "how much did this organisation use, and what did it cost",
+ * and keeping them out keeps this table free of anything that would need redacting later.
+ */
+export const amountReads = pgTable(
+  "amount_reads",
+  {
+    id: id(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    /** Null when the acting user's account has since been removed. */
+    userId: uuid("user_id").references(() => users.id, { onDelete: "set null" }),
+    source: amountReadSource().notNull(),
+    documentKind: amountReadDocumentKind("document_kind").notNull(),
+    outcome: amountReadOutcome().notNull(),
+    /** `OPENAI_READ_MODEL` at the time of this read — a server setting, not written into the
+     *  code, so a later model switch doesn't need a migration to keep old rows honest. */
+    model: text().notNull(),
+    inputTokens: integer("input_tokens"),
+    outputTokens: integer("output_tokens"),
+    /** From `costMicroUsd` — null when either token count or either price setting is missing. */
+    costMicroUsd: integer("cost_micro_usd"),
+    createdAt: createdAt(),
+  },
+  (t) => [index("amount_reads_org_idx").on(t.orgId, t.createdAt)],
+);
+
 /* -------------------------------------------------------------------- types */
 
 export type Organization = typeof organizations.$inferSelect;
@@ -1151,6 +1201,7 @@ export type GeneratedArtifact = typeof generatedArtifacts.$inferSelect;
 export type UserTourProgress = typeof userTourProgress.$inferSelect;
 export type MonthSnapshotRow = typeof monthSnapshots.$inferSelect;
 export type MonthSnapshotTotals = typeof monthSnapshotTotals.$inferSelect;
+export type AmountRead = typeof amountReads.$inferSelect;
 
 export type DocumentKind = (typeof documentKind.enumValues)[number];
 export type DocumentStatus = (typeof documentStatus.enumValues)[number];
@@ -1163,3 +1214,6 @@ export type ExpenseAuditActionType = (typeof expenseAuditAction.enumValues)[numb
 export type OrgPlan = (typeof orgPlan.enumValues)[number];
 export type SubscriptionStatus = (typeof subscriptionStatus.enumValues)[number];
 export type OrgAccountEventAction = (typeof orgAccountEventAction.enumValues)[number];
+export type AmountReadSource = (typeof amountReadSource.enumValues)[number];
+export type AmountReadDocumentKind = (typeof amountReadDocumentKind.enumValues)[number];
+export type AmountReadOutcome = (typeof amountReadOutcome.enumValues)[number];

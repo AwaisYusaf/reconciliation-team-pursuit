@@ -82,6 +82,14 @@ export const LIMITS = {
    * never approaches this in an hour.
    */
   userProvisioning: { limit: 20, windowMs: 60 * 60 * 1000 },
+  /**
+   * Reading amounts from a document (Phase 10), per organisation.
+   *
+   * Each call reaches OpenAI and is billed, unlike `presign` which only stores a file — so this
+   * bounds spend from a script hammering the route rather than from ordinary use. 200/hour is
+   * far more than a person reviewing receipts reaches, and every call is logged regardless.
+   */
+  readAmounts: { limit: 200, windowMs: 60 * 60 * 1000 },
 } as const;
 
 export type LimitName = keyof typeof LIMITS;

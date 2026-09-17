@@ -7,11 +7,13 @@ import { useState, useTransition } from "react";
 import { Button, buttonClassName } from "@/src/components/ui/button";
 import { Helper, Input, Label, MoneyInput } from "@/src/components/ui/field";
 import { Select } from "@/src/components/ui/select";
+import { Switch } from "@/src/components/ui/switch";
 import { Card, CARD_PADDING, DangerPanel, SectionTitle } from "@/src/components/ui/surfaces";
 import { reportResult } from "@/src/components/ui/toast";
 import { formatDateUS } from "@/src/domain/dates";
 import { formatMoney } from "@/src/domain/format";
 import { parseMoneyToCents } from "@/src/domain/money";
+import { UI } from "@/src/domain/strings";
 import { cn } from "@/src/lib/cn";
 import { resetToursAction } from "@/src/modules/tours/actions";
 import { TOUR_SEQUENCE } from "@/src/modules/tours/sequence";
@@ -26,6 +28,7 @@ import {
   changePasswordAction,
   saveLabelAction,
   setLabelActiveAction,
+  setReadAmountsEnabledAction,
   updateOrganisationAction,
 } from "@/src/modules/settings/actions";
 import { VendorTable, type LabelRow, type Vendor } from "./vendor-table";
@@ -169,6 +172,7 @@ export function SettingsSections({
   isAdmin,
   users,
   usersError,
+  readAmounts,
 }: {
   email: string;
   organisation: { name: string; docName: string };
@@ -185,12 +189,16 @@ export function SettingsSections({
   /** Set when the users list failed to load — shown instead of an empty "No users yet.",
    *  which would read as the accounts being gone. */
   usersError?: string;
+  /** Null when the organisation's plan doesn't offer this feature (Phase 10, D-105) — the
+   *  switch is hidden entirely, not shown disabled. */
+  readAmounts: { enabled: boolean } | null;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [active, setActive] = useState<SectionId>("organization");
 
   const [org, setOrg] = useState(organisation);
+  const [readAmountsEnabled, setReadAmountsEnabled] = useState(readAmounts?.enabled ?? false);
 
   function run(
     work: () => Promise<ActionResult<unknown>>,
@@ -208,6 +216,22 @@ export function SettingsSections({
   // "Users" is the only item a manager never sees — same rule D-85 already established for
   // the nav and the old /settings/users route: identity/user-management is admin-only.
   const visibleSections = SECTION_IDS.filter((id) => id !== "users" || isAdmin);
+
+  /** Toggles immediately (optimistic), reverting only if the action itself refuses — a manager
+   *  never reaches this (the switch renders `disabled`), so the only realistic failure is a
+   *  stale/expired session. */
+  function toggleReadAmounts(next: boolean) {
+    const previous = readAmountsEnabled;
+    setReadAmountsEnabled(next);
+    startTransition(async () => {
+      const result = await setReadAmountsEnabledAction(next);
+      if (reportResult(result, "Organization saved")) {
+        router.refresh();
+      } else {
+        setReadAmountsEnabled(previous);
+      }
+    });
+  }
 
   return (
     <div className="flex flex-col lg:flex-row gap-6 items-start">
@@ -273,6 +297,22 @@ export function SettingsSections({
                 Save
               </Button>
             </div>
+
+            {readAmounts && (
+              <div className="mt-6 pt-6 border-t border-line" data-tour="settings-read-amounts">
+                <Switch
+                  checked={readAmountsEnabled}
+                  disabled={!isAdmin || pending}
+                  onChange={toggleReadAmounts}
+                  describedBy="read-amounts-help"
+                >
+                  {UI.readAmountsSwitchLabel}
+                </Switch>
+                <Helper id="read-amounts-help" className="max-w-[60ch]">
+                  {UI.readAmountsSwitchHelp}
+                </Helper>
+              </div>
+            )}
           </Card>
         )}
 
@@ -578,30 +618,9 @@ function FundingSourcesSection({
     <div>
       {archivedCount > 0 && (
         <div className="flex justify-end mb-3">
-          {/* A switch, not a link: it flips a view, it does not go anywhere. `role="switch"` with
-              `aria-checked` is what makes a screen reader announce it as on/off; being a real
-              <button>, Space and Enter work without extra key handling. */}
-          <button
-            type="button"
-            role="switch"
-            aria-checked={showArchived}
-            onClick={() => setShowArchived((current) => !current)}
-            className="inline-flex items-center gap-2.5 text-[15px] text-ink rounded-[3px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
-          >
-            <span>Show archived ({archivedCount})</span>
-            <span
-              aria-hidden="true"
-              className={`relative inline-block h-5 w-9 rounded-full transition-colors ${
-                showArchived ? "bg-accent" : "bg-line"
-              }`}
-            >
-              <span
-                className={`absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-surface shadow transition-transform ${
-                  showArchived ? "translate-x-4" : "translate-x-0"
-                }`}
-              />
-            </span>
-          </button>
+          <Switch checked={showArchived} onChange={setShowArchived}>
+            Show archived ({archivedCount})
+          </Switch>
         </div>
       )}
       <div className="flex flex-col gap-3 mb-6">

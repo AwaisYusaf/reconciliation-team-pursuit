@@ -23,6 +23,7 @@ Postgres, single database, org-scoped rows (single-tenant-per-org from day one; 
 | complimentary | boolean | Free access, independent of `subscription_status` |
 | complimentary_until | date null | Null → no end. A past date is allowed and shows as ended |
 | suspended_at | timestamptz null | Set → every session for this org is refused and its users can't sign in. Enforced in `resolveSession` (Phase 9 part 2, D-99); written by `suspendOrgAction`/`reinstateOrgAction` and read by `signInAction`'s paused branch |
+| read_amounts_enabled | boolean | Settings → Organization switch (Phase 10, D-105). Default `true`, admin-only to change. Combined with `plan` and the server's OpenAI configuration in `canReadAmounts` — never decided from this column alone |
 
 The five columns above arrive in migration `0027`, which ends with a one-off
 `UPDATE organizations SET subscription_status = 'active', complimentary = true;` — every
@@ -318,9 +319,28 @@ of the org, including staff added later. "Show the app guide again" in Settings 
 user's own rows (`resetToursAction`), which re-arms all nine tours on next visit; the header's
 (i) button (`replayTourAction`, D-95) does the same for just the current screen's tour.
 
+### amount_reads (Phase 10, D-105)
+| Field | Type | Notes |
+|---|---|---|
+| id | uuid PK | |
+| org_id | uuid FK | cascade delete with organization |
+| user_id | uuid FK null | **set null** when the acting user's account is removed |
+| source | amount_read_source enum | `upload` (a freshly-picked file) \| `attached` (already on the expense) |
+| document_kind | amount_read_document_kind enum | `receipt` \| `proof` — supporting documents are never read |
+| outcome | amount_read_outcome enum | `found` \| `none` \| `failed` |
+| model | text | `OPENAI_READ_MODEL` at the time of this read |
+| input_tokens | integer null | From the OpenAI response's `usage.input_tokens`; null when not numeric |
+| output_tokens | integer null | Same, `usage.output_tokens` |
+| cost_micro_usd | integer null | From `costMicroUsd` — null when either token count or either price env setting is missing |
+| created_at | timestamptz | |
+
+Index `(org_id, created_at)`. Append-only, one row per file read, whatever the outcome — the
+usage log for a feature billed per organization once it moves off the plan gate. Deliberately
+carries no filename, amount or document content: nothing here ever needs redacting.
+
 ## Relationships summary
 
-organizations 1—1 contract_settings (deprecated) · 1—n users, payment_sources, supporting_doc_types, funding_sources, line_items, expenses, month_documents, month_statuses, month_lock_events, vendor_defaults, recurring_items, generated_artifacts. funding_sources 1—n line_items, expenses, month_documents, month_statuses, month_lock_events, generated_artifacts. expenses 1—n expense_documents. line_items 1—n expenses (restrict), recurring_items (cascade after confirm), vendor_defaults (set null). users 1—n user_tour_progress (cascade delete), month_lock_events (set null on delete).
+organizations 1—1 contract_settings (deprecated) · 1—n users, payment_sources, supporting_doc_types, funding_sources, line_items, expenses, month_documents, month_statuses, month_lock_events, vendor_defaults, recurring_items, generated_artifacts, amount_reads (cascade delete). funding_sources 1—n line_items, expenses, month_documents, month_statuses, month_lock_events, generated_artifacts. expenses 1—n expense_documents. line_items 1—n expenses (restrict), recurring_items (cascade after confirm), vendor_defaults (set null). users 1—n user_tour_progress (cascade delete), month_lock_events (set null on delete), amount_reads (set null on delete).
 
 ## S3 layout (private bucket)
 

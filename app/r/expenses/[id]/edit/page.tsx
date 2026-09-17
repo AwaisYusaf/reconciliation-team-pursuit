@@ -9,6 +9,7 @@ import { monthStatuses } from "@/src/db/schema";
 import { allLineItemStats } from "@/src/domain/budget-math";
 import { formatDateUS, todayIso } from "@/src/domain/dates";
 import { reimbursableCents } from "@/src/domain/money";
+import { readAmountsAllowedForOrg } from "@/src/modules/amount-reading/access";
 import { ExpenseForm } from "@/src/modules/expenses/expense-form";
 import { loadExpense, loadExpenseFormOptions } from "@/src/modules/expenses/queries";
 import { loadSourceContext } from "@/src/modules/funding-sources/queries";
@@ -41,7 +42,7 @@ export default async function EditExpensePage({
     session.activeFundingSourceId,
   );
 
-  const [options, months, submittedRows, lockedMonthKeys] = await Promise.all([
+  const [options, months, submittedRows, lockedMonthKeys, readAmounts] = await Promise.all([
     loadExpenseFormOptions(session.orgId, fundingSourceId),
     // The same list the header offers: a month you can view must be one you can move into.
     loadSelectableMonths(session.orgId, fundingSourceId, [expense.month, session.activeMonth]),
@@ -58,6 +59,7 @@ export default async function EditExpensePage({
     // Every source, not just this expense's own — the Month dropdown can move it to another
     // source's locked month too (Appendix A §2, D-96).
     loadLockedMonths(session.orgId, null),
+    readAmountsAllowedForOrg(session.orgId),
   ]);
 
   // The Month dropdown moves the expense (R2.2), so both the budget projection and the
@@ -113,6 +115,7 @@ export default async function EditExpensePage({
         activeMonth={expense.month}
         initialFundingSourceId={expense.fundingSourceId}
         headerSelectedSourceId={headerSelectedSourceId}
+        readAmounts={readAmounts}
         existing={{
           id: expense.id,
           documents: expense.documents,

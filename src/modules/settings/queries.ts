@@ -61,6 +61,8 @@ export async function loadSettings(orgId: string) {
 
   return {
     org: org[0],
+    plan: org[0]?.plan,
+    readAmountsEnabled: org[0]?.readAmountsEnabled ?? false,
     fundingSources: fundingSourceRows,
     sources: paymentSourceRows,
     docTypes,

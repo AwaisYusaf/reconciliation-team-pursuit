@@ -6,11 +6,12 @@ import { TourGuide } from "@/src/components/ui/tour";
 import { loadExpenseAmounts, loadLineItemBudgets } from "@/src/db/queries";
 import { allLineItemStats } from "@/src/domain/budget-math";
 import { monthLabel, monthWindow, todayIso } from "@/src/domain/dates";
+import { readAmountsAllowedForOrg } from "@/src/modules/amount-reading/access";
 import { ExpenseForm } from "@/src/modules/expenses/expense-form";
 import { loadExpenseFormOptions } from "@/src/modules/expenses/queries";
 import { loadSourceContext } from "@/src/modules/funding-sources/queries";
 import { loadLockedMonths } from "@/src/modules/packet/queries";
-import { ADD_EXPENSE_TOUR_STEPS } from "@/src/modules/tours/add-expense-tour";
+import { addExpenseTourSteps } from "@/src/modules/tours/add-expense-tour";
 import { hasSeenTour } from "@/src/modules/tours/queries";
 import { getSession } from "@/src/services/auth/session";
 
@@ -42,10 +43,11 @@ export default async function NewExpensePage() {
   const initialFundingSourceId =
     activeSources.find((source) => source.id === selectedId)?.id ?? activeSources[0].id;
   const month = session.activeMonth;
-  const [seenAddExpenseTour, options, lockedMonthKeys] = await Promise.all([
+  const [seenAddExpenseTour, options, lockedMonthKeys, readAmounts] = await Promise.all([
     hasSeenTour(session.userId, "add_expense"),
     loadExpenseFormOptions(session.orgId, null),
     loadLockedMonths(session.orgId, null),
+    readAmountsAllowedForOrg(session.orgId),
   ]);
 
   // Remaining per line item drives the live projection as the user types (R3.7). Line item
@@ -69,7 +71,7 @@ export default async function NewExpensePage() {
       {/* New-expense route only — never mounted on the edit page (spec: "not when editing"). */}
       <TourGuide
         tour="add_expense"
-        steps={ADD_EXPENSE_TOUR_STEPS}
+        steps={addExpenseTourSteps(readAmounts)}
         alreadySeen={seenAddExpenseTour}
       />
       <PageTitle className="mb-2">Add Expense</PageTitle>
@@ -86,6 +88,7 @@ export default async function NewExpensePage() {
         activeMonth={month}
         initialFundingSourceId={initialFundingSourceId}
         headerSelectedSourceId={selectedId}
+        readAmounts={readAmounts}
       />
     </div>
   );

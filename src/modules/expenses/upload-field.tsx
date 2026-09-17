@@ -14,7 +14,17 @@ import {
   useDocumentViewer,
   type ViewerDocument,
 } from "@/src/components/ui/document-viewer";
+import {
+  PLUS_FRAME_STYLE,
+  PLUS_GRADIENT_TEXT,
+  PlusBadge,
+  SparkleIcon,
+} from "@/src/components/ui/plus-badge";
 import { Select } from "@/src/components/ui/select";
+import type { FileReadResult } from "@/src/domain/amount-suggestion";
+import { formatMoney } from "@/src/domain/format";
+import { UI } from "@/src/domain/strings";
+import { cn } from "@/src/lib/cn";
 import {
   isAllowedMimeType,
   MAX_UPLOAD_BYTES,
@@ -69,6 +79,30 @@ function rejectionReason(file: File): string | null {
   }
   return null;
 }
+
+/** Plus-plan reading for this field (Phase 10). Absent → the field renders exactly as before. */
+export type UploadFieldAi = {
+  /** Shown in the drop zone: reading starts on its own (Add) or on request (Edit). */
+  note: string;
+  /** A file's read status by its key (queued `key`, or `doc:{id}`); undefined → show nothing. */
+  statusFor: (key: string) => FileReadResult | undefined;
+};
+
+/** One file row's AI status, or nothing when that file has no read to report. */
+function AiStatus({ status }: { status: FileReadResult | undefined }) {
+  if (!status) return null;
+  return (
+    <span className="flex items-center gap-1.5 text-sm text-accent">
+      <SparkleIcon className={cn("w-3.5 h-3.5", status.status === "pending" && "motion-safe:animate-pulse")} />
+      {status.status === "pending"
+        ? UI.aiFileReading
+        : status.status === "found"
+          ? UI.aiFileFound(formatMoney(status.amounts.totalCents))
+          : UI.noAmountFound}
+    </span>
+  );
+}
+
 export function UploadField({
   label,
   scope,
@@ -79,7 +113,9 @@ export function UploadField({
   hidden,
   supportingTypes,
   onRemoveAttached,
+  ai,
 }: {
+  ai?: UploadFieldAi;
   label: string;
   scope: DocumentScope;
   queued: PendingUpload[];
@@ -136,7 +172,10 @@ export function UploadField({
 
   return (
     <div>
-      <div className="block text-[15px] font-semibold mb-1.5 text-ink">{label}</div>
+      <div className="flex flex-wrap items-center gap-2 text-[15px] font-semibold mb-1.5 text-ink">
+        {label}
+        {ai && <PlusBadge size="sm" />}
+      </div>
 
       {supportingTypes && supportingTypes.length > 0 && (
         <Select
@@ -154,7 +193,13 @@ export function UploadField({
         </Select>
       )}
 
-      <div className="border border-dashed border-line rounded-[3px] p-[18px] text-center bg-surface">
+      <div
+        className={cn(
+          "rounded-[3px] p-[18px] text-center",
+          ai ? "bg-autofill" : "border border-dashed border-line bg-surface",
+        )}
+        style={ai ? PLUS_FRAME_STYLE : undefined}
+      >
         <input
           ref={inputRef}
           type="file"
@@ -208,6 +253,12 @@ export function UploadField({
         <div className="text-sm text-sub mt-2.5">
           PNG, JPG, HEIC or PDF, up to {MAX_MB} MB. You can attach more than one.
         </div>
+        {ai && (
+          <div className="flex items-start justify-center gap-1.5 text-sm text-accent font-semibold mt-2 text-left">
+            <SparkleIcon className="mt-0.5" />
+            <span style={PLUS_GRADIENT_TEXT}>{ai.note}</span>
+          </div>
+        )}
       </div>
 
       {(attached.length > 0 || mine.length > 0) && (
@@ -237,6 +288,7 @@ export function UploadField({
                       ? `${document.pageCount} pages`
                       : "1 page"}
                   </span>
+                  <AiStatus status={ai?.statusFor(`doc:${document.id}`)} />
                 </span>
               </button>
               <ConfirmButton
@@ -280,6 +332,7 @@ export function UploadField({
                   <span className="block text-sm text-sub">
                     {item.supportingType ? `${item.supportingType} · ` : ""}Uploads when you save
                   </span>
+                  <AiStatus status={ai?.statusFor(item.key)} />
                 </span>
               </button>
               <Button
