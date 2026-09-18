@@ -14,13 +14,24 @@ import {
   useDocumentViewer,
   type ViewerDocument,
 } from "@/src/components/ui/document-viewer";
+import {
+  PLUS_FRAME_STYLE,
+  PLUS_GRADIENT_TEXT,
+  PlusBadge,
+  SparkleIcon,
+} from "@/src/components/ui/plus-badge";
 import { Select } from "@/src/components/ui/select";
+import type { FileReadResult } from "@/src/domain/amount-suggestion";
+import { formatMoney } from "@/src/domain/format";
+import { UI } from "@/src/domain/strings";
+import { cn } from "@/src/lib/cn";
 import {
   isAllowedMimeType,
   MAX_UPLOAD_BYTES,
   type DocumentScope,
 } from "@/src/services/storage/keys";
 
+import { heicToJpegFile, looksLikeHeic } from "./heic-to-jpeg";
 import type { AttachedDocument } from "./queries";
 
 export type PendingUpload = {
@@ -34,6 +45,9 @@ export type PendingUpload = {
    * event handler rather than in render.
    */
   previewUrl?: string;
+  /** A HEIC still being converted to JPEG in the browser. The form holds Save and the AI read
+   *  until it's done — saving mid-conversion lost the photo (PR #18 round 2, #6). */
+  converting?: boolean;
 };
 
 /**
@@ -69,6 +83,30 @@ function rejectionReason(file: File): string | null {
   }
   return null;
 }
+
+/** Plus-plan reading for this field (Phase 10). Absent → the field renders exactly as before. */
+export type UploadFieldAi = {
+  /** Shown in the drop zone: reading starts on its own (Add) or on request (Edit). */
+  note: string;
+  /** A file's read status by its key (queued `key`, or `doc:{id}`); undefined → show nothing. */
+  statusFor: (key: string) => FileReadResult | undefined;
+};
+
+/** One file row's AI status, or nothing when that file has no read to report. */
+function AiStatus({ status }: { status: FileReadResult | undefined }) {
+  if (!status) return null;
+  return (
+    <span className="flex items-center gap-1.5 text-sm text-accent">
+      <SparkleIcon className={cn("w-3.5 h-3.5", status.status === "pending" && "motion-safe:animate-pulse")} />
+      {status.status === "pending"
+        ? UI.aiFileReading
+        : status.status === "found"
+          ? UI.aiFileFound(formatMoney(status.amounts.totalCents))
+          : UI.noAmountFound}
+    </span>
+  );
+}
+
 export function UploadField({
   label,
   scope,
@@ -79,7 +117,9 @@ export function UploadField({
   hidden,
   supportingTypes,
   onRemoveAttached,
+  ai,
 }: {
+  ai?: UploadFieldAi;
   label: string;
   scope: DocumentScope;
   queued: PendingUpload[];
@@ -115,6 +155,15 @@ export function UploadField({
     created.current.delete(url);
   };
 
+  // Minting a blob URL is a side effect, so only ever from a handler — and only for types a
+  // browser can actually decode.
+  const previewUrlFor = (file: File) => {
+    if (!isPreviewableImage(file.type) && !isPdf(file.type)) return undefined;
+    const url = URL.createObjectURL(file);
+    created.current.add(url);
+    return url;
+  };
+
   const attachedDocuments: ViewerDocument[] = attached.map((document) => ({
     src: inlineSrc(document.id),
     filename: document.filename,
@@ -125,8 +174,8 @@ export function UploadField({
     src: item.previewUrl ?? null,
     filename: item.file.name,
     mimeType: item.file.type,
-    // A queued HEIC is still HEIC: ingestion converts it to JPEG on upload, so there is
-    // nothing this browser can decode until then.
+    // Only a HEIC that failed to convert when picked lands here: ingestion converts it on
+    // upload, so there is nothing this browser can decode until then.
     unavailable: item.previewUrl
       ? undefined
       : "This format cannot be shown by the browser. Save the expense and it will preview here — images are converted when they upload.",
@@ -136,7 +185,10 @@ export function UploadField({
 
   return (
     <div>
-      <div className="block text-[15px] font-semibold mb-1.5 text-ink">{label}</div>
+      <div className="flex flex-wrap items-center gap-2 text-[15px] font-semibold mb-1.5 text-ink">
+        {label}
+        {ai && <PlusBadge size="sm" />}
+      </div>
 
       {supportingTypes && supportingTypes.length > 0 && (
         <Select
@@ -154,7 +206,13 @@ export function UploadField({
         </Select>
       )}
 
-      <div className="border border-dashed border-line rounded-[3px] p-[18px] text-center bg-surface">
+      <div
+        className={cn(
+          "rounded-[3px] p-[18px] text-center",
+          ai ? "bg-autofill" : "border border-dashed border-line bg-surface",
+        )}
+        style={ai ? PLUS_FRAME_STYLE : undefined}
+      >
         <input
           ref={inputRef}
           type="file"
@@ -164,37 +222,44 @@ export function UploadField({
           disabled={disabled}
           onChange={(event) => {
             const files = Array.from(event.target.files ?? []);
-            const accepted: File[] = [];
-
-            for (const file of files) {
+            event.target.value = "";
+            const accepted = files.filter((file) => {
               const reason = rejectionReason(file);
               if (reason) toast.error(reason);
-              else accepted.push(file);
-            }
+              return !reason;
+            });
+            if (accepted.length === 0) return;
 
-            if (accepted.length > 0) {
-              setQueued((current) => [
-                ...current,
-                ...accepted.map((file, index) => {
-                  // Created here, in the handler, because minting a blob URL is a side
-                  // effect. Only for types a browser can actually decode.
-                  const previewUrl =
-                    isPreviewableImage(file.type) || isPdf(file.type)
-                      ? URL.createObjectURL(file)
-                      : undefined;
-                  if (previewUrl) created.current.add(previewUrl);
+            // Every file is queued now, so it is on the form before anything is saved. A HEIC
+            // is queued as "preparing" and converted to JPEG here, so it previews before saving;
+            // one that won't convert keeps the original, and the server converts it on upload.
+            // One photo at a time, so picking ten never holds ten decoded photos in memory.
+            const entries: PendingUpload[] = accepted.map((file, index) => {
+              const converting = looksLikeHeic(file);
+              return {
+                key: `${Date.now()}-${index}-${file.name}`,
+                scope,
+                supportingType: scope === "supporting" ? supportingType : undefined,
+                file,
+                previewUrl: converting ? undefined : previewUrlFor(file),
+                converting: converting || undefined,
+              };
+            });
+            setQueued((current) => [...current, ...entries]);
 
-                  return {
-                    key: `${Date.now()}-${index}-${file.name}`,
-                    scope,
-                    supportingType: scope === "supporting" ? supportingType : undefined,
-                    file,
-                    previewUrl,
-                  };
-                }),
-              ]);
-            }
-            event.target.value = "";
+            void (async () => {
+              for (const entry of entries.filter((item) => item.converting)) {
+                const file = await heicToJpegFile(entry.file);
+                const previewUrl = previewUrlFor(file);
+                // A row removed while converting simply isn't found; its unused preview URL is
+                // revoked with the rest when the field unmounts.
+                setQueued((current) =>
+                  current.map((item) =>
+                    item.key === entry.key ? { ...item, file, previewUrl, converting: undefined } : item,
+                  ),
+                );
+              }
+            })();
           }}
         />
         <Button
@@ -208,6 +273,12 @@ export function UploadField({
         <div className="text-sm text-sub mt-2.5">
           PNG, JPG, HEIC or PDF, up to {MAX_MB} MB. You can attach more than one.
         </div>
+        {ai && (
+          <div className="flex items-start justify-center gap-1.5 text-sm text-accent font-semibold mt-2 text-left">
+            <SparkleIcon className="mt-0.5" />
+            <span style={PLUS_GRADIENT_TEXT}>{ai.note}</span>
+          </div>
+        )}
       </div>
 
       {(attached.length > 0 || mine.length > 0) && (
@@ -237,6 +308,7 @@ export function UploadField({
                       ? `${document.pageCount} pages`
                       : "1 page"}
                   </span>
+                  <AiStatus status={ai?.statusFor(`doc:${document.id}`)} />
                 </span>
               </button>
               <ConfirmButton
@@ -277,9 +349,16 @@ export function UploadField({
                   <span className="block text-[15px] truncate underline decoration-line underline-offset-2">
                     {item.file.name}
                   </span>
-                  <span className="block text-sm text-sub">
-                    {item.supportingType ? `${item.supportingType} · ` : ""}Uploads when you save
-                  </span>
+                  {item.converting ? (
+                    <span className="block text-sm text-accent motion-safe:animate-pulse" role="status">
+                      {UI.convertingPhotos}
+                    </span>
+                  ) : (
+                    <span className="block text-sm text-sub">
+                      {item.supportingType ? `${item.supportingType} · ` : ""}Uploads when you save
+                    </span>
+                  )}
+                  <AiStatus status={ai?.statusFor(item.key)} />
                 </span>
               </button>
               <Button

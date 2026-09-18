@@ -26,6 +26,15 @@ export const ALLOWED_MIME_TYPES: Record<string, string> = {
 /** Maximum accepted size for any single upload (R13.2). */
 export const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
 
+/**
+ * The browser had no type for the file, rather than declaring a wrong one. Chrome on Windows
+ * gives a `.heic` the type "", which reaches the server as `application/octet-stream` — the
+ * multipart default for a part with no type. Inspection's byte sniffing decides these.
+ */
+export function isUndeclaredMimeType(mimeType: string): boolean {
+  return mimeType === "" || mimeType === "application/octet-stream";
+}
+
 export function isAllowedMimeType(mimeType: string): boolean {
   return mimeType in ALLOWED_MIME_TYPES;
 }

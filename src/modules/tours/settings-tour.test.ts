@@ -19,8 +19,8 @@ describe("Settings tour wiring", () => {
     expect(source).toContain('hasSeenTour(session.userId, "settings")');
   });
 
-  it("has 7 steps covering every section, each with a real target and a valid autoOpen tab anchor", () => {
-    expect(SETTINGS_TOUR_STEPS).toHaveLength(7);
+  it("has 8 steps covering every section, each with a real target and a valid autoOpen tab anchor", () => {
+    expect(SETTINGS_TOUR_STEPS).toHaveLength(8);
     const source = readFileSync(`${repoRoot}app/r/settings/settings-sections.tsx`, "utf8");
     // The sidebar's `data-tour` is built from a template literal (`settings-tab-${id}`), not a
     // static string per id — confirm that wiring exists once, then validate any
@@ -55,6 +55,17 @@ describe("Settings tour wiring", () => {
       SETTINGS_TOUR_STEPS.filter((step) => step.autoOpen === "settings-tab-organization").map(
         (step) => step.target,
       ),
-    ).toEqual(["settings-sidebar", "settings-doc-name"]);
+    ).toEqual(["settings-sidebar", "settings-doc-name", "settings-read-amounts"]);
+  });
+
+  it("the Plus reading step targets the switch wrapper, which only renders when the plan offers it", () => {
+    const source = readFileSync(`${repoRoot}app/r/settings/settings-sections.tsx`, "utf8");
+    // The target lives inside `{readAmounts && (…)}`, so a base-plan org has no such element and
+    // the engine drops the step (resolve-steps.ts).
+    const gate = source.indexOf("{readAmounts && (");
+    const target = source.indexOf('data-tour="settings-read-amounts"');
+    expect(gate).toBeGreaterThan(-1);
+    expect(target).toBeGreaterThan(gate);
+    expect(target - gate).toBeLessThan(200);
   });
 });

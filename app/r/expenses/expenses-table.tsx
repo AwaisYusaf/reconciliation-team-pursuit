@@ -20,7 +20,6 @@ import { Modal } from "@/src/components/ui/modal";
 import { Select } from "@/src/components/ui/select";
 import { Card, DangerPanel, EmptyState } from "@/src/components/ui/surfaces";
 import { TableCard, Td, Th } from "@/src/components/ui/table";
-import { reportResult } from "@/src/components/ui/toast";
 import { formatDateTimeUS, formatDateUS, monthLabel } from "@/src/domain/dates";
 import { formatMoney } from "@/src/domain/format";
 import {
@@ -413,7 +412,9 @@ export function ExpensesTable({
               // so a failure is visible in place instead of the dialog vanishing before the
               // user can tell what happened.
               setConfirming(null);
-              if (reportResult(result, `${row.name} moved to trash`)) router.refresh();
+              // No toast either way: the row leaving the table is the confirmation, and a
+              // failure already shows in the panel above — a toast only repeated it.
+              if (result.ok) router.refresh();
               else setError(result.error);
             });
           },

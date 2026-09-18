@@ -25,6 +25,7 @@ import { inspectUpload } from "./inspect";
 import {
   expenseDocumentKey,
   isAllowedMimeType,
+  isUndeclaredMimeType,
   MAX_UPLOAD_BYTES,
   monthDocumentKey,
   thumbnailKey,
@@ -198,7 +199,7 @@ export function precheck(file: { size: number; type: string }): string | null {
   // unsupported — common for HEIC and for files with no extension at all. The magic-byte
   // inspection that follows is the authority on what this actually is, so the decision is
   // left to it rather than guessed from a hint the browser declined to give.
-  if (file.type && !isAllowedMimeType(file.type)) {
+  if (!isUndeclaredMimeType(file.type) && !isAllowedMimeType(file.type)) {
     return "That file type is not supported. Upload a PNG, JPG, HEIC or PDF.";
   }
   return null;

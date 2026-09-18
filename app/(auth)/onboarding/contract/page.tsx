@@ -1,11 +1,12 @@
 import { redirect } from "next/navigation";
 
 import { getSession } from "@/src/services/auth/session";
+import { pageTitle } from "@/src/domain/strings";
 
 import { OnboardingContractForm } from "./contract-form";
 import { Eyebrow, PageTitle } from "@/src/components/ui/surfaces";
 
-export const metadata = { title: "Your contract — Grant Expense Reconciliation" };
+export const metadata = { title: pageTitle("Your contract") };
 
 export default async function OnboardingContractPage() {
   const session = await getSession();

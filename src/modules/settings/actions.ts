@@ -14,7 +14,7 @@ import { db } from "@/src/db";
 import { organizations, paymentSources, supportingDocTypes, users, vendorDefaults } from "@/src/db/schema";
 import { parseMoneyToCents } from "@/src/domain/money";
 import { fail, ok, type ActionResult } from "@/src/lib/action-result";
-import { actionSession } from "@/src/lib/action-session";
+import { actionSession, requireAdmin } from "@/src/lib/action-session";
 import { consume, reset as resetLimit } from "@/src/services/rate-limit";
 import { isUuid } from "@/src/lib/ids";
 import { hashPassword, validatePasswordPolicy, verifyPassword } from "@/src/services/auth/passwords";
@@ -259,5 +259,26 @@ export async function changePasswordAction(input: {
   // user who mistyped twice before succeeding is not left throttled.
   resetLimit("passwordChange", current.userId);
 
+  return ok();
+}
+
+/* ------------------------------------------------------------ amount reading */
+
+/**
+ * Settings → Organization switch (Phase 10, D-105). Admin-only — a manager sees the switch
+ * disabled and reaches here never, but the action re-checks anyway, same as every other
+ * admin-only action in this module's family.
+ */
+export async function setReadAmountsEnabledAction(enabled: boolean): Promise<ActionResult> {
+  const current = await requireAdmin();
+  if ("denied" in current) return current.denied;
+  if (typeof enabled !== "boolean") return fail("That is not a valid value.");
+
+  await db
+    .update(organizations)
+    .set({ readAmountsEnabled: enabled })
+    .where(eq(organizations.id, current.orgId));
+
+  revalidatePath("/", "layout");
   return ok();
 }

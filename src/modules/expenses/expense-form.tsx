@@ -28,10 +28,13 @@ import {
   receiptTotalCents,
   reimbursableCents as domainReimbursable,
 } from "@/src/domain/money";
+import { aggregateAmountSuggestion, panelVisible, type ReadableFile } from "@/src/domain/amount-suggestion";
 import { exclusionNote, UI } from "@/src/domain/strings";
 import { SESSION_EXPIRED } from "@/src/lib/action-result";
 import { cn } from "@/src/lib/cn";
 
+import { AmountSuggestionPanel } from "./amount-suggestion-panel";
+import { useAmountReads, type AmountReadInput } from "./use-amount-reads";
 import {
   fillFromClick,
   fillFromTypedName,
@@ -46,6 +49,7 @@ import {
   type ExpenseInput,
 } from "./actions";
 import type { AttachedDocument } from "./queries";
+import { canSave } from "./can-save";
 import { UploadField, type PendingUpload } from "./upload-field";
 
 export type FormOptions = {
@@ -83,6 +87,9 @@ export type ExpenseFormProps = {
   activeMonth: string;
   /** New = the header's selection or the org's first active source; edit = the expense's own. */
   initialFundingSourceId: string;
+  /** Whether this organisation can read amounts from documents right now (Phase 10, D-105) —
+   *  resolved once, server-side, via `readAmountsAllowedForOrg`. */
+  readAmounts: boolean;
   /**
    * The organisation's current header selection — `null` when "All" is active. Distinct from
    * `initialFundingSourceId`: on edit, that is the expense's *own* source, which need not be
@@ -134,6 +141,7 @@ export function ExpenseForm({
   activeMonth,
   initialFundingSourceId,
   headerSelectedSourceId,
+  readAmounts,
   existing,
 }: ExpenseFormProps) {
   const router = useRouter();
@@ -200,7 +208,97 @@ export function ExpenseForm({
 
   // On the add form files are held until the expense exists, then uploaded against it.
   const [queued, setQueued] = useState<PendingUpload[]>([]);
+  // A picked HEIC is still becoming a JPEG in the browser (PR #18 round 2, #6).
+  const converting = queued.some((item) => item.converting);
   const [status, setStatus] = useState<string | null>(null);
+
+  // --------------------------------------------------------- Phase 10: reading amounts
+  // On Add, reading starts as soon as a receipt/proof is chosen. On Edit, nothing reads until
+  // "Read amounts from documents" is pressed (Appendix A §3) — `requested` flips that on.
+  const [requested, setRequested] = useState(false);
+  const [dismissedFor, setDismissedFor] = useState<string | null>(null);
+  // The file set the "Replace the amounts you typed?" confirm was opened for. Keyed to the set
+  // rather than a boolean: if a file is added or removed while it is open, the suggestion it
+  // was asking about is gone, and a plain `true` would pop the dialog back up by itself once
+  // the new read finished.
+  const [confirmingUseFor, setConfirmingUseFor] = useState<string | null>(null);
+
+  // Every queued or already-attached receipt/proof — never supporting documents (Appendix A
+  // §1). A ticked "No receipt available" drops receipt files entirely, so an expense that is
+  // proofs-only reads as exactly that.
+  const readableFiles: AmountReadInput[] = [
+    ...queued
+      .filter((item) => item.scope === "receipt" || item.scope === "proof")
+      .filter((item) => !(values.noReceipt && item.scope === "receipt"))
+      // Read once it is a JPEG, not the HEIC it is about to stop being.
+      .filter((item) => !item.converting)
+      .map((item) => ({
+        key: item.key,
+        kind: item.scope as "receipt" | "proof",
+        name: item.file.name,
+        source: "upload" as const,
+        file: item.file,
+      })),
+    ...(existing?.documents ?? [])
+      .filter((doc) => (doc.kind === "receipt" || doc.kind === "proof") && doc.status === "attached")
+      .filter((doc) => !(values.noReceipt && doc.kind === "receipt"))
+      .map((doc) => ({
+        key: `doc:${doc.id}`,
+        kind: doc.kind as "receipt" | "proof",
+        name: doc.filename,
+        source: "attached" as const,
+        documentId: doc.id,
+      })),
+  ];
+
+  const readEnabled = editing ? readAmounts && requested : readAmounts;
+  const { results: amountReadResults, signature: amountReadSignature } = useAmountReads({
+    files: readableFiles,
+    enabled: readEnabled,
+  });
+
+  const suggestionFiles: ReadableFile[] = readableFiles.map((file) => ({
+    key: file.key,
+    name: file.name,
+    kind: file.kind,
+    result: amountReadResults.get(file.key) ?? { status: "pending" },
+  }));
+  const suggestion = aggregateAmountSuggestion(suggestionFiles, values.noReceipt);
+  const showAmountSuggestionPanel = panelVisible({
+    enabled: readEnabled,
+    signature: amountReadSignature,
+    dismissedFor,
+    hasFiles: readableFiles.length > 0,
+  });
+  // Plus look for the two fields that are read (never Supporting). A file shows a status only
+  // once reading is on for it — on Edit, not until the button is pressed.
+  const uploadAi = readAmounts
+    ? {
+        note: editing ? UI.aiUploadNoteEdit : UI.aiUploadNoteAdd,
+        statusFor: (key: string) => (readEnabled ? amountReadResults.get(key) : undefined),
+      }
+    : undefined;
+
+  function applySuggestedAmounts() {
+    if (suggestion.state !== "done") return;
+    setValues((current) => ({
+      ...current,
+      subtotal: (suggestion.subtotalCents / 100).toFixed(2),
+      tax: (suggestion.taxCents / 100).toFixed(2),
+      fees: (suggestion.feesCents / 100).toFixed(2),
+    }));
+    setDismissedFor(amountReadSignature);
+    setConfirmingUseFor(null);
+  }
+
+  function useSuggestedAmounts() {
+    const typedNonZero =
+      parseMoneyToCentsOrZero(values.subtotal) !== 0 ||
+      parseMoneyToCentsOrZero(values.tax) !== 0 ||
+      parseMoneyToCentsOrZero(values.fees) !== 0;
+    if (typedNonZero) setConfirmingUseFor(amountReadSignature);
+    else applySuggestedAmounts();
+  }
 
   const set = useCallback(
     <K extends keyof ExpenseInput>(key: K, value: ExpenseInput[K]) =>
@@ -308,6 +406,11 @@ export function ExpenseForm({
     ? lockedMonthKeys.has(`${existing.values.fundingSourceId}:${existing.values.month}`)
     : false;
   const selectedMonthLocked = lockedMonthKeys.has(`${values.fundingSourceId}:${values.month}`);
+
+  // "Read amounts from documents" (Appendix A §3): hidden when there's nothing to read, or the
+  // record is locked — a locked expense's own fieldset already blocks every other control.
+  const showReadAmountsButton =
+    editing && readAmounts && !ownSavedLocked && readableFiles.length > 0;
 
   // Vendor autofill (R8.1): an exact match fills line item and description; partials list.
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -532,6 +635,110 @@ export function ExpenseForm({
 
   const highlight = autofilled ? "bg-autofill" : "bg-surface";
 
+  // Proof of payment + Receipt, defined once: Plus renders them above the amounts, everyone
+  // else below (Phase 10) — one definition so the two orders can never drift apart.
+  const proofAndReceipt = (
+    <>
+      <div data-tour="add-expense-proof">
+        <UploadField
+          label="Proof of payment"
+          scope="proof"
+          ai={uploadAi}
+          queued={queued}
+          setQueued={setQueued}
+          attached={
+            existing?.documents.filter((doc) => doc.kind === "proof") ?? []
+          }
+          disabled={pending || ownSavedLocked}
+          onRemoveAttached={(id) =>
+            startTransition(async () => {
+              if (
+                reportResult(
+                  await removeExpenseDocumentAction(id),
+                  "File removed",
+                )
+              ) {
+                router.refresh();
+              }
+            })
+          }
+        />
+      </div>
+
+      <div className="border-t border-line pt-[22px]" data-tour="add-expense-receipt">
+        <UploadField
+          label="Receipt / justification (receipt, invoice, or timesheet)"
+          scope="receipt"
+          ai={uploadAi}
+          queued={queued}
+          setQueued={setQueued}
+          attached={
+            existing?.documents.filter((doc) => doc.kind === "receipt") ??
+            []
+          }
+          disabled={pending || values.noReceipt || ownSavedLocked}
+          hidden={values.noReceipt}
+          onRemoveAttached={(id) =>
+            startTransition(async () => {
+              if (
+                reportResult(
+                  await removeExpenseDocumentAction(id),
+                  "File removed",
+                )
+              ) {
+                router.refresh();
+              }
+            })
+          }
+        />
+
+        <label className="flex items-center gap-2.5 mt-3.5 text-base cursor-pointer min-h-11">
+          <input
+            type="checkbox"
+            checked={values.noReceipt}
+            disabled={ownSavedLocked}
+            onChange={(event) => {
+              const checked = event.target.checked;
+              // Ask before the files disappear from view, not on the way out of the form.
+              if (checked && attachedReceipts.length > 0) {
+                setConfirmingNoReceipt(true);
+                return;
+              }
+              applyNoReceipt(checked);
+            }}
+            className="w-5 h-5 accent-accent"
+          />
+          <span>No receipt available</span>
+        </label>
+
+        {values.noReceipt && (
+          <div className="mt-2">
+            <Label htmlFor="noReceiptReason">
+              Reason (prints on the cover sheet){" "}
+              <span className="text-danger">Required</span>
+            </Label>
+            <Textarea
+              id="noReceiptReason"
+              disabled={ownSavedLocked}
+              rows={2}
+              value={values.noReceiptReason}
+              onChange={(event) =>
+                set("noReceiptReason", event.target.value)
+              }
+            />
+            {attachedReceipts.length > 0 && (
+              <Helper className="text-danger">
+                Saving with this ticked removes the{" "}
+                {attachedReceipts.length} receipt file
+                {attachedReceipts.length === 1 ? "" : "s"} already attached.
+              </Helper>
+            )}
+          </div>
+        )}
+      </div>
+    </>
+  );
+
   return (
     <div className="max-w-[560px]">
       {ownSavedLocked && existing && (
@@ -556,7 +763,7 @@ export function ExpenseForm({
       <form
         onSubmit={(event) => {
           event.preventDefault();
-          if (!pending) save();
+          if (canSave(queued, pending)) save();
         }}
       >
         <Card className="p-7 flex flex-col gap-[22px]">
@@ -753,7 +960,22 @@ export function ExpenseForm({
             />
           </div>
 
-          <div className="flex flex-wrap gap-3.5" data-tour="add-expense-amounts">
+          {/* The fieldset pauses here for the upload fields. A disabled fieldset disables
+              every button inside it, and a file’s preview is a button: on a locked month that
+              would have stopped anyone opening the receipts, and the lock must leave everything
+              viewable (R10.7). `UploadField`’s own `disabled` blocks adding and removing while
+              leaving preview alone, so these take that instead. */}
+          </fieldset>
+
+          {/* Plus (Phase 10): files first, so the amounts sit right under the documents they are
+              read from. Without reading the form keeps its original order (Appendix A §4). */}
+          {readAmounts && proofAndReceipt}
+
+          <fieldset disabled={ownSavedLocked} className="contents">
+          <div
+            className={cn("flex flex-wrap gap-3.5", readAmounts && "border-t border-line pt-[22px]")}
+            data-tour="add-expense-amounts"
+          >
             {(["subtotal", "tax", "fees"] as const).map((field) => (
               <div key={field} className="flex-1 min-w-[150px]">
                 <Label htmlFor={field} className="capitalize">
@@ -768,6 +990,28 @@ export function ExpenseForm({
               </div>
             ))}
           </div>
+
+          {showReadAmountsButton && (
+            <div>
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  setRequested(true);
+                  setDismissedFor(null);
+                }}
+              >
+                {UI.readAmountsFromDocuments}
+              </Button>
+            </div>
+          )}
+
+          {showAmountSuggestionPanel && (
+            <AmountSuggestionPanel
+              suggestion={suggestion}
+              onUse={useSuggestedAmounts}
+              onDismiss={() => setDismissedFor(amountReadSignature)}
+            />
+          )}
 
           {(taxCents !== 0 || feesCents !== 0) && (
             <div className="border border-line rounded-[3px] bg-section px-4 py-3.5">
@@ -851,109 +1095,9 @@ export function ExpenseForm({
               {formatMoney(projection)}
             </div>
           )}
-
-          {/* The fieldset pauses here for the three upload fields. A disabled fieldset disables
-              every button inside it, and a file's preview is a button: on a locked month that
-              would have stopped anyone opening the receipts, and the lock must leave everything
-              viewable (R10.7). `UploadField`'s own `disabled` blocks adding and removing while
-              leaving preview alone, so these take that instead. */}
           </fieldset>
 
-          <div data-tour="add-expense-proof">
-            <UploadField
-              label="Proof of payment"
-              scope="proof"
-              queued={queued}
-              setQueued={setQueued}
-              attached={
-                existing?.documents.filter((doc) => doc.kind === "proof") ?? []
-              }
-              disabled={pending || ownSavedLocked}
-              onRemoveAttached={(id) =>
-                startTransition(async () => {
-                  if (
-                    reportResult(
-                      await removeExpenseDocumentAction(id),
-                      "File removed",
-                    )
-                  ) {
-                    router.refresh();
-                  }
-                })
-              }
-            />
-          </div>
-
-          <div className="border-t border-line pt-[22px]" data-tour="add-expense-receipt">
-            <UploadField
-              label="Receipt / justification (receipt, invoice, or timesheet)"
-              scope="receipt"
-              queued={queued}
-              setQueued={setQueued}
-              attached={
-                existing?.documents.filter((doc) => doc.kind === "receipt") ??
-                []
-              }
-              disabled={pending || values.noReceipt || ownSavedLocked}
-              hidden={values.noReceipt}
-              onRemoveAttached={(id) =>
-                startTransition(async () => {
-                  if (
-                    reportResult(
-                      await removeExpenseDocumentAction(id),
-                      "File removed",
-                    )
-                  ) {
-                    router.refresh();
-                  }
-                })
-              }
-            />
-
-            <label className="flex items-center gap-2.5 mt-3.5 text-base cursor-pointer min-h-11">
-              <input
-                type="checkbox"
-                checked={values.noReceipt}
-                disabled={ownSavedLocked}
-                onChange={(event) => {
-                  const checked = event.target.checked;
-                  // Ask before the files disappear from view, not on the way out of the form.
-                  if (checked && attachedReceipts.length > 0) {
-                    setConfirmingNoReceipt(true);
-                    return;
-                  }
-                  applyNoReceipt(checked);
-                }}
-                className="w-5 h-5 accent-accent"
-              />
-              <span>No receipt available</span>
-            </label>
-
-            {values.noReceipt && (
-              <div className="mt-2">
-                <Label htmlFor="noReceiptReason">
-                  Reason (prints on the cover sheet){" "}
-                  <span className="text-danger">Required</span>
-                </Label>
-                <Textarea
-                  id="noReceiptReason"
-                  disabled={ownSavedLocked}
-                  rows={2}
-                  value={values.noReceiptReason}
-                  onChange={(event) =>
-                    set("noReceiptReason", event.target.value)
-                  }
-                />
-                {attachedReceipts.length > 0 && (
-                  <Helper className="text-danger">
-                    Saving with this ticked removes the{" "}
-                    {attachedReceipts.length} receipt file
-                    {attachedReceipts.length === 1 ? "" : "s"} already attached.
-                  </Helper>
-                )}
-              </div>
-            )}
-          </div>
+          {!readAmounts && proofAndReceipt}
 
           <div className="border-t border-line pt-[22px]">
             <UploadField
@@ -1022,8 +1166,8 @@ export function ExpenseForm({
 
           <div className="flex flex-wrap items-center gap-5">
             {!ownSavedLocked && (
-              <Button type="submit" disabled={pending}>
-                {pending ? "Saving…" : editing ? "Save changes" : "Save expense"}
+              <Button type="submit" disabled={!canSave(queued, pending)}>
+                {pending ? "Saving…" : converting ? UI.convertingPhotos : editing ? "Save changes" : "Save expense"}
               </Button>
             )}
             <Button
@@ -1096,6 +1240,21 @@ export function ExpenseForm({
                 {existing!.documents.length === 1 ? "" : "s"}, and can be restored.
               </Dialog>
             </>
+          )}
+
+          {/* Outside the `editing &&` block on purpose — reachable on Add too, unlike the two
+              dialogs above which only make sense once there's something to delete. */}
+          {suggestion.state === "done" && (
+            <Dialog
+              open={showAmountSuggestionPanel && confirmingUseFor === amountReadSignature}
+              tone="neutral"
+              title={UI.replaceTypedAmounts}
+              dismissLabel={UI.cancel}
+              onDismiss={() => setConfirmingUseFor(null)}
+              confirm={{ label: UI.useTheseAmounts, onConfirm: applySuggestedAmounts }}
+            >
+              {UI.amountsSummary(suggestion)}
+            </Dialog>
           )}
         </Card>
       </form>

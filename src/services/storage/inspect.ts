@@ -16,6 +16,9 @@ import sharp from "sharp";
 
 import { pdfOpensWithoutPassword } from "@/src/generation/raster";
 
+import { decodeHeic } from "./heic";
+import { isUndeclaredMimeType } from "./keys";
+
 export type InspectionSuccess = {
   ok: true;
   /** Normalised bytes to store — HEIC/WebP arrive here converted to JPEG. */
@@ -80,9 +83,11 @@ export async function inspectUpload(input: {
   }
 
   // A declared type that disagrees with the bytes is either a mistake or an attack; both
-  // deserve the same refusal.
+  // deserve the same refusal. No declared type at all is neither (`isUndeclaredMimeType`), and
+  // `precheck` passes it through for the bytes to decide — which `sniff` just did, from the
+  // same five supported formats.
   const declaredFamily = declaredMimeType === "image/heif" ? "image/heic" : declaredMimeType;
-  if (actual !== declaredFamily) {
+  if (!isUndeclaredMimeType(declaredMimeType) && actual !== declaredFamily) {
     return {
       ok: false,
       error: "That file's contents do not match its type. Try exporting it again.",
@@ -153,8 +158,22 @@ async function inspectPdf(body: Buffer, allowOwnerPasswordPdf: boolean): Promise
   }
 }
 
-async function inspectImage(body: Buffer, mimeType: string): Promise<InspectionResult> {
+/** A HEIC as JPEG. The decode itself (and its size limit) lives in `heic.ts`, off the main thread. */
+async function heicToJpeg(body: Buffer): Promise<Buffer> {
+  const { width, height, data } = await decodeHeic(body);
+  return sharp(Buffer.from(data.buffer, data.byteOffset, data.byteLength), {
+    raw: { width, height, channels: 4 },
+  })
+    .jpeg({ quality: 90 })
+    .toBuffer();
+}
+
+async function inspectImage(input: Buffer, declaredType: string): Promise<InspectionResult> {
   try {
+    // A decoded HEIC continues as the JPEG it now is: stored as-is, never re-encoded twice.
+    const heic = declaredType === "image/heic";
+    const body = heic ? await heicToJpeg(input) : input;
+    const mimeType = heic ? "image/jpeg" : declaredType;
     const image = sharp(body, { limitInputPixels: MAX_PIXELS });
     const metadata = await image.metadata();
 

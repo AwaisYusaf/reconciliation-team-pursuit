@@ -2,12 +2,13 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { PageHeader } from "@/src/components/ui/surfaces";
+import { pageTitle } from "@/src/domain/strings";
 import { listOrgUsersAction } from "@/src/modules/users/actions";
 import { getSession } from "@/src/services/auth/session";
 
 import { UsersManager } from "./users-manager";
 
-export const metadata = { title: "Users — Grant Expense Reconciliation" };
+export const metadata = { title: pageTitle("Users") };
 
 export default async function UsersPage() {
   const session = await getSession();

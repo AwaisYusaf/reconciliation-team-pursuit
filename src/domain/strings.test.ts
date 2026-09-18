@@ -2,13 +2,17 @@ import { describe, expect, it } from "vitest";
 
 import { formatBytes } from "./format";
 import {
+  APP_NAME,
   coverSheetFilename,
   coverSheetTitle,
   lineItemDeleteBlocked,
+  monthlySummaryFilename,
+  monthlySummaryTitle,
   noReceiptNote,
   packetFilename,
   packetFooter,
   packetSummaryTitle,
+  pageTitle,
   PLAN_LABELS,
   sanitiseForFilename,
   SEE_BELOW,
@@ -90,6 +94,30 @@ describe("admin dashboard strings (Phase 9, verbatim)", () => {
     expect(STATUS_LABELS.active).toBe("Active");
     expect(STATUS_LABELS.past_due).toBe("Past due");
     expect(STATUS_LABELS.cancelled).toBe("Cancelled");
+  });
+});
+
+describe("pageTitle (product rename)", () => {
+  it("joins section and app name with an em dash, not a hyphen or en dash", () => {
+    expect(pageTitle("Dashboard")).toBe(`Dashboard — ${APP_NAME}`);
+    expect(pageTitle("Dashboard")).toContain("—"); // em dash, U+2014
+    expect(pageTitle("Dashboard")).not.toContain("–"); // en dash
+    expect(pageTitle("Dashboard")).not.toMatch(/ - /); // hyphen with spaces
+  });
+
+  it("still prepends the separator and app name for an empty section, rather than throwing", () => {
+    expect(pageTitle("")).toBe(` — ${APP_NAME}`);
+  });
+
+  it("does not collide with a section that already contains an em dash", () => {
+    expect(pageTitle("Before — After")).toBe(`Before — After — ${APP_NAME}`);
+  });
+
+  it("does not truncate a very long section label", () => {
+    const longSection = "A".repeat(500);
+    const title = pageTitle(longSection);
+    expect(title).toBe(`${longSection} — ${APP_NAME}`);
+    expect(title.startsWith(longSection)).toBe(true);
   });
 });
 
@@ -293,6 +321,89 @@ describe("filenames (R10.3)", () => {
     expect(packetFilename("Team Pursuit", "February 2026", undefined)).toBe(
       "Team_Pursuit_February_2026_Packet.pdf",
     );
+  });
+});
+
+describe("monthly summary title and filename (Phase 11 §7.4, U-21)", () => {
+  it("builds the title and filename with no source name", () => {
+    expect(monthlySummaryTitle("Team Pursuit", "March 2026")).toBe(
+      "Team Pursuit March 2026 Monthly Summary",
+    );
+    expect(monthlySummaryFilename("Team Pursuit", "March 2026", "docx")).toBe(
+      "Team Pursuit March 2026 Monthly Summary.docx",
+    );
+    expect(monthlySummaryFilename("Team Pursuit", "March 2026", "pdf")).toBe(
+      "Team Pursuit March 2026 Monthly Summary.pdf",
+    );
+  });
+
+  it("inserts the source name between the doc name and the month when given", () => {
+    expect(monthlySummaryTitle("Team Pursuit", "March 2026", "City of Detroit")).toBe(
+      "Team Pursuit City of Detroit March 2026 Monthly Summary",
+    );
+    expect(monthlySummaryFilename("Team Pursuit", "March 2026", "docx", "City of Detroit")).toBe(
+      "Team Pursuit City of Detroit March 2026 Monthly Summary.docx",
+    );
+  });
+
+  it("empty-string docName override: no leading space", () => {
+    expect(monthlySummaryFilename("", "March 2026", "docx")).toBe(
+      "March 2026 Monthly Summary.docx",
+    );
+    expect(monthlySummaryTitle("", "March 2026")).toBe("March 2026 Monthly Summary");
+  });
+
+  it("shortens only a very long source name, keeping the month and 'Monthly Summary' whole", () => {
+    const longSource = "A".repeat(300);
+    const name = monthlySummaryFilename("Team Pursuit", "March 2026", "docx", longSource);
+    expect(name.startsWith("Team Pursuit ")).toBe(true);
+    expect(name.endsWith(" March 2026 Monthly Summary.docx")).toBe(true);
+    expect(name.length - ".docx".length).toBeLessThanOrEqual(150);
+  });
+
+  it("strips unsafe filename characters from every part", () => {
+    const name = monthlySummaryFilename(
+      'Team/Pursuit\\:*?"<>|',
+      "March 2026",
+      "docx",
+      "../../etc\r\nSource",
+    );
+    expect(name).not.toMatch(/[\\/:*?"<>|]/);
+    expect(name).not.toContain("..");
+    expect(name).not.toContain("\r");
+    expect(name).not.toContain("\n");
+    expect(name.endsWith("March 2026 Monthly Summary.docx")).toBe(true);
+  });
+
+  it("skips empty parts in the title rather than leaving a doubled space", () => {
+    expect(monthlySummaryTitle("Team Pursuit", "March 2026", null)).toBe(
+      "Team Pursuit March 2026 Monthly Summary",
+    );
+    expect(monthlySummaryTitle("Team Pursuit", "March 2026", "")).toBe(
+      "Team Pursuit March 2026 Monthly Summary",
+    );
+    expect(monthlySummaryTitle("Team Pursuit", "March 2026", "   ")).toBe(
+      "Team Pursuit March 2026 Monthly Summary",
+    );
+  });
+});
+
+describe("one plan name (PR #18 review #13): \"Plus\" in badges/tours, \"Reconciliation + AI\" only in plan/billing text", () => {
+  it("no tour* string or the badge ever spells out the plan's billing name", () => {
+    const tourKeys = Object.keys(UI).filter((key) => key.startsWith("tour"));
+    expect(tourKeys.length).toBeGreaterThan(0);
+    for (const key of tourKeys) {
+      const value = (UI as Record<string, unknown>)[key];
+      const text = typeof value === "string" ? value : (value as (...args: unknown[]) => string)("x");
+      expect(text).not.toContain("Reconciliation + AI");
+    }
+    expect(UI.planPlusBadge).not.toContain("Reconciliation + AI");
+    expect(UI.planPlusBadge).toBe("Plus");
+  });
+
+  it("plan/billing text spells out the full name", () => {
+    expect(UI.summaryPlanNote).toContain("Reconciliation + AI");
+    expect(PLAN_LABELS.reconciliation_ai).toBe("Reconciliation + AI");
   });
 });
 

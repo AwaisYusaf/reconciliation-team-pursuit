@@ -15,8 +15,9 @@ import { TableCard, Td, Th } from "@/src/components/ui/table";
 import { TourGuide } from "@/src/components/ui/tour";
 import { formatDateUS, monthLabel, todayIso } from "@/src/domain/dates";
 import { formatMoney } from "@/src/domain/format";
-import { UI } from "@/src/domain/strings";
+import { pageTitle, UI } from "@/src/domain/strings";
 import { packetContents } from "@/src/generation/packet-order";
+import { summariesAccessForOrg } from "@/src/modules/ai/access";
 import { loadTrashedExpenses } from "@/src/modules/expenses/queries";
 import { loadSourceContext } from "@/src/modules/funding-sources/queries";
 import { loadLockedMonths, loadLockEvents, loadPacketReadiness } from "@/src/modules/packet/queries";
@@ -24,11 +25,12 @@ import { PACKET_TOUR_STEPS } from "@/src/modules/tours/packet-tour";
 import { hasSeenTour } from "@/src/modules/tours/queries";
 import { getSession } from "@/src/services/auth/session";
 
+import { MonthlySummarySection } from "@/src/components/monthly-summary/summary-section";
 import { LockHistory, MonthLockControls } from "./month-lock";
 import { MonthDocuments } from "./month-documents";
 import { PacketDownloadButtons, type DeletedItem } from "./packet-download-buttons";
 
-export const metadata = { title: "Month-End Packet — Grant Expense Reconciliation" };
+export const metadata = { title: pageTitle("Month-End Packet") };
 
 /**
  * m06 — the month's finish line.
@@ -64,12 +66,13 @@ export default async function PacketPage() {
     );
   }
 
-  const [readiness, deletedInMonth, seenPacketTour, events, lockedMonths] = await Promise.all([
+  const [readiness, deletedInMonth, seenPacketTour, events, lockedMonths, summariesAccess] = await Promise.all([
     loadPacketReadiness(session.orgId, fundingSourceId, month),
     loadTrashedExpenses(session.orgId, fundingSourceId, month),
     hasSeenTour(session.userId, "packet"),
     loadLockEvents(session.orgId, fundingSourceId, month),
     loadLockedMonths(session.orgId, fundingSourceId),
+    summariesAccessForOrg(session.orgId),
   ]);
 
   // Locked state comes from `month_statuses.locked_at`, not from the newest event (PR #16
@@ -269,6 +272,27 @@ export default async function PacketPage() {
             lockedMessage={locked ? UI.monthLocked(label) : null}
           />
         </div>
+      </div>
+
+      {/* ponytail: `MonthlySummarySection` re-derives the month's expenses fingerprint that
+          `readiness` above already paid for — a second, smaller cost on this page than before
+          (one component, one loader, per PR #18 review #7). Acceptable; noted for TASKS.md. */}
+      <div
+        data-tour={summariesAccess.use ? "packet-monthly-summary" : undefined}
+        className="mt-8"
+      >
+        <SectionTitle className="mb-1">{UI.summaryTitle}</SectionTitle>
+        {summariesAccess.use ? (
+          <MonthlySummarySection
+            orgId={session.orgId}
+            userId={session.userId}
+            email={session.email}
+            fundingSourceId={fundingSourceId}
+            month={month}
+          />
+        ) : (
+          <p className="text-[15px] text-ink mt-2">{UI.summaryPlanNote}</p>
+        )}
       </div>
     </div>
   );

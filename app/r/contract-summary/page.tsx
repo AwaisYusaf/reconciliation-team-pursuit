@@ -14,7 +14,7 @@ import { contractContextItems } from "@/src/domain/contract-context";
 import { formatDateUS, monthLabel, todayIso } from "@/src/domain/dates";
 import { formatMoney, formatPercent, summaryRowLabel } from "@/src/domain/format";
 import { blockingRecords, type GateExpense } from "@/src/domain/gate";
-import { downloadBlockedReason, UI } from "@/src/domain/strings";
+import { downloadBlockedReason, pageTitle, UI } from "@/src/domain/strings";
 import { contractSummary, type SummaryRow } from "@/src/domain/summary";
 import { loadMonthExpenses } from "@/src/modules/expenses/queries";
 import { loadSourceContext } from "@/src/modules/funding-sources/queries";
@@ -25,7 +25,7 @@ import { getSession } from "@/src/services/auth/session";
 import { inlineSrc } from "@/src/services/storage/preview";
 import { and, eq } from "drizzle-orm";
 
-export const metadata = { title: "Contract Summary — Grant Expense Reconciliation" };
+export const metadata = { title: pageTitle("Contract Summary") };
 
 const COLUMNS = 7;
 

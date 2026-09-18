@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { PageTitle } from "@/src/components/ui/surfaces";
+import { APP_NAME } from "@/src/domain/strings";
 
 /** Root 404, for paths outside the authenticated shell. */
 export default function NotFound() {
@@ -11,7 +12,7 @@ export default function NotFound() {
           That page does not exist.
         </p>
         <Link href="/" className="text-accent underline hover:text-accent-dark text-[15px]">
-          Go to Grant Expense Reconciliation
+          Go to {APP_NAME}
         </Link>
       </div>
     </div>

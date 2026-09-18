@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { Domine, Public_Sans } from "next/font/google";
 
+import { APP_NAME } from "@/src/domain/strings";
+
 import "./globals.css";
 
 // Loaded here (not in the landing route) because next/font/google requires a module-scope
@@ -19,8 +21,8 @@ const publicSans = Public_Sans({
 });
 
 export const metadata: Metadata = {
-  title: "Grant Expense Reconciliation",
-  description: "Monthly grant expense reconciliation and packet preparation",
+  title: APP_NAME,
+  description: "Grant expense tracking, reconciliation and monthly packet preparation",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

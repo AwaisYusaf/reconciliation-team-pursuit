@@ -9,14 +9,15 @@ import { config } from "dotenv";
 
 config({ path: ".env.local", quiet: true });
 
-import { and, eq, inArray } from "drizzle-orm";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { and, eq, inArray, sql } from "drizzle-orm";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
 const hasDatabase = Boolean(process.env.DATABASE_URL);
 
 describe.skipIf(!hasDatabase)("admin queries (integration, Phase 9 part 3)", async () => {
   const { db } = await import("@/src/db");
   const {
+    aiUsageEvents,
     expenseDocuments,
     expenses,
     fundingSources,
@@ -39,6 +40,7 @@ describe.skipIf(!hasDatabase)("admin queries (integration, Phase 9 part 3)", asy
 
   const {
     loadOrgAccount,
+    loadOrgAiUsage,
     loadOrgDirectory,
     loadOrgHistory,
     loadOrgSummary,
@@ -698,6 +700,222 @@ describe.skipIf(!hasDatabase)("admin queries (integration, Phase 9 part 3)", asy
       } finally {
         for (const id of tieIds) await db.delete(organizations).where(eq(organizations.id, id));
       }
+    });
+  });
+
+  /* ---------------------------------------------------------------- loadOrgAiUsage */
+
+  describe("loadOrgAiUsage (Phase 11 follow-up, D-107 AI usage card)", () => {
+    let aiOrgId: string;
+    let aiSourceId: string;
+
+    /** The UTC instant that is exactly local midnight on the 1st of `monthKey` in
+     *  America/Detroit — computed deliberately (not assumed), trying both possible DST offsets
+     *  (-4 EDT / -5 EST) and keeping whichever actually round-trips through Intl. */
+    function detroitMonthStartUtc(monthKey: string): Date {
+      const [year, month] = monthKey.split("-").map(Number);
+      const fmt = new Intl.DateTimeFormat("en-US", {
+        timeZone: "America/Detroit",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+      });
+      for (const offsetHours of [4, 5]) {
+        const candidate = new Date(Date.UTC(year, month - 1, 1, offsetHours, 0, 0, 0));
+        const parts = Object.fromEntries(fmt.formatToParts(candidate).map((p) => [p.type, p.value]));
+        const hour = parts.hour === "24" ? "00" : parts.hour;
+        if (
+          parts.year === String(year) &&
+          parts.month === String(month).padStart(2, "0") &&
+          parts.day === "01" &&
+          hour === "00" &&
+          parts.minute === "00"
+        ) {
+          return candidate;
+        }
+      }
+      throw new Error(`could not compute Detroit month boundary for ${monthKey}`);
+    }
+
+    beforeAll(async () => {
+      const org = await createTestOrg({ name: `AI Usage Org ${unique}` });
+      aiOrgId = org.orgId;
+      aiSourceId = org.fundingSourceId;
+      orgIds.push(aiOrgId);
+    });
+
+    afterEach(async () => {
+      await db.delete(aiUsageEvents).where(eq(aiUsageEvents.orgId, aiOrgId));
+    });
+
+    it("counts land in the reads bucket for amount_read and the summaries bucket for monthly_summary, unsaved counts failed+rejected per feature, and the total cost is the real sum", async () => {
+      await db.insert(aiUsageEvents).values([
+        {
+          orgId: aiOrgId,
+          feature: "amount_read",
+          outcome: "found",
+          model: "test",
+          documentSource: "upload",
+          documentKind: "receipt",
+          inputTokens: 100,
+          outputTokens: 20,
+          costMicroUsd: 500,
+        },
+        {
+          orgId: aiOrgId,
+          feature: "amount_read",
+          outcome: "failed",
+          model: "test",
+          documentSource: "upload",
+          documentKind: "proof",
+        },
+        {
+          orgId: aiOrgId,
+          feature: "monthly_summary",
+          outcome: "success",
+          model: "test",
+          fundingSourceId: aiSourceId,
+          month: currentMonth,
+          trigger: "first",
+          inputTokens: 1000,
+          outputTokens: 200,
+          costMicroUsd: 5000,
+        },
+        {
+          orgId: aiOrgId,
+          feature: "monthly_summary",
+          outcome: "rejected",
+          model: "test",
+          fundingSourceId: aiSourceId,
+          month: currentMonth,
+          trigger: "again",
+          inputTokens: 500,
+          outputTokens: 100,
+          costMicroUsd: 2000,
+        },
+      ]);
+
+      const usage = await loadOrgAiUsage(aiOrgId);
+      expect(usage.reads).toEqual({ total: 2, currentMonth: 2, unsaved: 1 });
+      expect(usage.summaries).toEqual({ total: 2, currentMonth: 2, unsaved: 1 });
+      expect(usage.costMicroUsdTotal).toBe(500 + 5000 + 2000); // the failed row's null cost adds nothing
+      expect(usage.lastRunAt).toBeInstanceOf(Date);
+    });
+
+    it("Detroit month boundary: the instant just before local midnight on the 1st is still the previous month; the exact boundary instant is this month", async () => {
+      const boundary = detroitMonthStartUtc(currentMonth);
+      const justBefore = new Date(boundary.getTime() - 1);
+
+      await db.insert(aiUsageEvents).values({
+        orgId: aiOrgId,
+        feature: "amount_read",
+        outcome: "found",
+        model: "test",
+        documentSource: "upload",
+        documentKind: "receipt",
+        createdAt: justBefore,
+      });
+      const beforeUsage = await loadOrgAiUsage(aiOrgId);
+      expect(beforeUsage.reads.total).toBe(1);
+      expect(beforeUsage.reads.currentMonth).toBe(0); // one millisecond too early — previous month
+
+      await db.insert(aiUsageEvents).values({
+        orgId: aiOrgId,
+        feature: "amount_read",
+        outcome: "found",
+        model: "test",
+        documentSource: "upload",
+        documentKind: "receipt",
+        createdAt: boundary,
+      });
+      const afterUsage = await loadOrgAiUsage(aiOrgId);
+      expect(afterUsage.reads.total).toBe(2);
+      expect(afterUsage.reads.currentMonth).toBe(1); // exactly the boundary instant — this month
+    });
+
+    it("costIncomplete is true only when a row has tokens but no cost (missing price settings)", async () => {
+      await db.insert(aiUsageEvents).values({
+        orgId: aiOrgId,
+        feature: "amount_read",
+        outcome: "found",
+        model: "test",
+        documentSource: "upload",
+        documentKind: "receipt",
+        inputTokens: 100,
+        outputTokens: 20,
+        costMicroUsd: null,
+      });
+      const usage = await loadOrgAiUsage(aiOrgId);
+      expect(usage.costIncomplete).toBe(true);
+    });
+
+    it("costIncomplete stays false when the only null-cost rows are failed runs with null tokens too", async () => {
+      await db.insert(aiUsageEvents).values([
+        {
+          orgId: aiOrgId,
+          feature: "amount_read",
+          outcome: "failed",
+          model: "test",
+          documentSource: "upload",
+          documentKind: "receipt",
+          inputTokens: null,
+          outputTokens: null,
+          costMicroUsd: null,
+        },
+        {
+          orgId: aiOrgId,
+          feature: "monthly_summary",
+          outcome: "failed",
+          model: "test",
+          fundingSourceId: aiSourceId,
+          month: currentMonth,
+          trigger: "first",
+          inputTokens: null,
+          outputTokens: null,
+          costMicroUsd: null,
+        },
+      ]);
+      const usage = await loadOrgAiUsage(aiOrgId);
+      expect(usage.costIncomplete).toBe(false);
+      expect(usage.reads.unsaved).toBe(1);
+      expect(usage.summaries.unsaved).toBe(1);
+    });
+
+    it("returns the zeroed usage without throwing for a non-uuid org id", async () => {
+      await expect(loadOrgAiUsage("not-a-uuid")).resolves.toEqual({
+        currentMonth,
+        reads: { total: 0, currentMonth: 0, unsaved: 0 },
+        summaries: { total: 0, currentMonth: 0, unsaved: 0 },
+        costMicroUsdTotal: 0,
+        costMicroUsdCurrentMonth: 0,
+        costIncomplete: false,
+        lastRunAt: null,
+      });
+    });
+
+    it("ai_usage_feature is a closed Postgres enum: an unrecognised feature value is refused by the database itself, never silently counted", async () => {
+      // Cannot ALTER TYPE on the shared dev database to add a throwaway value, and the enum has
+      // only 'amount_read'/'monthly_summary' — so this proves the guarantee at its real source:
+      // the database refuses a row Drizzle's own types wouldn't even let this file compile with.
+      // That refusal, together with `loadOrgAiUsage`'s explicit `else if (feature ===
+      // "monthly_summary")` (never a bare `else`), is what keeps a feature added in the future
+      // from being silently folded into the summaries tile.
+      const error = await db
+        .execute(
+          sql`insert into ai_usage_events (org_id, feature, outcome, model, document_source, document_kind)
+              values (${aiOrgId}, 'unknown_feature', 'found', 'test', 'upload', 'receipt')`,
+        )
+        .then(
+          () => null,
+          (e: unknown) => e,
+        );
+      expect(error).not.toBeNull();
+      expect(String((error as { cause?: unknown })?.cause ?? error)).toMatch(
+        /invalid input value for enum ai_usage_feature/i,
+      );
     });
   });
 

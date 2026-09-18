@@ -7,6 +7,7 @@ import { db } from "@/src/db";
 import { expenseDocuments, expenses, lineItems, paymentSources, recurringItems } from "@/src/db/schema";
 import { monthLabel, monthShortLabel } from "@/src/domain/dates";
 import { addedState } from "@/src/domain/recurring-rules";
+import { pageTitle } from "@/src/domain/strings";
 import { loadSourceContext } from "@/src/modules/funding-sources/queries";
 import { loadLockedMonths } from "@/src/modules/packet/queries";
 import { RECURRING_TOUR_STEPS } from "@/src/modules/tours/recurring-tour";
@@ -15,7 +16,7 @@ import { getSession } from "@/src/services/auth/session";
 
 import { RecurringManager, type RecurringRow } from "./recurring-manager";
 
-export const metadata = { title: "Recurring — Grant Expense Reconciliation" };
+export const metadata = { title: pageTitle("Recurring") };
 
 export default async function RecurringPage() {
   const session = await getSession();

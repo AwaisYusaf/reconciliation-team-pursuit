@@ -39,6 +39,20 @@ Writes `expenses`, `expense_documents`, upserts `vendor_defaults` (R8.2). Reads 
 - Auto-learn: on save, upsert name → (line item, description) into vendor library.
 - **Moving the funding source (edit only, D-93):** allowed at any time; moving *into* an archived source is refused, editing an expense that already sits on one is not. Changing the source or the month claims a new reference in the target `(source, month)` (R2.6) — the same "moved" logic, generalised.
 
+## Reading amounts from documents (Phase 10, D-105)
+When `canReadAmounts` is true for the organisation, a panel appears directly under the
+Subtotal/Tax/Fees row. On Add, reading starts as soon as a receipt or proof is chosen; on Edit,
+nothing reads until "Read amounts from documents" is pressed (hidden when the expense has no
+receipt/proof queued or attached, or the month is locked). The panel shows "Reading N
+documents…" while any file is still in flight, nothing when none could be read (each file row
+already says "No amount found"), or the found amounts per file plus a
+combined total — receipts summed as the suggestion, proofs summed as a check against them
+("✓ matches" or the "Receipts add up to… but proofs show…" warning). "Use these amounts" fills
+only Subtotal/Tax/Fees, after a confirm if the fields already hold a non-zero value; Dismiss
+hides the panel until the set of files changes. Nothing is ever sent to OpenAI unless the
+organisation's plan, its Settings switch, and the server's OpenAI key/model are all present
+(`src/modules/amount-reading/access.ts`).
+
 ## Server surface
 `createExpenseAction(input)`, `updateExpenseAction(input)`, `deleteExpenseAction`, `presignExpenseUpload` (quota-checked, R13), `attachDocument(docId)`, `deleteExpenseDocument(docId)`, `searchVendorsAction(q)` (all in `src/modules/expenses/actions.ts`). `ExpenseInput` carries `fundingSourceId`; every write verifies it via `requireOwnedFundingSource` and refuses an unowned or (on create, or when moving into it) archived source.
 

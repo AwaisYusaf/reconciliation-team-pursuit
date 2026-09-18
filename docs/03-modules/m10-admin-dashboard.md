@@ -14,10 +14,11 @@ Desktop and tablet only; no tours.
 
 ## Data
 Reads `src/modules/admin/queries.ts`'s read models (`loadOrgDirectory`, `loadOrgSummary`,
-`loadOrgAccount`, `loadOrgUsers`, `loadOrgUsage`, `loadOrgHistory`) and the pure helpers in
-`src/modules/admin/directory.ts` (`complimentaryState`, `describeAccountEvent`). Writes go
-through the four `"use server"` actions in `src/modules/admin/actions.ts` — this module adds no
-new server logic beyond the screens themselves.
+`loadOrgAccount`, `loadOrgUsers`, `loadOrgUsage`, `loadOrgAiUsage`, `loadOrgHistory`) and the pure
+helpers in `src/modules/admin/directory.ts` (`complimentaryState`, `describeAccountEvent`) and
+`src/modules/admin/ai-cost.ts` (`aiCost`, micro-USD formatting). Writes go through the four
+`"use server"` actions in `src/modules/admin/actions.ts` — this module adds no new server logic
+beyond the screens themselves.
 
 **Every narrowing happens in the database, never in the browser** (D-102): the filter lives in
 the URL (`q`, `plan`, `status`, `badge`, `page`) and each read is its own query. Nothing on
@@ -42,8 +43,19 @@ either screen renders more rows than it asks for: ten organizations per page
   to the list the reader came from, filter and page included. Then account details (name, doc
   name, signed up, setup finished, plan/status/badges, the first ten users with "View all"),
   a Usage card (funding sources, expenses, last expense, a storage bar, months
-  submitted/locked, packets downloaded), the four action dialogs, and a History list — newest
-  first, with "Organization signed up" always last since it isn't a real event row.
+  submitted/locked, packets downloaded), an **AI usage card** (added Phase 11, 2026-09-18 — see
+  below), the four action dialogs, and a History list — newest first, with "Organization signed
+  up" always last since it isn't a real event row.
+- **AI usage card**: every `ai_usage_events` row for the organization, one query grouped by
+  `feature` (PHASE-11 §7.6). Receipt reads and monthly summaries are counted as separate tiles,
+  not combined, since a summary costs roughly a hundred times what a read does; each tile shows
+  the all-time count with a "N in {month}" caption. "Runs with nothing saved" sums `failed` and
+  `rejected` outcomes across both features, with a caption noting some of those still used
+  tokens. Cost is micro-USD, formatted by `aiCost()` (four decimal places under a cent, the app's
+  usual money format at or above it); when any run has token counts but no cost — only possible
+  for a run logged before the price env vars were set — the total is flagged as a floor, not the
+  real bill. The current month is computed in America/Detroit, matching the card's own month
+  label and the organization's timezone rather than UTC.
 - **Complimentary badge**: no end date → "Complimentary"; a future or today's end date →
   "Complimentary until {date}"; a past end date → "Complimentary (ended {date})" in the warning
   tone (Phase 9 §7 Q5, Q6).

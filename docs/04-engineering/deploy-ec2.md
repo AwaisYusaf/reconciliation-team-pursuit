@@ -21,7 +21,7 @@ This file explains the shape and covers day-to-day operations. For the first dep
 
 ## Prerequisites
 
-1. **DNS.** An A record for `reconciliation.teampursuit.org` pointing at the instance's
+1. **DNS.** An A record for `stayfunded360.com` pointing at the instance's
    public IP. Caddy cannot issue a certificate until this resolves, and propagation is
    usually the slowest step — do it first.
 2. **Swap.** The box has 3.7 GB and no swap. A packet build runs LibreOffice and holds the

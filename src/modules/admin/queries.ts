@@ -8,6 +8,7 @@ import { and, count, desc, eq, isNotNull, isNull, max, sql } from "drizzle-orm";
 
 import { db, type Database } from "@/src/db";
 import {
+  aiUsageEvents,
   expenses,
   fundingSources,
   generatedArtifacts,
@@ -410,3 +411,85 @@ export async function loadOrgHistory(orgId: string): Promise<OrgAccountEventRow[
     .limit(ORG_HISTORY_LIMIT);
 }
 
+/* ------------------------------------------------------------------ AI usage */
+
+/** One organization's AI usage, for the AI usage card (Phase 11, D-107). Costs are micro-USD —
+ *  a thousandth of a cent — because a single amount read costs a fraction of a cent. */
+export type OrgAiUsage = {
+  currentMonth: MonthKey;
+  /** Amount reads (Phase 10) and monthly summaries (Phase 11), counted separately: they cost
+   *  two orders of magnitude apart, so one combined number would say nothing useful. */
+  reads: { total: number; currentMonth: number; unsaved: number };
+  summaries: { total: number; currentMonth: number; unsaved: number };
+  costMicroUsdTotal: number;
+  costMicroUsdCurrentMonth: number;
+  /** True when any run is missing its cost, which happens when the price settings were unset on
+   *  the server at the time — the totals below are then a floor, not the whole bill. */
+  costIncomplete: boolean;
+  lastRunAt: Date | null;
+};
+
+function emptyAiUsage(currentMonth: MonthKey): OrgAiUsage {
+  return {
+    currentMonth,
+    reads: { total: 0, currentMonth: 0, unsaved: 0 },
+    summaries: { total: 0, currentMonth: 0, unsaved: 0 },
+    costMicroUsdTotal: 0,
+    costMicroUsdCurrentMonth: 0,
+    costIncomplete: false,
+    lastRunAt: null,
+  };
+}
+
+export async function loadOrgAiUsage(orgId: string): Promise<OrgAiUsage> {
+  const currentMonth = currentMonthKey();
+  // Same 22P02 guard as `loadOrgUsage`: an org id that cannot exist has used nothing.
+  if (!isUuid(orgId)) return emptyAiUsage(currentMonth);
+
+  // One row per feature, so the card needs a single round trip. `created_at` is a timestamp, not
+  // the expense month, so "this month" here means when the run happened — which is what a bill is
+  // drawn against. The month is the organisation's own (America/Detroit, R2.5), matching the
+  // label the card prints: comparing against UTC counted a run made on the 1st before 5am — or
+  // the last evening of a month — in the wrong month, and `now() at time zone 'utc'` would also
+  // have re-cast against whatever the server's session timezone happened to be.
+  const thisMonth = sql`to_char(${aiUsageEvents.createdAt} at time zone 'America/Detroit', 'YYYY-MM') = ${currentMonth}`;
+  const rows = await db
+    .select({
+      feature: aiUsageEvents.feature,
+      total: sql<string>`count(*)`,
+      currentMonth: sql<string>`count(*) filter (where ${thisMonth})`,
+      // Nothing was saved for either, but a rejected run always spent tokens, and a failed one
+      // may have (a retry that failed in transport still paid for the first attempt).
+      unsaved: sql<string>`count(*) filter (where ${aiUsageEvents.outcome} in ('failed', 'rejected'))`,
+      cost: sql<string>`coalesce(sum(${aiUsageEvents.costMicroUsd}), 0)`,
+      costThisMonth: sql<string>`coalesce(sum(${aiUsageEvents.costMicroUsd}) filter (where ${thisMonth}), 0)`,
+      // Only a run that produced tokens but no cost means the price settings were unset. A failed
+      // run has no token counts at all, so counting it here claimed a missing price that was never
+      // missing.
+      missingCost: sql<string>`count(*) filter (where ${aiUsageEvents.costMicroUsd} is null and ${aiUsageEvents.inputTokens} is not null)`,
+      lastRunAt: max(aiUsageEvents.createdAt),
+    })
+    .from(aiUsageEvents)
+    .where(eq(aiUsageEvents.orgId, orgId))
+    .groupBy(aiUsageEvents.feature);
+
+  const usage = emptyAiUsage(currentMonth);
+  for (const row of rows) {
+    const counts = {
+      total: Number(row.total),
+      currentMonth: Number(row.currentMonth),
+      unsaved: Number(row.unsaved),
+    };
+    // Explicit on both sides: a feature added later must show up as its own tile rather than
+    // being silently added to the summaries column.
+    if (row.feature === "amount_read") usage.reads = counts;
+    else if (row.feature === "monthly_summary") usage.summaries = counts;
+    usage.costMicroUsdTotal += Number(row.cost);
+    usage.costMicroUsdCurrentMonth += Number(row.costThisMonth);
+    if (Number(row.missingCost) > 0) usage.costIncomplete = true;
+    if (row.lastRunAt && (!usage.lastRunAt || row.lastRunAt > usage.lastRunAt)) {
+      usage.lastRunAt = row.lastRunAt;
+    }
+  }
+  return usage;
+}

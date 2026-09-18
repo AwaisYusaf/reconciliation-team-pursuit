@@ -6,6 +6,16 @@
  * module so wording can never drift between the app, the Word cover sheet, the Excel
  * summary and the packet PDF. Do not inline these strings anywhere.
  */
+import type { ReadAmounts } from "@/src/domain/amount-suggestion";
+import { formatMoney } from "@/src/domain/format";
+
+/** The product name, everywhere it appears in UI copy, page titles and generated-document fallbacks. */
+export const APP_NAME = "Stay Funded 360";
+
+/** A page's `<title>`, in the app's fixed "Section — App Name" form. */
+export function pageTitle(section: string): string {
+  return `${section} — ${APP_NAME}`;
+}
 
 /** Printed on a cover sheet heading whenever tax > 0 (R6.5). Exact text — singular "Statement". */
 export const TAX_NOTE = "(Note: Statement includes tax which was excluded from reimbursement amount)";
@@ -70,6 +80,37 @@ export function noReceiptNote(reason: string): string {
 }
 
 /* ------------------------------------------------------------------- UI copy */
+
+/** Phase 10 amounts-panel field words, shared by the summary line and each per-file line
+ *  (Appendix A §2) — kept as one set so "Subtotal"/"Tax"/"Fees" can never read differently
+ *  between the two. */
+const AMOUNT_FIELD_LABELS = { subtotal: "Subtotal", tax: "Tax", fees: "Fees" } as const;
+const TOTAL_PAID_LABEL = "Total paid";
+const TOTAL_REFUNDED_LABEL = "Total refunded";
+const TOTAL_LABEL = "Total";
+
+/** "Total paid $165.00", or for money coming back "Total refunded $145.00" — never "Total paid
+ *  -$145.00" (PR #18 round 3, #7). */
+function totalPaidParts(totalCents: number): { label: string; value: string } {
+  return totalCents < 0
+    ? { label: TOTAL_REFUNDED_LABEL, value: formatMoney(-totalCents) }
+    : { label: TOTAL_PAID_LABEL, value: formatMoney(totalCents) };
+}
+
+function amountsLineParts(amounts: ReadAmounts, totalLabel: string): { lead: string; total: string } {
+  return {
+    lead:
+      `${AMOUNT_FIELD_LABELS.subtotal} ${formatMoney(amounts.subtotalCents)} · ` +
+      `${AMOUNT_FIELD_LABELS.tax} ${formatMoney(amounts.taxCents)} · ` +
+      `${AMOUNT_FIELD_LABELS.fees} ${formatMoney(amounts.feesCents)} · `,
+    total: `${totalLabel} ${formatMoney(amounts.totalCents)}`,
+  };
+}
+
+function amountsLine(amounts: ReadAmounts, totalLabel: string): string {
+  const { lead, total } = amountsLineParts(amounts, totalLabel);
+  return lead + total;
+}
 
 export const UI = {
   /** Add Expense reimbursable box (R1.3). */
@@ -268,7 +309,222 @@ export const UI = {
   noOrganizationsMatch: "No organizations match these filters.",
   /** Org page users table empty state. */
   noUsersYet: "No users yet.",
+
+  /* --------------------------------------------------------- Phase 10: reading amounts */
+
+  /** Add Expense amounts panel, while files are being read (Appendix A §2). */
+  readingDocuments: (n: number) => `Reading ${n} document${n === 1 ? "" : "s"}…`,
+  /** Amounts panel title, once reading finishes with at least one figure found (Appendix A §2). */
+  amountsFoundTitle: "Amounts found in your documents",
+  /** The panel's summary line, and the "Replace the amounts you typed?" dialog body (Appendix
+   *  A §2): `Subtotal $150.00 · Tax $9.00 · Fees $6.00 · Total paid $165.00`. */
+  amountsSummary: (amounts: ReadAmounts) => {
+    const { lead } = amountsLineParts(amounts, TOTAL_PAID_LABEL);
+    const { label, value } = totalPaidParts(amounts.totalCents);
+    return `${lead}${label} ${value}`;
+  },
+  /** One receipt's own line (Appendix A §2): `Subtotal $110.00 · Tax $6.60 · Fees $3.40 · Total $120.00`. */
+  receiptLineAmounts: (amounts: ReadAmounts) => amountsLine(amounts, TOTAL_LABEL),
+  /** Tag after a proof-of-payment file's name in the panel list (Appendix A §2). */
+  proofOfPaymentTag: "(proof of payment)",
+  /** After a proof line's amount, when it agrees with the receipts' total (Appendix A §2). */
+  proofMatches: "✓ matches",
+  /** A file the model could not find an amount in, or that failed to read — shown the same way
+   *  (Phase 10 §2 "Unreadable and no-amount are shown the same way"). */
+  noAmountFound: "No amount found",
+  /** Every file in the panel came back with nothing to read (Appendix A §2). */
+  /** Amounts panel primary button (Appendix A §2). */
+  useTheseAmounts: "Use these amounts",
+  /** Amounts panel secondary button (Appendix A §2, §3.5 "Dismiss"). */
+  dismiss: "Dismiss",
+  /** Confirm dialog before "Use these amounts" overwrites fields already typed (Appendix A §2). */
+  replaceTypedAmounts: "Replace the amounts you typed?",
+  /** Edit Expense button that starts a read on request (Appendix A §3). */
+  readAmountsFromDocuments: "Read amounts from documents",
+  /** Settings → Organization switch label (Appendix A §4). */
+  readAmountsSwitchLabel: "Read amounts from uploaded documents",
+  /** Settings → Organization switch help text (Appendix A §4). */
+  readAmountsSwitchHelp:
+    "Receipts and proofs of payment are sent to OpenAI to suggest amounts. OpenAI doesn't use them for training. Nothing is saved until you confirm.",
+  /** A document with too many pages to read (Phase 10 §3.4; OpenAI bills a PDF per page). */
+  /** A file's own row in the panel when it was refused for length — "No amount found" there
+   *  reads as the AI having failed (PR #18 review). */
+  readAmountsTooLongLine: "Too long to read (over 10 pages). Enter the amounts yourself.",
+  readAmountsTooManyPages: (pages: number, limit: number) =>
+    `That document has ${pages} pages — only the first ${limit} would be read. Enter the amounts yourself.`,
+  /** Amounts panel, when some files were read and others were not (Phase 10 §3.5 table — not in
+   *  Appendix A, added so an incomplete total is never used unnoticed). */
+  amountsLeftOut: "Documents marked No amount found are left out of these totals.",
+  /** Receipt line whose total doesn't match its own subtotal + tax + fees (Appendix A §1). */
+  receiptDoesNotAddUp: "The amounts on this receipt don't add up. Please check them.",
+  /** Receipts vs. proofs disagree (Appendix A §1, verbatim with the two figures substituted). */
+  proofsDifferWarning: (receipts: string, proofs: string) =>
+    `Receipts add up to ${receipts} but proofs of payment show ${proofs}. Check the amounts before saving.`,
+  /** Add Expense tour's amounts step, unchanged text — kept when reading is unavailable
+   *  (Appendix A §6). */
+  tourAmountsBody:
+    "Enter the amounts from the receipt. If there's tax or fees, you'll be asked whether the funder pays for them.",
+  /** Add Expense tour's amounts step, once reading is available (Appendix A §6). */
+  tourAmountsBodyWithReading:
+    "Enter the amounts from the receipt, or use the amounts we find in the receipt you added above. If there's tax or fees, you'll be asked whether the funder pays for them.",
+  /** Plus upload section note on Add — reading starts on its own (Appendix A §2). */
+  aiUploadNoteAdd: "AI reads the amounts when you add a file.",
+  /** Plus upload section note on Edit — reading only on request (Appendix A §3). */
+  aiUploadNoteEdit: "AI reads the amounts when you press Read amounts from documents.",
+  /** A file row's AI status while its read is running. */
+  aiFileReading: "Reading amounts…",
+  /** Toast while a picked iPhone photo (HEIC) is converted to JPEG in the browser, so it can be
+   *  previewed before the expense is saved. Shown on both plans. */
+  convertingPhotos: "Preparing your photo…",
+  /** A file row's AI status once amounts were found. */
+  aiFileFound: (total: string) => `Amounts found · Total ${total}`,
+  /** Add Expense tour's proof step, unchanged — kept when reading is unavailable. */
+  tourProofBody:
+    "Always required. Add a bank transaction or payment screenshot. Without it, the month's packet can't be downloaded.",
+  /** Add Expense tour's proof step on Plus: what AI does with a proof. */
+  tourProofBodyWithReading:
+    "Always required. Add a bank transaction or payment screenshot. Without it, the month's packet can't be downloaded. With Plus, AI reads the amount paid and checks it against your receipts.",
+  /** Add Expense tour's receipt step, unchanged — kept when reading is unavailable. */
+  tourReceiptBody:
+    "Add the receipt, invoice or timesheet. If there isn't one, tick No receipt available and give a reason. The reason prints on the cover sheet.",
+  /** Add Expense tour's receipt step on Plus: where the amounts appear and that nothing fills
+   *  itself — carries the same "reason prints on the cover sheet" sentence as the base
+   *  `tourReceiptBody` (PR #18 review #14: the Plus variant had dropped it). */
+  tourReceiptBodyWithReading:
+    "Add the receipt, invoice or timesheet. With Plus, AI reads its amounts and shows them under Subtotal, Tax and Fees. Nothing is filled in until you press Use these amounts. If there isn't a receipt, tick No receipt available and give a reason. The reason prints on the cover sheet.",
+  /** Settings tour step for the Plus reading switch (only shown where the switch exists). */
+  tourReadAmountsSwitchTitle: "Read amounts with AI",
+  tourReadAmountsSwitchBody:
+    "Included with Plus. When it's on, receipts and proofs of payment added to an expense are read by AI to suggest the amounts. Nothing is filled in until someone chooses to use them. Only an admin can change this.",
+  /** Generic dialog dismiss label — no existing `UI.cancel` before Phase 10; reused here for the
+   *  "Replace the amounts you typed?" dialog rather than adding a feature-specific word for it. */
+  cancel: "Cancel",
+
+  /* --------------------------------------------------------- Phase 11: monthly summaries */
+
+  /** Base-plan note, in place of the button (Appendix A §1, verbatim). */
+  summaryPlanNote: "Monthly summaries are part of the Reconciliation + AI plan.",
+  /** Write draft summary refusal — the month has no live expenses (Appendix A §3, verbatim). */
+  summaryNoExpenses: "Add expenses to this month first.",
+  /** Write/Write again refusal — another run for this org/source/month is already in flight
+   *  (P11). Wording to review. */
+  summaryAlreadyWriting: (monthLabel: string) => `A summary for ${monthLabel} is already being written.`,
+  /** Write/Write again refusal — the model failed, timed out, refused, or was rejected twice
+   *  (Appendix A §3, verbatim). */
+  summaryWriteFailed: "The summary couldn't be written right now. Please try again.",
+  /** Save/write conflict — someone else's version won (P10, Appendix A §5 wording). */
+  summaryConflict:
+    "This summary was changed by someone else. Copy your text, then reload to see their version.",
+  /** Write refusal — the per-org rate limit (P11). Wording to review. */
+  summaryRateLimited: "Too many summaries at once. Try again shortly.",
+  /** Save refusal — over `SUMMARY_MAX_CHARS` (P6, I-26). Wording to review. */
+  summaryTooLong: "This summary is longer than 60,000 characters. Shorten it to save.",
+  /** `saveSummaryAction` — no row for this org/source/month at all. Wording to review. */
+  summaryNotFound: (monthLabel: string) => `There is no summary for ${monthLabel} yet.`,
+
+  /* ---------------------------------------------------- Phase 11 build phase 3: the screen */
+
+  /** Screen and packet-card title (§7.5). Wording to review. */
+  summaryTitle: "Monthly summary",
+  /** Header on "All" (Appendix A §2, verbatim). */
+  summaryPickSource: "Pick a funding source to write its monthly summary.",
+  /** Before any summary exists (Appendix A §3, verbatim). */
+  summaryIntro: (monthLabel: string) =>
+    `Write a draft summary of ${monthLabel} from this month's expenses, descriptions and narratives. You can edit everything before using it.`,
+  /** The one generation button before a summary exists (Appendix A §3, verbatim). */
+  summaryWriteButton: "Write draft summary",
+  /** The one generation button once a summary exists (Appendix A §5, verbatim). */
+  summaryWriteAgainButton: "Write again",
+  /** While writing (Appendix A §3, verbatim). */
+  summaryWriting: "Writing your summary… this can take up to a minute.",
+  /** Meta line, first part (Appendix A §5, verbatim form). */
+  summaryMetaWritten: (date: string) => `Draft written ${date}`,
+  /** Meta line, second part — omitted (not appended) until the first save; the editor's name
+   *  is omitted, not the whole clause, when that account was deleted (I-30). */
+  summaryMetaEdited: (date: string, name: string | null) =>
+    name ? ` · Last edited ${date} by ${name}` : ` · Last edited ${date}`,
+  /** Reminder shown above the summary — Appendix A §5 verbatim, as the reviewer asked (PR #18
+   *  round 2, #14), in the calm grey note of round 1 #9. */
+  summaryAiReminder:
+    "This is a draft written by AI from your records. Check every figure and fill in anything in [brackets] before using it.",
+  /** Changed-records notice (P7, Appendix A §5, verbatim). */
+  summaryChangedNotice: (monthLabel: string) =>
+    `Expenses in ${monthLabel} have changed since this summary was written. Write again to include the changes, or edit the text yourself.`,
+  /** Copy button label (Appendix A §5, verbatim). */
+  summaryCopyText: "Copy text",
+  /** Write again confirm dialog (Appendix A §5, verbatim, split for `ConfirmButton`'s title/body). */
+  summaryWriteAgainTitle: "Replace this summary with a new draft?",
+  summaryWriteAgainBody: "Your edits will be lost.",
+  /** Packet card link to the screen (§7.5). Wording to review. */
+  summaryOpenLink: "Open monthly summary",
+  /** Packet card, no summary yet for this month (§7.5). Wording to review. */
+  summaryNoneForMonth: (monthLabel: string) => `No summary for ${monthLabel} yet`,
+  /** Saved-months list heading (§7.1). Wording to review. */
+  summarySavedHeading: "Saved summaries",
+  /** One saved-months row's second line, under the month (§7.1). Wording to review. */
+  summarySavedRowDate: (date: string, edited: boolean) => `${edited ? "Last edited" : "Draft written"} ${date}`,
+  /** Autosave/Save status (§7.2, PR #18 review #14). */
+  summarySave: "Save changes",
+  summarySaving: "Saving…",
+  summarySaved: "Saved",
+  summarySaveFailed: "Couldn't save. Your text is still here.",
+  summaryRetry: "Retry",
+  /** Copy text outcomes (§7.3, Appendix A wording for the success case). */
+  summaryCopied: "Summary copied.",
+  summaryCopyRefused: "Couldn't copy. Select the text and copy it yourself.",
+  /** The rich editor's two toolbar buttons (PR #18 review #8) — `aria-label`s, since the icons
+   *  carry no visible text. */
+  summaryBold: "Bold",
+  summaryBulletList: "Bullet list",
+  /** Download route, when building the file itself fails (Phase 11 §6). */
+  summaryPrepareFailed: "The summary couldn't be prepared right now. Please try again.",
+
+  /* ----------------------------------------------- /a AI usage card (Phase 11) */
+
+  /** How many of the all-time runs happened this month. */
+  aiUsageInMonth: (count: number, monthLabel: string) => `${count} in ${monthLabel}`,
+  /** Caption under the unsaved-runs tile. A rejected run always spent tokens, and a failed one
+   *  may have, so this must not promise the organisation was charged nothing. */
+  aiUsageUnsavedNote: "Nothing was saved. Some of these still used tokens.",
+  /** Appended to the cost caption while some runs produced tokens but no cost, which only
+   *  happens when the price settings were unset on the server at the time. */
+  aiUsageCostIncomplete: "at least: some runs ran before prices were set on the server",
+
+  /* ------------------------------------------------ Phase 11 build phase 4: Word and PDF */
+
+  /** Download button labels (Appendix A §5 for Word, verbatim; PDF added by C4). */
+  summaryDownloadWord: "Download Word",
+  summaryDownloadPdf: "Download PDF",
+  /** Both download buttons' disabled reason while there's unsaved text (P13). Wording to review. */
+  summaryDownloadUnsaved: "Save your changes to download them.",
+  /** PDF conversion failure — the download route's 503 body (P13, Appendix A "Download Word" as
+   *  the fallback). Wording to review. */
+  summaryPdfFailed: "The PDF couldn't be made right now. Download Word instead.",
+
+  /* ------ Phase 11 build phase 5: Dashboard link and tour */
+
+  /** Dashboard action row, once a summary exists for that source and month (Appendix A, verbatim). */
+  summaryReadyLink: "Monthly summary ready",
+  /** Packet tour's last step, Plus only (§7.5, B). */
+  tourSummaryCardTitle: "Monthly summary",
+  tourSummaryCardBody:
+    "Included with Plus. Opens the summary screen, where AI writes a draft of this month's summary from your expenses for you to check and edit. It's never part of the packet.",
 } as const;
+
+/**
+ * `UI.amountsSummary` as four label/value cells, for the panel's figure strip that mirrors the
+ * Subtotal/Tax/Fees boxes above it — same words as the sentence, so the two can't drift. A plain
+ * export rather than a `UI` entry: the American-spelling guard (`strings.test.ts`) calls every
+ * `UI` function expecting a string back, and this one returns a list.
+ */
+export function amountFigures(amounts: ReadAmounts): { label: string; value: string; total: boolean }[] {
+  return [
+    { label: AMOUNT_FIELD_LABELS.subtotal, value: formatMoney(amounts.subtotalCents), total: false },
+    { label: AMOUNT_FIELD_LABELS.tax, value: formatMoney(amounts.taxCents), total: false },
+    { label: AMOUNT_FIELD_LABELS.fees, value: formatMoney(amounts.feesCents), total: false },
+    { ...totalPaidParts(amounts.totalCents), total: true },
+  ];
+}
 
 /** Longest unlock reason — long enough for a real explanation, short enough that nobody pastes a
  *  whole email. Shared so the box's `maxLength` and the server's refusal can't drift apart. */
@@ -489,4 +745,54 @@ function fitSourceName(sourceName: string | null | undefined, otherParts: readon
   const lastSpace = cut.lastIndexOf(" ");
   const wholeWords = lastSpace > budget * 0.6 ? cut.slice(0, lastSpace) : cut;
   return wholeWords.trim();
+}
+
+/**
+ * Monthly summary section headings, in order (Phase 11, Appendix A §4). The one place this list
+ * exists: `checkSummaryStructure` (src/domain/summary-markdown.ts) compares against it, and the
+ * prompt and Word builder must read it from here too.
+ */
+export const SUMMARY_SECTION_TITLES = [
+  "Overview",
+  "Spending by line item",
+  "Budget position",
+  "Changes from last month",
+  "Items to note",
+] as const;
+
+/**
+ * Monthly summary document title (Phase 11 §7.4): `Team Pursuit March 2026 Monthly Summary`, or
+ * with a source name (given only when the organisation has more than one funding source),
+ * `Team Pursuit City of Detroit March 2026 Monthly Summary`. Empty parts are skipped rather than
+ * leaving a doubled space.
+ */
+export function monthlySummaryTitle(docName: string, monthLabel: string, sourceName?: string | null): string {
+  return [docName, sourceName, monthLabel, "Monthly Summary"]
+    .filter((part) => part && `${part}`.trim())
+    .join(" ");
+}
+
+/**
+ * `Team Pursuit March 2026 Monthly Summary.docx` (or `.pdf`); with a `sourceName`,
+ * `Team Pursuit City of Detroit March 2026 Monthly Summary.docx`. Shaped and sanitised exactly
+ * like `coverSheetFilename`: the month and "Monthly Summary" are never shortened, only the
+ * source name gives way, and the whole title is sanitised once, joined, so a boundary character
+ * inside one part is not treated as if it sat at the edge of the filename.
+ */
+export function monthlySummaryFilename(
+  docName: string,
+  monthLabel: string,
+  extension: "docx" | "pdf",
+  sourceName?: string | null,
+): string {
+  const budgetParts = [
+    sanitiseForFilename(docName, STEM_MAX),
+    sanitiseForFilename(monthLabel, STEM_MAX),
+    "Monthly Summary",
+  ].filter(Boolean);
+  const source = fitSourceName(sourceName, budgetParts);
+  const title = source
+    ? [docName, source, monthLabel, "Monthly Summary"].filter((part) => part && `${part}`.trim()).join(" ")
+    : monthlySummaryTitle(docName, monthLabel);
+  return `${sanitiseForFilename(title, STEM_MAX)}.${extension}`;
 }

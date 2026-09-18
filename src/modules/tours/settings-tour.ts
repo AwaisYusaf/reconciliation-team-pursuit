@@ -1,4 +1,5 @@
 import type { TourStep } from "@/src/components/ui/tour";
+import { UI } from "@/src/domain/strings";
 
 /**
  * Settings tab tour (Phase 7, D-95 follow-up). Settings has six sections, switched by local
@@ -26,6 +27,14 @@ export const SETTINGS_TOUR_STEPS: readonly TourStep[] = [
     autoOpen: "settings-tab-organization",
     title: "Document display name",
     body: "This name, not the organization name above it, is what prints on cover sheets and the packet — unless a funding source overrides it.",
+  },
+  // Plus only (Phase 10): the switch isn't rendered on the base plan, so this step is dropped
+  // there like any other absent target.
+  {
+    target: "settings-read-amounts",
+    autoOpen: "settings-tab-organization",
+    title: UI.tourReadAmountsSwitchTitle,
+    body: UI.tourReadAmountsSwitchBody,
   },
   {
     target: "settings-funding-sources-list",

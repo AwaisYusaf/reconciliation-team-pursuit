@@ -167,6 +167,7 @@ Let `opening` = line item's opening previously-billed balance (setup figure), `e
 | organizations-count (UI) | `{n} organization` / `{n} organizations` — directory table's row count line (Phase 9 §7 Q10) |
 | no-organizations-match (UI) | `No organizations match these filters.` (Phase 9 §6) |
 | no-users-yet (UI) | `No users yet.` — org page's users table, empty (Phase 9 §6) |
+| summary-section-titles (UI) | `Overview` · `Spending by line item` · `Budget position` · `Changes from last month` · `Items to note` — the five monthly summary sections, in order (Phase 11 P5, Appendix A §4) |
 
 ## 13. Limits (enforced at presign/save; friendly errors)
 

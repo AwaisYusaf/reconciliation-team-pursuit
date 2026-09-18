@@ -4,6 +4,7 @@ import { PickFundingSource } from "@/src/components/app-shell/pick-funding-sourc
 import { TourSequenceSkip } from "@/src/components/app-shell/tour-sequence-skip";
 import { PageTitle, Subtext } from "@/src/components/ui/surfaces";
 import { TourGuide } from "@/src/components/ui/tour";
+import { pageTitle } from "@/src/domain/strings";
 import { loadSourceContext } from "@/src/modules/funding-sources/queries";
 import { loadLineItemRows } from "@/src/modules/line-items/queries";
 import { LINE_ITEMS_TOUR_STEPS } from "@/src/modules/tours/line-items-tour";
@@ -12,7 +13,7 @@ import { getSession } from "@/src/services/auth/session";
 
 import { LineItemsManager } from "./line-items-manager";
 
-export const metadata = { title: "Line Items — Grant Expense Reconciliation" };
+export const metadata = { title: pageTitle("Line Items") };
 
 export default async function LineItemsPage() {
   const session = await getSession();

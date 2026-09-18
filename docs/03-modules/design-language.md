@@ -68,7 +68,7 @@ Layout rules that follow from the scale:
 ```
 DESIGN SYSTEM — apply to everything below.
 
-Product: "Grant Expense Reconciliation" — a calm, serious internal tool for a small nonprofit
+Product: "Stay Funded 360" — a calm, serious internal tool for a small nonprofit
 that prepares monthly grant reimbursement packets for city government reviewers. The aesthetic
 is quiet, paper-like, government-document adjacent. No gradients, no glassmorphism, no
 illustrations, no emoji, no rounded-bubble SaaS styling. It should feel like well-organized
@@ -95,7 +95,7 @@ panels with a 2px #8A2A22 border for blocking states. Empty states: dashed 1px #
 with centered secondary text.
 
 App chrome (when the prompt includes the shell): white header bar with 1px bottom border —
-left: organisation name in Georgia 24px bold with "Grant Expense Reconciliation" in 15px
+left: organisation name in Georgia 24px bold with "Stay Funded 360" in 15px
 #5B5147 beneath; right: quiet "Log out" secondary button. Below it a "Month" labeled select
 (200px) and a horizontal nav of text tabs: Dashboard, Add Expense, Expenses, Cover Sheets,
 Recurring, Month-End Packet, Contract Summary, Line Items, Settings — active tab: bold #211B16

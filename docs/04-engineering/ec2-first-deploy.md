@@ -3,7 +3,7 @@
 Seven steps, top to bottom. Every release after this is just `./deploy.sh`.
 
 Assumes: the EC2 box already runs the-pride-api behind Caddy, the S3 bucket
-`teampursuit-reconciliation` exists, and DNS for `reconciliation.teampursuit.org` points at
+`teampursuit-reconciliation` exists, and DNS for `stayfunded360.com` points at
 the instance. See [`deploy-ec2.md`](deploy-ec2.md) for why the deployment has this shape.
 
 ---
@@ -94,7 +94,7 @@ AWS_ACCESS_KEY_ID="${AWS_KEY}"
 AWS_SECRET_ACCESS_KEY="${AWS_SECRET}"
 
 NODE_ENV="production"
-APP_URL="https://reconciliation.teampursuit.org"
+APP_URL="https://stayfunded360.com"
 SIGNUP_ENABLED="false"
 EOF
 
@@ -144,7 +144,7 @@ cp Caddyfile Caddyfile.bak
 
 cat >> Caddyfile <<'CADDY'
 
-reconciliation.teampursuit.org {
+stayfunded360.com {
 	encode gzip
 	reverse_proxy reconciliation-app:3000 {
 		transport http {
@@ -169,13 +169,13 @@ do not reload.
 Certificate issuance takes 10–60 seconds. Then check both sites:
 
 ```bash
-curl -sS -o /dev/null -w 'reconciliation: %{http_code}\n' https://reconciliation.teampursuit.org/login
+curl -sS -o /dev/null -w 'reconciliation: %{http_code}\n' https://stayfunded360.com/login
 curl -sS -o /dev/null -w 'pride-api:      %{http_code}\n' https://pride-api.teampursuit.org/
 ```
 
 Reconciliation should return `200`, and pride-api should return whatever it did before.
 
-Open `https://reconciliation.teampursuit.org` and sign in.
+Open `https://stayfunded360.com` and sign in.
 
 ---
 

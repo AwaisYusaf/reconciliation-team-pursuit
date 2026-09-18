@@ -2,6 +2,8 @@ import { redirect } from "next/navigation";
 
 import { PageTitle } from "@/src/components/ui/surfaces";
 import { TourGuide } from "@/src/components/ui/tour";
+import { pageTitle } from "@/src/domain/strings";
+import { aiPlanAllowed } from "@/src/modules/ai/access";
 import { loadSettings } from "@/src/modules/settings/queries";
 import { getSession } from "@/src/services/auth/session";
 import { listOrgUsersAction } from "@/src/modules/users/actions";
@@ -11,7 +13,7 @@ import type { OrgUser } from "./users/users-manager";
 
 import { SettingsSections } from "./settings-sections";
 
-export const metadata = { title: "Settings — Grant Expense Reconciliation" };
+export const metadata = { title: pageTitle("Settings") };
 
 export default async function SettingsPage() {
   const session = await getSession();
@@ -76,6 +78,9 @@ export default async function SettingsPage() {
         isAdmin={isAdmin}
         users={users}
         usersError={usersError}
+        readAmounts={
+          data.plan && aiPlanAllowed(data.plan) ? { enabled: data.readAmountsEnabled } : null
+        }
       />
     </div>
   );
