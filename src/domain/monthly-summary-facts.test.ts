@@ -628,6 +628,36 @@ describe("buildMonthFacts — U-9 previousMonthHadSpending flag", () => {
   });
 });
 
+describe("buildMonthFacts — previousMonthLabel year rollover", () => {
+  it("January's previous month is December of the previous year", () => {
+    const items: LineItemBudget[] = [lineItem({ id: "a", name: "Salary", scheduledValueCents: 100_000 })];
+    const facts = buildMonthFacts({
+      orgDocName: ORG_DOC_NAME,
+      source: SOURCE,
+      month: "2097-01",
+      lineItems: items,
+      expensesUpToMonth: [],
+      monthExpenses: [],
+      settings: NO_SETTINGS,
+    });
+    expect(facts.header.previousMonthLabel).toBe("December 2096");
+  });
+
+  it("a non-January month's previous month stays in the same year", () => {
+    const items: LineItemBudget[] = [lineItem({ id: "a", name: "Salary", scheduledValueCents: 100_000 })];
+    const facts = buildMonthFacts({
+      orgDocName: ORG_DOC_NAME,
+      source: SOURCE,
+      month: "2097-06",
+      lineItems: items,
+      expensesUpToMonth: [],
+      monthExpenses: [],
+      settings: NO_SETTINGS,
+    });
+    expect(facts.header.previousMonthLabel).toBe("May 2097");
+  });
+});
+
 describe("buildMonthFacts — U-10 P18 'noticeable' thresholds", () => {
   function changeFor(previousCents: number, currentCents: number) {
     const items: LineItemBudget[] = [lineItem({ id: "a", name: "X", scheduledValueCents: 1_000_000 })];

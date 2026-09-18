@@ -25,7 +25,7 @@ import { PACKET_TOUR_STEPS } from "@/src/modules/tours/packet-tour";
 import { hasSeenTour } from "@/src/modules/tours/queries";
 import { getSession } from "@/src/services/auth/session";
 
-import { MonthlySummarySection } from "../monthly-summary/summary-section";
+import { MonthlySummarySection } from "@/src/components/monthly-summary/summary-section";
 import { LockHistory, MonthLockControls } from "./month-lock";
 import { MonthDocuments } from "./month-documents";
 import { PacketDownloadButtons, type DeletedItem } from "./packet-download-buttons";

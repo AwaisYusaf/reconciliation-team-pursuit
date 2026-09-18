@@ -1,6 +1,6 @@
 @AGENTS.md
 
-# Project: Grant Expense Reconciliation System (Team Pursuit Global / Mantaq)
+# Project: Stay Funded 360 (Team Pursuit Global / Mantaq)
 
 Docs-first, AI-native project. **Start every task at `docs/README.md`** — it maps the PRD, domain rules, data model, output specs, per-module specs (each with its Claude Design prompt), architecture, and the decision log. The docs are the source of truth; update them in the same change that changes behavior.
 

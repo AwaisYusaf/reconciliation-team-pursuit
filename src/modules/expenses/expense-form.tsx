@@ -207,6 +207,9 @@ export function ExpenseForm({
 
   // On the add form files are held until the expense exists, then uploaded against it.
   const [queued, setQueued] = useState<PendingUpload[]>([]);
+  // A picked HEIC is still becoming a JPEG in the browser: saving now would upload a file that is
+  // about to be replaced, and lose the photo (PR #18 round 2, #6).
+  const converting = queued.some((item) => item.converting);
   const [status, setStatus] = useState<string | null>(null);
 
   // --------------------------------------------------------- Phase 10: reading amounts
@@ -227,6 +230,8 @@ export function ExpenseForm({
     ...queued
       .filter((item) => item.scope === "receipt" || item.scope === "proof")
       .filter((item) => !(values.noReceipt && item.scope === "receipt"))
+      // Read once it is a JPEG, not the HEIC it is about to stop being.
+      .filter((item) => !item.converting)
       .map((item) => ({
         key: item.key,
         kind: item.scope as "receipt" | "proof",
@@ -758,7 +763,7 @@ export function ExpenseForm({
       <form
         onSubmit={(event) => {
           event.preventDefault();
-          if (!pending) save();
+          if (!pending && !converting) save();
         }}
       >
         <Card className="p-7 flex flex-col gap-[22px]">
@@ -1161,8 +1166,8 @@ export function ExpenseForm({
 
           <div className="flex flex-wrap items-center gap-5">
             {!ownSavedLocked && (
-              <Button type="submit" disabled={pending}>
-                {pending ? "Saving…" : editing ? "Save changes" : "Save expense"}
+              <Button type="submit" disabled={pending || converting}>
+                {pending ? "Saving…" : converting ? UI.convertingPhotos : editing ? "Save changes" : "Save expense"}
               </Button>
             )}
             <Button

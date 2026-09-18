@@ -16,12 +16,12 @@ function read(relPath: string): string {
 
 describe("Monthly summary page wiring", () => {
   it("uses loadMonthlySummaryScreen to load its data", () => {
-    const source = read("app/r/monthly-summary/summary-section.tsx");
+    const source = read("src/components/monthly-summary/summary-section.tsx");
     expect(source).toContain("loadMonthlySummaryScreen");
   });
 
   it("keys the editor by both source and month, so switching either remounts it", () => {
-    const source = read("app/r/monthly-summary/summary-section.tsx");
+    const source = read("src/components/monthly-summary/summary-section.tsx");
     expect(source).toMatch(/key=\{`\$\{fundingSourceId\}:\$\{month\}`\}/);
   });
 });
@@ -29,12 +29,12 @@ describe("Monthly summary page wiring", () => {
 describe("no dangerouslySetInnerHTML anywhere in the new screen or the packet section (P6)", () => {
   it.each([
     "app/r/monthly-summary/page.tsx",
-    "app/r/monthly-summary/summary-section.tsx",
-    "app/r/monthly-summary/summary-editor.tsx",
+    "src/components/monthly-summary/summary-section.tsx",
+    "src/components/monthly-summary/summary-editor.tsx",
     // The rich editor — content always goes in as a JSON doc (`toEditorDoc`), never HTML.
-    "app/r/monthly-summary/summary-rich-editor.tsx",
-    "app/r/monthly-summary/use-autosave.ts",
-    "app/r/monthly-summary/saved-summaries.tsx",
+    "src/components/monthly-summary/summary-rich-editor.tsx",
+    "src/components/monthly-summary/use-autosave.ts",
+    "src/components/monthly-summary/saved-summaries.tsx",
     "app/r/packet/page.tsx",
   ])("%s", (relPath) => {
     expect(read(relPath)).not.toContain("dangerouslySetInnerHTML");
@@ -42,7 +42,7 @@ describe("no dangerouslySetInnerHTML anywhere in the new screen or the packet se
 });
 
 describe("Word/PDF download wiring on the Monthly summary screen (Phase 4, P13)", () => {
-  const source = read("app/r/monthly-summary/summary-editor.tsx");
+  const source = read("src/components/monthly-summary/summary-editor.tsx");
 
   it("gates both DownloadButtons on downloadBlock, imported from the autosave module", () => {
     expect(source).toMatch(/import\s*\{[^}]*downloadBlock[^}]*\}\s*from\s*"@\/src\/modules\/monthly-summary\/autosave"/);
@@ -80,8 +80,8 @@ describe("packet page wiring", () => {
 });
 
 describe("Rich editor/skeleton wiring on the Monthly summary screen (PR #18 review #8)", () => {
-  const source = read("app/r/monthly-summary/summary-editor.tsx");
-  const editorSource = read("app/r/monthly-summary/summary-rich-editor.tsx");
+  const source = read("src/components/monthly-summary/summary-editor.tsx");
+  const editorSource = read("src/components/monthly-summary/summary-rich-editor.tsx");
 
   it("the toolbar has exactly Bold and Bullet list, and nothing else", () => {
     const buttons = [...editorSource.matchAll(/<ToolbarButton\s+label=\{UI\.(\w+)\}/g)].map((m) => m[1]);
@@ -108,7 +108,7 @@ describe("Rich editor/skeleton wiring on the Monthly summary screen (PR #18 revi
     const guardListStart = thisFile.indexOf("no dangerouslySetInnerHTML anywhere");
     const guardListEnd = thisFile.indexOf("]", guardListStart);
     const guardList = thisFile.slice(guardListStart, guardListEnd);
-    expect(guardList).toContain("app/r/monthly-summary/summary-rich-editor.tsx");
+    expect(guardList).toContain("src/components/monthly-summary/summary-rich-editor.tsx");
   });
 });
 
@@ -123,7 +123,7 @@ describe("write route wiring", () => {
   });
 
   it("the client writes via fetch(\"/api/monthly-summary/write\"), not a direct writeSummaryAction import", () => {
-    const source = read("app/r/monthly-summary/summary-editor.tsx");
+    const source = read("src/components/monthly-summary/summary-editor.tsx");
     expect(source).toContain('fetch("/api/monthly-summary/write"');
     expect(source).not.toMatch(/import\s*\{[^}]*writeSummaryAction[^}]*\}/);
   });

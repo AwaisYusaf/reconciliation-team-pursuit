@@ -106,6 +106,28 @@ describe("parseReadAmountsResponse", () => {
     expect(result.outcome).toBe("none");
   });
 
+  it("STRICT_DECIMAL: a European-style comma decimal ('12,50') is refused, never silently read as $1,250", () => {
+    const result = parseReadAmountsResponse(
+      responsesBody({ found: true, subtotal: "12,50", tax: null, fees: null, total: "10.00" }),
+    );
+    expect(result.outcome).toBe("none");
+  });
+
+  it("STRICT_DECIMAL: a fully European-formatted amount ('1.234,56') is refused", () => {
+    const result = parseReadAmountsResponse(
+      responsesBody({ found: true, subtotal: "1.234,56", tax: null, fees: null, total: "10.00" }),
+    );
+    expect(result.outcome).toBe("none");
+  });
+
+  it("STRICT_DECIMAL: a US-grouped decimal ('1,234.56') is accepted as $1,234.56", () => {
+    const result = parseReadAmountsResponse(
+      responsesBody({ found: true, subtotal: "1,234.56", tax: null, fees: null, total: null }),
+    );
+    expect(result.outcome).toBe("found");
+    if (result.outcome === "found") expect(result.amounts.subtotalCents).toBe(123456);
+  });
+
   it("tax/fees null → treated as 0", () => {
     const result = parseReadAmountsResponse(
       responsesBody({ found: true, subtotal: "10.00", tax: null, fees: null, total: "10.00" }),
@@ -215,6 +237,7 @@ describe("readAmounts", () => {
     expect(body.store).toBe(false);
     expect(body.text.format.type).toBe("json_schema");
     expect(body.text.format.strict).toBe(true);
+    expect(body.max_output_tokens).toBe(400);
   });
 
   it("PDF → input_file with the generic filename 'document.pdf', never the user's own", async () => {
@@ -400,5 +423,44 @@ describe("costMicroUsd", () => {
 
   it("zero tokens with valid prices → 0, not null", () => {
     expect(costMicroUsd(0, 0, fakeEnv(bothPrices))).toBe(0);
+  });
+});
+
+describe("proof direction (PR #18 round 2, #5): size from the amount, sign from money_in", () => {
+  const proof = (fields: Record<string, unknown>) =>
+    parseReadAmountsResponse(responsesBody({ found: true, tax: "0", fees: "0", ...fields }), "proof");
+
+  it("a payment is positive however the bank writes it", () => {
+    for (const written of ["165.00", "-165.00"]) {
+      expect(proof({ money_in: false, subtotal: written, total: written })).toMatchObject({
+        amounts: { subtotalCents: 16500, totalCents: 16500 },
+      });
+    }
+  });
+
+  it("money coming in is negative, like the refund receipt it matches", () => {
+    for (const written of ["145.00", "-145.00"]) {
+      expect(proof({ money_in: true, subtotal: written, total: written })).toMatchObject({
+        amounts: { subtotalCents: -14500, totalCents: -14500 },
+      });
+    }
+  });
+
+  it("a zero never becomes -0", () => {
+    const result = proof({ money_in: true, subtotal: "10.00", total: "10.00" });
+    expect(result.outcome === "found" && Object.is(result.amounts.taxCents, 0)).toBe(true);
+  });
+
+  it("a receipt keeps its own sign; money_in only applies to proofs", () => {
+    const refund = parseReadAmountsResponse(
+      responsesBody({ found: true, money_in: true, subtotal: "-145.00", tax: "0", fees: "0", total: "-145.00" }),
+      "receipt",
+    );
+    expect(refund).toMatchObject({ amounts: { totalCents: -14500 } });
+    const purchase = parseReadAmountsResponse(
+      responsesBody({ found: true, money_in: true, subtotal: "145.00", tax: "0", fees: "0", total: "145.00" }),
+      "receipt",
+    );
+    expect(purchase).toMatchObject({ amounts: { totalCents: 14500 } });
   });
 });

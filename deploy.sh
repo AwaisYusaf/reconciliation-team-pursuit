@@ -5,7 +5,7 @@
 # This script touches ONLY this stack. It never edits ~/the-pride-api/Caddyfile, never
 # restarts that project's Caddy, and never creates or removes the shared Docker network —
 # `the-pride-api_default` is declared external, so compose only ever attaches to it.
-# The Caddy site block for reconciliation.teampursuit.org is added once, during first-time
+# The Caddy site block for stayfunded360.com is added once, during first-time
 # setup (docs/04-engineering/deploy-ec2.md); redeploys do not need it and must not touch it.
 #
 #   ./deploy.sh              pull, build, migrate, restart, verify

@@ -6,7 +6,9 @@ import { APP_NAME, pageTitle } from "@/src/domain/strings";
 
 const ROOT = resolve(__dirname, "..", "..");
 const SELF = resolve(__dirname, "app-name.test.ts");
-const BANNED = ["Grant Expense Reconciliation", "Grant Ledger", "GrantLedger"];
+/** Lower case, compared against lower-cased source: "grant ledger" or "GRANT EXPENSE
+ *  RECONCILIATION" is the old name all the same (PR #18 round 2, #12). */
+const BANNED = ["grant expense reconciliation", "grant ledger", "grantledger"];
 
 /** Every `.ts`/`.tsx` file under a directory, skipping `node_modules` and dot-directories. */
 function sourceFiles(dir: string): string[] {
@@ -30,7 +32,7 @@ describe("APP_NAME", () => {
     );
     const offenders: string[] = [];
     for (const path of files) {
-      const text = readFileSync(path, "utf8");
+      const text = readFileSync(path, "utf8").toLowerCase();
       for (const banned of BANNED) {
         if (text.includes(banned)) offenders.push(`${path}: "${banned}"`);
       }

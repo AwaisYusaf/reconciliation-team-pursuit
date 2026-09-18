@@ -498,6 +498,37 @@ describe.skipIf(!hasDatabase)("read amounts (integration, Phase 10)", async () =
       expect(response.status).toBe(404);
     });
 
+    it("a document whose status is not 'attached' (e.g. still pending) → 404, never read", async () => {
+      const expenseId = await makeExpense(orgId, fundingSourceId, lineItemId);
+      const ingested = await ingestExpenseDocument({
+        orgId,
+        expenseId,
+        scope: "receipt",
+        file: await jpegFile(),
+      });
+      if (!ingested.ok) throw new Error(ingested.error);
+
+      // ingestExpenseDocument always lands the row as 'attached' — set it back to 'pending' to
+      // exercise the route's own status filter directly, the way a not-yet-finalised upload would.
+      await db
+        .update(expenseDocuments)
+        .set({ status: "pending" })
+        .where(eq(expenseDocuments.id, ingested.documentId));
+
+      asSession(orgId, userId);
+      readAmountsMock.mockClear();
+      const before = await latestAmountRead(orgId);
+
+      const form = new FormData();
+      form.set("documentId", ingested.documentId);
+      const response = await POST(readRequest(form));
+      expect(response.status).toBe(404);
+      expect(readAmountsMock).not.toHaveBeenCalled();
+
+      const after = await latestAmountRead(orgId);
+      expect(after?.id).toBe(before?.id); // nothing logged for an unresolved document either
+    });
+
     it("attached document reads successfully via storage, and the expense row is unchanged before/after", async () => {
       const expenseId = await makeExpense(orgId, fundingSourceId, lineItemId);
       const ingested = await ingestExpenseDocument({
@@ -616,6 +647,58 @@ describe.skipIf(!hasDatabase)("read amounts (integration, Phase 10)", async () =
       const response = await POST(readRequest(form));
       expect(response.status).toBe(200);
       expect((await response.json()).data.found).toBe(true);
+      expect(readAmountsMock).toHaveBeenCalledTimes(1);
+
+      const row = await latestAmountRead(orgId);
+      expect(row!.outcome).toBe("found");
+      expect(row!.documentSource).toBe("attached");
+    });
+
+    it("an exactly-10-page uploaded PDF is allowed through to OpenAI, not refused", async () => {
+      asSession(orgId, userId);
+      readAmountsMock.mockClear();
+      readAmountsMock.mockResolvedValue({
+        outcome: "found",
+        amounts: { subtotalCents: 1000, taxCents: 0, feesCents: 0, totalCents: 1000 },
+        inputTokens: 5,
+        outputTokens: 2,
+      });
+
+      const form = new FormData();
+      form.set("file", await multiPagePdfFile(OVER_THE_LIMIT_PAGES - 1));
+      form.set("kind", "receipt");
+      const response = await POST(readRequest(form));
+      expect(response.status).toBe(200);
+      expect(readAmountsMock).toHaveBeenCalledTimes(1);
+
+      const row = await latestAmountRead(orgId);
+      expect(row!.outcome).toBe("found");
+      expect(row!.documentSource).toBe("upload");
+    });
+
+    it("an attached document with a stored pageCount of exactly 10 is allowed through to OpenAI, not refused", async () => {
+      const expenseId = await makeExpense(orgId, fundingSourceId, lineItemId);
+      const ingested = await ingestExpenseDocument({
+        orgId,
+        expenseId,
+        scope: "receipt",
+        file: await multiPagePdfFile(OVER_THE_LIMIT_PAGES - 1),
+      });
+      if (!ingested.ok) throw new Error(ingested.error);
+
+      asSession(orgId, userId);
+      readAmountsMock.mockClear();
+      readAmountsMock.mockResolvedValue({
+        outcome: "found",
+        amounts: { subtotalCents: 1000, taxCents: 0, feesCents: 0, totalCents: 1000 },
+        inputTokens: 5,
+        outputTokens: 2,
+      });
+
+      const form = new FormData();
+      form.set("documentId", ingested.documentId);
+      const response = await POST(readRequest(form));
+      expect(response.status).toBe(200);
       expect(readAmountsMock).toHaveBeenCalledTimes(1);
 
       const row = await latestAmountRead(orgId);

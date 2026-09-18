@@ -9,7 +9,7 @@ the Dashboard and Contract Summary use, for the team to check, edit and download
 Route `/r/monthly-summary`, Reconciliation + AI only. Admins and managers. Follows the header's
 active funding source and month, like every other tab, so one source's one month is shown at a
 time — no "All" view (`PickFundingSource` when the header is on "All"). No top navigation tab:
-reached from the Month-End Packet card and a Dashboard link. It never enters the packet, never
+reached from the Month-End Packet tab, which shows the same section, and a Dashboard link. It never enters the packet, never
 leaves the app on its own, and works on locked and archived months/sources. Full design and
 decisions: `docs/PHASE-11.md`.
 
@@ -19,7 +19,8 @@ Dashboard and Contract Summary use (`loadLineItemBudgets`, `loadExpenseAmounts`,
 `loadFundingSourceSettings`), so every figure matches them exactly (PHASE-11 §4, P2). Writes
 `monthly_summaries`, one row per (org, funding source, month), with optimistic-concurrency
 `version` and a stored `expenses_fingerprint` for the changed-records notice (PHASE-11 §3, P7,
-P10). Usage is logged to `ai_usage_events` (PHASE-11 §3, P12).
+P10) — since PR #18 round 2 a sha256 of the whole facts object the model was given, so a budget
+edit or an earlier month's change raises the notice too, not only this month's expenses. Usage is logged to `ai_usage_events` (PHASE-11 §3, P12).
 
 ## Behavior
 - Base plan: title, Plus badge and the plan note only — no button, no list (P15: data is kept,
@@ -29,20 +30,21 @@ P10). Usage is logged to `ai_usage_events` (PHASE-11 §3, P12).
 - Writing: a shimmer (`summary-skeleton.tsx`) replaces the whole summary card, carrying "Writing
   your summary… this can take up to a minute."; the rest of the app stays usable; leaving the
   screen doesn't cancel the run (PHASE-11 §7.1, §6, C8).
-- Summary exists: meta line, AI reminder, changed-records notice when the stored fingerprint no
-  longer matches the month's live expenses, then **Preview/Edit tabs with Preview as the default
-  view** (`summary-preview.tsx` renders the saved Markdown as React text through the same parser
-  the Word/PDF/Copy-text paths use. Since PR #18 (C9) it is edited directly as headings, paragraphs and bullets with a Bold / Bullet list toolbar (Tiptap), still stored as the same Markdown —
-  C8, superseding the original plain-textarea-only design, C2), Save with 3-second autosave
-  (unchanged by the tabs), Copy text (disabled while writing), Download Word, Download PDF, and
-  Write again (confirm, replaces the text). A first draft and a fresh Write again both wipe in
-  line by line (`.summary-reveal`, `prefers-reduced-motion` respected).
+- Summary exists: month title and meta line, then **Copy text · Download Word · Download PDF** in
+  one row, the changed-records notice when the stored fingerprint no longer matches, the AI
+  reminder (a grey note, Appendix A's wording), and the summary itself in a **rich editor**
+  (`summary-rich-editor.tsx`, Tiptap): headings, paragraphs and bullets with a Bold and Bullet list
+  toolbar, stored as the same Markdown through `toEditorDoc`/`serializeSummaryMarkdown`, so Word,
+  PDF and Copy text come from one representation and no raw HTML is rendered (P6, C9). Lists stay
+  flat: Tab doesn't indent, and a pasted nested list is saved as one line per item. Opening a
+  summary never saves it — only a real change is reported to autosave. The bottom bar holds Save
+  (3-second autosave) and **Write again** (secondary, confirm, replaces the text).
 - A **Saved summaries** list, newest month first, one row per month with a summary for this
   source; clicking a row calls `setActiveMonthAction` so the header, this screen and the rest of
   the app agree on the month.
-- Month-End Packet tab: a **Monthly summary** card below Month documents (Plus: last-written
-  date and an **Open monthly summary** link; base plan: the plan note). The card only carries
-  its tour target on Reconciliation + AI (`app/r/packet/monthly-summary-card.tsx`).
+- Month-End Packet tab: the **same section** — editor, downloads and Saved summaries — below
+  Month documents, from one shared component (`src/components/monthly-summary/summary-section.tsx`,
+  PR #18 review #7). Base plan: the plan note. The tour target is only there on Reconciliation + AI.
 - Dashboard: once a summary exists for a source's active month, a quiet **Monthly summary
   ready** link after the two action buttons. From "All" (or another source's section) it first
   switches the header's active funding source, then opens the screen, since the screen follows
@@ -52,7 +54,6 @@ P10). Usage is logged to `ai_usage_events` (PHASE-11 §3, P12).
 - `loadMonthlySummaryScreen(orgId, sourceId, month)` — everything the screen needs: access
   state, the summary or null, the stale flag, live expense count, writer/editor names, saved
   months.
-- `loadSummaryCard(orgId, sourceId, month)` — the packet card's needs.
 - `loadReadySummarySourceIds(orgId, sourceIds, month)` — batched for the Dashboard, one query
   for every section shown, not one per source.
 - `writeSummaryAction({ sourceId, month, expectedVersion })` and
@@ -70,8 +71,7 @@ P10). Usage is logged to `ai_usage_events` (PHASE-11 §3, P12).
 Every figure in a summary equals the Dashboard's and Contract Summary's own figures for the same
 (source, month). The five section headings are always present, in order, on a saved draft
 written by the model; a user may rename or remove them afterwards. Downloads are disabled while
-an edit is unsaved. The Dashboard link and the packet card both route to the same screen and
-month. Full test mapping: `docs/PHASE-11.md` §8–§10.
+an edit is unsaved. The Dashboard link opens the screen for the same month the packet tab shows. Full test mapping: `docs/PHASE-11.md` §8–§10.
 
 ---
 

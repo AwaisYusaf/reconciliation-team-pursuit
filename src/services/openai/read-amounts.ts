@@ -66,9 +66,12 @@ const GENERIC_PDF_FILENAME = "document.pdf";
 const RESPONSE_SCHEMA = {
   type: "object",
   additionalProperties: false,
-  required: ["found", "subtotal", "tax", "fees", "total"],
+  required: ["found", "money_in", "subtotal", "tax", "fees", "total"],
   properties: {
     found: { type: "boolean" },
+    // Proofs only: which way the money moved. The amounts themselves are always read as positive,
+    // because a bank line's sign depends on the bank, not on whether the expense was a refund.
+    money_in: { type: "boolean" },
     subtotal: { type: ["string", "null"] },
     tax: { type: ["string", "null"] },
     fees: { type: ["string", "null"] },
@@ -89,15 +92,16 @@ function instructionFor(kind: ReadKind): string {
   if (kind === "receipt") {
     return (
       "This document is a receipt, invoice or justification for a single expense. Read its " +
-      "subtotal, tax, fees and total amount paid. " +
+      "subtotal, tax, fees and total amount paid. Set money_in to false. " +
       shared
     );
   }
   return (
     "This document is a proof of payment (a bank transaction line, a transfer screenshot, an " +
-    "ATM slip). Read the single amount paid and report it as both the subtotal and the total, " +
-    "always as a positive number — a bank line shows money leaving the account as a debit, often " +
-    "written \"-165.00\" or \"(165.00)\", and the amount paid is 165.00 either way. " +
+    "ATM slip). Read the single amount and report it as both the subtotal and the total, always " +
+    "as a positive number. Set money_in to true only when the money came into the account (a " +
+    "refund or credit received); a payment leaving the account is money_in false, even when the " +
+    "bank writes it as a debit like \"-165.00\" or \"(165.00)\". " +
     "Report tax and fees as \"0\" unless the document itself shows separate tax or fee amounts. " +
     shared
   );
@@ -245,17 +249,19 @@ export function parseReadAmountsResponse(json: unknown, kind: ReadKind = "receip
   if (totalCents === null) totalCents = subtotalCents + taxCents + feesCents;
 
   if (kind === "proof") {
-    // A proof says what was paid. A bank line writes that as a debit — "-165.00" or "(165.00)" —
-    // and keeping the sign made the panel warn that proofs disagreed with receipts of the same
-    // amount, and, on a no-receipt expense, filled a negative subtotal that saves as a refund
-    // (PR #18 review). Tax and fees follow the same amount.
+    // A bank writes a payment as a debit ("-165.00") and a refund as a credit, so the sign on the
+    // page says nothing about the expense. The size comes from the amount, the direction from
+    // `money_in`: a payment is positive like its receipt, a refund negative like its refund
+    // receipt (PR #18 review; round 2, #5 — forcing every proof positive broke refunds).
+    const refund = parsed.money_in === true;
+    const signed = (cents: number) => (refund ? -Math.abs(cents) : Math.abs(cents)) || 0;
     return {
       outcome: "found",
       amounts: {
-        subtotalCents: Math.abs(subtotalCents),
-        taxCents: Math.abs(taxCents),
-        feesCents: Math.abs(feesCents),
-        totalCents: Math.abs(totalCents),
+        subtotalCents: signed(subtotalCents),
+        taxCents: signed(taxCents),
+        feesCents: signed(feesCents),
+        totalCents: signed(totalCents),
       },
       ...usage,
     };

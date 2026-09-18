@@ -5,7 +5,7 @@ import { APP_NAME } from "@/src/domain/strings";
 
 // Ported from grant-ledger app/layout.tsx (lines 18-56) with the site URL swapped to this
 // repo's own convention: APP_URL, not grant-ledger's NEXT_PUBLIC_SITE_URL.
-const siteUrl = process.env.APP_URL ?? "https://reconciliation.teampursuit.org";
+const siteUrl = process.env.APP_URL ?? "https://stayfunded360.com";
 const title = `${APP_NAME} | Frontline Nonprofit Grant Reconciliation & Audit Engine`;
 const description =
   "Capture every grant expense with its documentation the moment it happens, then generate a complete funder-ready packet, cover sheets, contract summary, and merged filing, in minutes. Built for CVI and frontline nonprofits managing municipal grant reimbursements.";

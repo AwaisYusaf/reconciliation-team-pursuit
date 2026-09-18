@@ -64,6 +64,24 @@ function classifyLine(rawLine: string): Line {
   return { kind: "text", text: line.trim() };
 }
 
+const isEscape = (text: string, at: number) =>
+  text[at] === "\\" && (text[at + 1] === "*" || text[at + 1] === "\\");
+
+/** Where the next `marker` starts at or after `from`, skipping escaped `\*` and `\\` — an escaped
+ *  star is a literal character, never the end of a bold or italic run. -1 when there is none. */
+function findUnescaped(text: string, marker: string, from: number): number {
+  for (let j = from; j < text.length; j += 1) {
+    if (isEscape(text, j)) {
+      j += 1;
+      continue;
+    }
+    if (text.startsWith(marker, j)) return j;
+  }
+  return -1;
+}
+
+const unescapeRun = (text: string) => text.replace(/\\([*\\])/g, "$1");
+
 /** `**bold**`, `*italic*`, `***both***`; an unmatched marker is left as literal text. No other
  *  syntax (links, images, code, HTML, `_x_`) is ever recognised — it passes through untouched,
  *  including whatever `*`/`#` characters it happens to contain. */
@@ -84,33 +102,24 @@ function parseInline(text: string): Inline[] {
     // before the emphasis markers below, so an escaped `*` never opens/closes a bold or italic
     // run. Any other backslash (not followed by `*` or `\`) has no special meaning and is kept
     // as itself; nothing in this parser ever produces one.
-    if (text[i] === "\\" && (text[i + 1] === "*" || text[i + 1] === "\\")) {
+    if (isEscape(text, i)) {
       buffer += text[i + 1];
       i += 2;
       continue;
     }
-    if (text.startsWith("***", i)) {
-      const close = text.indexOf("***", i + 3);
-      if (close > i + 3) {
+    const marker = text.startsWith("***", i) ? "***" : text.startsWith("**", i) ? "**" : text[i] === "*" ? "*" : "";
+    if (marker !== "") {
+      const close = findUnescaped(text, marker, i + marker.length);
+      if (close > i + marker.length) {
         flush();
-        inlines.push({ text: text.slice(i + 3, close), bold: true, italic: true });
-        i = close + 3;
-        continue;
-      }
-    } else if (text.startsWith("**", i)) {
-      const close = text.indexOf("**", i + 2);
-      if (close > i + 2) {
-        flush();
-        inlines.push({ text: text.slice(i + 2, close), bold: true, italic: false });
-        i = close + 2;
-        continue;
-      }
-    } else if (text[i] === "*") {
-      const close = text.indexOf("*", i + 1);
-      if (close > i + 1) {
-        flush();
-        inlines.push({ text: text.slice(i + 1, close), bold: false, italic: true });
-        i = close + 1;
+        inlines.push({
+          // Unescaped like plain text is: inside bold, `\*` and `\\` were left as-is, so every save
+          // escaped them again and the backslashes multiplied (PR #18 round 2, #2).
+          text: unescapeRun(text.slice(i + marker.length, close)),
+          bold: marker !== "*",
+          italic: marker !== "**",
+        });
+        i = close + marker.length;
         continue;
       }
     }
@@ -293,7 +302,9 @@ export type EditorMark = { type: "bold" } | { type: "italic" };
 export type EditorTextNode = { type: "text"; text: string; marks?: EditorMark[] };
 type EditorParagraphNode = { type: "paragraph"; content?: EditorTextNode[] };
 type EditorHeadingNode = { type: "heading"; attrs: { level: 1 | 2 | 3 }; content?: EditorTextNode[] };
-type EditorListItemNode = { type: "listItem"; content: [EditorParagraphNode] };
+/** What `toEditorDoc` builds is always one paragraph per item, but the editor can hold more: a
+ *  pasted list item with two paragraphs, or a nested list. The serializer flattens both. */
+type EditorListItemNode = { type: "listItem"; content: (EditorParagraphNode | EditorBulletListNode)[] };
 type EditorBulletListNode = { type: "bulletList"; content: EditorListItemNode[] };
 export type EditorBlockNode = EditorParagraphNode | EditorHeadingNode | EditorBulletListNode;
 export type EditorDoc = { type: "doc"; content: EditorBlockNode[] };
@@ -368,6 +379,18 @@ function serializeInlineRun(nodes: readonly EditorTextNode[] | undefined): strin
 
 const LEADING_MARKER_RE = /^(#{1,3}|-)\s/;
 
+/** Every line of text in a list, in reading order, as one flat list: each paragraph of an item
+ *  is its own bullet and a nested list's items follow their parent's (PR #18 round 2, #2 — only
+ *  an item's first paragraph used to be read, so a sub-list showed in the editor and was dropped
+ *  on save). The stored Markdown has no nesting to keep it in. */
+function bulletTexts(list: EditorBulletListNode): string[] {
+  return list.content.flatMap((item) =>
+    item.content.flatMap((child) =>
+      child.type === "bulletList" ? bulletTexts(child) : [serializeInlineRun(child.content)],
+    ),
+  );
+}
+
 /**
  * The editor's ProseMirror doc → Markdown (PR #18 review #8). A paragraph whose composed text
  * would itself misparse as a heading or a bullet — because the user typed a literal leading `#`
@@ -387,8 +410,7 @@ export function serializeSummaryMarkdown(doc: EditorDoc): string {
     }
     if (node.type === "bulletList") {
       // Same reasoning per item: an empty bullet has no text `BULLET_RE` could read back.
-      return node.content
-        .map((item) => serializeInlineRun(item.content[0].content))
+      return bulletTexts(node)
         .filter((text) => text !== "")
         .map((text) => `- ${text}`)
         .join("\n");

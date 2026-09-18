@@ -10,13 +10,27 @@
  * `screen.test.ts` greps this file for that escape hatch by name, which is why it isn't written
  * here).
  */
-import { EditorContent, useEditor } from "@tiptap/react";
+import { EditorContent, Extension, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { useEffect, useRef } from "react";
 
 import { cn } from "@/src/lib/cn";
 import { UI } from "@/src/domain/strings";
 import { serializeSummaryMarkdown, toEditorDoc, type EditorDoc } from "@/src/domain/summary-markdown";
+
+/**
+ * No sub-lists: the stored Markdown is flat (PR #18 round 2, #2). Both the list item and the list
+ * keymap indent on Tab, so this claims Tab/Shift-Tab first inside a list and does nothing with
+ * them. A nested list that arrives another way (pasted) is flattened by the serializer on save.
+ */
+const FlatLists = Extension.create({
+  name: "flatLists",
+  priority: 1000,
+  addKeyboardShortcuts() {
+    const inList = () => this.editor.isActive("listItem");
+    return { Tab: inList, "Shift-Tab": inList };
+  },
+});
 
 export function SummaryRichEditor({
   markdown,
@@ -50,14 +64,28 @@ export function SummaryRichEditor({
         link: false,
         underline: false,
       }),
+      FlatLists,
     ],
     content: toEditorDoc(markdown),
     // Required for Next's SSR: without it, the editor renders its first paint on the server,
     // which never matches the client's (node_modules/next/dist/docs).
     immediatelyRender: false,
     editable: !readOnly,
-    onUpdate: ({ editor: instance }) => onChange(serializeSummaryMarkdown(instance.getJSON() as EditorDoc)),
+    onUpdate: ({ editor: instance }) => {
+      // Only a real change is reported. Tiptap also fires update for things that change nothing
+      // (and the loaded Markdown can serialize differently from how it was stored, e.g. `*` bullets
+      // as `-`), and each report would autosave — so merely opening a summary marked it "Last
+      // edited by" whoever looked and bumped its version (PR #18 round 2, #3).
+      const next = serializeSummaryMarkdown(instance.getJSON() as EditorDoc);
+      if (next === lastKnown.current) return;
+      lastKnown.current = next;
+      onChange(next);
+    },
   });
+
+  // The Markdown the editor currently holds, as this serializer writes it. Compared against the
+  // last value *known* (not the loaded one), so undoing back to the original still saves.
+  const lastKnown = useRef(serializeSummaryMarkdown(toEditorDoc(markdown)));
 
   const mounted = useRef(false);
   useEffect(() => {
@@ -67,12 +95,14 @@ export function SummaryRichEditor({
       mounted.current = true;
       return;
     }
+    lastKnown.current = serializeSummaryMarkdown(toEditorDoc(markdown));
     editor?.commands.setContent(toEditorDoc(markdown), { emitUpdate: false });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- resets only on an explicit resetVersion bump, not on every keystroke's markdown (autosave would fight the caret)
   }, [resetVersion]);
 
   useEffect(() => {
-    editor?.setEditable(!readOnly);
+    // `setEditable` fires an update by default, which on mount was enough to autosave.
+    editor?.setEditable(!readOnly, false);
   }, [editor, readOnly]);
 
   if (!editor) return null;

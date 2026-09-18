@@ -182,11 +182,13 @@ describe.skipIf(!hasDatabase)("monthly summary download route (integration, Phas
     expect((await res.text()).trim()).toBe(UI.summaryPlanNote);
   });
 
-  it("404 for another org's funding source id", async () => {
+  it("404 for another org's funding source id, even when that org's summary really exists (org scoping, not just absence)", async () => {
     const orgA = await makeOrg("Cross org A");
     const orgB = await makeOrg("Cross org B");
+    const month = freshMonth();
+    await insertSummary(orgA.orgId, orgA.fundingSourceId, month); // a real row for org A, not a miss
     asUser(orgB.orgId, orgB.userId);
-    const res = await GET(request({ month: MONTH, source: orgA.fundingSourceId, format: "docx" }));
+    const res = await GET(request({ month, source: orgA.fundingSourceId, format: "docx" }));
     expect(res.status).toBe(404);
   });
 

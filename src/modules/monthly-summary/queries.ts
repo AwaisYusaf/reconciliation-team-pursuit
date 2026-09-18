@@ -21,7 +21,7 @@ import { isUuid } from "@/src/lib/ids";
 import { summariesAccessForOrg } from "@/src/modules/ai/access";
 import { findFundingSource } from "@/src/modules/funding-sources/queries";
 
-import { expensesFingerprint } from "./fingerprint";
+import { factsFingerprint } from "./fingerprint";
 import { isSummaryWriting } from "./single-flight";
 
 /**
@@ -97,7 +97,7 @@ export async function loadMonthFacts(
         settings,
       });
 
-      return { facts, fingerprint: expensesFingerprint(monthExpenses) };
+      return { facts, fingerprint: factsFingerprint(facts) };
     },
     { isolationLevel: "repeatable read", accessMode: "read only" },
   );

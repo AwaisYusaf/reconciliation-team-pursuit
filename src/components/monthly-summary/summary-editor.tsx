@@ -264,23 +264,34 @@ function SummaryBody({
           </p>
         </div>
 
-        {/* While writing, the shimmer below already says so; here the button simply goes quiet. */}
-        {canWrite &&
-          (writing ? (
-            <Button variant="secondary" disabled>
-              {UI.summaryWriteAgainButton}
-            </Button>
-          ) : (
-            <ConfirmButton
-              variant="secondary"
-              title={UI.summaryWriteAgainTitle}
-              body={UI.summaryWriteAgainBody}
-              confirmLabel={UI.summaryWriteAgainButton}
-              onConfirm={() => void handleWriteAgain()}
-            >
-              {UI.summaryWriteAgainButton}
-            </ConfirmButton>
-          ))}
+        {/* Copy and download sit with the title: they are what a finished summary is for (PR #18
+            round 2, #13). */}
+        <div className="flex flex-wrap items-center gap-3">
+          {block && (
+            <span className="text-[15px] text-sub">
+              {block === "saving" ? UI.summarySaving : UI.summaryDownloadUnsaved}
+            </span>
+          )}
+          {/* Disabled while writing for the same reason as the downloads: the text on screen is
+              about to be replaced. */}
+          <Button variant="secondary" disabled={writing} onClick={() => void handleCopy()}>
+            {UI.summaryCopyText}
+          </Button>
+          <DownloadButton
+            variant="secondary"
+            disabled={block !== null || writing}
+            href={`/api/downloads/monthly-summary?source=${encodeURIComponent(sourceId)}&month=${encodeURIComponent(month)}&format=docx`}
+          >
+            {UI.summaryDownloadWord}
+          </DownloadButton>
+          <DownloadButton
+            variant="secondary"
+            disabled={block !== null || writing}
+            href={`/api/downloads/monthly-summary?source=${encodeURIComponent(sourceId)}&month=${encodeURIComponent(month)}&format=pdf`}
+          >
+            {UI.summaryDownloadPdf}
+          </DownloadButton>
+        </div>
       </div>
 
       <div className="px-4 pt-4 pb-5 sm:px-6">
@@ -337,32 +348,25 @@ function SummaryBody({
           )}
         </div>
 
-        <div className="flex flex-wrap items-center gap-3">
-          {block && (
-            <span className="text-[15px] text-sub">
-              {block === "saving" ? UI.summarySaving : UI.summaryDownloadUnsaved}
-            </span>
-          )}
-          {/* Disabled while writing for the same reason as the downloads: the text on screen is
-              about to be replaced. */}
-          <Button variant="secondary" disabled={writing} onClick={() => void handleCopy()}>
-            {UI.summaryCopyText}
-          </Button>
-          <DownloadButton
-            variant="secondary"
-            disabled={block !== null || writing}
-            href={`/api/downloads/monthly-summary?source=${encodeURIComponent(sourceId)}&month=${encodeURIComponent(month)}&format=docx`}
-          >
-            {UI.summaryDownloadWord}
-          </DownloadButton>
-          <DownloadButton
-            variant="secondary"
-            disabled={block !== null || writing}
-            href={`/api/downloads/monthly-summary?source=${encodeURIComponent(sourceId)}&month=${encodeURIComponent(month)}&format=pdf`}
-          >
-            {UI.summaryDownloadPdf}
-          </DownloadButton>
-        </div>
+        {/* Rewriting throws the draft away, so it sits at the bottom as a secondary action, away
+            from the everyday ones (PR #18 round 2, #13). While writing, the shimmer already says
+            so; here the button simply goes quiet. */}
+        {canWrite &&
+          (writing ? (
+            <Button variant="secondary" disabled>
+              {UI.summaryWriteAgainButton}
+            </Button>
+          ) : (
+            <ConfirmButton
+              variant="secondary"
+              title={UI.summaryWriteAgainTitle}
+              body={UI.summaryWriteAgainBody}
+              confirmLabel={UI.summaryWriteAgainButton}
+              onConfirm={() => void handleWriteAgain()}
+            >
+              {UI.summaryWriteAgainButton}
+            </ConfirmButton>
+          ))}
       </div>
     </Card>
   );

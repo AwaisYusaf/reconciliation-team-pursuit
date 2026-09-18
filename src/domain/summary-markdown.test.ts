@@ -191,6 +191,14 @@ describe("checkSummaryStructure", () => {
     expect(result.ok).toBe(false);
   });
 
+  it("fails when only the last section heading is missing — every other title still matches its position, so this only fails via the section-count check, not a title mismatch", () => {
+    const withoutLast = SUMMARY_SECTION_TITLES.slice(0, -1)
+      .map((title) => `## ${title}\n\ncontent`)
+      .join("\n\n");
+    const result = checkSummaryStructure(withoutLast);
+    expect(result).toEqual({ ok: false, problem: expect.stringContaining("Expected") });
+  });
+
   it("fails when a section heading is duplicated", () => {
     const titles = [...SUMMARY_SECTION_TITLES, SUMMARY_SECTION_TITLES[0]];
     const md = titles.map((title) => `## ${title}\n\ncontent`).join("\n\n");
@@ -312,5 +320,55 @@ describe("toEditorDoc / serializeSummaryMarkdown (PR #18 review #8 — the Tipta
       },
     ]);
     expect(serializeSummaryMarkdown(doc)).toBe("**bold** and *italic* and ***both***");
+  });
+});
+
+describe("PR #18 round 2, #2: nothing typed in the editor is lost or multiplied on save", () => {
+  const text = (value: string) => ({ type: "text" as const, text: value });
+  const para = (value: string) => ({ type: "paragraph" as const, content: [text(value)] });
+
+  it("a nested list (Tab, or pasted) is flattened into lines, not dropped", () => {
+    const doc = {
+      type: "doc" as const,
+      content: [
+        {
+          type: "bulletList" as const,
+          content: [
+            {
+              type: "listItem" as const,
+              content: [
+                para("Salary"),
+                { type: "bulletList" as const, content: [{ type: "listItem" as const, content: [para("Payroll 1")] }] },
+              ],
+            },
+            { type: "listItem" as const, content: [para("Rent")] },
+          ],
+        },
+      ],
+    };
+    expect(serializeSummaryMarkdown(doc)).toBe("- Salary\n- Payroll 1\n- Rent");
+  });
+
+  it("a list item holding two paragraphs keeps both", () => {
+    const doc = {
+      type: "doc" as const,
+      content: [
+        { type: "bulletList" as const, content: [{ type: "listItem" as const, content: [para("First"), para("Second")] }] },
+      ],
+    };
+    expect(serializeSummaryMarkdown(doc)).toBe("- First\n- Second");
+  });
+
+  it("escaped characters inside bold and italic stay the same across repeated saves", () => {
+    const start = String.raw`**5 \* 3 and a \\ path** then *a \* b*`;
+    let markdown = start;
+    for (let save = 0; save < 5; save += 1) markdown = serializeSummaryMarkdown(toEditorDoc(markdown));
+    expect(markdown).toBe(start);
+    expect(toPlainText(markdown)).toBe(String.raw`5 * 3 and a \ path then a * b`);
+  });
+
+  it("an escaped star never closes a bold run early", () => {
+    const [block] = parseSummaryMarkdown(String.raw`**a\*\*b**`);
+    expect(block).toMatchObject({ type: "paragraph", inlines: [{ text: "a**b", bold: true }] });
   });
 });

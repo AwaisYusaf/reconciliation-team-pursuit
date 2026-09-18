@@ -8,7 +8,7 @@ import { summariesAccessForOrg } from "@/src/modules/ai/access";
 import { loadSourceContext } from "@/src/modules/funding-sources/queries";
 import { getSession } from "@/src/services/auth/session";
 
-import { MonthlySummarySection } from "./summary-section";
+import { MonthlySummarySection } from "@/src/components/monthly-summary/summary-section";
 
 export const metadata = { title: pageTitle("Monthly Summary") };
 

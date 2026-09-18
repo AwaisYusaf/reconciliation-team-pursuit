@@ -12,7 +12,7 @@ import { config } from "dotenv";
 
 config({ path: ".env.local", quiet: true });
 
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 const hasDatabase = Boolean(process.env.DATABASE_URL);
@@ -25,8 +25,8 @@ describe.skipIf(!hasDatabase)("monthly-summary queries (integration, Phase 11)",
     "@/src/db/schema"
   );
   const { createTestOrg } = await import("@/src/db/test-org");
-  const { loadMonthFacts } = await import("./queries");
-  const { expensesFingerprint } = await import("./fingerprint");
+  const { loadMonthFacts, loadSummaryForDownload } = await import("./queries");
+  const { factsFingerprint } = await import("./fingerprint");
   const { summariesAccessForOrg } = await import("@/src/modules/ai/access");
   const { loadSourceBudget } = await import("@/src/modules/dashboard/queries");
 
@@ -164,31 +164,9 @@ describe.skipIf(!hasDatabase)("monthly-summary queries (integration, Phase 11)",
       expect(facts.overview.totalSpent.cents).toBeLessThan(999_999);
       for (const row of facts.budget.lineItems) expect(row.spentThisMonth.cents).toBeLessThan(999_999);
 
-      // Fingerprint is over live expenses only — recomputing over just the live March rows for
-      // this source/month must match what the loader returned; including the trashed one must not.
-      const monthExpenseRows = await db
-        .select({
-          id: expenses.id,
-          lineItemId: expenses.lineItemId,
-          name: expenses.name,
-          description: expenses.description,
-          narrative: expenses.narrative,
-          note: expenses.note,
-          date: expenses.date,
-          subtotalCents: expenses.subtotalCents,
-          taxCents: expenses.taxCents,
-          feesCents: expenses.feesCents,
-          taxReimbursable: expenses.taxReimbursable,
-          feesReimbursable: expenses.feesReimbursable,
-          noReceipt: expenses.noReceipt,
-          noReceiptReason: expenses.noReceiptReason,
-        })
-        .from(expenses)
-        .where(and(eq(expenses.orgId, orgId), eq(expenses.fundingSourceId, fundingSourceId), eq(expenses.month, MONTH)));
-      const liveOnly = monthExpenseRows.filter((e) => e.name !== "Should not count");
-      expect(monthExpenseRows).toHaveLength(3); // 2 for A + 1 for B; the trashed row still exists in the table
-      expect(fingerprint).toBe(expensesFingerprint(liveOnly));
-      expect(fingerprint).not.toBe(expensesFingerprint(monthExpenseRows)); // proves the trashed row is excluded
+      // The fingerprint is of exactly these facts (PR #18 round 2, #7), so the trashed row,
+      // excluded from the totals above, is excluded from it too.
+      expect(fingerprint).toBe(factsFingerprint(facts));
     });
 
     it("returns null for another organisation's funding source id", async () => {
@@ -207,6 +185,32 @@ describe.skipIf(!hasDatabase)("monthly-summary queries (integration, Phase 11)",
 
     it("returns null for a well-formed but non-existent source id", async () => {
       expect(await loadMonthFacts(orgId, "00000000-0000-0000-0000-000000000000", MONTH)).toBeNull();
+    });
+  });
+
+  describe("loadSummaryForDownload — org scoping at the loader itself, independent of the route's own findFundingSource guard", () => {
+    const DOWNLOAD_MONTH = "2097-09";
+
+    it("returns the content for the owning org", async () => {
+      await db.insert(monthlySummaries).values({
+        orgId,
+        fundingSourceId,
+        month: DOWNLOAD_MONTH,
+        contentMarkdown: "## Overview\nOwner-only content.",
+        version: 1,
+        expensesFingerprint: "0".repeat(64),
+        writtenAt: new Date(),
+        model: "gpt-5.6-terra",
+      });
+
+      const loaded = await loadSummaryForDownload(orgId, fundingSourceId, DOWNLOAD_MONTH);
+      expect(loaded).not.toBeNull();
+      expect(loaded!.contentMarkdown).toBe("## Overview\nOwner-only content.");
+    });
+
+    it("a real, saved row for org A's funding source is refused (null) when requested under org B's id, even though the row genuinely exists", async () => {
+      const loaded = await loadSummaryForDownload(otherOrgId, fundingSourceId, DOWNLOAD_MONTH);
+      expect(loaded).toBeNull();
     });
   });
 

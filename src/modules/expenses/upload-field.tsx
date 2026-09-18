@@ -45,6 +45,9 @@ export type PendingUpload = {
    * event handler rather than in render.
    */
   previewUrl?: string;
+  /** A HEIC still being converted to JPEG in the browser. The form holds Save and the AI read
+   *  until it's done — saving mid-conversion lost the photo (PR #18 round 2, #6). */
+  converting?: boolean;
 };
 
 /**
@@ -152,6 +155,15 @@ export function UploadField({
     created.current.delete(url);
   };
 
+  // Minting a blob URL is a side effect, so only ever from a handler — and only for types a
+  // browser can actually decode.
+  const previewUrlFor = (file: File) => {
+    if (!isPreviewableImage(file.type) && !isPdf(file.type)) return undefined;
+    const url = URL.createObjectURL(file);
+    created.current.add(url);
+    return url;
+  };
+
   const attachedDocuments: ViewerDocument[] = attached.map((document) => ({
     src: inlineSrc(document.id),
     filename: document.filename,
@@ -218,36 +230,35 @@ export function UploadField({
             });
             if (accepted.length === 0) return;
 
-            // HEIC becomes JPEG here so it previews before saving; one that won't convert is
-            // queued as it is, and the server converts it on upload. One photo at a time, so
-            // picking ten never holds ten decoded photos in memory at once.
-            const toastId = accepted.some(looksLikeHeic) ? toast.loading(UI.convertingPhotos) : undefined;
-            void (async () => {
-              const ready: File[] = [];
-              for (const file of accepted) {
-                ready.push(looksLikeHeic(file) ? await heicToJpegFile(file) : file);
-              }
-              if (toastId) toast.dismiss(toastId);
-              setQueued((current) => [
-                ...current,
-                ...ready.map((file, index) => {
-                  // Created here, in the handler, because minting a blob URL is a side
-                  // effect. Only for types a browser can actually decode.
-                  const previewUrl =
-                    isPreviewableImage(file.type) || isPdf(file.type)
-                      ? URL.createObjectURL(file)
-                      : undefined;
-                  if (previewUrl) created.current.add(previewUrl);
+            // Every file is queued now, so it is on the form before anything is saved. A HEIC
+            // is queued as "preparing" and converted to JPEG here, so it previews before saving;
+            // one that won't convert keeps the original, and the server converts it on upload.
+            // One photo at a time, so picking ten never holds ten decoded photos in memory.
+            const entries: PendingUpload[] = accepted.map((file, index) => {
+              const converting = looksLikeHeic(file);
+              return {
+                key: `${Date.now()}-${index}-${file.name}`,
+                scope,
+                supportingType: scope === "supporting" ? supportingType : undefined,
+                file,
+                previewUrl: converting ? undefined : previewUrlFor(file),
+                converting: converting || undefined,
+              };
+            });
+            setQueued((current) => [...current, ...entries]);
 
-                  return {
-                    key: `${Date.now()}-${index}-${file.name}`,
-                    scope,
-                    supportingType: scope === "supporting" ? supportingType : undefined,
-                    file,
-                    previewUrl,
-                  };
-                }),
-              ]);
+            void (async () => {
+              for (const entry of entries.filter((item) => item.converting)) {
+                const file = await heicToJpegFile(entry.file);
+                const previewUrl = previewUrlFor(file);
+                // A row removed while converting simply isn't found; its unused preview URL is
+                // revoked with the rest when the field unmounts.
+                setQueued((current) =>
+                  current.map((item) =>
+                    item.key === entry.key ? { ...item, file, previewUrl, converting: undefined } : item,
+                  ),
+                );
+              }
             })();
           }}
         />
@@ -338,9 +349,15 @@ export function UploadField({
                   <span className="block text-[15px] truncate underline decoration-line underline-offset-2">
                     {item.file.name}
                   </span>
-                  <span className="block text-sm text-sub">
-                    {item.supportingType ? `${item.supportingType} · ` : ""}Uploads when you save
-                  </span>
+                  {item.converting ? (
+                    <span className="block text-sm text-accent motion-safe:animate-pulse" role="status">
+                      {UI.convertingPhotos}
+                    </span>
+                  ) : (
+                    <span className="block text-sm text-sub">
+                      {item.supportingType ? `${item.supportingType} · ` : ""}Uploads when you save
+                    </span>
+                  )}
                   <AiStatus status={ai?.statusFor(item.key)} />
                 </span>
               </button>

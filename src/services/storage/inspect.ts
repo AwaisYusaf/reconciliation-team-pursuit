@@ -16,6 +16,7 @@ import sharp from "sharp";
 
 import { pdfOpensWithoutPassword } from "@/src/generation/raster";
 
+import { decodeHeic } from "./heic";
 import { isUndeclaredMimeType } from "./keys";
 
 export type InspectionSuccess = {
@@ -157,21 +158,11 @@ async function inspectPdf(body: Buffer, allowOwnerPasswordPdf: boolean): Promise
   }
 }
 
-/**
- * iPhone photos are HEVC-compressed, and the sharp build npm installs has no HEVC decoder
- * (patent licensing) — it reads the header but fails on the pixels, which refused every HEIC
- * upload as "damaged". libheif's WASM build decodes it instead; sharp only reads the header,
- * so the pixel limit is enforced *before* a decode allocates for it.
- */
+/** A HEIC as JPEG. The decode itself (and its size limit) lives in `heic.ts`, off the main thread. */
 async function heicToJpeg(body: Buffer): Promise<Buffer> {
-  const { width = 0, height = 0 } = await sharp(body).metadata();
-  if (width === 0 || height === 0) throw new Error("unreadable HEIC header");
-  if (width * height > MAX_PIXELS) throw new Error("pixel limit exceeded");
-  const { default: decode } = await import("heic-decode");
-  const decoded = await decode({ buffer: body });
-  const { data } = decoded;
+  const { width, height, data } = await decodeHeic(body);
   return sharp(Buffer.from(data.buffer, data.byteOffset, data.byteLength), {
-    raw: { width: decoded.width, height: decoded.height, channels: 4 },
+    raw: { width, height, channels: 4 },
   })
     .jpeg({ quality: 90 })
     .toBuffer();

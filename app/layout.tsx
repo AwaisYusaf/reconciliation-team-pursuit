@@ -22,7 +22,7 @@ const publicSans = Public_Sans({
 
 export const metadata: Metadata = {
   title: APP_NAME,
-  description: "Monthly grant expense reconciliation and packet preparation",
+  description: "Grant expense tracking, reconciliation and monthly packet preparation",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

@@ -430,11 +430,10 @@ export const UI = {
    *  is omitted, not the whole clause, when that account was deleted (I-30). */
   summaryMetaEdited: (date: string, name: string | null) =>
     name ? ` · Last edited ${date} by ${name}` : ` · Last edited ${date}`,
-  /** Reminder shown above the summary, verbatim (PR #18 review #9). Appendix A §5's original
-   *  wording ("... fill in anything in [brackets] before using it") assumed placeholders that
-   *  the model no longer leaves; this is the calm, grey note that replaced it. */
+  /** Reminder shown above the summary — Appendix A §5 verbatim, as the reviewer asked (PR #18
+   *  round 2, #14), in the calm grey note of round 1 #9. */
   summaryAiReminder:
-    "This is a draft written by AI from your records. Check every figure and fill in anything before using it.",
+    "This is a draft written by AI from your records. Check every figure and fill in anything in [brackets] before using it.",
   /** Changed-records notice (P7, Appendix A §5, verbatim). */
   summaryChangedNotice: (monthLabel: string) =>
     `Expenses in ${monthLabel} have changed since this summary was written. Write again to include the changes, or edit the text yourself.`,

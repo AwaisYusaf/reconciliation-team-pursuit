@@ -241,3 +241,18 @@ describe("panelVisible", () => {
     ).toBe(false);
   });
 });
+
+describe("refunds (PR #18 round 2, #5)", () => {
+  it("a refund receipt matches the bank credit that returned the money", () => {
+    const result = aggregateAmountSuggestion(
+      [receipt("r", "refund.pdf", found(-14500, 0, 0, -14500)), proof("p", "credit.png", found(-14500, 0, 0, -14500))],
+      false,
+    );
+    expect(result).toMatchObject({ state: "done", proofCheck: { matches: true } });
+  });
+
+  it("with no receipt, a refund's bank credit fills a negative subtotal, so it saves as a refund", () => {
+    const result = aggregateAmountSuggestion([proof("p", "credit.png", found(-14500, 0, 0, -14500))], true);
+    expect(result).toMatchObject({ state: "done", subtotalCents: -14500, totalCents: -14500 });
+  });
+});
