@@ -325,6 +325,9 @@ export const UI = {
   /** Settings → Organization switch help text (Appendix A §4). */
   readAmountsSwitchHelp:
     "Receipts and proofs of payment are sent to OpenAI to suggest amounts. OpenAI doesn't use them for training. Nothing is saved until you confirm.",
+  /** A document with too many pages to read (Phase 10 §3.4; OpenAI bills a PDF per page). */
+  readAmountsTooManyPages: (pages: number, limit: number) =>
+    `That document has ${pages} pages — only the first ${limit} would be read. Enter the amounts yourself.`,
   /** Amounts panel, when some files were read and others were not (Phase 10 §3.5 table — not in
    *  Appendix A, added so an incomplete total is never used unnoticed). */
   amountsLeftOut: "Documents marked No amount found are left out of these totals.",
@@ -411,9 +414,12 @@ export const UI = {
    *  is omitted, not the whole clause, when that account was deleted (I-30). */
   summaryMetaEdited: (date: string, name: string | null) =>
     name ? ` · Last edited ${date} by ${name}` : ` · Last edited ${date}`,
-  /** Reminder shown above the text box (Appendix A §5, verbatim). */
+  /** Reminder shown above the summary. Appendix A §5 words it "This is a draft written by AI from
+   *  your records. Check every figure and fill in anything in [brackets] before using it."; the
+   *  user asked for clearer wording on 2026-09-18, and then for the bracket sentence to go — a
+   *  reviewer reads the draft anyway, and any placeholder is visible in the text itself. */
   summaryAiReminder:
-    "This is a draft written by AI from your records. Check every figure and fill in anything in [brackets] before using it.",
+    "AI wrote this draft from your own records. Read it through and check the figures before you send it anywhere.",
   /** Changed-records notice (P7, Appendix A §5, verbatim). */
   summaryChangedNotice: (monthLabel: string) =>
     `Expenses in ${monthLabel} have changed since this summary was written. Write again to include the changes, or edit the text yourself.`,
@@ -443,6 +449,26 @@ export const UI = {
   /** Visually-hidden label for the plain `<textarea>` (accessibility; no visible label in the
    *  design — the reminder and title already say what it is). Wording to review. */
   summaryTextareaLabel: "Monthly summary text",
+  /** Tabs above the summary, so the draft reads as a report rather than raw Markdown
+   *  (user feedback 2026-09-18). */
+  summaryViewLabel: "How the summary is shown",
+  summaryViewPreview: "Preview",
+  summaryViewEdit: "Edit",
+  /** Preview with nothing in it — a summary saved as an empty string. */
+  summaryPreviewEmpty: "Nothing to show yet.",
+  /** Download route, when building the file itself fails (Phase 11 §6). */
+  summaryPrepareFailed: "The summary couldn't be prepared right now. Please try again.",
+
+  /* ----------------------------------------------- /a AI usage card (Phase 11) */
+
+  /** How many of the all-time runs happened this month. */
+  aiUsageInMonth: (count: number, monthLabel: string) => `${count} in ${monthLabel}`,
+  /** Caption under the unsaved-runs tile. A rejected run always spent tokens, and a failed one
+   *  may have, so this must not promise the organisation was charged nothing. */
+  aiUsageUnsavedNote: "Nothing was saved. Some of these still used tokens.",
+  /** Appended to the cost caption while some runs produced tokens but no cost, which only
+   *  happens when the price settings were unset on the server at the time. */
+  aiUsageCostIncomplete: "at least: some runs ran before prices were set on the server",
 
   /* ------------------------------------------------ Phase 11 build phase 4: Word and PDF */
 

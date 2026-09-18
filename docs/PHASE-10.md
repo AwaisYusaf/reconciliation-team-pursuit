@@ -139,6 +139,16 @@ Returns `{ ok: true, data: { found, subtotalCents, taxCents, feesCents, totalCen
 `{ ok: false, error }`. Writes one `ai_usage_events` row either way (except auth/origin/rate
 failures).
 
+**`MAX_PAGES_READ = 10` (added Phase 11 review, 2026-09-18).** OpenAI bills a PDF per page — every
+page as text *and* as an image — so a long document costs orders of magnitude more than the
+receipt this feature is for, and the hourly rate limit bounds requests, not pages. Enforced on
+both inputs: a freshly-uploaded file is checked against `inspectUpload`'s own page count before
+the read is attempted, and an attached `expense_documents` row is checked against its stored
+`pageCount`, treating a stored `null` (a row that predates page counting) as one page rather than
+refusing it outright. Either path over the cap refuses with `UI.readAmountsTooManyPages(pages,
+limit)` ("That document has N pages — only the first 10 would be read. Enter the amounts
+yourself.") and still logs a `failed` `ai_usage_events` row, same as any other refused read.
+
 ### 3.5 Pure aggregation — `src/domain/amount-suggestion.ts` (unit-tested)
 
 Input: per-file results `{ key, name, kind, result: found|none|pending }` and `noReceipt`.
@@ -163,7 +173,7 @@ Panel rules that Appendix A leaves open, settled here so every state is consiste
 | Receipts uploaded but none readable, proofs readable | Receipts show "No amount found"; totals are the proofs' (same as proofs-only) |
 | Some files found, some not | Totals from the found ones, plus one line: "Documents marked No amount found are left out of these totals." (not in Appendix A; stops an incomplete total being used unnoticed) |
 | A receipt's parts ≠ its total | Its line shows figures as read + the Appendix A mismatch sentence under that line |
-| Every file none | Only the "We couldn't read amounts…" sentence and Dismiss |
+| ~~Every file none | Only the "We couldn't read amounts…" sentence and Dismiss~~ **Superseded (Phase 11 review, 2026-09-18): this separate panel and sentence were removed.** `amount-suggestion-panel.tsx` now shows nothing extra for the `nothing` state (`state === "hidden" \|\| state === "nothing"` both render `null`) — each file's own row already says "No amount found", and a second box repeating that read as noise. |
 | No receipt/proof files at all | Panel not shown |
 
 Panel lifecycle:
@@ -229,6 +239,7 @@ hand on deploy.**
 | HEIC / WebP | `inspectUpload` converts to JPEG before sending |
 | Encrypted / corrupt PDF, disguised file | `inspectUpload` refusal → file shows "No amount found" |
 | Timesheet, full bank statement | model `found:false` → "No amount found" |
+| Document over `MAX_PAGES_READ` (10) pages, uploaded or attached | refused with "That document has N pages — only the first 10 would be read. Enter the amounts yourself."; logged `failed`; a `null` stored page count is treated as one page, not refused |
 | OpenAI down / slow / 429 | per-file `failed` after ≤60 s; panel shows other files; Save unaffected |
 | Model returns garbage number | parse fails → treated as none for that file |
 | Negative amounts (refund) | parsed and summed like the form allows |

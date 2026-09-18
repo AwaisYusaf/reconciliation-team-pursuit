@@ -43,9 +43,10 @@ describe("monthly summary docx package", () => {
     for (const side of ["top", "bottom", "left", "right"]) expect(margin).toContain(`w:${side}="1440"`);
   });
 
-  it("uses Aptos as the run font throughout", async () => {
+  it("uses Calibri as the run font throughout (not the cover sheet's Aptos — see the FONT comment)", async () => {
     const xml = await documentXml("## Overview\nHello.");
-    expect(xml).toContain('w:ascii="Aptos"');
+    expect(xml).toContain('w:ascii="Calibri"');
+    expect(xml).not.toContain('w:ascii="Aptos"');
   });
 
   it("states lineRule=auto in styles (LibreOffice line-clipping regression)", async () => {

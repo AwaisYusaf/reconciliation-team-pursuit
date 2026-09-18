@@ -18,7 +18,11 @@
 const AMOUNT_TOKEN =
   /\([-−]?\$[-−]?\d[\d,]*(?:\.\d+)?\)|[-−]\$[-−]?\d[\d,]*(?:\.\d+)?|\$[-−]?\d[\d,]*(?:\.\d+)?/g;
 
-const PERCENT_TOKEN = /[-−]?\d+(?:\.\d+)?\s?%/g;
+// Digit runs are bounded, not `+`: `\d+` followed by a required `%` backtracks over the whole
+// tail at every start position, so a model reply padded with 100,000 digits (reachable through an
+// injected expense description) froze this single-threaded server for ~7 s, twice per run. No real
+// percentage has 13 digits before the point.
+const PERCENT_TOKEN = /[-−]?\d{1,12}(?:\.\d{1,4})?\s?%/g;
 
 /** Strip a trailing comma/period the amount regex's greedy digit-or-comma class can pick up
  *  from surrounding prose (e.g. "$100," at the end of a clause) — never part of the number. */

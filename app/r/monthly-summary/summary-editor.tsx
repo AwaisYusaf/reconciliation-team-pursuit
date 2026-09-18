@@ -17,6 +17,7 @@ import { Button } from "@/src/components/ui/button";
 import { ConfirmButton } from "@/src/components/ui/confirm-button";
 import { DownloadButton } from "@/src/components/ui/download-button";
 import { Textarea } from "@/src/components/ui/field";
+import { cn } from "@/src/lib/cn";
 import { PLUS_FRAME_STYLE } from "@/src/components/ui/plus-badge";
 import { Card, DangerPanel, SectionTitle } from "@/src/components/ui/surfaces";
 import { toast } from "@/src/components/ui/toast";
@@ -25,6 +26,8 @@ import { downloadBlock } from "@/src/modules/monthly-summary/autosave";
 import { saveSummaryAction } from "@/src/modules/monthly-summary/actions";
 import { copySummary, type ClipboardLike } from "@/src/modules/monthly-summary/copy";
 
+import { SummaryPreview } from "./summary-preview";
+import { SummarySkeleton } from "./summary-skeleton";
 import { useAutosave } from "./use-autosave";
 
 export type SummaryEditorSummary = {
@@ -87,6 +90,9 @@ export function SummaryEditor({
   // landing — it's never read once `summary` itself is populated.
   const [optimisticFirst, setOptimisticFirst] = useState<SummaryEditorSummary | null>(null);
   const current = summary ?? optimisticFirst;
+  // The very first draft deserves the same wipe-in as a rewrite; `SummaryBody` only mounts once
+  // the draft exists, so the flag has to be handed to it rather than set inside it.
+  const [revealFirst, setRevealFirst] = useState(false);
 
   const [localWriting, setLocalWriting] = useState(false);
   const [writeError, setWriteError] = useState<string | null>(null);
@@ -109,6 +115,7 @@ export function SummaryEditor({
       setWriteError(result.error);
       return;
     }
+    setRevealFirst(true);
     setOptimisticFirst({
       contentMarkdown: result.data.contentMarkdown,
       version: result.data.version,
@@ -150,6 +157,7 @@ export function SummaryEditor({
       monthLabel={monthLabel}
       canWrite={canWrite}
       serverWriting={initialWriting}
+      initialReveal={revealFirst}
       summary={current}
       stale={stale}
       viewerName={viewerName}
@@ -164,6 +172,7 @@ function SummaryBody({
   monthLabel,
   canWrite,
   serverWriting,
+  initialReveal,
   summary,
   stale,
   viewerName,
@@ -174,6 +183,7 @@ function SummaryBody({
   monthLabel: string;
   canWrite: boolean;
   serverWriting: boolean;
+  initialReveal: boolean;
   summary: SummaryEditorSummary;
   stale: boolean;
   viewerName: string;
@@ -183,6 +193,19 @@ function SummaryBody({
   const [localWriting, setLocalWriting] = useState(false);
   const [writeError, setWriteError] = useState<string | null>(null);
   const writing = localWriting || serverWriting;
+  const [view, setView] = useState<"preview" | "edit">("preview");
+  // True for one render pass after a write lands, so the new draft wipes in (see globals.css
+  // `.summary-reveal`). Cleared on a timer rather than on animation end: the animation is on the
+  // blocks, not the container, and reduced motion skips it entirely.
+  const [reveal, setReveal] = useState(initialReveal);
+  useEffect(() => {
+    if (!reveal) return;
+    // Must outlast the last line: delays are capped at 4000 ms in `revealDelays`, the wipe runs
+    // 380 ms, and the class carries `animation-fill-mode: both` — clearing early left every line
+    // still waiting its turn invisible, then popping in at once.
+    const id = window.setTimeout(() => setReveal(false), 4000 + 380 + 120);
+    return () => window.clearTimeout(id);
+  }, [reveal]);
 
   const [editedLabel, setEditedLabel] = useState<{ date: string; name: string } | null>(
     summary.editedAtLabel ? { date: summary.editedAtLabel, name: summary.editedByName ?? "" } : null,
@@ -220,6 +243,8 @@ function SummaryBody({
     }
     scheduler.reset(result.data.contentMarkdown, result.data.version);
     setEditedLabel(null);
+    setView("preview");
+    setReveal(true);
     router.refresh();
   }
 
@@ -264,18 +289,55 @@ function SummaryBody({
         {UI.summaryAiReminder}
       </DangerPanel>
 
-      <label htmlFor="monthly-summary-text" className="sr-only">
-        {UI.summaryTextareaLabel}
-      </label>
-      <Textarea
-        id="monthly-summary-text"
-        value={snapshot.text}
-        onChange={(event) => scheduler.edit(event.target.value)}
-        readOnly={writing}
-        spellCheck
-        rows={12}
-        className="font-mono lg:min-h-[480px]"
-      />
+      {/* While the model writes, the tabs and the old draft give way to a shimmer: the text on
+          screen is about to be replaced, so inviting edits to it would be a lie (user feedback
+          2026-09-18). */}
+      {writing ? (
+        <SummarySkeleton />
+      ) : (
+        <>
+        {/* Formatted first: this is a report someone reviews, not a file someone codes (user
+            feedback 2026-09-18). Editing is one click away and keeps the plain Markdown. */}
+        <div className="flex gap-1 mb-2" role="tablist" aria-label={UI.summaryViewLabel}>
+          {(["preview", "edit"] as const).map((tab) => (
+            <button
+              key={tab}
+              type="button"
+              role="tab"
+              aria-selected={view === tab}
+              onClick={() => setView(tab)}
+              className={cn(
+                "min-h-11 px-3.5 text-[15px] rounded-[3px] border",
+                view === tab
+                  ? "border-accent bg-accent text-surface font-semibold"
+                  : "border-line bg-surface text-ink hover:bg-section",
+              )}
+            >
+              {tab === "preview" ? UI.summaryViewPreview : UI.summaryViewEdit}
+            </button>
+          ))}
+        </div>
+
+        {view === "preview" ? (
+          <SummaryPreview markdown={snapshot.text} reveal={reveal} />
+        ) : (
+          <>
+            <label htmlFor="monthly-summary-text" className="sr-only">
+              {UI.summaryTextareaLabel}
+            </label>
+            <Textarea
+              id="monthly-summary-text"
+              value={snapshot.text}
+              onChange={(event) => scheduler.edit(event.target.value)}
+              readOnly={writing}
+              spellCheck
+              rows={12}
+              className="font-mono lg:min-h-[480px]"
+            />
+          </>
+        )}
+        </>
+      )}
 
       {/* The server's own reason (signed out, too long), above the Save row — the text stays. */}
       {snapshot.status === "failed" && snapshot.error && snapshot.error !== UI.summaryWriteFailed && (
@@ -299,7 +361,9 @@ function SummaryBody({
           </Button>
         )}
 
-        <Button variant="secondary" onClick={() => void handleCopy()}>
+        {/* Disabled while writing for the same reason as the downloads: the text on screen is
+            about to be replaced. */}
+        <Button variant="secondary" disabled={writing} onClick={() => void handleCopy()}>
           {UI.summaryCopyText}
         </Button>
 
@@ -323,11 +387,12 @@ function SummaryBody({
           </span>
         )}
 
+        {/* While writing, the shimmer above already says so; here the button simply goes quiet. */}
         {canWrite &&
           (writing ? (
-            <span role="status" aria-live="polite" className="text-[15px] text-muted">
-              {UI.summaryWriting}
-            </span>
+            <Button variant="secondary" disabled>
+              {UI.summaryWriteAgainButton}
+            </Button>
           ) : (
             <ConfirmButton
               variant="secondary"

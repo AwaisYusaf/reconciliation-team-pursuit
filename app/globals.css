@@ -353,3 +353,28 @@ html:has(.lp) { scroll-behavior: smooth; overflow-x: hidden; }
     0 15px 50px rgba(0, 0, 0, 0.4),
     inset 0 1px 0 rgba(255, 255, 255, 0.12);
 }
+
+/* Monthly summary: the model's freshly written draft wipes in left to right, block by block, so
+   a rewrite reads as new text arriving rather than the old text silently swapping (Phase 11, user
+   feedback 2026-09-18). Purely decorative — the text is already in the DOM and selectable, and
+   reduced motion turns it off. */
+@keyframes summary-reveal {
+  from {
+    clip-path: inset(0 100% 0 0);
+    opacity: 0.35;
+  }
+  to {
+    clip-path: inset(0 0 0 0);
+    opacity: 1;
+  }
+}
+
+.summary-reveal [data-reveal] {
+  animation: summary-reveal 380ms ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .summary-reveal [data-reveal] {
+    animation: none;
+  }
+}

@@ -7,6 +7,10 @@
  * never touches it, only Write again does, because only Write again re-reads the records.
  *
  * Pure: no IO, so the loader and any future backfill can call it identically.
+ *
+ * Covers expenses only, not line-item budgets: a scheduled-value or opening-billed edit on a
+ * line item changes the Budget position section's figures without changing anything hashed
+ * here, so the changed-records notice will not appear for that edit alone (TASKS.md R11).
  */
 import { createHash } from "node:crypto";
 

@@ -3,6 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 
 import { db } from "@/src/db";
 import { aiUsageEvents, expenseDocuments, expenses, type AiUsageDocumentKind } from "@/src/db/schema";
+import { UI } from "@/src/domain/strings";
 import { isUuid } from "@/src/lib/ids";
 import { sameOrigin } from "@/src/lib/same-origin";
 import { readAmountsAllowedForOrg } from "@/src/modules/ai/access";
@@ -17,6 +18,18 @@ import { MAX_UPLOAD_BYTES } from "@/src/services/storage/keys";
 export const runtime = "nodejs";
 
 const READABLE_KINDS: AiUsageDocumentKind[] = ["receipt", "proof"];
+
+/**
+ * Pages sent to OpenAI in one read.
+ *
+ * OpenAI bills a PDF per page — it sends each page as text *and* as an image — so a 25 MB PDF of
+ * near-empty pages costs orders of magnitude more than the receipt this feature is for, and the
+ * hourly limit is a limit on requests, not on pages. A receipt, invoice or timesheet is a handful
+ * of pages; anything longer is a bank statement or a scan dump, which the feature refuses to read
+ * anyway (Phase 10 §1). `inspectUpload` already counted the pages, and attached documents carry
+ * the count from ingestion.
+ */
+const MAX_PAGES_READ = 10;
 
 /**
  * Read Subtotal/Tax/Fees/Total from one receipt or proof of payment (Phase 10, D-105, §3.4).
@@ -144,6 +157,10 @@ async function resolveInput(orgId: string, userId: string, form: FormData): Prom
       body: Buffer.from(await file.arrayBuffer()),
       declaredMimeType: file.type,
     });
+    if (inspection.ok && inspection.pageCount > MAX_PAGES_READ) {
+      await logFailure(orgId, userId, "upload", kind as AiUsageDocumentKind);
+      return { ok: false, status: 400, error: tooManyPages(inspection.pageCount) };
+    }
     if (!inspection.ok) {
       // A refused file still gets logged, as a failed read — nothing was ever stored.
       await logFailure(orgId, userId, "upload", kind as AiUsageDocumentKind);
@@ -165,6 +182,7 @@ async function resolveInput(orgId: string, userId: string, form: FormData): Prom
   const [row] = await db
     .select({
       s3Key: expenseDocuments.s3Key,
+      pageCount: expenseDocuments.pageCount,
       mimeType: expenseDocuments.mimeType,
       kind: expenseDocuments.kind,
     })
@@ -184,6 +202,12 @@ async function resolveInput(orgId: string, userId: string, form: FormData): Prom
   if (row.kind !== "receipt" && row.kind !== "proof") {
     return { ok: false, status: 400, error: "That document type is not read." };
   }
+  // Same ceiling as a freshly-picked file. A row that predates page counting has `null`, which is
+  // read as "one page" rather than refused: it was accepted before this cap existed.
+  if ((row.pageCount ?? 1) > MAX_PAGES_READ) {
+    await logFailure(orgId, userId, "attached", row.kind);
+    return { ok: false, status: 400, error: tooManyPages(row.pageCount ?? 0) };
+  }
 
   try {
     const body = await storage().get(row.s3Key);
@@ -192,6 +216,10 @@ async function resolveInput(orgId: string, userId: string, form: FormData): Prom
     await logFailure(orgId, userId, "attached", row.kind);
     return { ok: false, status: 502, error: "That document could not be read." };
   }
+}
+
+function tooManyPages(pages: number): string {
+  return UI.readAmountsTooManyPages(pages, MAX_PAGES_READ);
 }
 
 async function logFailure(

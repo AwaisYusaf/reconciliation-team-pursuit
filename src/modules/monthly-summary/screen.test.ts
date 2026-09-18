@@ -30,6 +30,8 @@ describe("no dangerouslySetInnerHTML anywhere in the new screen or the packet ca
   it.each([
     "app/r/monthly-summary/page.tsx",
     "app/r/monthly-summary/summary-editor.tsx",
+    // The one file that renders parsed Markdown — the guard is pointless without it.
+    "app/r/monthly-summary/summary-preview.tsx",
     "app/r/monthly-summary/use-autosave.ts",
     "app/r/monthly-summary/saved-summaries.tsx",
     "app/r/packet/monthly-summary-card.tsx",
@@ -73,6 +75,37 @@ describe("packet page wiring", () => {
     // And not inside the early-return branch's own JSX.
     const pickBranchEnd = source.indexOf("PickFundingSource sources={activeSources} />");
     expect(cardMount).toBeGreaterThan(pickBranchEnd);
+  });
+});
+
+describe("Preview/skeleton wiring on the Monthly summary screen (user feedback 2026-09-18)", () => {
+  const source = read("app/r/monthly-summary/summary-editor.tsx");
+
+  it("Preview is the default view, not Edit", () => {
+    expect(source).toMatch(/useState<"preview" \| "edit">\("preview"\)/);
+  });
+
+  it("the skeleton replaces the editor entirely while writing (not shown alongside it)", () => {
+    const match = source.match(/\{writing \? \(\s*<SummarySkeleton \/>\s*\) : \(/);
+    expect(match, "writing must branch to <SummarySkeleton /> in place of the tabs/preview/edit UI").not.toBeNull();
+  });
+
+  it("Copy text is disabled while writing", () => {
+    const match = source.match(/\{UI\.summaryCopyText\}/);
+    expect(match).not.toBeNull();
+    // The button just above the Copy text label must carry disabled={writing}.
+    const copyButtonSource = source.slice(source.indexOf("void handleCopy") - 200, source.indexOf("void handleCopy"));
+    expect(copyButtonSource).toMatch(/disabled=\{writing\}/);
+  });
+
+  it("summary-preview.tsx is in the no-dangerouslySetInnerHTML guard list (the one file that renders parsed Markdown)", () => {
+    // Read this file's own source rather than re-deriving the list, so the assertion fails if
+    // the guard's `it.each` above ever drops the file rather than merely if the file is clean.
+    const thisFile = readFileSync(fileURLToPath(new URL(import.meta.url)), "utf8");
+    const guardListStart = thisFile.indexOf("no dangerouslySetInnerHTML anywhere");
+    const guardListEnd = thisFile.indexOf("]", guardListStart);
+    const guardList = thisFile.slice(guardListStart, guardListEnd);
+    expect(guardList).toContain("app/r/monthly-summary/summary-preview.tsx");
   });
 });
 

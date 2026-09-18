@@ -902,6 +902,54 @@ describe("serializeFactsForPrompt", () => {
     expect(parsed.spending[0].expenses).toEqual([]);
   });
 
+  it("when dropping spending's expense detail alone still exceeds maxChars, itemsToNote's noReceipt/refund names and no-receipt reasons are cleared too, but every amount survives (second fallback)", () => {
+    const longName = "n".repeat(SUMMARY_FIELD_MAX_CHARS);
+    const longReason = "r".repeat(SUMMARY_FIELD_MAX_CHARS);
+    const monthExpenses: SummaryExpense[] = [
+      summaryExpense({
+        id: "e1",
+        lineItemId: "a",
+        name: longName,
+        subtotalCents: 500,
+        noReceipt: true,
+        noReceiptReason: longReason,
+      }),
+      summaryExpense({ id: "e2", lineItemId: "a", name: `${longName}b`, subtotalCents: -300 }), // refund
+      summaryExpense({
+        id: "e3",
+        lineItemId: "a",
+        name: `${longName}c`,
+        subtotalCents: 100,
+        taxCents: 50,
+        taxReimbursable: false,
+      }),
+    ];
+    const facts = baseFacts(monthExpenses);
+
+    // A small maxChars: even after the first fallback (spending.expenses -> []), itemsToNote's
+    // three ~1000-char names/reasons alone still blow past it, forcing the second fallback.
+    const { text, expenseDetailDropped } = serializeFactsForPrompt(facts, 200);
+    expect(expenseDetailDropped).toBe(true);
+    expect(text).not.toContain('"cents"');
+    const parsed = JSON.parse(text);
+
+    expect(parsed.spending[0].expenses).toEqual([]); // first fallback still applied
+
+    expect(parsed.itemsToNote.noReceipt[0].name).toBe("");
+    expect(parsed.itemsToNote.noReceipt[0].reason).toBe("");
+    expect(parsed.itemsToNote.noReceipt[0].amount).toBe(facts.itemsToNote.noReceipt[0].amount.text);
+
+    expect(parsed.itemsToNote.refunds[0].name).toBe("");
+    expect(parsed.itemsToNote.refunds[0].amount).toBe(facts.itemsToNote.refunds[0].amount.text);
+
+    // notReimbursed's name is left untouched by this fallback (the code only clears
+    // noReceipt/refunds) — documenting the real behaviour rather than assuming symmetry.
+    expect(parsed.itemsToNote.notReimbursed[0].name).toBe(facts.itemsToNote.notReimbursed[0].name);
+    expect(parsed.itemsToNote.notReimbursed[0].receiptTotal).toBe(
+      facts.itemsToNote.notReimbursed[0].receiptTotal.text,
+    );
+  });
+
   it("a 300-expense month with long narratives completes and each narrative is independently cut (U-17)", () => {
     const monthExpenses: SummaryExpense[] = Array.from({ length: 300 }, (_, i) =>
       summaryExpense({

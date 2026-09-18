@@ -379,5 +379,20 @@ export function serializeFactsForPrompt(
     ...rest,
     spending: rest.spending.map((row) => ({ ...row, expenses: [] })),
   };
-  return { text: JSON.stringify(stripCents(trimmed)), expenseDetailDropped: true };
+  const withoutExpenses = JSON.stringify(stripCents(trimmed));
+  if (withoutExpenses.length <= maxChars) return { text: withoutExpenses, expenseDetailDropped: true };
+
+  // Items to note carries per-expense names and no-receipt reasons of its own, so dropping the
+  // spending detail alone could still leave a request large enough to cross the model's
+  // long-context price tier. Past this point the names go too: the section keeps its amounts and
+  // its shape, which is what the reader needs, and the reasons are on the expenses themselves.
+  const alsoTrimmed = {
+    ...trimmed,
+    itemsToNote: {
+      ...rest.itemsToNote,
+      noReceipt: rest.itemsToNote.noReceipt.map((row) => ({ ...row, name: "", reason: "" })),
+      refunds: rest.itemsToNote.refunds.map((row) => ({ ...row, name: "" })),
+    },
+  };
+  return { text: JSON.stringify(stripCents(alsoTrimmed)), expenseDetailDropped: true };
 }

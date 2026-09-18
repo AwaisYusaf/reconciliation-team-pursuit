@@ -24,8 +24,17 @@ import { parseSummaryMarkdown, type Block, type Inline } from "@/src/domain/summ
 
 import { COVER_MARGIN_IN } from "./layout-constants";
 
-/** Same font as the cover sheet (`cover-sheet-docx.ts`) — the golden documents' theme font. */
-const FONT = "Aptos";
+/**
+ * Calibri, not the cover sheet's Aptos.
+ *
+ * The cover sheet is a submitted document whose approved rendering is Aptos (D-78), and the
+ * container maps Aptos to Carlito for it. A monthly summary is opened on the user's own machine,
+ * where Aptos is often missing: Word then substitutes whatever it likes — a heavy serif on the
+ * reviewer's Windows machine, which read as broken. Calibri is present on Windows and macOS Word,
+ * and the container's fontconfig already treats Carlito as its metric substitute, so the PDF is
+ * unchanged while the Word file stops depending on a font the reader may not have.
+ */
+const FONT = "Calibri";
 
 /** 10 pt body, as the cover sheet. The title is 16 pt (the cover sheet's is 12 pt, but it has no
  *  headings under it) so it stays above the 14/12/11 pt headings, in half-points. */

@@ -32,12 +32,13 @@ works on locked months.
 | # | Appendix A says | Changed to | Source |
 |---|---|---|---|
 | C1 | A section on the Month-End Packet tab, below Month documents | **A screen of its own**, `/r/monthly-summary`, following the header's funding source and month. The packet tab keeps a small **Monthly summary** card below Month documents that opens it (or shows the base-plan note). | User: "a screen to show the summary … and the saved version should be able to be accessed later on" |
-| C2 | "Headings, paragraphs and bullet lists can be edited like a normal document" | **A plain Markdown text box.** No rich-text editor, no preview. Users type in whatever the records can't support (the `[brackets]`). | User: "Keep it simple, don't need overcomplicated editor. Simple markdown edit" |
+| C2 | "Headings, paragraphs and bullet lists can be edited like a normal document" | ~~A plain Markdown text box. No rich-text editor, no preview.~~ **Superseded 2026-09-18 — see C8: Preview is the default view, rendered through the same parser as the Word/PDF/Copy-text paths; Edit is one tab away and is still the plain Markdown box this row describes.** Users still type in whatever the records can't support. | User, 2026-09-17: "Keep it simple, don't need overcomplicated editor. Simple markdown edit"; user, 2026-09-18: the editor showed raw `## Overview` Markdown, "which is not how anyone reviews a report" |
 | C3 | "Save changes saves the edit. Leaving the page with unsaved changes asks first." | **Save button plus autosave 3 seconds after typing stops.** The browser only warns on reload or close while a save is still pending. | User: "save button and autosave (debounce on 3s typing delay)" |
 | C4 | Download Word | **Download Word and Download PDF.** | User: "both" |
 | C5 | (not specified) | **One button starts generation**; nothing about the prompt is chosen or typed on the frontend. The prompt is a fixed backend constant plus the month's facts. | User: "No prompt given from frontend. Static prompt on backend + month details. There'll be only one button on frontend to trigger summary generation" |
 | C6 | (not specified) | **The model returns Markdown.** | User: "we will have the ai give in md" |
 | C7 | "Use the same check built for receipt reading, with the plan added" | Two checks next to it, without the receipt switch (P1). | Plan; see P1 for why. |
+| C8 | (not specified) | **Preview/Edit tabs, with Preview as the default view; a shimmer replaces the summary while the model writes; a line-by-line reveal animation runs after both the first draft and Write again.** The shimmer's message and, for the reveal, `prefers-reduced-motion`, carry the meaning when the animation itself is off. Copy text is disabled while writing, for the same reason the downloads already were. | User, 2026-09-18 |
 
 ### 2.2 Taken by this plan (with the reason)
 
@@ -48,7 +49,7 @@ works on locked months.
 | P3 | **"Spent" = the reimbursable amount**, the Dashboard's spent figure (`src/domain/money.ts:157-163`, `budget-math.ts:84-85`). Receipt totals that differ appear only in Items to note. | Otherwise the Overview's total disagrees with the Dashboard by the excluded tax. |
 | P4 | **Every dollar amount and percentage in the model's output is verified** against the set the app supplied. On a mismatch, one automatic retry telling the model which amounts were wrong; if the retry also fails, the run fails with the normal failure message and nothing is saved. | A model can mistype a number it was given. Only a check before saving makes "figures are exact" hold on every run. |
 | P5 | **Markdown inside a strict schema.** Response format `{ "markdown": string }` (strict json_schema). The app then checks structure: exactly five `## ` headings titled *Overview*, *Spending by line item*, *Budget position*, *Changes from last month*, *Items to note*, in order, each with content. Failing the structure check counts like a failed figure check (P4). | Keeps "always these sections, in this order" (§4) a guarantee, not an instruction the model may ignore. Structure is enforced on the model's draft only; the user may change headings freely afterwards. |
-| P6 | **Markdown is never rendered as HTML in the app.** The screen shows it in a `<textarea>`. Only three places read its structure: the Word builder, the PDF (via Word), and the HTML part of Copy text. All three use one parser, `src/domain/summary-markdown.ts`, that understands `#`–`###` headings, paragraphs, `- `/`* ` bullets, `**bold**` and `*italic*`, and treats everything else (links, images, tables, code, HTML tags) as literal text. The clipboard HTML escapes every text node. Stored as typed, max 60,000 characters. | With no HTML rendering and escaped clipboard output there is no script-injection path, and there is no need to rewrite what the user typed. |
+| P6 | **Markdown is never rendered as HTML in the app.** ~~The screen shows it in a `<textarea>`.~~ **Superseded 2026-09-18 (C8): the screen shows it two ways — the Edit tab as a `<textarea>`, and the default Preview tab as React text nodes built from the same parser, never through React's raw-HTML escape hatch (`screen.test.ts` greps every new file for that escape hatch by name).** Four places now read its structure: the Word builder, the PDF (via Word), the HTML part of Copy text, and the Preview tab. All four use one parser, `src/domain/summary-markdown.ts`, that understands `#`–`###` headings, paragraphs, `- `/`* ` bullets, `**bold**` and `*italic*`, and treats everything else (links, images, tables, code, HTML tags) as literal text. The clipboard HTML escapes every text node. Stored as typed, max 60,000 characters. | With no HTML rendering and escaped clipboard output there is no script-injection path, and there is no need to rewrite what the user typed. The no-raw-HTML guarantee holds for the preview the same way it holds for the rest: every character is a React text node, never markup. |
 | P7 | **Change notice via a stored fingerprint.** At write time store `expenses_fingerprint` = sha256 of the canonical JSON of the month's live expenses for that source, limited to what the summary reads (id, line item, name, description, narrative, note, subtotal/tax/fees, tax/fee flags, no-receipt and reason). The screen recomputes and compares. Editing never touches it; only Write again replaces it. | Appendix A §5. The existing `inputsHash` (`src/generation/cache-key.ts:38-54`) also covers documents and is only computed on download. The narrow fingerprint changes exactly when the summary's inputs change: add, edit, trash, restore, permanent delete, move between months or sources, recurring add/remove. A document upload doesn't trigger it, which is right because documents aren't in the summary. |
 | P8 | **Locked months are exempt**: summary writes don't go through `monthLocked` (`src/modules/packet/month-guard.ts:41-71`). Recorded as a decision because it is the first month-scoped write that deliberately ignores the lock. | Appendix A §6. The summary is documentation about the records, not a record. |
 | P9 | **Archived funding sources: everything works.** | Same reasoning as P8. |
@@ -80,7 +81,7 @@ works on locked months.
 | Top navigation tab for the screen? | **No.** Reached from the packet tab card and the Dashboard link. |
 | List of saved months on the screen? | **Yes**, newest first. |
 | Keep Copy text? | **Yes.** |
-| Preview under the Markdown box? | **No** (C2). |
+| Preview under the Markdown box? | ~~**No** (C2).~~ **Superseded 2026-09-18 — see C8**: preview is now the default view the summary opens in, not an option under the box. |
 | Wording of messages not in Appendix A (§12) | As written in §12 until reviewed. |
 
 ---
@@ -148,15 +149,28 @@ from `OPENAI_SUMMARY_PRICE_INPUT_PER_MTOK` / `_OUTPUT_PER_MTOK` (2.00 / 12.00, O
 from 2026-07-30).
 
 **The prompt is a fixed backend constant** (`SUMMARY_PROMPT`, versioned by
-`SUMMARY_PROMPT_VERSION`), followed by the facts as a delimited data block. Nothing from the
-frontend reaches it except the funding source and month the request is for (C5). It says: use only
-the facts; copy amounts and percentages exactly; never calculate; never state results,
-attendance, outcomes or counts that no description or narrative states — write `[add …]` instead;
-plain professional tone, no marketing words; Markdown only, `## ` for the five exact section
-titles, paragraphs and `- ` bullets, no links, tables, images or code; what each section holds
-(§4); call counts "expenses" or "payments", never "staff" or "people" unless the text says so; when
-`previousMonthHadSpending` is false, say no spending was recorded in {previous month}; when a section
-has nothing, say so in one sentence instead of leaving it out.
+`SUMMARY_PROMPT_VERSION = "2026-09-18.1"`), followed by the facts as a delimited data block.
+Nothing from the frontend reaches it except the funding source and month the request is for (C5).
+It says: use only the facts; copy amounts and percentages exactly; never calculate; never state
+results, attendance, outcomes or counts that no description or narrative states — write `[add …]`
+instead; plain professional tone, no marketing words; Markdown only, `## ` for the five exact
+section titles, paragraphs and `- ` bullets, one line per bullet with no blank lines inside a
+list, no links, tables, images or code; **aim for 350–700 words total** — full enough to stand on
+its own in a funder or board report, without padding; per-section detail beyond §4's outline —
+Overview runs three to five sentences and closes with the month placed in the contract as a
+whole; Spending by line item is one bullet per line item, largest first, naming payees when the
+data gives them and calling out a dominant expense; Budget position is one bullet per line item
+plus a closing paragraph with the overall figures, calling out any line item at or over 100%;
+Changes from last month is one bullet per changed line item, or one sentence saying none changed;
+Items to note is one bullet per no-receipt expense, refund and excluded tax/fee line, or one
+sentence saying there is nothing to note; call counts "expenses" or "payments", never "staff" or
+"people" unless the text says so; when `previousMonthHadSpending` is false, say no spending was
+recorded in {previous month}.
+
+**`SUMMARY_MAX_OUTPUT_TOKENS` is 3,000, down from the original 16,000.** The prompt's own 350–700
+words is roughly 1,000 tokens; 3,000 leaves room for a long month's line-item bullets while
+capping the output bill at about 3.5 cents rather than 19 — bounding not just a very large month
+but an injected "write 15,000 tokens of detail" reachable through an expense narrative (P16).
 
 Checks, both pure: `src/domain/summary-verifier.ts` extracts every `$` amount (including the
 negative forms `formatMoney` produces) and every `n%`, and returns the ones not supplied;
@@ -198,17 +212,25 @@ area, plus a **Saved summaries** list (beside it on desktop, above it on phone).
 | No summary, month has expenses | Intro text (Appendix A §3, with month) + **Write draft summary** |
 | No summary, no expenses | Intro text + disabled button + "Add expenses to this month first." |
 | Key missing, no summary | Intro text, no button (shouldn't happen once the key is set) |
-| Writing | "Writing your summary… this can take up to a minute."; button disabled; the rest of the app keeps working, and leaving the screen doesn't cancel the run |
+| Writing | A shimmer (`SummarySkeleton`) replaces the summary card entirely, carrying "Writing your summary… this can take up to a minute."; the tabs, Write again and Copy text are disabled/hidden; the rest of the app keeps working, and leaving the screen doesn't cancel the run (C8) |
 | Failed | "The summary couldn't be written right now. Please try again." + button |
-| Summary exists | Title · meta line · AI reminder · changed-records notice when P7 says so · Markdown text box · save status · **Save** · **Copy text** · **Download Word** · **Download PDF** · **Write again** (confirm) |
+| Summary exists | Title · meta line · AI reminder · changed-records notice when P7 says so · **Preview/Edit tabs, Preview first** · save status (Edit tab) · **Save** · **Copy text** · **Download Word** · **Download PDF** · **Write again** (confirm) — a first draft and a fresh Write again both wipe in with the reveal animation (C8) |
 
 - **Meta line:** "Draft written {date}", then " · Last edited {date} by {name}" once edited; the name is omitted if that user was deleted.
 - **Saved summaries list:** one row per month that has a summary for this funding source, newest month first: "March 2026 · Last edited 17 Sep 2026" (or "Draft written …"). The current month is highlighted. Clicking a row calls `setActiveMonthAction(month)` and reloads, so the header, the screen and the rest of the app agree on the month. Empty list: not shown.
 - **Responsive:** list above the editor under `lg`; text box full width, at least 20 rows on desktop and 12 on phone; buttons wrap; 44 px tap targets; no horizontal scroll at 375 px.
 
-### 7.2 Markdown text box, Save and autosave (C2, C3)
+### 7.2 Preview/Edit tabs, Save and autosave (C2, C8, C3)
 
-- A plain `<textarea>`, monospace, holding the saved Markdown. No preview.
+- **Preview** (default) renders the saved Markdown as React elements through the P6 parser —
+  headings, paragraphs and bullets, in the app's own type — never as raw HTML. **Edit** is the
+  plain `<textarea>`, monospace, holding the same text. Switching tabs neither saves nor discards;
+  both read and write the one autosave scheduler underneath. An empty summary's Preview shows
+  "Nothing to show yet." instead of a blank box.
+- **Autosave behaviour is unchanged from C3/P10**: the scheduler, its 3-second debounce, Save,
+  status text and conflict handling all read and write through the same `snapshot`/`scheduler`
+  regardless of which tab is open — the tabs are a view over the same saved and pending text, not
+  a second copy of it.
 - **Autosave:** 3 seconds after the last keystroke, save if the text differs from the last saved text. Typing again within 3 seconds restarts the timer. Only one save at a time; changes typed during a save are picked up by the next timer.
 - **Save button:** saves immediately and cancels the pending timer; disabled when there is nothing to save.
 - **Status text** next to Save: "Saving…" / "Saved" / "Couldn't save. Your text is still here." (plus Retry). On a conflict (P10) the conflict message shows and autosave stops.
@@ -221,11 +243,23 @@ area, plus a **Saved summaries** list (beside it on desktop, above it on phone).
 
 ### 7.4 Word and PDF — `src/generation/monthly-summary-docx.ts`
 
-Pure builder like `cover-sheet-docx.ts:228`, from the P6 parser: Aptos, Letter, same margins; title
-"{docName} {Source?} {Month YYYY} Monthly Summary"; headings → `HeadingLevel`; bullets via a
-`numbering` config (new — none exists today); bold and italic runs; anything else as literal text;
-`lineRule: AUTO` (D-52). PDF = that file through `convertDocxToPdf` (Aptos → Carlito in the
-container, D-78). Filenames from a new `monthlySummaryFilename(docName, monthLabel, "docx" | "pdf",
+Pure builder like `cover-sheet-docx.ts:228`, from the P6 parser: **Calibri, not the cover sheet's
+Aptos** (changed 2026-09-18) — Letter, same margins; title "{docName} {Source?} {Month YYYY}
+Monthly Summary"; headings → `HeadingLevel`; bullets via a `numbering` config (new — none exists
+today); bold and italic runs; anything else as literal text; `lineRule: AUTO` (D-52).
+
+**Why Calibri:** the cover sheet is a submitted document whose approved rendering is Aptos (D-78),
+and the container maps Aptos to Carlito for it. A monthly summary is opened on the reader's own
+machine, where Aptos is often missing — Word then substitutes whatever it likes, which read as
+broken on a reviewer's Windows machine. Calibri is present on Windows and macOS Word by default,
+so the Word file stops depending on a font the reader may not have. PDF = that file through
+`convertDocxToPdf`. The container's Aptos→Carlito alias (D-78) covered Aptos only; the previously
+untested assumption that Calibri also maps to Carlito in the container is now **asserted at build
+time**: the Dockerfile's font-check step additionally runs `fc-match Calibri | grep -q Carlito`,
+next to the existing Aptos assertion, so the PDF's font is proven, not assumed, on every image
+build.
+
+Filenames from a new `monthlySummaryFilename(docName, monthLabel, "docx" | "pdf",
 sourceName?)` in `strings.ts`, shaped and sanitised like `coverSheetFilename`
 (`strings.ts:508-534`): `Team Pursuit March 2026 Monthly Summary.docx` / `.pdf`, source name added
 only when the org has more than one funding source (`loadSourceContext().single`; archived sources
@@ -236,6 +270,33 @@ tests.
 
 - **Packet tab** (`app/r/packet/page.tsx`, after the two-column grid at :215-272): a small **Monthly summary** card. Plus: "Draft written {date}" or "No summary for {Month} yet", and **Open monthly summary** → `/r/monthly-summary`. Base plan: the plan note. Header on "All": the packet page already returns early with `PickFundingSource` (:51-65), so no card there. Tour step (2.3) points at this card.
 - **Dashboard** (`app/r/source-budget-section.tsx:151-158` action row): "Monthly summary ready" when `canUseSummaries` and a summary exists for that source and month. From the "All" view the link first calls `setActiveFundingSourceAction(sourceId)`, then navigates, so it doesn't land on the source picker.
+
+### 7.6 Staff AI usage card — `/a/orgs/[id]` (added 2026-09-18)
+
+A card on the staff organization page, below the existing account Usage card, reading
+`loadOrgAiUsage(orgId)` (`src/modules/admin/queries.ts`) — every row in `ai_usage_events` for that
+organization, one query grouped by `feature`.
+
+- **Reads and summaries are counted separately**, not combined into one number: a receipt read
+  costs roughly a hundred times less than a summary, so one combined figure would say nothing a
+  staff member could act on. Each tile shows the all-time count with a caption "N in {month}" for
+  the current month.
+- **"Runs with nothing saved"** = `failed` + `rejected` outcomes, added across both features. A
+  `rejected` run always spent tokens (the model answered, the checks refused it); a `failed` run
+  may have (a retry that failed in transport still paid for its first attempt) — the caption says
+  so, rather than implying nothing was billed.
+- **Cost is micro-USD** (a thousandth of a cent), formatted by `aiCost()`
+  (`src/modules/admin/ai-cost.ts`): under a cent shows four decimal places so a new organization's
+  first few receipt reads don't all read "$0.00"; a cent or more uses the app's own money format.
+  When any run has token counts but no cost — which only happens for a run logged before the price
+  env vars were set on the server — the total is a **floor, not the real bill**, and the card says
+  so (`UI.aiUsageCostIncomplete`).
+- **The current month is computed in America/Detroit** (R2.5), the same zone the card's own month
+  label uses and the organization's own timezone, not UTC and not the server's session timezone —
+  comparing in UTC would count a run made in the small hours of the 1st, or the last evening of a
+  month, against the wrong month.
+- **Last run** is the newest `created_at` across both features, shown with `formatDateShort`, or
+  "None yet".
 
 ---
 
@@ -634,6 +695,66 @@ Checks: B-13, tour tests.
 Red-team/security pass over actions and route; E-1..E-5 on the real model; full browser pass;
 Results block here; PR with the evaluation table and the average cost per summary.
 
+**Results (2026-09-18).** A review pass over Phases 1–5 plus the preview/reveal/shimmer and AI
+usage card work, found and fixed:
+- **`MAX_PAGES_READ = 10`** on `app/api/files/read-amounts/route.ts`, both the freshly-uploaded
+  path and the attached-document path — OpenAI bills a PDF per page, so an unbounded document
+  could cost orders of magnitude more than the receipt the feature is for. Refuses with
+  `UI.readAmountsTooManyPages`, still logs a `failed` usage row either way, and a stored
+  `pageCount` of `null` (a row that predates page counting) is read as one page rather than
+  refused (Phase 10 §3.4).
+- **`SUMMARY_MAX_OUTPUT_TOKENS` cut from 16,000 to 3,000** — the prompt's own 350–700-word target
+  is roughly 1,000 tokens; 3,000 caps the worst case at about 3.5 cents of output rather than 19,
+  including against an injected "write pages of detail" inside a narrative (§5).
+- **The `PERCENT_TOKEN` regex's ~7-second ReDoS**: `\d+` immediately before a required `%`
+  backtracks over its whole match at every start position, so a model reply padded with a long
+  digit run (reachable through an injected expense description) froze the single-threaded server
+  for close to 7 seconds, twice per run (the write plus its one retry). Bounded to 1–12 digits
+  before the point and 1–4 after — no real percentage is longer (`src/domain/summary-verifier.ts`).
+- **`serializeFactsForPrompt`'s size fallback now also trims `itemsToNote`** (no-receipt names and
+  reasons, refund names) when dropping expense detail alone still leaves the request over the
+  character ceiling — matching the trim already applied to the Spending section.
+- **`loadOrgAiUsage`'s month boundary computed in America/Detroit**, not UTC and not the server's
+  session timezone, matching the organization's own timezone and the month label the card prints
+  next to it.
+- **The AI usage card's cost figure now says when it's a floor**: a run logged with token counts
+  but no cost (only possible when the price env vars were unset on the server at the time) sets
+  `costIncomplete`, and the card appends `UI.aiUsageCostIncomplete` rather than silently showing an
+  undercount as if it were the whole bill.
+- **"Runs with nothing saved" wording**: the caption (`UI.aiUsageUnsavedNote`) says tokens may
+  still have been spent, rather than implying a `failed`/`rejected` run cost nothing.
+- **Reveal timing tied to the actual per-line delay ceiling**: the reveal flag clears on a timer
+  sized to the longest possible delay (4,000 ms cap) plus the 380 ms animation plus a 120 ms
+  margin, not a guess — clearing early left later lines waiting their turn invisible, then popping
+  in all at once.
+- **The first draft gets the same reveal as Write again.** `SummaryEditor`'s optimistic first-draft
+  path sets a `revealFirst` flag that `SummaryBody` is handed on mount, since a fresh draft has no
+  earlier render to diff against and the reveal otherwise only fired on a later Write again.
+- **The preview's line-count-before-each-block, originally computed by slicing on every render,
+  was quadratic**: measured at ~280 ms of jank on a 12,000-block summary. Replaced with one
+  `reduce` pass computed once per render (`app/r/monthly-summary/summary-preview.tsx`).
+- **The download route's error log no longer includes the raw error message unbounded.** The docx
+  builder can throw with a fragment of the user's own summary text quoted in the message; the log
+  now carries `error.message.slice(0, 200)` instead of the whole error object.
+- **New strings moved into `src/domain/strings.ts`** rather than left as inline literals:
+  `summaryViewLabel`/`summaryViewPreview`/`summaryViewEdit`, `summaryPreviewEmpty`,
+  `summaryPrepareFailed`, `readAmountsTooManyPages`, `aiUsageInMonth`, `aiUsageUnsavedNote`,
+  `aiUsageCostIncomplete` — matching the rest of the app's rule that no user-facing text is a bare
+  literal in a component.
+- **`app/r/layout.tsx`'s Plus badge now reads `aiPlanAllowed(session.plan)`** instead of the
+  literal `session.plan === "reconciliation_ai"` comparison it had before — the same helper P1
+  centralised the plan literal into, so a second plan tier or a renamed literal can't drift the
+  badge out of sync with the rest of the access checks.
+
+Not fixed, recorded with why in `docs/TASKS.md`: chunked-body size bypass on three routes (needs a
+proxy-level fix, not three more app-level checks with the same blind spot); unbounded LibreOffice
+conversion concurrency behind the existing 180 s per-call timeout; the 5-second cross-tab write
+poll re-running the full month-facts transaction to read one boolean; the staleness fingerprint
+not covering line-item budget edits; prompt injection of claims the verifier can't check (only `$`
+and `%` figures are verified — JSON-encoding the data block is what stops a structural delimiter
+attack, not a rhetorical one); `SUMMARY_PROMPT_VERSION` still not persisted; the cover-sheet
+control-character bug the monthly summary builder already had fixed.
+
 ---
 
 ## 10. Tests and verification
@@ -714,7 +835,7 @@ the live `.env`; set these by hand.** Launch also needs Team Pursuit on Reconcil
 ## 12. Strings (UI, in `src/domain/strings.ts`)
 
 From Appendix A, verbatim: plan note · pick-a-source · intro with month · Write draft summary ·
-"Add expenses to this month first." · writing · failure · meta line parts · AI reminder · Copy
+"Add expenses to this month first." · writing · failure · meta line parts · Copy
 text · Download Word · Write again · Write again confirm · changed-records notice with month ·
 Monthly summary ready · the five section headings.
 
@@ -724,7 +845,16 @@ Open monthly summary · "No summary for {Month} yet" · Saved summaries · Save 
 now. Download Word instead." · "Save your changes to download them." · "This summary was changed by
 someone else. Copy your text, then reload to see their version." · "A summary for {Month} is
 already being written." · "Too many summaries at once. Try again shortly." · "Summary copied." ·
-"Couldn't copy. Select the text and copy it yourself." · the packet tour step.
+"Couldn't copy. Select the text and copy it yourself." · the packet tour step · Preview/Edit
+· "Nothing to show yet." (empty preview) · "The summary couldn't be prepared right now. Please try
+again." (download route) · the AI usage card's labels and captions.
+
+**The AI reminder moved here from the verbatim list (2026-09-18).** Appendix A §5 gives it as
+"This is a draft written by AI from your records. Check every figure and fill in anything in
+[brackets] before using it." The user asked for clearer wording, then for the bracket sentence to
+be dropped outright — a reviewer reads the whole draft anyway, and any `[add …]` placeholder is
+visible in the text itself. **The prompt (§5) still asks the model to write `[add …]` where
+context is missing**; only the on-screen reminder no longer mentions brackets by name.
 
 ---
 

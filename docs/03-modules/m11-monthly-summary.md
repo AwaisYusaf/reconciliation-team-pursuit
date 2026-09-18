@@ -26,12 +26,17 @@ P10). Usage is logged to `ai_usage_events` (PHASE-11 §3, P12).
   not deleted, and reappears on upgrade).
 - AI plan, no summary yet: intro text plus **Write draft summary**, disabled with "Add expenses
   to this month first." when the month has none.
-- Writing: "Writing your summary… this can take up to a minute."; the rest of the app stays
-  usable; leaving the screen doesn't cancel the run (PHASE-11 §7.1, §6).
+- Writing: a shimmer (`summary-skeleton.tsx`) replaces the whole summary card, carrying "Writing
+  your summary… this can take up to a minute."; the rest of the app stays usable; leaving the
+  screen doesn't cancel the run (PHASE-11 §7.1, §6, C8).
 - Summary exists: meta line, AI reminder, changed-records notice when the stored fingerprint no
-  longer matches the month's live expenses, a plain Markdown `<textarea>` (no preview — C2),
-  Save with 3-second autosave, Copy text, Download Word, Download PDF, and Write again (confirm,
-  replaces the text).
+  longer matches the month's live expenses, then **Preview/Edit tabs with Preview as the default
+  view** (`summary-preview.tsx` renders the saved Markdown as React text through the same parser
+  the Word/PDF/Copy-text paths use, never as raw HTML; Edit is the plain Markdown `<textarea>` —
+  C8, superseding the original plain-textarea-only design, C2), Save with 3-second autosave
+  (unchanged by the tabs), Copy text (disabled while writing), Download Word, Download PDF, and
+  Write again (confirm, replaces the text). A first draft and a fresh Write again both wipe in
+  line by line (`.summary-reveal`, `prefers-reduced-motion` respected).
 - A **Saved summaries** list, newest month first, one row per month with a summary for this
   source; clicking a row calls `setActiveMonthAction` so the header, this screen and the rest of
   the app agree on the month.
@@ -56,7 +61,10 @@ P10). Usage is logged to `ai_usage_events` (PHASE-11 §3, P12).
   Action in the tab (PHASE-11 Phase 3 deviation).
 - `saveSummaryAction({ sourceId, month, markdown, expectedVersion })` — Save and autosave.
 - `GET /api/downloads/monthly-summary?source=&month=&format=docx|pdf` — Word from the saved
-  Markdown, PDF via the existing `convertDocxToPdf` pipeline.
+  Markdown, set in **Calibri** (not the cover sheet's Aptos — a summary opens on the reader's own
+  machine, where Aptos is often missing, and Calibri ships with Word by default; the container's
+  Calibri→Carlito mapping is asserted in the Dockerfile alongside the Aptos one, PHASE-11 §7.4),
+  PDF via the existing `convertDocxToPdf` pipeline.
 
 ## Acceptance
 Every figure in a summary equals the Dashboard's and Contract Summary's own figures for the same

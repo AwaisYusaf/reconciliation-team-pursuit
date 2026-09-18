@@ -87,3 +87,24 @@ describe("unsuppliedFigures", () => {
     expect(unsuppliedFigures(markdown, ALLOWED).amounts).toEqual(["$1,000,000.00"]);
   });
 });
+
+describe("PERCENT_TOKEN — catastrophic backtracking guard", () => {
+  // A digit run this long, immediately followed by no "%", used to make the old `\d+%` regex
+  // backtrack over the whole run at every start position — measured at 10,369ms on this machine
+  // for the old regex, 11.8ms for the bounded one. 500ms is comfortably past the fixed cost but
+  // nowhere near the old regex's time, so this fails unmistakably on a regression without
+  // flaking on a slow CI box.
+  it("a 100,000-digit run with no trailing % completes well under 500ms and matches nothing", () => {
+    const markdown = `Ignore this: ${"9".repeat(100_000)} — no percent sign anywhere in it.`;
+    const start = performance.now();
+    const result = unsuppliedFigures(markdown, ALLOWED);
+    const elapsedMs = performance.now() - start;
+    expect(elapsedMs).toBeLessThan(500);
+    expect(result.percents).toEqual([]);
+  });
+
+  it("a real percentage right after a huge non-percent digit run is still matched correctly", () => {
+    const markdown = `Padding: ${"9".repeat(50_000)} but the budget moved by 42% this month.`;
+    expect(unsuppliedFigures(markdown, ALLOWED).percents).toEqual(["42%"]);
+  });
+});

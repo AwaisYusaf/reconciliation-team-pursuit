@@ -6,11 +6,13 @@ import { TableCard, Td, Th } from "@/src/components/ui/table";
 import { formatDateShort, formatDateTimeShort, monthLabel, todayIso } from "@/src/domain/dates";
 import { formatBytes, ratio } from "@/src/domain/format";
 import { PLAN_LABELS, UI } from "@/src/domain/strings";
+import { aiCost } from "@/src/modules/admin/ai-cost";
 import { describeAccountEvent, usersFooter } from "@/src/modules/admin/directory";
 import { requireStaffPage } from "@/src/modules/admin/guard";
 import {
   loadOrgAccount,
   loadOrgHistory,
+  loadOrgAiUsage,
   loadOrgUsage,
   loadOrgUsers,
   ORG_USERS_PREVIEW,
@@ -81,9 +83,10 @@ export default async function OrgPage({
   const rawBack = typeof query.back === "string" ? query.back : "";
   const backHref = rawBack.startsWith("?") ? `/a${rawBack}` : "/a";
 
-  const [users, usage, history] = await Promise.all([
+  const [users, usage, aiUsage, history] = await Promise.all([
     loadOrgUsers(id, showAllUsers),
     loadOrgUsage(id),
+    loadOrgAiUsage(id),
     loadOrgHistory(id),
   ]);
   const footer = usersFooter({
@@ -234,6 +237,45 @@ export default async function OrgPage({
             >
               <div className="h-full bg-accent rounded-full" style={{ width: `${storagePercent}%` }} />
             </div>
+          </UsageTile>
+        </dl>
+      </Card>
+
+      <Card className="p-4 sm:p-5 lg:p-6">
+        <SubsectionTitle className="mb-3">AI usage</SubsectionTitle>
+        {/* Every OpenAI call this organization has made (ai_usage_events, D-106/D-107). Reads and
+            summaries are counted apart because a summary costs roughly a hundred times a read. */}
+        <dl className="grid grid-cols-2 lg:grid-cols-3 gap-3">
+          {/* The big number is all time; the caption says how many of those were this month. The
+              two used to be shown as "4 / 4", which read like a fraction. */}
+          <UsageTile
+            label="Receipt reads"
+            caption={UI.aiUsageInMonth(aiUsage.reads.currentMonth, monthLabel(aiUsage.currentMonth))}
+          >
+            <Figure>{aiUsage.reads.total}</Figure>
+          </UsageTile>
+          <UsageTile
+            label="Monthly summaries"
+            caption={UI.aiUsageInMonth(aiUsage.summaries.currentMonth, monthLabel(aiUsage.currentMonth))}
+          >
+            <Figure>{aiUsage.summaries.total}</Figure>
+          </UsageTile>
+          <UsageTile label="Runs with nothing saved" caption={UI.aiUsageUnsavedNote}>
+            <Figure>{aiUsage.reads.unsaved + aiUsage.summaries.unsaved}</Figure>
+          </UsageTile>
+          {/* One cost tile: the figure is all time, the caption carries this month and, when some
+              runs were logged before the price settings existed, that the figure is a floor. */}
+          <UsageTile
+            label="Cost all time"
+            caption={
+              `${aiCost(aiUsage.costMicroUsdCurrentMonth)} in ${monthLabel(aiUsage.currentMonth)}` +
+              (aiUsage.costIncomplete ? ` · ${UI.aiUsageCostIncomplete}` : "")
+            }
+          >
+            <Sentence>{aiCost(aiUsage.costMicroUsdTotal)}</Sentence>
+          </UsageTile>
+          <UsageTile label="Last run">
+            <Sentence>{aiUsage.lastRunAt ? formatDateShort(todayIso(aiUsage.lastRunAt)) : UI.noneYet}</Sentence>
           </UsageTile>
         </dl>
       </Card>

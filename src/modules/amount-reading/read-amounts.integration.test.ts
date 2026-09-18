@@ -40,7 +40,7 @@ const hasDatabase = Boolean(process.env.DATABASE_URL);
 
 describe.skipIf(!hasDatabase)("read amounts (integration, Phase 10)", async () => {
   const { db } = await import("@/src/db");
-  const { aiUsageEvents, expenses, lineItems, organizations, supportingDocTypes } = await import(
+  const { aiUsageEvents, expenseDocuments, expenses, lineItems, organizations, supportingDocTypes } = await import(
     "@/src/db/schema"
   );
   const { createTestOrg } = await import("@/src/db/test-org");
@@ -136,6 +136,16 @@ describe.skipIf(!hasDatabase)("read amounts (integration, Phase 10)", async () =
     const doc = await PDFDocument.create();
     const page = doc.addPage([300, 300]);
     page.drawText("receipt", { x: 20, y: 200 });
+    const bytes = await doc.save();
+    return new File([new Uint8Array(bytes)], name, { type: "application/pdf" });
+  }
+
+  async function multiPagePdfFile(pageCount: number, name = "multi.pdf"): Promise<File> {
+    const doc = await PDFDocument.create();
+    for (let i = 0; i < pageCount; i += 1) {
+      const page = doc.addPage([300, 300]);
+      page.drawText(`page ${i + 1}`, { x: 20, y: 200 });
+    }
     const bytes = await doc.save();
     return new File([new Uint8Array(bytes)], name, { type: "application/pdf" });
   }
@@ -528,6 +538,89 @@ describe.skipIf(!hasDatabase)("read amounts (integration, Phase 10)", async () =
       const row = await latestAmountRead(orgId);
       expect(row!.documentSource).toBe("attached");
       expect(row!.documentKind).toBe("receipt");
+    });
+  });
+
+  describe("MAX_PAGES_READ (page-count cap on OpenAI billing, currently 10 — see route.ts)", () => {
+    // The route's own MAX_PAGES_READ is not exported; 11 is deliberately one page over whatever
+    // it currently is (10), so this fails loudly (not silently passing) if someone raises the
+    // cap without updating this test's assumption.
+    const OVER_THE_LIMIT_PAGES = 11;
+
+    it("an 11-page uploaded PDF is refused with 400, logs a failed row, and never calls OpenAI", async () => {
+      asSession(orgId, userId);
+      readAmountsMock.mockClear();
+
+      const form = new FormData();
+      form.set("file", await multiPagePdfFile(OVER_THE_LIMIT_PAGES));
+      form.set("kind", "receipt");
+      const response = await POST(readRequest(form));
+      expect(response.status).toBe(400);
+      expect((await response.json()).ok).toBe(false);
+      expect(readAmountsMock).not.toHaveBeenCalled();
+
+      const row = await latestAmountRead(orgId);
+      expect(row!.outcome).toBe("failed");
+      expect(row!.documentSource).toBe("upload");
+    });
+
+    it("an attached document whose stored pageCount exceeds the cap is refused with 400 and logs a failed row", async () => {
+      const expenseId = await makeExpense(orgId, fundingSourceId, lineItemId);
+      const ingested = await ingestExpenseDocument({
+        orgId,
+        expenseId,
+        scope: "receipt",
+        file: await multiPagePdfFile(OVER_THE_LIMIT_PAGES),
+      });
+      if (!ingested.ok) throw new Error(ingested.error);
+
+      asSession(orgId, userId);
+      readAmountsMock.mockClear();
+
+      const form = new FormData();
+      form.set("documentId", ingested.documentId);
+      const response = await POST(readRequest(form));
+      expect(response.status).toBe(400);
+      expect(readAmountsMock).not.toHaveBeenCalled();
+
+      const row = await latestAmountRead(orgId);
+      expect(row!.outcome).toBe("failed");
+      expect(row!.documentSource).toBe("attached");
+    });
+
+    it("an attached row with a NULL pageCount (pre-dates page counting) is still read normally, as one page", async () => {
+      const expenseId = await makeExpense(orgId, fundingSourceId, lineItemId);
+      const ingested = await ingestExpenseDocument({
+        orgId,
+        expenseId,
+        scope: "receipt",
+        file: await pdfFile(),
+      });
+      if (!ingested.ok) throw new Error(ingested.error);
+
+      await db
+        .update(expenseDocuments)
+        .set({ pageCount: null })
+        .where(eq(expenseDocuments.id, ingested.documentId));
+
+      asSession(orgId, userId);
+      readAmountsMock.mockResolvedValue({
+        outcome: "found",
+        amounts: { subtotalCents: 1000, taxCents: 0, feesCents: 0, totalCents: 1000 },
+        inputTokens: 5,
+        outputTokens: 2,
+      });
+
+      const form = new FormData();
+      form.set("documentId", ingested.documentId);
+      const response = await POST(readRequest(form));
+      expect(response.status).toBe(200);
+      expect((await response.json()).data.found).toBe(true);
+      expect(readAmountsMock).toHaveBeenCalledTimes(1);
+
+      const row = await latestAmountRead(orgId);
+      expect(row!.outcome).toBe("found");
+      expect(row!.documentSource).toBe("attached");
     });
   });
 

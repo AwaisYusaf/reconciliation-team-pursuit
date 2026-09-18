@@ -75,8 +75,15 @@ export async function GET(request: Request) {
       markdown: loaded.contentMarkdown,
     });
   } catch (error) {
-    console.error("monthly summary docx build failed", { orgId: session.orgId, sourceId: source.id, month, error });
-    return new NextResponse("The summary couldn't be prepared right now. Please try again.", {
+    console.error("monthly summary docx build failed", {
+      orgId: session.orgId,
+      sourceId: source.id,
+      month,
+      // Message only, truncated: a throw from the docx builder can quote the offending fragment of
+      // the user's own summary, and that must not reach application logs.
+      error: error instanceof Error ? error.message.slice(0, 200) : "unknown",
+    });
+    return new NextResponse(UI.summaryPrepareFailed, {
       status: 500,
       headers: { "Content-Type": "text/plain; charset=utf-8" },
     });

@@ -35,7 +35,8 @@ RUN printf '%s\n' \
       '</fontconfig>' \
       > /etc/fonts/conf.d/30-aptos-carlito.conf \
  && fc-cache -f \
- && fc-match Aptos | grep -q Carlito
+ && fc-match Aptos | grep -q Carlito \
+ && fc-match Calibri | grep -q Carlito
 
 ENV NODE_ENV=production
 WORKDIR /app

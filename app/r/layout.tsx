@@ -8,6 +8,7 @@ import { Button } from "@/src/components/ui/button";
 import { AppToaster } from "@/src/components/ui/toast";
 import { loadSelectableMonths } from "@/src/db/months";
 import { PlusBadge } from "@/src/components/ui/plus-badge";
+import { aiPlanAllowed } from "@/src/modules/ai/access";
 import { signOutAction } from "@/src/modules/auth/actions";
 import { loadSourceContext } from "@/src/modules/funding-sources/queries";
 import { getSession } from "@/src/services/auth/session";
@@ -50,7 +51,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           <div className="shrink-0 flex items-center gap-2.5">
             {/* Only the AI plan gets a badge: on the plain plan a badge saying so would be
                 noise on every page, forever (Phase 9). */}
-            {session.plan === "reconciliation_ai" && <PlusBadge />}
+            {aiPlanAllowed(session.plan) && <PlusBadge />}
             <TourReplayButton />
             <form action={signOutAction}>
               <Button type="submit" variant="secondary" className="min-h-11 sm:min-h-12 text-[15px]">

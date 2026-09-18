@@ -51,7 +51,9 @@ export function PlusBadge({ size = "md", className }: { size?: "sm" | "md"; clas
       title={PLAN_LABELS.reconciliation_ai}
       style={{ backgroundImage: PLUS_GRADIENT }}
       className={cn(
-        "inline-block rounded-full text-surface font-bold leading-none tracking-[0.01em] align-middle",
+        // `font-sans` is explicit: without it the badge inherits whatever sits around it, so the one
+        // beside a serif page title came out in Georgia while the header's stayed Arial.
+        "inline-block rounded-full text-surface font-sans font-bold leading-none tracking-[0.01em] align-middle",
         size === "md" ? "px-3.5 py-1.5 text-[14px]" : "px-2 py-1 text-[12px]",
         className,
       )}
