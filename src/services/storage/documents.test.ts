@@ -12,6 +12,7 @@ import {
   MAX_EXPENSE_PAGES,
   MAX_ORG_BYTES,
   expenseBudgetError,
+  precheck,
   storageQuotaError,
 } from "./documents";
 
@@ -113,5 +114,18 @@ describe("expenseBudgetError", () => {
       oneSmallPage,
     );
     expect(message).toContain("MB");
+  });
+});
+
+describe("precheck: declared type", () => {
+  it("passes an undeclared type through for inspection to decide (Chrome on Windows, .heic)", () => {
+    // "" in the browser arrives as the multipart default `application/octet-stream`.
+    expect(precheck({ size: 12_000, type: "" })).toBeNull();
+    expect(precheck({ size: 12_000, type: "application/octet-stream" })).toBeNull();
+  });
+
+  it("still refuses a declared type that isn't supported", () => {
+    expect(precheck({ size: 12_000, type: "text/html" })).toMatch(/not supported/i);
+    expect(precheck({ size: 12_000, type: "application/zip" })).toMatch(/not supported/i);
   });
 });

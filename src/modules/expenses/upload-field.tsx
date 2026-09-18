@@ -31,6 +31,7 @@ import {
   type DocumentScope,
 } from "@/src/services/storage/keys";
 
+import { heicToJpegFile, looksLikeHeic } from "./heic-to-jpeg";
 import type { AttachedDocument } from "./queries";
 
 export type PendingUpload = {
@@ -161,8 +162,8 @@ export function UploadField({
     src: item.previewUrl ?? null,
     filename: item.file.name,
     mimeType: item.file.type,
-    // A queued HEIC is still HEIC: ingestion converts it to JPEG on upload, so there is
-    // nothing this browser can decode until then.
+    // Only a HEIC that failed to convert when picked lands here: ingestion converts it on
+    // upload, so there is nothing this browser can decode until then.
     unavailable: item.previewUrl
       ? undefined
       : "This format cannot be shown by the browser. Save the expense and it will preview here — images are converted when they upload.",
@@ -209,18 +210,27 @@ export function UploadField({
           disabled={disabled}
           onChange={(event) => {
             const files = Array.from(event.target.files ?? []);
-            const accepted: File[] = [];
-
-            for (const file of files) {
+            event.target.value = "";
+            const accepted = files.filter((file) => {
               const reason = rejectionReason(file);
               if (reason) toast.error(reason);
-              else accepted.push(file);
-            }
+              return !reason;
+            });
+            if (accepted.length === 0) return;
 
-            if (accepted.length > 0) {
+            // HEIC becomes JPEG here so it previews before saving; one that won't convert is
+            // queued as it is, and the server converts it on upload. One photo at a time, so
+            // picking ten never holds ten decoded photos in memory at once.
+            const toastId = accepted.some(looksLikeHeic) ? toast.loading(UI.convertingPhotos) : undefined;
+            void (async () => {
+              const ready: File[] = [];
+              for (const file of accepted) {
+                ready.push(looksLikeHeic(file) ? await heicToJpegFile(file) : file);
+              }
+              if (toastId) toast.dismiss(toastId);
               setQueued((current) => [
                 ...current,
-                ...accepted.map((file, index) => {
+                ...ready.map((file, index) => {
                   // Created here, in the handler, because minting a blob URL is a side
                   // effect. Only for types a browser can actually decode.
                   const previewUrl =
@@ -238,8 +248,7 @@ export function UploadField({
                   };
                 }),
               ]);
-            }
-            event.target.value = "";
+            })();
           }}
         />
         <Button

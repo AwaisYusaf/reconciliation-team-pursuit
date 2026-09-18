@@ -2,9 +2,11 @@
  * Upload inspection against real file bytes (R4.6).
  *
  * Fixtures are generated in-process rather than committed, so the suite carries no binary
- * blobs and no client documents.
+ * blobs and no client documents. One exception: `__fixtures__/receipt.heic`, a 12 KB public
+ * sample receipt, because nothing installed here can *encode* HEVC to generate one.
  */
 import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 
 import { PDFDocument } from "pdf-lib";
 import sharp from "sharp";
@@ -185,5 +187,50 @@ describe("refusals", () => {
     // Bytes still have to agree; this only proves the declared alias is accepted.
     const result = await inspectUpload({ body: png, declaredMimeType: "image/heif" });
     expect(result.ok === false && result.error).toMatch(/do not match/i);
+  });
+});
+
+describe("HEIC (iPhone photos)", () => {
+  const heic = readFileSync(new URL("./__fixtures__/receipt.heic", import.meta.url));
+
+  it("decodes a real HEVC-compressed HEIC to JPEG — sharp's npm build alone refused it as damaged", async () => {
+    for (const declaredMimeType of ["image/heic", "image/heif"]) {
+      const result = await inspectUpload({ body: heic, declaredMimeType });
+      expect(result.ok, declaredMimeType).toBe(true);
+      if (!result.ok) return;
+      expect(result.mimeType).toBe("image/jpeg");
+      expect(result.body.subarray(0, 3).toString("hex")).toBe("ffd8ff");
+      expect([result.widthPx, result.heightPx]).toEqual([412, 484]);
+      expect(result.thumbnail?.subarray(0, 3).toString("hex")).toBe("ffd8ff");
+      // The stored JPEG is a real image of the same size, not a blank buffer.
+      const stats = await sharp(result.body).stats();
+      expect(stats.isOpaque).toBe(true);
+      expect(stats.channels[0].stdev).toBeGreaterThan(10);
+    }
+  });
+
+  // Chrome on Windows gives a .heic the type "", which reaches the server as the multipart
+  // default `application/octet-stream` — both mean "undeclared", and the bytes decide.
+  for (const undeclared of ["", "application/octet-stream"]) {
+    it(`with an undeclared type (${JSON.stringify(undeclared)}), the bytes decide`, async () => {
+      const result = await inspectUpload({ body: heic, declaredMimeType: undeclared });
+      expect(result.ok && result.mimeType).toBe("image/jpeg");
+    });
+
+    it(`an undeclared type (${JSON.stringify(undeclared)}) still refuses unsupported bytes`, async () => {
+      const html = Buffer.from("<html><script>alert(1)</script></html>");
+      const result = await inspectUpload({ body: html, declaredMimeType: undeclared });
+      expect(result.ok === false && result.error).toMatch(/not supported/i);
+    });
+  }
+
+  it("a declared type that is neither undeclared nor matching is still refused", async () => {
+    const result = await inspectUpload({ body: heic, declaredMimeType: "image/png" });
+    expect(result.ok === false && result.error).toMatch(/do not match/i);
+  });
+
+  it("a truncated HEIC is refused as unreadable, never thrown", async () => {
+    const result = await inspectUpload({ body: heic.subarray(0, 2000), declaredMimeType: "image/heic" });
+    expect(result.ok === false && result.error).toMatch(/could not be read/i);
   });
 });

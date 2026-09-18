@@ -16,6 +16,8 @@ import sharp from "sharp";
 
 import { pdfOpensWithoutPassword } from "@/src/generation/raster";
 
+import { isUndeclaredMimeType } from "./keys";
+
 export type InspectionSuccess = {
   ok: true;
   /** Normalised bytes to store — HEIC/WebP arrive here converted to JPEG. */
@@ -80,9 +82,11 @@ export async function inspectUpload(input: {
   }
 
   // A declared type that disagrees with the bytes is either a mistake or an attack; both
-  // deserve the same refusal.
+  // deserve the same refusal. No declared type at all is neither (`isUndeclaredMimeType`), and
+  // `precheck` passes it through for the bytes to decide — which `sniff` just did, from the
+  // same five supported formats.
   const declaredFamily = declaredMimeType === "image/heif" ? "image/heic" : declaredMimeType;
-  if (actual !== declaredFamily) {
+  if (!isUndeclaredMimeType(declaredMimeType) && actual !== declaredFamily) {
     return {
       ok: false,
       error: "That file's contents do not match its type. Try exporting it again.",
@@ -153,8 +157,32 @@ async function inspectPdf(body: Buffer, allowOwnerPasswordPdf: boolean): Promise
   }
 }
 
-async function inspectImage(body: Buffer, mimeType: string): Promise<InspectionResult> {
+/**
+ * iPhone photos are HEVC-compressed, and the sharp build npm installs has no HEVC decoder
+ * (patent licensing) — it reads the header but fails on the pixels, which refused every HEIC
+ * upload as "damaged". libheif's WASM build decodes it instead; sharp only reads the header,
+ * so the pixel limit is enforced *before* a decode allocates for it.
+ */
+async function heicToJpeg(body: Buffer): Promise<Buffer> {
+  const { width = 0, height = 0 } = await sharp(body).metadata();
+  if (width === 0 || height === 0) throw new Error("unreadable HEIC header");
+  if (width * height > MAX_PIXELS) throw new Error("pixel limit exceeded");
+  const { default: decode } = await import("heic-decode");
+  const decoded = await decode({ buffer: body });
+  const { data } = decoded;
+  return sharp(Buffer.from(data.buffer, data.byteOffset, data.byteLength), {
+    raw: { width: decoded.width, height: decoded.height, channels: 4 },
+  })
+    .jpeg({ quality: 90 })
+    .toBuffer();
+}
+
+async function inspectImage(input: Buffer, declaredType: string): Promise<InspectionResult> {
   try {
+    // A decoded HEIC continues as the JPEG it now is: stored as-is, never re-encoded twice.
+    const heic = declaredType === "image/heic";
+    const body = heic ? await heicToJpeg(input) : input;
+    const mimeType = heic ? "image/jpeg" : declaredType;
     const image = sharp(body, { limitInputPixels: MAX_PIXELS });
     const metadata = await image.metadata();
 
