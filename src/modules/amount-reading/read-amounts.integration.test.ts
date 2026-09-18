@@ -219,6 +219,36 @@ describe.skipIf(!hasDatabase)("read amounts (integration, Phase 10)", async () =
     }
   });
 
+  describe("in-flight cap (PR #18 round 3, #3)", () => {
+    it("a 5th read while 4 are running gets 429 without reaching the model; a freed slot lets it through", async () => {
+      const { beginRead, endRead, MAX_IN_FLIGHT_PER_ORG } = await import("@/src/modules/amount-reading/in-flight");
+      clearAll();
+      asSession(orgId, userId);
+      readAmountsMock.mockReset();
+      readAmountsMock.mockResolvedValue({ outcome: "none", inputTokens: 1, outputTokens: 1 });
+
+      for (let i = 0; i < MAX_IN_FLIGHT_PER_ORG; i += 1) expect(beginRead(orgId)).toBe(true);
+      try {
+        const form = new FormData();
+        form.set("file", await jpegFile());
+        form.set("kind", "receipt");
+        const refused = await POST(readRequest(form));
+        expect(refused.status).toBe(429);
+        expect(readAmountsMock).not.toHaveBeenCalled();
+      } finally {
+        for (let i = 0; i < MAX_IN_FLIGHT_PER_ORG; i += 1) endRead(orgId);
+      }
+
+      // Same request once the slots are free: the 429 above came from the cap, not the rate limit.
+      const form = new FormData();
+      form.set("file", await jpegFile());
+      form.set("kind", "receipt");
+      const allowed = await POST(readRequest(form));
+      expect(allowed.status).toBe(200);
+      expect(readAmountsMock).toHaveBeenCalledTimes(1);
+    });
+  });
+
   describe("access gate", () => {
     it("no OpenAI key configured → 403, and readAmountsAllowedForOrg is false (hidden)", async () => {
       delete process.env.OPENAI_API_KEY;

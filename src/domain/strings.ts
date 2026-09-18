@@ -86,7 +86,16 @@ export function noReceiptNote(reason: string): string {
  *  between the two. */
 const AMOUNT_FIELD_LABELS = { subtotal: "Subtotal", tax: "Tax", fees: "Fees" } as const;
 const TOTAL_PAID_LABEL = "Total paid";
+const TOTAL_REFUNDED_LABEL = "Total refunded";
 const TOTAL_LABEL = "Total";
+
+/** "Total paid $165.00", or for money coming back "Total refunded $145.00" — never "Total paid
+ *  -$145.00" (PR #18 round 3, #7). */
+function totalPaidParts(totalCents: number): { label: string; value: string } {
+  return totalCents < 0
+    ? { label: TOTAL_REFUNDED_LABEL, value: formatMoney(-totalCents) }
+    : { label: TOTAL_PAID_LABEL, value: formatMoney(totalCents) };
+}
 
 function amountsLineParts(amounts: ReadAmounts, totalLabel: string): { lead: string; total: string } {
   return {
@@ -309,7 +318,11 @@ export const UI = {
   amountsFoundTitle: "Amounts found in your documents",
   /** The panel's summary line, and the "Replace the amounts you typed?" dialog body (Appendix
    *  A §2): `Subtotal $150.00 · Tax $9.00 · Fees $6.00 · Total paid $165.00`. */
-  amountsSummary: (amounts: ReadAmounts) => amountsLine(amounts, TOTAL_PAID_LABEL),
+  amountsSummary: (amounts: ReadAmounts) => {
+    const { lead } = amountsLineParts(amounts, TOTAL_PAID_LABEL);
+    const { label, value } = totalPaidParts(amounts.totalCents);
+    return `${lead}${label} ${value}`;
+  },
   /** One receipt's own line (Appendix A §2): `Subtotal $110.00 · Tax $6.60 · Fees $3.40 · Total $120.00`. */
   receiptLineAmounts: (amounts: ReadAmounts) => amountsLine(amounts, TOTAL_LABEL),
   /** Tag after a proof-of-payment file's name in the panel list (Appendix A §2). */
@@ -509,7 +522,7 @@ export function amountFigures(amounts: ReadAmounts): { label: string; value: str
     { label: AMOUNT_FIELD_LABELS.subtotal, value: formatMoney(amounts.subtotalCents), total: false },
     { label: AMOUNT_FIELD_LABELS.tax, value: formatMoney(amounts.taxCents), total: false },
     { label: AMOUNT_FIELD_LABELS.fees, value: formatMoney(amounts.feesCents), total: false },
-    { label: TOTAL_PAID_LABEL, value: formatMoney(amounts.totalCents), total: true },
+    { ...totalPaidParts(amounts.totalCents), total: true },
   ];
 }
 

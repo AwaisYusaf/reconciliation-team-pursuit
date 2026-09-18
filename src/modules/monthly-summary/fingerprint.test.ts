@@ -90,3 +90,24 @@ describe("factsFingerprint", () => {
     expect(reordered).toBe(fingerprint());
   });
 });
+
+describe("factsFingerprint: Items to note are order-free too (PR #18 round 3, #4)", () => {
+  const noReceipt = (id: string, name: string): SummaryExpense => ({
+    ...expense(id, name, 3_000),
+    noReceipt: true,
+    noReceiptReason: `${name} reason`,
+  });
+  const refund = (id: string, name: string): SummaryExpense => expense(id, name, -2_000);
+  // Tax not reimbursed puts the expense under Not reimbursed.
+  const taxed = (id: string, name: string): SummaryExpense => ({ ...expense(id, name, 4_000), taxCents: 300 });
+
+  it("reordering the expenses behind No receipt, Refunds and Not reimbursed doesn't read as a change", () => {
+    const first = fingerprint({
+      monthExpenses: [noReceipt("a", "Taxi"), noReceipt("b", "Parking"), refund("c", "Return"), refund("d", "Credit"), taxed("e", "Laptop"), taxed("f", "Printer")],
+    });
+    const reordered = fingerprint({
+      monthExpenses: [taxed("f", "Printer"), refund("d", "Credit"), noReceipt("b", "Parking"), taxed("e", "Laptop"), refund("c", "Return"), noReceipt("a", "Taxi")],
+    });
+    expect(reordered).toBe(first);
+  });
+});

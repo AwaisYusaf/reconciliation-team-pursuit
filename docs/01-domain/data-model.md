@@ -336,8 +336,8 @@ per monthly summary run, carrying its own columns and constraint.
 | cost_micro_usd | integer null | From `costMicroUsd` — null when either token count or either price env setting is missing |
 | document_source | ai_usage_document_source enum null | amount reads only: `upload` (a freshly-picked file) \| `attached` (already on the expense) |
 | document_kind | ai_usage_document_kind enum null | amount reads only: `receipt` \| `proof` — supporting documents are never read |
-| funding_source_id | uuid FK null | monthly summaries only; **set null** when the funding source is deleted |
-| month | char(7) null | monthly summaries only |
+| funding_source_id | uuid null | monthly summaries only; composite FK `(funding_source_id, org_id)` → `funding_sources(id, org_id)`, NO ACTION (sources are archived, never deleted), so a row can't name another org's source (PR #18 round 3) |
+| month | char(7) null | monthly summaries only; check `ai_usage_events_month_ck`: `YYYY-MM` |
 | trigger | summary_trigger enum null | monthly summaries only: `first` (Write draft summary) \| `again` (Write again) |
 | created_at | timestamptz | |
 

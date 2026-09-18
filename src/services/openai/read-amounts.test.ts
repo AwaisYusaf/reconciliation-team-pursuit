@@ -352,6 +352,30 @@ describe("readAmounts", () => {
     expect(result.outcome).toBe("failed");
   });
 
+  it("the fetch is given a real AbortSignal (not undefined, not a plain object) — proves a timeout can actually abort it", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(responsesBody({ found: false })));
+    await readAmounts(
+      { body: Buffer.from("x"), mimeType: "application/pdf", kind: "receipt" },
+      { fetch: fetchMock, env: baseEnv(), timeoutMs: 5000 },
+    );
+    const init = fetchMock.mock.calls[0][1];
+    expect(init.signal).toBeInstanceOf(AbortSignal);
+  });
+
+  it("with no timeoutMs given, the real default (60_000ms) is what bounds the request", async () => {
+    const timeoutSpy = vi.spyOn(AbortSignal, "timeout");
+    try {
+      const fetchMock = vi.fn().mockResolvedValue(jsonResponse(responsesBody({ found: false })));
+      await readAmounts(
+        { body: Buffer.from("x"), mimeType: "application/pdf", kind: "receipt" },
+        { fetch: fetchMock, env: baseEnv() }, // no timeoutMs
+      );
+      expect(timeoutSpy).toHaveBeenCalledWith(60_000);
+    } finally {
+      timeoutSpy.mockRestore();
+    }
+  });
+
   it("never logs the API key, amounts, or response body text to console.error", async () => {
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     try {

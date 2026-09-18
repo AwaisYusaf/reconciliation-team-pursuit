@@ -16,7 +16,7 @@ import { useEffect, useRef } from "react";
 
 import { cn } from "@/src/lib/cn";
 import { UI } from "@/src/domain/strings";
-import { serializeSummaryMarkdown, toEditorDoc, type EditorDoc } from "@/src/domain/summary-markdown";
+import { editorBaseline, realChange, toEditorDoc, type EditorDoc } from "@/src/domain/summary-markdown";
 
 /**
  * No sub-lists: the stored Markdown is flat (PR #18 round 2, #2). Both the list item and the list
@@ -72,12 +72,8 @@ export function SummaryRichEditor({
     immediatelyRender: false,
     editable: !readOnly,
     onUpdate: ({ editor: instance }) => {
-      // Only a real change is reported. Tiptap also fires update for things that change nothing
-      // (and the loaded Markdown can serialize differently from how it was stored, e.g. `*` bullets
-      // as `-`), and each report would autosave — so merely opening a summary marked it "Last
-      // edited by" whoever looked and bumped its version (PR #18 round 2, #3).
-      const next = serializeSummaryMarkdown(instance.getJSON() as EditorDoc);
-      if (next === lastKnown.current) return;
+      const next = realChange(instance.getJSON() as EditorDoc, lastKnown.current);
+      if (next === null) return;
       lastKnown.current = next;
       onChange(next);
     },
@@ -85,7 +81,7 @@ export function SummaryRichEditor({
 
   // The Markdown the editor currently holds, as this serializer writes it. Compared against the
   // last value *known* (not the loaded one), so undoing back to the original still saves.
-  const lastKnown = useRef(serializeSummaryMarkdown(toEditorDoc(markdown)));
+  const lastKnown = useRef(editorBaseline(markdown));
 
   const mounted = useRef(false);
   useEffect(() => {
@@ -95,7 +91,7 @@ export function SummaryRichEditor({
       mounted.current = true;
       return;
     }
-    lastKnown.current = serializeSummaryMarkdown(toEditorDoc(markdown));
+    lastKnown.current = editorBaseline(markdown);
     editor?.commands.setContent(toEditorDoc(markdown), { emitUpdate: false });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- resets only on an explicit resetVersion bump, not on every keystroke's markdown (autosave would fight the caret)
   }, [resetVersion]);

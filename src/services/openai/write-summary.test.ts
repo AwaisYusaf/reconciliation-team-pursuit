@@ -204,6 +204,24 @@ describe("writeSummary", () => {
     expect(result.outcome).toBe("failed");
   });
 
+  it("the fetch is given a real AbortSignal (not undefined, not a plain object) — proves a timeout can actually abort it", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(responsesBody({ markdown: "## Overview\ntext" })));
+    await writeSummary({ facts: MINIMAL_FACTS }, { fetch: fetchMock, env: baseEnv(), timeoutMs: 5000 });
+    const init = fetchMock.mock.calls[0][1];
+    expect(init.signal).toBeInstanceOf(AbortSignal);
+  });
+
+  it("with no timeoutMs given, the real default (120_000ms) is what bounds the request", async () => {
+    const timeoutSpy = vi.spyOn(AbortSignal, "timeout");
+    try {
+      const fetchMock = vi.fn().mockResolvedValue(jsonResponse(responsesBody({ markdown: "## Overview\ntext" })));
+      await writeSummary({ facts: MINIMAL_FACTS }, { fetch: fetchMock, env: baseEnv() }); // no timeoutMs
+      expect(timeoutSpy).toHaveBeenCalledWith(120_000);
+    } finally {
+      timeoutSpy.mockRestore();
+    }
+  });
+
   it("missing API key → failed without calling fetch", async () => {
     const fetchMock = vi.fn();
     const result = await writeSummary(

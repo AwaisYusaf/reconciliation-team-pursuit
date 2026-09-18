@@ -5,6 +5,8 @@ import { describe, expect, it } from "vitest";
 
 import {
   checkSummaryStructure,
+  editorBaseline,
+  realChange,
   parseSummaryMarkdown,
   serializeSummaryMarkdown,
   toEditorDoc,
@@ -371,4 +373,39 @@ describe("PR #18 round 2, #2: nothing typed in the editor is lost or multiplied 
     const [block] = parseSummaryMarkdown(String.raw`**a\*\*b**`);
     expect(block).toMatchObject({ type: "paragraph", inlines: [{ text: "a**b", bold: true }] });
   });
+});
+
+describe("realChange: only a real edit is reported to autosave (PR #18 round 2, #3; round 3, #2)", () => {
+  // Stored the way the model writes it: `*` bullets, a paragraph wrapped over two lines. Its
+  // serialized form differs, though nobody has edited anything.
+  const stored = "## Overview\n\nSpending was\nconcentrated in Salary.\n\n* Salary: $39,700.00\n* Rent: $1,200.00";
+
+  it("opening a summary is not a change, even when its stored text serializes differently", () => {
+    expect(editorBaseline(stored)).not.toBe(stored);
+    expect(realChange(toEditorDoc(stored), editorBaseline(stored))).toBeNull();
+  });
+
+  it("an edit is a change, and returns the new Markdown", () => {
+    const edited = toEditorDoc(`${stored}\n\nA new line.`);
+    expect(realChange(edited, editorBaseline(stored))).toContain("A new line.");
+  });
+
+  it("undoing back to the original after an edit is a change too (compared with the last text known)", () => {
+    const afterEdit = serializeSummaryMarkdown(toEditorDoc(`${stored}\n\nA new line.`));
+    expect(realChange(toEditorDoc(stored), afterEdit)).toBe(editorBaseline(stored));
+  });
+});
+
+describe("indented markers stay text (PR #18 round 3, #4)", () => {
+  const para = (text: string) => ({
+    type: "doc" as const,
+    content: [{ type: "paragraph" as const, content: [{ type: "text" as const, text }] }],
+  });
+
+  for (const text of ["  - not a bullet", "\t## not a heading", "   # not a heading either"]) {
+    it(`${JSON.stringify(text)} saves and reads back as a paragraph`, () => {
+      const [block] = parseSummaryMarkdown(serializeSummaryMarkdown(para(text)));
+      expect(block).toMatchObject({ type: "paragraph", inlines: [{ text: text.trimStart() }] });
+    });
+  }
 });

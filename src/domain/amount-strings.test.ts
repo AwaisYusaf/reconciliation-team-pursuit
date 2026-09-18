@@ -66,3 +66,18 @@ describe("Phase 10 UI copy — verbatim against Appendix A", () => {
     expect(figures[3]).toMatchObject({ label: "Total paid", value: "$165.00" });
   });
 });
+
+describe("a refund's total (PR #18 round 3, #7)", () => {
+  const refund = { subtotalCents: -14500, taxCents: 0, feesCents: 0, totalCents: -14500 };
+
+  it("reads 'Total refunded $145.00', never 'Total paid -$145.00'", () => {
+    expect(UI.amountsSummary(refund)).toContain("Total refunded $145.00");
+    expect(UI.amountsSummary(refund)).not.toContain("Total paid");
+    expect(amountFigures(refund)[3]).toMatchObject({ label: "Total refunded", value: "$145.00", total: true });
+  });
+
+  it("a payment, and a zero total, still read 'Total paid'", () => {
+    expect(amountFigures({ ...refund, subtotalCents: 16500, totalCents: 16500 })[3]).toMatchObject({ label: "Total paid", value: "$165.00" });
+    expect(amountFigures({ ...refund, subtotalCents: 0, totalCents: 0 })[3]).toMatchObject({ label: "Total paid", value: "$0.00" });
+  });
+});

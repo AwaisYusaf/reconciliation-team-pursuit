@@ -812,6 +812,37 @@ describe.skipIf(!hasDatabase)("monthly-summary actions (integration, Phase 11)",
     expect(usage[0].outcome).toBe("success");
   });
 
+  it("write again with a stale version is refused before the model is called (PR #18 round 3, #3)", async () => {
+    const org = await makeOrgWithExpense(freshMonth());
+    asSession(org.orgId, org.userId);
+    const first = await writeSummaryAction({ sourceId: org.fundingSourceId, month: org.month, expectedVersion: null });
+    if (!first.ok) throw new Error("unreachable");
+    // Someone saves an edit meanwhile, so version 1 is stale.
+    const saved = await saveSummaryAction({
+      sourceId: org.fundingSourceId,
+      month: org.month,
+      markdown: "edited by someone else",
+      expectedVersion: first.data.version,
+    });
+    if (!saved.ok) throw new Error("unreachable");
+
+    writeSummaryMock.mockClear();
+    const again = await writeSummaryAction({ sourceId: org.fundingSourceId, month: org.month, expectedVersion: first.data.version });
+    expect(again).toEqual({ ok: false, error: UI.summaryConflict });
+    expect(writeSummaryMock).not.toHaveBeenCalled();
+    // Nothing spent, nothing replaced.
+    expect((await summaryRow(org.orgId, org.fundingSourceId, org.month))!.contentMarkdown).toBe("edited by someone else");
+  });
+
+  it("write again when there is no summary to replace is refused before the model is called (PR #18 round 3, #3)", async () => {
+    const org = await makeOrgWithExpense(freshMonth());
+    asSession(org.orgId, org.userId);
+    writeSummaryMock.mockClear();
+    const again = await writeSummaryAction({ sourceId: org.fundingSourceId, month: org.month, expectedVersion: 1 });
+    expect(again).toEqual({ ok: false, error: UI.summaryConflict });
+    expect(writeSummaryMock).not.toHaveBeenCalled();
+  });
+
   it("I-23: saving against a stale version → conflict", async () => {
     const org = await makeOrgWithExpense(freshMonth());
     asSession(org.orgId, org.userId);

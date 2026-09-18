@@ -49,6 +49,7 @@ import {
   type ExpenseInput,
 } from "./actions";
 import type { AttachedDocument } from "./queries";
+import { canSave } from "./can-save";
 import { UploadField, type PendingUpload } from "./upload-field";
 
 export type FormOptions = {
@@ -207,8 +208,7 @@ export function ExpenseForm({
 
   // On the add form files are held until the expense exists, then uploaded against it.
   const [queued, setQueued] = useState<PendingUpload[]>([]);
-  // A picked HEIC is still becoming a JPEG in the browser: saving now would upload a file that is
-  // about to be replaced, and lose the photo (PR #18 round 2, #6).
+  // A picked HEIC is still becoming a JPEG in the browser (PR #18 round 2, #6).
   const converting = queued.some((item) => item.converting);
   const [status, setStatus] = useState<string | null>(null);
 
@@ -763,7 +763,7 @@ export function ExpenseForm({
       <form
         onSubmit={(event) => {
           event.preventDefault();
-          if (!pending && !converting) save();
+          if (canSave(queued, pending)) save();
         }}
       >
         <Card className="p-7 flex flex-col gap-[22px]">
@@ -1166,7 +1166,7 @@ export function ExpenseForm({
 
           <div className="flex flex-wrap items-center gap-5">
             {!ownSavedLocked && (
-              <Button type="submit" disabled={pending || converting}>
+              <Button type="submit" disabled={!canSave(queued, pending)}>
                 {pending ? "Saving…" : converting ? UI.convertingPhotos : editing ? "Save changes" : "Save expense"}
               </Button>
             )}

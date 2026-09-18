@@ -1196,12 +1196,8 @@ export const aiUsageEvents = pgTable(
     documentSource: aiUsageDocumentSource("document_source"),
     /** Amount reads only. */
     documentKind: aiUsageDocumentKind("document_kind"),
-    /** Monthly summaries only. Single-column FK, nullable, set null on delete. Funding sources are
-     *  archived rather than deleted (D-93), so this only matters defensively: a usage row should
-     *  never block or be removed by a source's removal. */
-    fundingSourceId: uuid("funding_source_id").references(() => fundingSources.id, {
-      onDelete: "set null",
-    }),
+    /** Monthly summaries only. The composite key below ties it to this row's own organization. */
+    fundingSourceId: uuid("funding_source_id"),
     /** Monthly summaries only. */
     month: char({ length: 7 }),
     /** Monthly summaries only: the first draft, or a Write again. */
@@ -1210,6 +1206,14 @@ export const aiUsageEvents = pgTable(
   },
   (t) => [
     index("ai_usage_events_org_idx").on(t.orgId, t.createdAt),
+    // (source, org) like every other source-scoped table (D-93 2.3, PR #18 round 3): a single-column
+    // key let a usage row name another organization's funding source. NO ACTION, since sources are
+    // archived, never deleted; a null source (every amount read) isn't checked (MATCH SIMPLE).
+    foreignKey({
+      columns: [t.fundingSourceId, t.orgId],
+      foreignColumns: [fundingSources.id, fundingSources.orgId],
+    }),
+    check("ai_usage_events_month_ck", sql`${t.month} ~ '^\\d{4}-(0[1-9]|1[0-2])$'`),
     // An amount read always records what kind of document it read and where it came from, and
     // only has amount-read outcomes.
     check(

@@ -377,7 +377,9 @@ function serializeInlineRun(nodes: readonly EditorTextNode[] | undefined): strin
     .join("");
 }
 
-const LEADING_MARKER_RE = /^(#{1,3}|-)\s/;
+// Leading whitespace included: `classifyLine` strips it before matching, so `  - note` would come
+// back as a bullet too (PR #18 round 3, #4).
+const LEADING_MARKER_RE = /^\s*(#{1,3}|-)\s/;
 
 /** Every line of text in a list, in reading order, as one flat list: each paragraph of an item
  *  is its own bullet and a nested list's items follow their parent's (PR #18 round 2, #2 — only
@@ -416,8 +418,28 @@ export function serializeSummaryMarkdown(doc: EditorDoc): string {
         .join("\n");
     }
     const line = serializeInlineRun(node.content);
-    return LEADING_MARKER_RE.test(line) ? `\\${line}` : line;
+    // The whitespace goes with the escape: the parser trims it anyway.
+    return LEADING_MARKER_RE.test(line) ? `\\${line.trimStart()}` : line;
   });
 
   return chunks.filter((chunk) => chunk !== "").join("\n\n");
+}
+
+/** What an editor opened on `markdown` reports as "unchanged": that Markdown as this serializer
+ *  writes it. Stored text can differ from that — the model writes `* ` bullets, or wraps a
+ *  paragraph over two lines — without anyone having edited it. */
+export function editorBaseline(markdown: string): string {
+  return serializeSummaryMarkdown(toEditorDoc(markdown));
+}
+
+/**
+ * The editor's decision on every update (PR #18 round 2, #3; round 3, #2): the new Markdown when
+ * the document really differs from the last text known, otherwise null. Compared against the last
+ * text *known*, not the text loaded, so undoing back to the original still counts as a change.
+ * Tiptap fires updates that change nothing; each one reported used to autosave, so merely opening
+ * a summary marked it "Last edited by" whoever looked.
+ */
+export function realChange(doc: EditorDoc, lastKnown: string): string | null {
+  const next = serializeSummaryMarkdown(doc);
+  return next === lastKnown ? null : next;
 }
