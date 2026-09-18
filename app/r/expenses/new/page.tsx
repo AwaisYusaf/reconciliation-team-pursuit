@@ -6,6 +6,7 @@ import { TourGuide } from "@/src/components/ui/tour";
 import { loadExpenseAmounts, loadLineItemBudgets } from "@/src/db/queries";
 import { allLineItemStats } from "@/src/domain/budget-math";
 import { monthLabel, monthWindow, todayIso } from "@/src/domain/dates";
+import { pageTitle } from "@/src/domain/strings";
 import { readAmountsAllowedForOrg } from "@/src/modules/ai/access";
 import { ExpenseForm } from "@/src/modules/expenses/expense-form";
 import { loadExpenseFormOptions } from "@/src/modules/expenses/queries";
@@ -15,7 +16,7 @@ import { addExpenseTourSteps } from "@/src/modules/tours/add-expense-tour";
 import { hasSeenTour } from "@/src/modules/tours/queries";
 import { getSession } from "@/src/services/auth/session";
 
-export const metadata = { title: "Add Expense — Grant Expense Reconciliation" };
+export const metadata = { title: pageTitle("Add Expense") };
 
 export default async function NewExpensePage() {
   const session = await getSession();

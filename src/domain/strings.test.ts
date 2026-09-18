@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { formatBytes } from "./format";
 import {
+  APP_NAME,
   coverSheetFilename,
   coverSheetTitle,
   lineItemDeleteBlocked,
@@ -11,6 +12,7 @@ import {
   packetFilename,
   packetFooter,
   packetSummaryTitle,
+  pageTitle,
   PLAN_LABELS,
   sanitiseForFilename,
   SEE_BELOW,
@@ -92,6 +94,30 @@ describe("admin dashboard strings (Phase 9, verbatim)", () => {
     expect(STATUS_LABELS.active).toBe("Active");
     expect(STATUS_LABELS.past_due).toBe("Past due");
     expect(STATUS_LABELS.cancelled).toBe("Cancelled");
+  });
+});
+
+describe("pageTitle (product rename)", () => {
+  it("joins section and app name with an em dash, not a hyphen or en dash", () => {
+    expect(pageTitle("Dashboard")).toBe(`Dashboard — ${APP_NAME}`);
+    expect(pageTitle("Dashboard")).toContain("—"); // em dash, U+2014
+    expect(pageTitle("Dashboard")).not.toContain("–"); // en dash
+    expect(pageTitle("Dashboard")).not.toMatch(/ - /); // hyphen with spaces
+  });
+
+  it("still prepends the separator and app name for an empty section, rather than throwing", () => {
+    expect(pageTitle("")).toBe(` — ${APP_NAME}`);
+  });
+
+  it("does not collide with a section that already contains an em dash", () => {
+    expect(pageTitle("Before — After")).toBe(`Before — After — ${APP_NAME}`);
+  });
+
+  it("does not truncate a very long section label", () => {
+    const longSection = "A".repeat(500);
+    const title = pageTitle(longSection);
+    expect(title).toBe(`${longSection} — ${APP_NAME}`);
+    expect(title.startsWith(longSection)).toBe(true);
   });
 });
 

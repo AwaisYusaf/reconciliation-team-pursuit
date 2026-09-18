@@ -15,7 +15,7 @@ import { TableCard, Td, Th } from "@/src/components/ui/table";
 import { TourGuide } from "@/src/components/ui/tour";
 import { formatDateUS, monthLabel, todayIso } from "@/src/domain/dates";
 import { formatMoney } from "@/src/domain/format";
-import { UI } from "@/src/domain/strings";
+import { pageTitle, UI } from "@/src/domain/strings";
 import { packetContents } from "@/src/generation/packet-order";
 import { loadTrashedExpenses } from "@/src/modules/expenses/queries";
 import { loadSourceContext } from "@/src/modules/funding-sources/queries";
@@ -30,7 +30,7 @@ import { MonthDocuments } from "./month-documents";
 import { MonthlySummaryCard } from "./monthly-summary-card";
 import { PacketDownloadButtons, type DeletedItem } from "./packet-download-buttons";
 
-export const metadata = { title: "Month-End Packet — Grant Expense Reconciliation" };
+export const metadata = { title: pageTitle("Month-End Packet") };
 
 /**
  * m06 — the month's finish line.

@@ -4,6 +4,8 @@ import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 
+import { APP_NAME } from "@/src/domain/strings";
+
 /**
  * Scroll-triggered fade-and-rise, shared by every card grid on the page.
  *
@@ -93,17 +95,17 @@ function useActiveSection(ids: string[]) {
 
 const FAQS = [
   {
-    question: "Does Grant Ledger replace our existing Excel spreadsheets?",
+    question: `Does ${APP_NAME} replace our existing Excel spreadsheets?`,
     answer:
-      "Yes. Grant Ledger replaces manual spreadsheet reconciliation with a single ledger where every expense is captured once, with its documentation, at the moment it happens. There's no more retyping totals across separate Word and Excel files.",
+      `Yes. ${APP_NAME} replaces manual spreadsheet reconciliation with a single ledger where every expense is captured once, with its documentation, at the moment it happens. There's no more retyping totals across separate Word and Excel files.`,
   },
   {
     question: "What happens if an expense is missing a receipt or bank proof?",
     answer:
-      "Grant Ledger's hard documentation gate physically prevents staff from generating a monthly packet until every expense has both an itemized receipt and proof of payment attached, so incomplete expenses can't slip through to filing.",
+      `${APP_NAME}'s hard documentation gate physically prevents staff from generating a monthly packet until every expense has both an itemized receipt and proof of payment attached, so incomplete expenses can't slip through to filing.`,
   },
   {
-    question: "Can Grant Ledger handle multiple grant contracts at once?",
+    question: `Can ${APP_NAME} handle multiple grant contracts at once?`,
     answer:
       "Yes. The Reconciliation + AI plan ($497/month) supports multiple contracts with custom grant contract template customization, on top of everything in the single-contract Reconciliation plan ($297/month).",
   },
@@ -128,13 +130,11 @@ export function LandingPage() {
 <div className="max-w-3xl mx-auto rounded-full bg-[#38231a] border border-[#5b3a29] shadow-xl shadow-black/40 pl-5 sm:pl-8 pr-2.5 sm:pr-3 py-2 flex items-center justify-between">
 
 <Link className="flex items-center gap-2.5 group" href="/">
-<div className="w-7 h-7 rounded-lg bg-gradient-to-tr from-brand-900/85 via-primary/85 to-brand-600/85 backdrop-blur-md flex items-center justify-center text-white shadow-md ring-1 ring-inset ring-white/25 border border-primary/12 flex-shrink-0 group-hover:scale-105 transition-transform">
-<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-<path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.2"></path>
-</svg>
+<div className="w-7 h-7 flex items-center justify-center flex-shrink-0 group-hover:scale-105 transition-transform">
+<Image src="/brand/stayfunded-mark.png" alt="" width={28} height={26} className="h-7 w-auto" />
 </div>
 <div className="flex flex-col">
-<span className="text-base font-semibold tracking-tight text-white font-lp-serif leading-none">GrantLedger</span>
+<span className="text-base font-semibold tracking-tight text-white font-lp-serif leading-none">{APP_NAME}</span>
 </div>
 </Link>
 
@@ -556,7 +556,7 @@ export function LandingPage() {
       "@type": "ItemList",
       name: "The 9-Point Defense",
       description:
-        "The 9 attributes Grant Ledger enforces before an expense can enter the filing packet.",
+        `The 9 attributes ${APP_NAME} enforces before an expense can enter the filing packet.`,
       itemListElement: [
         { "@type": "ListItem", position: 1, name: "Verified Payee" },
         { "@type": "ListItem", position: 2, name: "Contract Period" },
@@ -639,7 +639,7 @@ Receipt + Bank Proof
 
 <div className="max-w-3xl mx-auto mt-6 text-center">
 <p className="text-xs sm:text-sm text-on-surface-variant leading-relaxed mb-4">
-        Auditors look for holes where invoices lack bank proofs or descriptions lack mission ties. Grant Ledger enforces 9 attributes before an expense can enter the filing packet.
+        Auditors look for holes where invoices lack bank proofs or descriptions lack mission ties. {APP_NAME} enforces 9 attributes before an expense can enter the filing packet.
       </p>
 <div className="flex flex-wrap justify-center gap-2">
 <span className="px-3 py-1.5 rounded-full bg-lp-surface-container-lowest border border-outline-variant/50 text-xs font-medium text-on-surface">Verified Payee</span>
@@ -893,7 +893,7 @@ Receipt + Bank Proof
           Born in Detroit with Team Pursuit Global
         </h2>
 <p className="text-sm sm:text-base text-on-surface-variant max-w-xl mx-auto">
-          Grant Ledger wasn&apos;t conceived in Silicon Valley. It was built shoulder-to-shoulder with frontline violence intervention workers.
+          {APP_NAME} wasn&apos;t conceived in Silicon Valley. It was built shoulder-to-shoulder with frontline violence intervention workers.
         </p>
 </div>
 <div className="glass-tile bg-lp-surface-container-lowest/60 backdrop-blur-xl rounded-3xl p-8 sm:p-12 border-2 border-primary/45 shadow-warm-card ring-1 ring-inset ring-white/30 space-y-6 text-sm sm:text-base text-on-surface-variant leading-relaxed">
@@ -904,10 +904,10 @@ Receipt + Bank Proof
           Yet every month, the same nightmare occurred: executive staff and frontline outreach leaders were pulled away from the streets for <strong>two to three full days</strong>. They were buried under shoeboxes of faded gas receipts, mismatched credit card statements, and fragile Excel sheets where a single broken formula would delay six-figure municipal reimbursements for weeks.
         </p>
 <blockquote className="pl-5 border-l-4 border-primary italic font-lp-serif text-base sm:text-lg text-on-surface my-6">
-          &quot;We watched brilliant community heroes spend 20% of their lives fighting Word tables and PDF merge errors. We built Grant Ledger to eliminate the paperwork hostage situation.&quot;
+          &quot;We watched brilliant community heroes spend 20% of their lives fighting Word tables and PDF merge errors. We built {APP_NAME} to eliminate the paperwork hostage situation.&quot;
         </blockquote>
 <p className="">
-          By creating a single unified record where receipts are attached at the moment of payment and monthly submittals are generated with one click, Grant Ledger turned that 3-day administrative crisis into a calm 30-minute formality.
+          By creating a single unified record where receipts are attached at the moment of payment and monthly submittals are generated with one click, {APP_NAME} turned that 3-day administrative crisis into a calm 30-minute formality.
         </p>
 </div>
 </div>
@@ -1098,10 +1098,10 @@ Receipt + Bank Proof
       mainEntity: [
         {
           "@type": "Question",
-          name: "Does Grant Ledger replace our existing Excel spreadsheets?",
+          name: `Does ${APP_NAME} replace our existing Excel spreadsheets?`,
           acceptedAnswer: {
             "@type": "Answer",
-            text: "Yes. Grant Ledger replaces manual spreadsheet reconciliation with a single ledger where every expense is captured once, with its documentation, at the moment it happens. There's no more retyping totals across separate Word and Excel files.",
+            text: `Yes. ${APP_NAME} replaces manual spreadsheet reconciliation with a single ledger where every expense is captured once, with its documentation, at the moment it happens. There's no more retyping totals across separate Word and Excel files.`,
           },
         },
         {
@@ -1109,12 +1109,12 @@ Receipt + Bank Proof
           name: "What happens if an expense is missing a receipt or bank proof?",
           acceptedAnswer: {
             "@type": "Answer",
-            text: "Grant Ledger's hard documentation gate physically prevents staff from generating a monthly packet until every expense has both an itemized receipt and proof of payment attached, so incomplete expenses can't slip through to filing.",
+            text: `${APP_NAME}'s hard documentation gate physically prevents staff from generating a monthly packet until every expense has both an itemized receipt and proof of payment attached, so incomplete expenses can't slip through to filing.`,
           },
         },
         {
           "@type": "Question",
-          name: "Can Grant Ledger handle multiple grant contracts at once?",
+          name: `Can ${APP_NAME} handle multiple grant contracts at once?`,
           acceptedAnswer: {
             "@type": "Answer",
             text: "Yes. The Reconciliation + AI plan ($497/month) supports multiple contracts with custom grant contract template customization, on top of everything in the single-contract Reconciliation plan ($297/month).",
@@ -1150,7 +1150,7 @@ Receipt + Bank Proof
           FAQs
         </h2>
 <p className="text-base text-on-surface-variant max-w-xs">
-          Straight answers for grant managers evaluating Grant Ledger for their team.
+          Straight answers for grant managers evaluating {APP_NAME} for their team.
         </p>
 </div>
 <div className="lg:col-span-8 flex flex-col gap-3">
@@ -1236,8 +1236,8 @@ Receipt + Bank Proof
 <footer className="bg-[#201a15] py-12 text-[#edbca5]/80 text-xs">
 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col md:flex-row items-center justify-between gap-4">
 <div className="flex items-center gap-3 flex-shrink-0">
-<div className="w-7 h-7 rounded-lg bg-primary/80 backdrop-blur-md text-white flex items-center justify-center font-lp-serif font-semibold text-xs ring-1 ring-inset ring-white/20 border border-brand-400/20 flex-shrink-0">GL</div>
-<span className="font-semibold text-white text-sm font-lp-serif whitespace-nowrap">Grant Ledger</span>
+<div className="w-7 h-7 flex items-center justify-center flex-shrink-0"><Image src="/brand/stayfunded-mark.png" alt="" width={28} height={26} className="h-7 w-auto" /></div>
+<span className="font-semibold text-white text-sm font-lp-serif whitespace-nowrap">{APP_NAME}</span>
 <span className="hidden lg:inline text-[#edbca5]/80 whitespace-nowrap">• Nonprofit &amp; CVI Grant Reconciliation Engine</span>
 </div>
 <div className="flex flex-wrap items-center justify-center gap-5">
@@ -1247,7 +1247,7 @@ Receipt + Bank Proof
 <a className="hover:text-white transition-colors" href="#pricing">Pricing</a>
 <a className="hover:text-white transition-colors" href="#faq">FAQ</a>
 </div>
-<div className="text-[#edbca5]/80 flex-shrink-0 text-center md:text-right">© 2026 Grant Ledger. Built for frontline teams. All rights reserved.</div>
+<div className="text-[#edbca5]/80 flex-shrink-0 text-center md:text-right">© 2026 {APP_NAME}. Built for frontline teams. All rights reserved.</div>
 </div>
 </footer>
     </>

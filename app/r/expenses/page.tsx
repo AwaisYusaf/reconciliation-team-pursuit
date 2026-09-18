@@ -8,7 +8,7 @@ import { TourGuide } from "@/src/components/ui/tour";
 import { db } from "@/src/db";
 import { paymentSources } from "@/src/db/schema";
 import { isValidMonthKey, monthLabel } from "@/src/domain/dates";
-import { expenseReference } from "@/src/domain/strings";
+import { expenseReference, pageTitle } from "@/src/domain/strings";
 import { documentationStatus, type GateExpense } from "@/src/domain/gate";
 import { reimbursableCents } from "@/src/domain/money";
 import { loadMonthExpenses } from "@/src/modules/expenses/queries";
@@ -30,7 +30,7 @@ function viewable(
     .map(({ id, filename, mimeType }) => ({ id, filename, mimeType }));
 }
 
-export const metadata = { title: "Expenses — Grant Expense Reconciliation" };
+export const metadata = { title: pageTitle("Expenses") };
 
 export default async function ExpensesPage({
   searchParams,

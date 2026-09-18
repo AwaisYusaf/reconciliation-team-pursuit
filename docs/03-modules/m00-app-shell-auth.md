@@ -36,11 +36,11 @@ Sign-up → onboarding → empty dashboard flow works; abandoning mid-onboarding
 ## Claude Design prompt
 
 ```
-Design the authentication and onboarding flow for "Grant Expense Reconciliation" (4 screens +
+Design the authentication and onboarding flow for "Stay Funded 360" (4 screens +
 the app chrome demo).
 
-1) SIGN IN — centered card (max 440px) on the paper background: small serif line "Grant
-Expense Reconciliation", h1 "Sign in to your organisation", fields "Organisation email"
+1) SIGN IN — centered card (max 440px) on the paper background: small serif line "Stay
+Funded 360", h1 "Sign in to your organisation", fields "Organisation email"
 (placeholder you@yourorganization.org) and "Password", full-width primary button "Sign in",
 inline error state example in red ("That password doesn't match this organisation email."),
 a quiet centered line "Forgot your password? Contact Mantaq.", and footer line "Don't have an

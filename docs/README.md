@@ -1,4 +1,4 @@
-# Documentation — Grant Expense Reconciliation System
+# Documentation — Stay Funded 360
 
 Docs-first, AI-native project. **These files are the source of truth.** Code serves the docs; when reality diverges, update the doc in the same change.
 

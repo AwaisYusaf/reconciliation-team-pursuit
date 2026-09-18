@@ -1,4 +1,4 @@
-# PRD — Grant Expense Reconciliation System (MVP)
+# PRD — Stay Funded 360 (MVP)
 
 **Client:** Team Pursuit Global (Detroit CVI/ShotStoppers subrecipient) · **Builder:** Mantaq · **SOW:** signed 2026-08-13 (`context/…SOW.pdf`) · **Prototype:** approved Claude artifact "Month and Download Features"
 

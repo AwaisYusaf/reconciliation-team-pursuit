@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 
 import { PageTitle, Subtext } from "@/src/components/ui/surfaces";
 import { formatDateUS, monthLabel, todayIso } from "@/src/domain/dates";
+import { pageTitle } from "@/src/domain/strings";
 import { loadTrashedExpenses } from "@/src/modules/expenses/queries";
 import { findFundingSource, loadSourceContext } from "@/src/modules/funding-sources/queries";
 import { loadLockedMonths } from "@/src/modules/packet/queries";
@@ -9,7 +10,7 @@ import { getSession } from "@/src/services/auth/session";
 
 import { TrashTable, type TrashRow } from "./trash-table";
 
-export const metadata = { title: "Trash — Grant Expense Reconciliation" };
+export const metadata = { title: pageTitle("Trash") };
 
 export default async function ExpenseTrashPage({
   searchParams,

@@ -9,6 +9,7 @@ import { monthStatuses } from "@/src/db/schema";
 import { allLineItemStats } from "@/src/domain/budget-math";
 import { formatDateUS, todayIso } from "@/src/domain/dates";
 import { reimbursableCents } from "@/src/domain/money";
+import { pageTitle } from "@/src/domain/strings";
 import { readAmountsAllowedForOrg } from "@/src/modules/ai/access";
 import { ExpenseForm } from "@/src/modules/expenses/expense-form";
 import { loadExpense, loadExpenseFormOptions } from "@/src/modules/expenses/queries";
@@ -16,7 +17,7 @@ import { loadSourceContext } from "@/src/modules/funding-sources/queries";
 import { loadLockedMonths } from "@/src/modules/packet/queries";
 import { getSession } from "@/src/services/auth/session";
 
-export const metadata = { title: "Edit Expense — Grant Expense Reconciliation" };
+export const metadata = { title: pageTitle("Edit Expense") };
 
 export default async function EditExpensePage({
   params,

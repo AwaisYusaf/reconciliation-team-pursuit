@@ -9,6 +9,14 @@
 import type { ReadAmounts } from "@/src/domain/amount-suggestion";
 import { formatMoney } from "@/src/domain/format";
 
+/** The product name, everywhere it appears in UI copy, page titles and generated-document fallbacks. */
+export const APP_NAME = "Stay Funded 360";
+
+/** A page's `<title>`, in the app's fixed "Section — App Name" form. */
+export function pageTitle(section: string): string {
+  return `${section} — ${APP_NAME}`;
+}
+
 /** Printed on a cover sheet heading whenever tax > 0 (R6.5). Exact text — singular "Statement". */
 export const TAX_NOTE = "(Note: Statement includes tax which was excluded from reimbursement amount)";
 

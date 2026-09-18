@@ -1,6 +1,6 @@
 # Design Review — Claude Design project fetch (2026-08-16)
 
-**Source of truth for visuals:** Claude Design project `Grant Expense Reconciliation System`, projectId `3e45af6d-56de-4ac4-974d-a1bae86a7c10`. Ten screens as `.dc.html` Design Components + shared `support.js` runtime + the design-language preamble as project CLAUDE.md. **Do not copy the files into this repo** — when building module X, refetch its file fresh: `DesignSync { method: "get_file", projectId: "3e45af6d-56de-4ac4-974d-a1bae86a7c10", path: "<Screen>.dc.html" }` (paths: Auth and Onboarding, Dashboard, Add Expense, Expenses, Cover Sheets, Recurring, Month-End Packet, Contract Summary, Line Items, Settings — all `.dc.html`).
+**Source of truth for visuals:** Claude Design project `Stay Funded 360` (created as `Grant Expense Reconciliation System`), projectId `3e45af6d-56de-4ac4-974d-a1bae86a7c10`. Ten screens as `.dc.html` Design Components + shared `support.js` runtime + the design-language preamble as project CLAUDE.md. **Do not copy the files into this repo** — when building module X, refetch its file fresh: `DesignSync { method: "get_file", projectId: "3e45af6d-56de-4ac4-974d-a1bae86a7c10", path: "<Screen>.dc.html" }` (paths: Auth and Onboarding, Dashboard, Add Expense, Expenses, Cover Sheets, Recurring, Month-End Packet, Contract Summary, Line Items, Settings — all `.dc.html`).
 
 ## How the screens are built (dc format)
 

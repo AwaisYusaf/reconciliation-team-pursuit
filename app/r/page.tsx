@@ -5,6 +5,7 @@ import { WelcomeBanner } from "@/src/components/app-shell/welcome-banner";
 import { EmptyState, PageTitle, Subtext } from "@/src/components/ui/surfaces";
 import { TourGuide } from "@/src/components/ui/tour";
 import { monthLabel } from "@/src/domain/dates";
+import { pageTitle } from "@/src/domain/strings";
 import { loadSourceContext } from "@/src/modules/funding-sources/queries";
 import { loadReadySummarySourceIds } from "@/src/modules/monthly-summary/queries";
 import { DASHBOARD_TOUR_STEPS } from "@/src/modules/tours/dashboard-tour";
@@ -12,7 +13,7 @@ import { hasSeenTour } from "@/src/modules/tours/queries";
 import { getSession } from "@/src/services/auth/session";
 import { SourceBudgetSection } from "./source-budget-section";
 
-export const metadata = { title: "Dashboard — Grant Expense Reconciliation" };
+export const metadata = { title: pageTitle("Dashboard") };
 
 /**
  * m01 — budget status per line item for the active month.

@@ -1,3 +1,4 @@
+import Image from "next/image";
 import { redirect } from "next/navigation";
 
 import { AppNav } from "@/src/components/app-shell/app-nav";
@@ -8,6 +9,7 @@ import { Button } from "@/src/components/ui/button";
 import { AppToaster } from "@/src/components/ui/toast";
 import { loadSelectableMonths } from "@/src/db/months";
 import { PlusBadge } from "@/src/components/ui/plus-badge";
+import { APP_NAME } from "@/src/domain/strings";
 import { aiPlanAllowed } from "@/src/modules/ai/access";
 import { signOutAction } from "@/src/modules/auth/actions";
 import { loadSourceContext } from "@/src/modules/funding-sources/queries";
@@ -44,8 +46,15 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             <div className="font-serif text-lg sm:text-xl lg:text-2xl font-bold leading-tight text-ink truncate">
               {session.orgName}
             </div>
-            <div className="text-[13px] sm:text-[15px] text-sub mt-0.5 sm:mt-1 truncate">
-              Grant Expense Reconciliation
+            <div className="text-[13px] sm:text-[15px] text-sub mt-0.5 sm:mt-1 flex items-center gap-1.5 min-w-0">
+              <Image
+                src="/brand/stayfunded-mark.png"
+                alt=""
+                width={22}
+                height={20}
+                className="h-5 w-auto shrink-0"
+              />
+              <span className="truncate">{APP_NAME}</span>
             </div>
           </div>
           <div className="shrink-0 flex items-center gap-2.5">

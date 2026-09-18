@@ -1,11 +1,12 @@
 import type { Metadata } from "next";
 
 import { LandingPage } from "@/src/modules/landing/landing-page";
+import { APP_NAME } from "@/src/domain/strings";
 
 // Ported from grant-ledger app/layout.tsx (lines 18-56) with the site URL swapped to this
 // repo's own convention: APP_URL, not grant-ledger's NEXT_PUBLIC_SITE_URL.
 const siteUrl = process.env.APP_URL ?? "https://reconciliation.teampursuit.org";
-const title = "Grant Ledger | Frontline Nonprofit Grant Reconciliation & Audit Engine";
+const title = `${APP_NAME} | Frontline Nonprofit Grant Reconciliation & Audit Engine`;
 const description =
   "Capture every grant expense with its documentation the moment it happens, then generate a complete funder-ready packet, cover sheets, contract summary, and merged filing, in minutes. Built for CVI and frontline nonprofits managing municipal grant reimbursements.";
 
@@ -24,7 +25,7 @@ export const metadata: Metadata = {
     title,
     description,
     url: siteUrl,
-    siteName: "Grant Ledger",
+    siteName: APP_NAME,
     type: "website",
     locale: "en_US",
     images: [
@@ -32,7 +33,7 @@ export const metadata: Metadata = {
         url: "/macbook-pro-14-front.png",
         width: 1200,
         height: 780,
-        alt: "Grant Ledger dashboard shown on a laptop screen",
+        alt: `${APP_NAME} dashboard shown on a laptop screen`,
       },
     ],
   },
@@ -47,9 +48,9 @@ export const metadata: Metadata = {
 const organizationSchema = {
   "@context": "https://schema.org",
   "@type": "Organization",
-  name: "Grant Ledger",
+  name: APP_NAME,
   url: siteUrl,
-  logo: `${siteUrl}/favicon.ico`,
+  logo: `${siteUrl}/brand/stayfunded-logo.png`,
   description,
 };
 

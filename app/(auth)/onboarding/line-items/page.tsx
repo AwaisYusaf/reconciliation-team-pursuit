@@ -4,11 +4,12 @@ import { db } from "@/src/db";
 import { lineItems } from "@/src/db/schema";
 import { getSession } from "@/src/services/auth/session";
 import { asc, eq } from "drizzle-orm";
+import { pageTitle } from "@/src/domain/strings";
 
 import { OnboardingLineItemsForm } from "./line-items-form";
 import { Eyebrow, PageTitle } from "@/src/components/ui/surfaces";
 
-export const metadata = { title: "Set up your budget — Grant Expense Reconciliation" };
+export const metadata = { title: pageTitle("Set up your budget") };
 
 /** Starter categories, names only — budgets are the organisation's to enter (review B10). */
 const STARTER_NAMES = [

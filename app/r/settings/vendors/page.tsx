@@ -2,12 +2,13 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { PageHeader } from "@/src/components/ui/surfaces";
+import { pageTitle } from "@/src/domain/strings";
 import { loadVendorsPage, VENDORS_PAGE_SIZE } from "@/src/modules/settings/queries";
 import { getSession } from "@/src/services/auth/session";
 
 import { VendorLibraryFull } from "./vendor-library-full";
 
-export const metadata = { title: "Vendor library — Grant Expense Reconciliation" };
+export const metadata = { title: pageTitle("Vendor library") };
 
 export default async function VendorsPage({
   searchParams,

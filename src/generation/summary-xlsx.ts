@@ -11,7 +11,7 @@ import ExcelJS from "exceljs";
 import { monthLabel, monthShortLabel, formatDateUS, type MonthKey } from "@/src/domain/dates";
 import { percentValue, summaryRowLabel } from "@/src/domain/format";
 import { centsToDollars, receiptTotalCents, reimbursableCents, sumBy } from "@/src/domain/money";
-import { summaryFilename } from "@/src/domain/strings";
+import { APP_NAME, summaryFilename } from "@/src/domain/strings";
 import { contractSummary, type SummaryRow } from "@/src/domain/summary";
 
 import type { MonthSnapshot } from "./month-snapshot";
@@ -106,7 +106,7 @@ function formatSummaryRow(row: ExcelJS.Row, bold = false): void {
 /** Build the workbook for one month. */
 export async function buildSummaryWorkbook(snapshot: MonthSnapshot): Promise<Buffer> {
   const workbook = new ExcelJS.Workbook();
-  workbook.creator = snapshot.docName || "Grant Expense Reconciliation";
+  workbook.creator = snapshot.docName || APP_NAME;
 
   const summary = contractSummary({
     lineItems: snapshot.lineItems,

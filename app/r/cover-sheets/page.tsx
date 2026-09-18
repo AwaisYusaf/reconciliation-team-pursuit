@@ -15,7 +15,7 @@ import { loadLineItemBudgets } from "@/src/db/queries";
 import { coverSheetRows } from "@/src/domain/cover-sheet";
 import { monthLabel } from "@/src/domain/dates";
 import { blockingRecords, type GateExpense } from "@/src/domain/gate";
-import { coverSheetTitle, UI } from "@/src/domain/strings";
+import { coverSheetTitle, pageTitle, UI } from "@/src/domain/strings";
 import { loadMonthExpenses, type ExpenseDetail } from "@/src/modules/expenses/queries";
 import { loadSourceContext } from "@/src/modules/funding-sources/queries";
 import { COVER_SHEETS_TOUR_STEPS } from "@/src/modules/tours/cover-sheets-tour";
@@ -26,7 +26,7 @@ import { CoverSheetPreview, type PreviewRow } from "./cover-sheet-preview";
 import { ALL_LINE_ITEMS } from "./constants";
 import { LineItemSelect } from "./line-item-select";
 
-export const metadata = { title: "Cover Sheets — Grant Expense Reconciliation" };
+export const metadata = { title: pageTitle("Cover Sheets") };
 
 /**
  * m04 — the Breakdown document preview and its downloads.

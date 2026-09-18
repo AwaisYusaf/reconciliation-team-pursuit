@@ -4,7 +4,7 @@ import { PickFundingSource } from "@/src/components/app-shell/pick-funding-sourc
 import { PageHeader } from "@/src/components/ui/surfaces";
 import { PlusBadge } from "@/src/components/ui/plus-badge";
 import { formatDateShort, monthLabel, todayIso } from "@/src/domain/dates";
-import { UI } from "@/src/domain/strings";
+import { pageTitle, UI } from "@/src/domain/strings";
 import { summariesAccessForOrg } from "@/src/modules/ai/access";
 import { loadSourceContext } from "@/src/modules/funding-sources/queries";
 import { loadMonthlySummaryScreen, loadViewerDisplay } from "@/src/modules/monthly-summary/queries";
@@ -13,7 +13,7 @@ import { getSession } from "@/src/services/auth/session";
 import { SavedSummaries, type SavedSummaryRow } from "./saved-summaries";
 import { SummaryEditor } from "./summary-editor";
 
-export const metadata = { title: "Monthly Summary — Grant Expense Reconciliation" };
+export const metadata = { title: pageTitle("Monthly Summary") };
 
 /**
  * The Monthly summary screen (Phase 11 §7.1). Follows the header's funding source and month,

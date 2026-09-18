@@ -1,6 +1,8 @@
+import Image from "next/image";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
+import { pageTitle } from "@/src/domain/strings";
 import { signupEnabled } from "@/src/modules/auth/config";
 import { getSession, getStaffSession } from "@/src/services/auth/session";
 
@@ -8,7 +10,7 @@ import { PageTitle } from "@/src/components/ui/surfaces";
 
 import { LoginForm } from "./login-form";
 
-export const metadata = { title: "Sign in — Grant Expense Reconciliation" };
+export const metadata = { title: pageTitle("Sign in") };
 
 export default async function LoginPage() {
   // Real check, independent of proxy.ts.
@@ -18,8 +20,15 @@ export default async function LoginPage() {
 
   return (
     <div className="w-full max-w-[440px] bg-surface border border-line rounded-[4px] px-8 pt-9 pb-8">
-      <div className="font-serif text-[15px] text-sub tracking-[0.02em]">
-        Grant Expense Reconciliation
+      <div className="flex justify-center">
+        <Image
+          src="/brand/stayfunded-logo.png"
+          alt="Stay Funded 360"
+          width={220}
+          height={147}
+          priority
+          className="w-[180px] sm:w-[220px] h-auto"
+        />
       </div>
       <PageTitle className="leading-tight mt-2.5 mb-6 sm:mb-[26px]">Sign in to your organization</PageTitle>
 
