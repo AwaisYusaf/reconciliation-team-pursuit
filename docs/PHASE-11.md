@@ -1,6 +1,6 @@
 # Phase 11 — Monthly summary (AI draft)
 
-Status: **Phases 1–5 built** (2026-09-17). Builds on Phase 10 (`implementation/ai-receipt-reading`,
+Status: **Phases 1–5 built; PR #18 review fixes applied** (2026-09-18). Builds on Phase 10 (`implementation/ai-receipt-reading`,
 not yet merged): branch from it, or rebase once it merges. The product spec is Appendix A, copied
 word for word. The team changed parts of it while planning (a screen of its own instead of a
 section, a plain Markdown editor, Word **and** PDF); §2 records every one of those changes with
@@ -38,6 +38,7 @@ works on locked months.
 | C5 | (not specified) | **One button starts generation**; nothing about the prompt is chosen or typed on the frontend. The prompt is a fixed backend constant plus the month's facts. | User: "No prompt given from frontend. Static prompt on backend + month details. There'll be only one button on frontend to trigger summary generation" |
 | C6 | (not specified) | **The model returns Markdown.** | User: "we will have the ai give in md" |
 | C7 | "Use the same check built for receipt reading, with the plan added" | Two checks next to it, without the receipt switch (P1). | Plan; see P1 for why. |
+| C9 | C2/C8's Markdown box, and the summary reachable only from a card or the Dashboard | **Rich editing and a section on the packet tab.** The summary is edited as it looks — headings, paragraphs, bullets — with a two-button toolbar (Bold, Bullet list), built on Tiptap and still stored as the same Markdown, so Word, PDF and Copy text are unchanged. The Preview/Edit tabs and the preview component are gone. A full summary section now sits on the Month-End Packet tab below Month documents, sharing one component and one loader with `/r/monthly-summary`, which stays for older months and deep links. | PR #18 review #7, #8; user approval 2026-09-18 |
 | C8 | (not specified) | **Preview/Edit tabs, with Preview as the default view; a shimmer replaces the summary while the model writes; a line-by-line reveal animation runs after both the first draft and Write again.** The shimmer's message and, for the reveal, `prefers-reduced-motion`, carry the meaning when the animation itself is off. Copy text is disabled while writing, for the same reason the downloads already were. | User, 2026-09-18 |
 
 ### 2.2 Taken by this plan (with the reason)
@@ -136,7 +137,12 @@ the model and the verifier).
 | Changes from last month | per line item: previous and this month's spend, change amount and percent, the P18 flag; `previousMonthHadSpending` |
 | Items to note | no-receipt expenses (name, amount, reason), refunds (reimbursable < 0), tax/fees not reimbursed per expense (`excludedParts`) |
 
-`allowedAmounts` and `allowedPercents` = every formatted value above.
+`allowedAmounts` and `allowedPercents` = every formatted value above, **plus the literal `100%`**
+(PR #18 review, 2026-09-18). §5's prompt asks the model to call out any line item "at or over
+100%", so the phrase is one the app itself invites; without it in the allowed set a month with an
+over-budget line item had its draft rejected by P4, retried, rejected again and logged `failed` —
+the app refusing a word it had asked for. It is a safe addition because it is a threshold the
+prompt names, not a figure derived from the records.
 
 ---
 
@@ -220,7 +226,7 @@ area, plus a **Saved summaries** list (beside it on desktop, above it on phone).
 - **Saved summaries list:** one row per month that has a summary for this funding source, newest month first: "March 2026 · Last edited 17 Sep 2026" (or "Draft written …"). The current month is highlighted. Clicking a row calls `setActiveMonthAction(month)` and reloads, so the header, the screen and the rest of the app agree on the month. Empty list: not shown.
 - **Responsive:** list above the editor under `lg`; text box full width, at least 20 rows on desktop and 12 on phone; buttons wrap; 44 px tap targets; no horizontal scroll at 375 px.
 
-### 7.2 Preview/Edit tabs, Save and autosave (C2, C8, C3)
+### 7.2 Rich editing, Save and autosave (C9, C3)
 
 - **Preview** (default) renders the saved Markdown as React elements through the P6 parser —
   headings, paragraphs and bullets, in the app's own type — never as raw HTML. **Edit** is the
@@ -855,6 +861,37 @@ again." (download route) · the AI usage card's labels and captions.
 be dropped outright — a reviewer reads the whole draft anyway, and any `[add …]` placeholder is
 visible in the text itself. **The prompt (§5) still asks the model to write `[add …]` where
 context is missing**; only the on-screen reminder no longer mentions brackets by name.
+
+---
+
+## 8. PR #18 review — fixes and real-model evidence (2026-09-18)
+
+Reviewer's list, all applied. Behaviour changes beyond the review are recorded in C9 above.
+
+| # | Fix |
+|---|---|
+| 1 | Proof amounts are positive: the prompt says a payment is a positive number and the server forces it. A bank line written `-$165.00` no longer warns that proofs disagree, and no longer fills a negative subtotal on a No-receipt expense. |
+| 2 | Two causes of random rejection: `100%` is now supplied (the prompt invites "at or above 100%"), and a supplied amount written in parentheses — `Salary ($45,641.12)`, which the prompt's own "name each line item with its amount" produces — counts as supplied. Found by the three-month evaluation, which lost two months to it. |
+| 3 | Model amounts must be a plain decimal or comma-grouped thousands (`12,50` and `1.234,56` refused, `1,234.56` accepted); `max_output_tokens` on reads; at most 4 reads in flight per organisation. |
+| 5 | Cross-org download tested through the route *and* against the loader, since the route's own funding-source check hides a missing scope in the loader. |
+| 6 | `#94603F` is `--color-plus-light`. |
+| 7 | Summary section on the Month-End Packet tab; the screen stays (C9). |
+| 8 | Rich editing with Bold and Bullet list (C9). |
+| 9 | The AI reminder is a grey note with Appendix A's wording; red is kept for the changed-records warning and errors. |
+| 10 | Summary first, Saved summaries below, on phones. |
+| 11 | A file over ten pages says "Too long to read (over 10 pages). Enter the amounts yourself." instead of "No amount found". |
+| 12 | No Plus badge for base-plan organisations. |
+| 13 | "Plus" in badges and tours, "Reconciliation + AI" in plan and billing text. |
+| 14 | "Save changes"; the Plus receipt tour step keeps "The reason prints on the cover sheet." |
+
+Deferred to `docs/TASKS.md`: reading the first pages of a long PDF instead of refusing it.
+
+**Receipts — gpt-5.6-luna, 12 documents, 12 correct, $0.00014 each.** Clear PDF, skewed and blurred phone photo, multi-page PDF, handwritten note, bank transfer screenshot, ATM slip with a fee, a receipt whose total doesn't add up, a refund, a timesheet and a full bank statement (both correctly "no amount"), a PNG till receipt, and a bank line written as a debit (the #1 fix). A real photographed restaurant bill in European format (`191,36` / `13,39` / `204,75`) also read exactly.
+**Not covered: HEIC.** This machine's image library has no HEVC encoder, so no genuine iPhone file could be produced. Worth checking with a real photo before release — the same decoder converts HEIC on ordinary upload.
+
+**Summaries — gpt-5.6-terra, three months, $0.0215 each.** February 2026 (38 expenses, 583 words), June (14, 562), July (12, 453). All five sections in order, no figure outside what the app supplied, no invented results, over-budget line items called out with their negative balances. February was re-run after the parentheses fix: six parenthesised amounts, zero rejections.
+
+**Gate:** typecheck, lint and production build clean; full suite 1572 passed, 20 skipped, one failing file — `packet-trace`, this machine's `pdftotext` lacking `-bbox-layout`. Browser pass: toolbar, headings and bullets, autosave settling clean, the packet-tab section, the grey reminder, and phone order with no sideways scroll.
 
 ---
 

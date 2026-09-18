@@ -37,26 +37,29 @@ describe("Month-End Packet tour wiring", () => {
 
   it("has exactly the 5 spec steps plus the Phase 11 Monthly summary step (6 total), each with a real target somewhere in the packet screen", () => {
     expect(PACKET_TOUR_STEPS).toHaveLength(6);
-    const cardSource = readFileSync(`${repoRoot}app/r/packet/monthly-summary-card.tsx`, "utf8");
+    const pageSource = readFileSync(`${repoRoot}app/r/packet/page.tsx`, "utf8");
     const sources = [
-      readFileSync(`${repoRoot}app/r/packet/page.tsx`, "utf8"),
+      pageSource,
       readFileSync(`${repoRoot}app/r/packet/packet-download-buttons.tsx`, "utf8"),
       readFileSync(`${repoRoot}app/r/packet/submitted-marker.tsx`, "utf8"),
       // "packet-submit" moved here from submitted-marker.tsx once month locking (R10.7) gave
       // the packet screen its own submit/lock controls.
       readFileSync(`${repoRoot}app/r/packet/month-lock.tsx`, "utf8"),
-      cardSource,
     ].join("\n");
     for (const step of PACKET_TOUR_STEPS) {
       const targets = Array.isArray(step.target) ? step.target : [step.target];
       for (const target of targets) {
         if (target === "packet-monthly-summary") {
-          // The card writes this as a conditional expression (`data-tour={card.use ? "..." :
-          // undefined}`), not a plain string attribute, so the plain `data-tour="..."` check
-          // below would never match it — handled explicitly instead.
-          expect(cardSource, `data-tour={card.use ? "${target}" : undefined} on the card`).toContain(
-            `data-tour={card.use ? "${target}" : undefined}`,
-          );
+          // The packet page's own Monthly summary section wrapper writes this as a conditional
+          // expression (`data-tour={summariesAccess.use ? "..." : undefined}`), not a plain
+          // string attribute, so the plain `data-tour="..."` check below would never match it —
+          // handled explicitly instead. Moved here from the now-deleted
+          // `app/r/packet/monthly-summary-card.tsx` (PR #18 review #7: one section, one loader,
+          // shared with the Monthly summary screen).
+          expect(
+            pageSource,
+            `data-tour={summariesAccess.use ? "${target}" : undefined} on the packet page`,
+          ).toContain(`data-tour={summariesAccess.use ? "${target}" : undefined}`);
           continue;
         }
         expect(sources, `data-tour="${target}" referenced by "${step.title}"`).toContain(
@@ -66,17 +69,17 @@ describe("Month-End Packet tour wiring", () => {
     }
   });
 
-  it("the Monthly summary step is last, uses the Phase 11 UI strings, and only targets the card, which only carries data-tour on the Plus plan", () => {
+  it("the Monthly summary step is last, uses the Phase 11 UI strings, and only targets the packet page's section wrapper, which only carries data-tour on the Plus plan", () => {
     const last = PACKET_TOUR_STEPS[PACKET_TOUR_STEPS.length - 1];
     expect(last.target).toBe("packet-monthly-summary");
     expect(last.title).toBe(UI.tourSummaryCardTitle);
     expect(last.body).toBe(UI.tourSummaryCardBody);
 
-    const cardSource = readFileSync(`${repoRoot}app/r/packet/monthly-summary-card.tsx`, "utf8");
-    // The card only carries the target when `card.use` is true — the base plan renders no
-    // element with this data-tour at all, so the engine drops the step there (resolve-steps.ts),
-    // same pattern as settings-tour.test.ts's Plus-reading-step gating check.
-    expect(cardSource).toContain('data-tour={card.use ? "packet-monthly-summary" : undefined}');
+    const pageSource = readFileSync(`${repoRoot}app/r/packet/page.tsx`, "utf8");
+    // The wrapper only carries the target when `summariesAccess.use` is true — the base plan
+    // renders no element with this data-tour at all, so the engine drops the step there
+    // (resolve-steps.ts), same pattern as settings-tour.test.ts's Plus-reading-step gating check.
+    expect(pageSource).toContain('data-tour={summariesAccess.use ? "packet-monthly-summary" : undefined}');
   });
 
   it("resolve-steps drops the Monthly summary step (and only that one) when every other packet target exists but this one doesn't — e.g. the base plan", () => {

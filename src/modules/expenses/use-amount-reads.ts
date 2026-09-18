@@ -26,6 +26,8 @@ const MAX_CONCURRENT = 2;
 
 type ReadAmountsResponse = {
   ok: boolean;
+  /** Set when the file was refused before the model saw it — see `FileReadResult.reason`. */
+  code?: "too-long";
   data?: {
     found: boolean;
     subtotalCents?: number;
@@ -46,8 +48,9 @@ async function readOne(input: AmountReadInput): Promise<FileReadResult> {
 
   try {
     const response = await fetch("/api/files/read-amounts", { method: "POST", body: form });
-    if (!response.ok) return { status: "none" };
-    const json = (await response.json()) as ReadAmountsResponse;
+    const json = (await response.json().catch(() => null)) as ReadAmountsResponse | null;
+    if (json?.code === "too-long") return { status: "none", reason: "too-long" };
+    if (!response.ok || !json) return { status: "none" };
     if (!json.ok || !json.data?.found) return { status: "none" };
     const { subtotalCents = 0, taxCents = 0, feesCents = 0, totalCents = 0 } = json.data;
     return { status: "found", amounts: { subtotalCents, taxCents, feesCents, totalCents } };

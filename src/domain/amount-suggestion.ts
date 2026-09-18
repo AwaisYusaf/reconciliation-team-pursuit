@@ -18,7 +18,9 @@ export type ReadAmounts = {
 
 export type FileReadResult =
   | { status: "pending" }
-  | { status: "none" }
+  /** `reason` is only set where "No amount found" would mislead: a document refused before it
+   *  ever reached the model reads as an AI failure otherwise (PR #18 review). */
+  | { status: "none"; reason?: "too-long" }
   | { status: "found"; amounts: ReadAmounts };
 
 export type ReadableFile = {
@@ -29,7 +31,7 @@ export type ReadableFile = {
 };
 
 export type SuggestionLine =
-  | { key: string; name: string; kind: ReadKind; outcome: "none" }
+  | { key: string; name: string; kind: ReadKind; outcome: "none"; reason?: "too-long" }
   | {
       key: string;
       name: string;
@@ -114,7 +116,13 @@ export function aggregateAmountSuggestion(
   const ordered = [...receipts, ...proofs];
   const lines: SuggestionLine[] = ordered.map((file) => {
     if (file.result.status !== "found") {
-      return { key: file.key, name: file.name, kind: file.kind, outcome: "none" };
+      return {
+        key: file.key,
+        name: file.name,
+        kind: file.kind,
+        outcome: "none",
+        ...(file.result.status === "none" && file.result.reason ? { reason: file.result.reason } : {}),
+      };
     }
     if (file.kind === "receipt") {
       const { subtotalCents, taxCents, feesCents, totalCents } = file.result.amounts;

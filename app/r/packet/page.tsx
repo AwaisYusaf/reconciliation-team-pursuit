@@ -17,17 +17,17 @@ import { formatDateUS, monthLabel, todayIso } from "@/src/domain/dates";
 import { formatMoney } from "@/src/domain/format";
 import { pageTitle, UI } from "@/src/domain/strings";
 import { packetContents } from "@/src/generation/packet-order";
+import { summariesAccessForOrg } from "@/src/modules/ai/access";
 import { loadTrashedExpenses } from "@/src/modules/expenses/queries";
 import { loadSourceContext } from "@/src/modules/funding-sources/queries";
-import { loadSummaryCard } from "@/src/modules/monthly-summary/queries";
 import { loadLockedMonths, loadLockEvents, loadPacketReadiness } from "@/src/modules/packet/queries";
 import { PACKET_TOUR_STEPS } from "@/src/modules/tours/packet-tour";
 import { hasSeenTour } from "@/src/modules/tours/queries";
 import { getSession } from "@/src/services/auth/session";
 
+import { MonthlySummarySection } from "../monthly-summary/summary-section";
 import { LockHistory, MonthLockControls } from "./month-lock";
 import { MonthDocuments } from "./month-documents";
-import { MonthlySummaryCard } from "./monthly-summary-card";
 import { PacketDownloadButtons, type DeletedItem } from "./packet-download-buttons";
 
 export const metadata = { title: pageTitle("Month-End Packet") };
@@ -66,13 +66,13 @@ export default async function PacketPage() {
     );
   }
 
-  const [readiness, deletedInMonth, seenPacketTour, events, lockedMonths, summaryCard] = await Promise.all([
+  const [readiness, deletedInMonth, seenPacketTour, events, lockedMonths, summariesAccess] = await Promise.all([
     loadPacketReadiness(session.orgId, fundingSourceId, month),
     loadTrashedExpenses(session.orgId, fundingSourceId, month),
     hasSeenTour(session.userId, "packet"),
     loadLockEvents(session.orgId, fundingSourceId, month),
     loadLockedMonths(session.orgId, fundingSourceId),
-    loadSummaryCard(session.orgId, fundingSourceId, month),
+    summariesAccessForOrg(session.orgId),
   ]);
 
   // Locked state comes from `month_statuses.locked_at`, not from the newest event (PR #16
@@ -274,7 +274,26 @@ export default async function PacketPage() {
         </div>
       </div>
 
-      <MonthlySummaryCard card={summaryCard ?? { use: false, writtenAt: null }} monthLabel={label} />
+      {/* ponytail: `MonthlySummarySection` re-derives the month's expenses fingerprint that
+          `readiness` above already paid for — a second, smaller cost on this page than before
+          (one component, one loader, per PR #18 review #7). Acceptable; noted for TASKS.md. */}
+      <div
+        data-tour={summariesAccess.use ? "packet-monthly-summary" : undefined}
+        className="mt-8"
+      >
+        <SectionTitle className="mb-1">{UI.summaryTitle}</SectionTitle>
+        {summariesAccess.use ? (
+          <MonthlySummarySection
+            orgId={session.orgId}
+            userId={session.userId}
+            email={session.email}
+            fundingSourceId={fundingSourceId}
+            month={month}
+          />
+        ) : (
+          <p className="text-[15px] text-ink mt-2">{UI.summaryPlanNote}</p>
+        )}
+      </div>
     </div>
   );
 }

@@ -766,6 +766,9 @@ describe("buildMonthFacts — U-11 allowedAmounts / allowedPercents", () => {
     for (const row of facts.budget.lineItems) expectedPercents.add(row.percentComplete);
     expectedPercents.add(facts.budget.overall.percentComplete);
     for (const row of facts.changes.lineItems) if (row.changePercent !== null) expectedPercents.add(row.changePercent);
+    // Always allowed: the prompt asks the model to call out line items "at or above 100%", so the
+    // phrase has to be a figure it may write (PR #18 review #2).
+    expectedPercents.add("100%");
 
     expect(facts.allowedAmounts).toEqual([...expectedAmounts].sort());
     expect(facts.allowedPercents).toEqual([...expectedPercents].sort());
@@ -785,7 +788,8 @@ describe("buildMonthFacts — U-11 allowedAmounts / allowedPercents", () => {
       settings: NO_SETTINGS,
     });
     expect(facts.allowedAmounts).toEqual(["$0.00"]); // overview.totalSpent and overall figures collapse to $0.00
-    expect(facts.allowedPercents).toEqual(["0%"]); // overall.percentComplete on a $0 budget
+    // "0%" is overall.percentComplete on a $0 budget; "100%" is always allowed (see above).
+    expect(facts.allowedPercents).toEqual(["0%", "100%"]);
   });
 });
 

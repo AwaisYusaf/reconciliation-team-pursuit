@@ -4,7 +4,7 @@
  */
 import { describe, expect, it } from "vitest";
 
-import { amountsSummaryParts, UI } from "./strings";
+import { amountFigures, UI } from "./strings";
 
 describe("Phase 10 UI copy — verbatim against Appendix A", () => {
   it("static entries", () => {
@@ -58,10 +58,11 @@ describe("Phase 10 UI copy — verbatim against Appendix A", () => {
     expect(UI.receiptLineAmounts(amounts)).toBe("Subtotal $110.00 · Tax $6.60 · Fees $3.40 · Total $120.00");
   });
 
-  it("amountsSummaryParts lead + totalPaid, concatenated, equals amountsSummary exactly", () => {
+  it("amountFigures carries the same words and figures as amountsSummary, total last", () => {
     const amounts = { subtotalCents: 15000, taxCents: 900, feesCents: 600, totalCents: 16500 };
-    const parts = amountsSummaryParts(amounts);
-    expect(parts.lead + parts.totalPaid).toBe(UI.amountsSummary(amounts));
-    expect(parts.totalPaid).toBe("Total paid $165.00");
+    const figures = amountFigures(amounts);
+    expect(figures.map((f) => `${f.label} ${f.value}`).join(" · ")).toBe(UI.amountsSummary(amounts));
+    expect(figures.map((f) => f.total)).toEqual([false, false, false, true]);
+    expect(figures[3]).toMatchObject({ label: "Total paid", value: "$165.00" });
   });
 });

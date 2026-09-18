@@ -38,6 +38,23 @@ function classifyLine(rawLine: string): Line {
   const line = rawLine.replace(/^\s+/, "");
   if (line.trim() === "") return { kind: "blank" };
 
+  // A paragraph that would otherwise misparse as a heading or a bullet, because the user's own
+  // text (or `serializeSummaryMarkdown`'s round trip) happens to start with a bare `#` or `-`,
+  // carries one leading `\` to say so (Tiptap round trip, PR #18 review #8). Stripping it here —
+  // before either regex runs — is what makes the escape take effect: the rest of the line is
+  // taken as literal text verbatim, and `parseInline` (further down) unescapes any `\*`/`\\` in
+  // it the normal way.
+  //
+  // Deliberately NOT `*`, even though `BULLET_RE` treats it the same as `-`: `escapeRunText`
+  // already escapes every literal `*` on its own, one at a time, so a leading `\*` is never the
+  // *only* escape on the line — `\*\*not bold\*\*` is two of them back to back. Special-casing
+  // "one leading `\`" here would consume just the first and leave a bare `*` for `parseInline`
+  // to misread as opening italic; leaving `*` to `parseInline`'s own per-character escape walk
+  // (already run below) handles any number of them correctly, one at a time.
+  if (line.length >= 2 && line[0] === "\\" && "#-".includes(line[1])) {
+    return { kind: "text", text: line.slice(1).trim() };
+  }
+
   const heading = HEADING_RE.exec(line);
   if (heading) return { kind: "heading", level: heading[1].length, text: heading[2].trimEnd() };
 
@@ -63,6 +80,15 @@ function parseInline(text: string): Inline[] {
   };
 
   while (i < text.length) {
+    // `\*` is a literal `*`, `\\` is a literal `\` (Tiptap round trip, PR #18 review #8) — checked
+    // before the emphasis markers below, so an escaped `*` never opens/closes a bold or italic
+    // run. Any other backslash (not followed by `*` or `\`) has no special meaning and is kept
+    // as itself; nothing in this parser ever produces one.
+    if (text[i] === "\\" && (text[i + 1] === "*" || text[i + 1] === "\\")) {
+      buffer += text[i + 1];
+      i += 2;
+      continue;
+    }
     if (text.startsWith("***", i)) {
       const close = text.indexOf("***", i + 3);
       if (close > i + 3) {
@@ -254,4 +280,122 @@ export function toHtml(markdown: string): string {
       return `<p>${inlineHtml(block.inlines)}</p>`;
     })
     .join("");
+}
+
+/* ------------------------------------------------------------------- Phase 11 review #8: Tiptap */
+
+/**
+ * A narrow, local shape of the ProseMirror JSON document `@tiptap/react`'s `getJSON()`/
+ * `setContent` speak — deliberately not imported from `@tiptap/core`: this module stays pure and
+ * tiptap-free, so the rich editor is the only place that package is ever loaded (P6/SSR).
+ */
+export type EditorMark = { type: "bold" } | { type: "italic" };
+export type EditorTextNode = { type: "text"; text: string; marks?: EditorMark[] };
+type EditorParagraphNode = { type: "paragraph"; content?: EditorTextNode[] };
+type EditorHeadingNode = { type: "heading"; attrs: { level: 1 | 2 | 3 }; content?: EditorTextNode[] };
+type EditorListItemNode = { type: "listItem"; content: [EditorParagraphNode] };
+type EditorBulletListNode = { type: "bulletList"; content: EditorListItemNode[] };
+export type EditorBlockNode = EditorParagraphNode | EditorHeadingNode | EditorBulletListNode;
+export type EditorDoc = { type: "doc"; content: EditorBlockNode[] };
+
+function inlinesToTextNodes(inlines: readonly Inline[]): EditorTextNode[] {
+  return inlines
+    .filter((inline) => inline.text !== "")
+    .map((inline) => {
+      const marks: EditorMark[] = [];
+      if (inline.bold) marks.push({ type: "bold" });
+      if (inline.italic) marks.push({ type: "italic" });
+      return marks.length > 0 ? { type: "text", text: inline.text, marks } : { type: "text", text: inline.text };
+    });
+}
+
+function textNodesOrUndefined(inlines: readonly Inline[]): EditorTextNode[] | undefined {
+  const nodes = inlinesToTextNodes(inlines);
+  return nodes.length > 0 ? nodes : undefined;
+}
+
+/**
+ * Markdown → the editor's ProseMirror doc (PR #18 review #8). The inverse of
+ * `serializeSummaryMarkdown` below — same three block types `parseSummaryMarkdown` understands,
+ * nothing else, since a Tiptap document can't hold what this parser can't read back.
+ */
+export function toEditorDoc(markdown: string): EditorDoc {
+  const blocks = parseSummaryMarkdown(markdown);
+
+  const content: EditorBlockNode[] = blocks.map((block) => {
+    if (block.type === "heading") {
+      return { type: "heading", attrs: { level: block.level }, content: textNodesOrUndefined(block.inlines) };
+    }
+    if (block.type === "list") {
+      return {
+        type: "bulletList",
+        content: block.items.map((item) => ({
+          type: "listItem",
+          content: [{ type: "paragraph", content: textNodesOrUndefined(item) }],
+        })),
+      };
+    }
+    return { type: "paragraph", content: textNodesOrUndefined(block.inlines) };
+  });
+
+  // ProseMirror's schema never allows a doc with zero block children — ` an empty summary is one
+  // empty paragraph, same as a freshly opened editor.
+  return { type: "doc", content: content.length > 0 ? content : [{ type: "paragraph" }] };
+}
+
+/** Every literal `\` doubled, then every literal `*` escaped — in that order, so the backslash
+ *  inserted for a `*` is never itself re-escaped (PR #18 review #8). A Tiptap text node's `.text`
+ *  never carries Markdown syntax itself (bold/italic are marks, not `**`/`*` characters), so
+ *  every `\`/`*` it holds is always the user's own literal character, never ambiguous. */
+function escapeRunText(raw: string): string {
+  return raw.replace(/\\/g, "\\\\").replace(/\*/g, "\\*");
+}
+
+function serializeInlineRun(nodes: readonly EditorTextNode[] | undefined): string {
+  if (!nodes) return "";
+  return nodes
+    .map((node) => {
+      const text = escapeRunText(node.text);
+      const bold = node.marks?.some((mark) => mark.type === "bold") ?? false;
+      const italic = node.marks?.some((mark) => mark.type === "italic") ?? false;
+      if (bold && italic) return `***${text}***`;
+      if (bold) return `**${text}**`;
+      if (italic) return `*${text}*`;
+      return text;
+    })
+    .join("");
+}
+
+const LEADING_MARKER_RE = /^(#{1,3}|-)\s/;
+
+/**
+ * The editor's ProseMirror doc → Markdown (PR #18 review #8). A paragraph whose composed text
+ * would itself misparse as a heading or a bullet — because the user typed a literal leading `#`
+ * or `-` — carries one escaping `\` so `classifyLine` reads it back as the plain text it is. A
+ * heading's `##` and a list item's `- ` are never ambiguous this way: `parseSummaryMarkdown`
+ * matches those from the line's own required prefix, not from what follows it, so nothing inside
+ * a heading or list item ever needs this particular escape (a literal `*` anywhere still gets
+ * `escapeRunText`'s per-character one, same as a paragraph's).
+ */
+export function serializeSummaryMarkdown(doc: EditorDoc): string {
+  const chunks = doc.content.map((node) => {
+    if (node.type === "heading") {
+      // An empty heading (created, never typed into) has nothing `HEADING_RE` could read back —
+      // dropped, same as an empty paragraph, rather than saving a line no parse can round-trip.
+      const text = serializeInlineRun(node.content);
+      return text === "" ? "" : `${"#".repeat(node.attrs.level)} ${text}`;
+    }
+    if (node.type === "bulletList") {
+      // Same reasoning per item: an empty bullet has no text `BULLET_RE` could read back.
+      return node.content
+        .map((item) => serializeInlineRun(item.content[0].content))
+        .filter((text) => text !== "")
+        .map((text) => `- ${text}`)
+        .join("\n");
+    }
+    const line = serializeInlineRun(node.content);
+    return LEADING_MARKER_RE.test(line) ? `\\${line}` : line;
+  });
+
+  return chunks.filter((chunk) => chunk !== "").join("\n\n");
 }

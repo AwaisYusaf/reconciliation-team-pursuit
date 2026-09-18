@@ -16,25 +16,26 @@ function read(relPath: string): string {
 
 describe("Monthly summary page wiring", () => {
   it("uses loadMonthlySummaryScreen to load its data", () => {
-    const source = read("app/r/monthly-summary/page.tsx");
+    const source = read("app/r/monthly-summary/summary-section.tsx");
     expect(source).toContain("loadMonthlySummaryScreen");
   });
 
   it("keys the editor by both source and month, so switching either remounts it", () => {
-    const source = read("app/r/monthly-summary/page.tsx");
+    const source = read("app/r/monthly-summary/summary-section.tsx");
     expect(source).toMatch(/key=\{`\$\{fundingSourceId\}:\$\{month\}`\}/);
   });
 });
 
-describe("no dangerouslySetInnerHTML anywhere in the new screen or the packet card (P6)", () => {
+describe("no dangerouslySetInnerHTML anywhere in the new screen or the packet section (P6)", () => {
   it.each([
     "app/r/monthly-summary/page.tsx",
+    "app/r/monthly-summary/summary-section.tsx",
     "app/r/monthly-summary/summary-editor.tsx",
-    // The one file that renders parsed Markdown — the guard is pointless without it.
-    "app/r/monthly-summary/summary-preview.tsx",
+    // The rich editor — content always goes in as a JSON doc (`toEditorDoc`), never HTML.
+    "app/r/monthly-summary/summary-rich-editor.tsx",
     "app/r/monthly-summary/use-autosave.ts",
     "app/r/monthly-summary/saved-summaries.tsx",
-    "app/r/packet/monthly-summary-card.tsx",
+    "app/r/packet/page.tsx",
   ])("%s", (relPath) => {
     expect(read(relPath)).not.toContain("dangerouslySetInnerHTML");
   });
@@ -65,29 +66,31 @@ describe("Word/PDF download wiring on the Monthly summary screen (Phase 4, P13)"
 });
 
 describe("packet page wiring", () => {
-  it("renders MonthlySummaryCard only after the fundingSourceId === null early return", () => {
+  it("renders the Monthly summary section only after the fundingSourceId === null early return", () => {
     const source = read("app/r/packet/page.tsx");
     const pickBranchGuard = source.indexOf("fundingSourceId === null");
-    const cardMount = source.indexOf("<MonthlySummaryCard");
+    const sectionMount = source.indexOf("<MonthlySummarySection");
     expect(pickBranchGuard, "the PickFundingSource guard must exist").toBeGreaterThan(-1);
-    expect(cardMount, "<MonthlySummaryCard must be mounted somewhere").toBeGreaterThan(-1);
-    expect(cardMount).toBeGreaterThan(pickBranchGuard);
+    expect(sectionMount, "<MonthlySummarySection must be mounted somewhere").toBeGreaterThan(-1);
+    expect(sectionMount).toBeGreaterThan(pickBranchGuard);
     // And not inside the early-return branch's own JSX.
     const pickBranchEnd = source.indexOf("PickFundingSource sources={activeSources} />");
-    expect(cardMount).toBeGreaterThan(pickBranchEnd);
+    expect(sectionMount).toBeGreaterThan(pickBranchEnd);
   });
 });
 
-describe("Preview/skeleton wiring on the Monthly summary screen (user feedback 2026-09-18)", () => {
+describe("Rich editor/skeleton wiring on the Monthly summary screen (PR #18 review #8)", () => {
   const source = read("app/r/monthly-summary/summary-editor.tsx");
+  const editorSource = read("app/r/monthly-summary/summary-rich-editor.tsx");
 
-  it("Preview is the default view, not Edit", () => {
-    expect(source).toMatch(/useState<"preview" \| "edit">\("preview"\)/);
+  it("the toolbar has exactly Bold and Bullet list, and nothing else", () => {
+    const buttons = [...editorSource.matchAll(/<ToolbarButton\s+label=\{UI\.(\w+)\}/g)].map((m) => m[1]);
+    expect(buttons).toEqual(["summaryBold", "summaryBulletList"]);
   });
 
   it("the skeleton replaces the editor entirely while writing (not shown alongside it)", () => {
     const match = source.match(/\{writing \? \(\s*<SummarySkeleton \/>\s*\) : \(/);
-    expect(match, "writing must branch to <SummarySkeleton /> in place of the tabs/preview/edit UI").not.toBeNull();
+    expect(match, "writing must branch to <SummarySkeleton /> in place of the rich editor").not.toBeNull();
   });
 
   it("Copy text is disabled while writing", () => {
@@ -98,14 +101,14 @@ describe("Preview/skeleton wiring on the Monthly summary screen (user feedback 2
     expect(copyButtonSource).toMatch(/disabled=\{writing\}/);
   });
 
-  it("summary-preview.tsx is in the no-dangerouslySetInnerHTML guard list (the one file that renders parsed Markdown)", () => {
+  it("summary-rich-editor.tsx is in the no-dangerouslySetInnerHTML guard list (the one file that renders the summary as an editable doc)", () => {
     // Read this file's own source rather than re-deriving the list, so the assertion fails if
     // the guard's `it.each` above ever drops the file rather than merely if the file is clean.
     const thisFile = readFileSync(fileURLToPath(new URL(import.meta.url)), "utf8");
     const guardListStart = thisFile.indexOf("no dangerouslySetInnerHTML anywhere");
     const guardListEnd = thisFile.indexOf("]", guardListStart);
     const guardList = thisFile.slice(guardListStart, guardListEnd);
-    expect(guardList).toContain("app/r/monthly-summary/summary-preview.tsx");
+    expect(guardList).toContain("app/r/monthly-summary/summary-rich-editor.tsx");
   });
 });
 

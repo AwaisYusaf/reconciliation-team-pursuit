@@ -32,7 +32,7 @@ P10). Usage is logged to `ai_usage_events` (PHASE-11 §3, P12).
 - Summary exists: meta line, AI reminder, changed-records notice when the stored fingerprint no
   longer matches the month's live expenses, then **Preview/Edit tabs with Preview as the default
   view** (`summary-preview.tsx` renders the saved Markdown as React text through the same parser
-  the Word/PDF/Copy-text paths use, never as raw HTML; Edit is the plain Markdown `<textarea>` —
+  the Word/PDF/Copy-text paths use. Since PR #18 (C9) it is edited directly as headings, paragraphs and bullets with a Bold / Bullet list toolbar (Tiptap), still stored as the same Markdown —
   C8, superseding the original plain-textarea-only design, C2), Save with 3-second autosave
   (unchanged by the tabs), Copy text (disabled while writing), Download Word, Download PDF, and
   Write again (confirm, replaces the text). A first draft and a fresh Write again both wipe in

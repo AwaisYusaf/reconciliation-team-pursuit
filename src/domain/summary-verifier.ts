@@ -33,6 +33,23 @@ function cleanupAmount(raw: string): string {
   return hasParens ? `(${cleaned})` : cleaned;
 }
 
+/**
+ * Whether the app supplied this amount.
+ *
+ * Parentheses are ambiguous in prose: accountants write `($1,200.00)` for minus $1,200.00, but a
+ * writer also writes "Salary ($45,641.12)" as a plain aside — and that is what the model does,
+ * because the prompt asks it to name each line item with its amount. Treating every parenthesised
+ * amount as a negative rejected the draft and burned a retry on two of three real months
+ * (evaluation, 2026-09-18). So a parenthesised amount counts as supplied if the app supplied
+ * either the amount itself or its negative; a bare `-$1,200.00` is still checked strictly.
+ */
+function isSupplied(token: string, allowedAmounts: ReadonlySet<string>): boolean {
+  if (allowedAmounts.has(token)) return true;
+  if (!token.startsWith("(") || !token.endsWith(")")) return false;
+  const inner = token.slice(1, -1);
+  return allowedAmounts.has(inner) || allowedAmounts.has(`-${inner}`);
+}
+
 /** A space before `%` doesn't change what number was written. */
 function normalizePercent(raw: string): string {
   return raw.replace(/\s+%$/, "%");
@@ -55,7 +72,7 @@ export function unsuppliedFigures(
   const seenAmounts = new Set<string>();
   for (const match of markdown.matchAll(AMOUNT_TOKEN)) {
     const token = cleanupAmount(match[0]);
-    if (allowedAmounts.has(token) || seenAmounts.has(token)) continue;
+    if (isSupplied(token, allowedAmounts) || seenAmounts.has(token)) continue;
     seenAmounts.add(token);
     amounts.push(token);
   }

@@ -4,7 +4,7 @@ import { Button } from "@/src/components/ui/button";
 import { PLUS_FRAME_STYLE, PlusBadge, SparkleIcon } from "@/src/components/ui/plus-badge";
 import { Helper } from "@/src/components/ui/field";
 import { formatMoney } from "@/src/domain/format";
-import { amountsSummaryParts, UI } from "@/src/domain/strings";
+import { amountFigures, UI } from "@/src/domain/strings";
 import type { AmountSuggestion, SuggestionLine } from "@/src/domain/amount-suggestion";
 
 /**
@@ -40,14 +40,14 @@ export function AmountSuggestionPanel({
 
       {suggestion.state === "done" && (
         <div>
-          <div className="flex items-center gap-2 text-[15px] font-semibold text-ink mb-1.5">
+          <div className="flex items-center gap-2 text-[15px] font-semibold text-ink mb-3">
             <SparkleIcon className="text-accent" />
             <span className="flex-1">{UI.amountsFoundTitle}</span>
             <PlusBadge size="sm" />
           </div>
-          <Summary suggestion={suggestion} />
+          <Figures suggestion={suggestion} />
 
-          <ul className="flex flex-col gap-1.5 mt-2.5 text-[15px]">
+          <ul className="flex flex-col mt-3 border-t border-line/70">
             {suggestion.lines.map((line) => (
               <Line key={line.key} line={line} />
             ))}
@@ -76,41 +76,83 @@ export function AmountSuggestionPanel({
   );
 }
 
-function Summary({
+/** The totals as four cells lined up like the Subtotal/Tax/Fees boxes above — two by two on a
+ *  phone — with Total paid, the figure that has to match the bank, set apart. */
+function Figures({
   suggestion,
 }: {
   suggestion: Extract<AmountSuggestion, { state: "done" }>;
 }) {
-  const { lead, totalPaid } = amountsSummaryParts(suggestion);
   return (
-    <div className="text-[15px] tabular-nums">
-      {lead}
-      <span className="font-bold">{totalPaid}</span>
-    </div>
+    <dl className="grid grid-cols-2 sm:grid-cols-4 gap-px rounded-[3px] overflow-hidden border border-line/70 bg-line/70 tabular-nums">
+      {amountFigures(suggestion).map((figure) => (
+        <div
+          key={figure.label}
+          className={`px-3 py-2 ${figure.total ? "bg-surface" : "bg-surface/60"}`}
+        >
+          <dt className="text-[13px] text-sub">{figure.label}</dt>
+          <dd
+            className={
+              figure.total ? "text-[17px] font-bold text-accent" : "text-[17px] font-semibold text-ink"
+            }
+          >
+            {figure.value}
+          </dd>
+        </div>
+      ))}
+    </dl>
   );
 }
 
+/** One document: its name on the first line, what was read from it on the second, so a long
+ *  name or a narrow screen never splits a figure from its label. */
 function Line({ line }: { line: SuggestionLine }) {
-  const kindTag = line.kind === "proof" ? ` ${UI.proofOfPaymentTag}` : "";
   return (
-    <li className="tabular-nums break-words">
-      {line.name}
-      {kindTag}:{" "}
-      {line.outcome === "none" ? (
-        UI.noAmountFound
-      ) : line.kind === "receipt" ? (
-        <>
-          {UI.receiptLineAmounts(line.amounts)}
-          {line.partsMismatch && (
-            <div className="text-caution">{UI.receiptDoesNotAddUp}</div>
+    <li className="flex gap-2.5 py-2 border-b border-line/70 last:border-b-0 min-w-0">
+      <DocumentIcon />
+      <div className="min-w-0 flex-1 text-[14px] tabular-nums">
+        <div className="text-ink font-medium truncate" title={line.name}>
+          {line.name}
+          {line.kind === "proof" && (
+            <span className="text-sub font-normal"> {UI.proofOfPaymentTag}</span>
           )}
-        </>
-      ) : (
-        <>
-          {formatMoney(line.amounts.totalCents)}
-          {line.matches && ` ${UI.proofMatches}`}
-        </>
-      )}
+        </div>
+        <div className="text-sub break-words">
+          {line.outcome === "none" ? (
+            line.reason === "too-long" ? (
+              UI.readAmountsTooLongLine
+            ) : (
+              UI.noAmountFound
+            )
+          ) : line.kind === "receipt" ? (
+            <>
+              {UI.receiptLineAmounts(line.amounts)}
+              {line.partsMismatch && <div className="text-caution">{UI.receiptDoesNotAddUp}</div>}
+            </>
+          ) : (
+            <>
+              {formatMoney(line.amounts.totalCents)}
+              {line.matches && <span className="text-success font-medium"> {UI.proofMatches}</span>}
+            </>
+          )}
+        </div>
+      </div>
     </li>
+  );
+}
+
+function DocumentIcon() {
+  return (
+    <svg
+      aria-hidden
+      viewBox="0 0 16 16"
+      className="w-4 h-4 mt-[3px] shrink-0 text-sub"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.3"
+    >
+      <path d="M4 1.5h5.5L12.5 4.5v10h-8.5z" strokeLinejoin="round" />
+      <path d="M9.5 1.5v3h3M6 8h4.5M6 10.5h4.5" strokeLinecap="round" />
+    </svg>
   );
 }

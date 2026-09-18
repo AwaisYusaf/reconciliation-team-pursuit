@@ -37,10 +37,17 @@ describe("unsuppliedFigures", () => {
     expect(result.amounts).toEqual(["-$50.00", "($60.00)", "−$70.00"]);
   });
 
-  it("an allowed negative amount in accounting-parens form is still rejected (parens are a different token than the leading minus)", () => {
-    // The allowed set has "-$30.00"; the model writing it as "($30.00)" is a different string.
-    const markdown = "A refund of ($30.00).";
-    expect(unsuppliedFigures(markdown, ALLOWED).amounts).toEqual(["($30.00)"]);
+  it("a supplied amount written in parentheses passes, as a negative or as an aside", () => {
+    // Two real months were rejected over this (evaluation, 2026-09-18): the prompt asks the model
+    // to name each line item with its amount, and it writes "Salary ($1,234.56)". Parentheses in
+    // prose are an aside as often as an accounting negative, so either reading counts as supplied
+    // when the app supplied the amount itself — here "-$30.00" and "$1,234.56".
+    expect(unsuppliedFigures("A refund of ($30.00).", ALLOWED).amounts).toEqual([]);
+    expect(unsuppliedFigures("Salary ($1,234.56) led the month.", ALLOWED).amounts).toEqual([]);
+  });
+
+  it("a parenthesised amount the app never supplied is still rejected", () => {
+    expect(unsuppliedFigures("Salary ($777.00) led the month.", ALLOWED).amounts).toEqual(["($777.00)"]);
   });
 
   it("an unknown percentage is rejected", () => {

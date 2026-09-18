@@ -1,11 +1,10 @@
 import { PLAN_LABELS, UI } from "@/src/domain/strings";
 import { cn } from "@/src/lib/cn";
 
-/** The Plus gradient, strong: the badge itself and gradient text. */
-// Starts at a caramel light enough to read as a gradient even on a 20 px pill, but dark enough
-// that white bold text still clears 4.5:1 at its lightest point (#94603F on white ≈ 5.2:1).
+/** The Plus gradient, strong: the badge itself and gradient text. Starts at `--color-plus-light`
+ *  (app/globals.css) — the contrast note lives there, next to the token. */
 export const PLUS_GRADIENT =
-  "linear-gradient(135deg, #94603F 0%, var(--color-accent) 50%, var(--color-accent-dark) 100%)";
+  "linear-gradient(135deg, var(--color-plus-light) 0%, var(--color-accent) 50%, var(--color-accent-dark) 100%)";
 
 /** The Plus gradient, soft: backgrounds of Plus-only areas, pale enough for body text on top.
  *  Built from the theme tokens so it follows them. */
@@ -15,7 +14,7 @@ export const PLUS_SURFACE_GRADIENT =
 /** The Plus gradient at border weight: the same caramel-to-brown direction, washed out so a
  *  1 px frame reads as a tint rather than a heavy outline (user feedback, 2026-09-17). */
 const PLUS_BORDER_GRADIENT =
-  "linear-gradient(135deg, color-mix(in srgb, #94603F 45%, transparent) 0%, color-mix(in srgb, var(--color-accent) 55%, transparent) 100%)";
+  "linear-gradient(135deg, color-mix(in srgb, var(--color-plus-light) 45%, transparent) 0%, color-mix(in srgb, var(--color-accent) 55%, transparent) 100%)";
 
 /**
  * A Plus-only area: the soft gradient inside, a 1 px border painted with a light gradient.

@@ -7,6 +7,7 @@ import { UI } from "@/src/domain/strings";
 import { isUuid } from "@/src/lib/ids";
 import { sameOrigin } from "@/src/lib/same-origin";
 import { readAmountsAllowedForOrg } from "@/src/modules/ai/access";
+import { beginRead, endRead } from "@/src/modules/amount-reading/in-flight";
 import { consume } from "@/src/services/rate-limit";
 import { getSession } from "@/src/services/auth/session";
 import { readAmounts } from "@/src/services/openai/read-amounts";
@@ -71,16 +72,30 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  let form: FormData;
-  try {
-    form = await request.formData();
-  } catch {
-    return NextResponse.json({ ok: false, error: "That upload was malformed." }, { status: 400 });
+  // A slot per concurrent read, taken before the body is buffered — that is the memory this
+  // guard exists to bound (PR #18 review).
+  if (!beginRead(session.orgId)) {
+    return NextResponse.json(
+      { ok: false, error: "Too many reads at once. Try again shortly." },
+      { status: 429 },
+    );
   }
 
   try {
+    let form: FormData;
+    try {
+      form = await request.formData();
+    } catch {
+      return NextResponse.json({ ok: false, error: "That upload was malformed." }, { status: 400 });
+    }
+
     const resolved = await resolveInput(session.orgId, session.userId, form);
-    if (!resolved.ok) return NextResponse.json({ ok: false, error: resolved.error }, { status: resolved.status });
+    if (!resolved.ok) {
+      return NextResponse.json(
+        { ok: false, error: resolved.error, ...(resolved.code ? { code: resolved.code } : {}) },
+        { status: resolved.status },
+      );
+    }
 
     const { body, mimeType, kind, source } = resolved;
     const result = await readAmounts({ body, mimeType, kind });
@@ -121,6 +136,8 @@ export async function POST(request: NextRequest) {
       { ok: false, error: "That document could not be read. Try again." },
       { status: 500 },
     );
+  } finally {
+    endRead(session.orgId);
   }
 }
 
@@ -132,7 +149,7 @@ type Resolved =
       kind: AiUsageDocumentKind;
       source: "upload" | "attached";
     }
-  | { ok: false; status: number; error: string };
+  | { ok: false; status: number; error: string; code?: "too-long" };
 
 async function resolveInput(orgId: string, userId: string, form: FormData): Promise<Resolved> {
   const file = form.get("file");
@@ -159,7 +176,7 @@ async function resolveInput(orgId: string, userId: string, form: FormData): Prom
     });
     if (inspection.ok && inspection.pageCount > MAX_PAGES_READ) {
       await logFailure(orgId, userId, "upload", kind as AiUsageDocumentKind);
-      return { ok: false, status: 400, error: tooManyPages(inspection.pageCount) };
+      return { ok: false, status: 400, error: tooManyPages(inspection.pageCount), code: "too-long" };
     }
     if (!inspection.ok) {
       // A refused file still gets logged, as a failed read — nothing was ever stored.
@@ -206,7 +223,7 @@ async function resolveInput(orgId: string, userId: string, form: FormData): Prom
   // read as "one page" rather than refused: it was accepted before this cap existed.
   if ((row.pageCount ?? 1) > MAX_PAGES_READ) {
     await logFailure(orgId, userId, "attached", row.kind);
-    return { ok: false, status: 400, error: tooManyPages(row.pageCount ?? 0) };
+    return { ok: false, status: 400, error: tooManyPages(row.pageCount ?? 0), code: "too-long" };
   }
 
   try {

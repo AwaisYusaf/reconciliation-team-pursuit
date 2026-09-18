@@ -388,6 +388,25 @@ describe("monthly summary title and filename (Phase 11 §7.4, U-21)", () => {
   });
 });
 
+describe("one plan name (PR #18 review #13): \"Plus\" in badges/tours, \"Reconciliation + AI\" only in plan/billing text", () => {
+  it("no tour* string or the badge ever spells out the plan's billing name", () => {
+    const tourKeys = Object.keys(UI).filter((key) => key.startsWith("tour"));
+    expect(tourKeys.length).toBeGreaterThan(0);
+    for (const key of tourKeys) {
+      const value = (UI as Record<string, unknown>)[key];
+      const text = typeof value === "string" ? value : (value as (...args: unknown[]) => string)("x");
+      expect(text).not.toContain("Reconciliation + AI");
+    }
+    expect(UI.planPlusBadge).not.toContain("Reconciliation + AI");
+    expect(UI.planPlusBadge).toBe("Plus");
+  });
+
+  it("plan/billing text spells out the full name", () => {
+    expect(UI.summaryPlanNote).toContain("Reconciliation + AI");
+    expect(PLAN_LABELS.reconciliation_ai).toBe("Reconciliation + AI");
+  });
+});
+
 describe("`/a` staff dashboard UI strings (Phase 9 Phase 4)", () => {
   it("organizationsCount is singular only at exactly 1", () => {
     expect(UI.organizationsCount(0)).toBe("0 organizations");

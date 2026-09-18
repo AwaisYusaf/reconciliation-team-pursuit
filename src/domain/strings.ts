@@ -334,6 +334,9 @@ export const UI = {
   readAmountsSwitchHelp:
     "Receipts and proofs of payment are sent to OpenAI to suggest amounts. OpenAI doesn't use them for training. Nothing is saved until you confirm.",
   /** A document with too many pages to read (Phase 10 §3.4; OpenAI bills a PDF per page). */
+  /** A file's own row in the panel when it was refused for length — "No amount found" there
+   *  reads as the AI having failed (PR #18 review). */
+  readAmountsTooLongLine: "Too long to read (over 10 pages). Enter the amounts yourself.",
   readAmountsTooManyPages: (pages: number, limit: number) =>
     `That document has ${pages} pages — only the first ${limit} would be read. Enter the amounts yourself.`,
   /** Amounts panel, when some files were read and others were not (Phase 10 §3.5 table — not in
@@ -357,6 +360,9 @@ export const UI = {
   aiUploadNoteEdit: "AI reads the amounts when you press Read amounts from documents.",
   /** A file row's AI status while its read is running. */
   aiFileReading: "Reading amounts…",
+  /** Toast while a picked iPhone photo (HEIC) is converted to JPEG in the browser, so it can be
+   *  previewed before the expense is saved. Shown on both plans. */
+  convertingPhotos: "Preparing your photo…",
   /** A file row's AI status once amounts were found. */
   aiFileFound: (total: string) => `Amounts found · Total ${total}`,
   /** Add Expense tour's proof step, unchanged — kept when reading is unavailable. */
@@ -368,9 +374,11 @@ export const UI = {
   /** Add Expense tour's receipt step, unchanged — kept when reading is unavailable. */
   tourReceiptBody:
     "Add the receipt, invoice or timesheet. If there isn't one, tick No receipt available and give a reason. The reason prints on the cover sheet.",
-  /** Add Expense tour's receipt step on Plus: where the amounts appear and that nothing fills itself. */
+  /** Add Expense tour's receipt step on Plus: where the amounts appear and that nothing fills
+   *  itself — carries the same "reason prints on the cover sheet" sentence as the base
+   *  `tourReceiptBody` (PR #18 review #14: the Plus variant had dropped it). */
   tourReceiptBodyWithReading:
-    "Add the receipt, invoice or timesheet. With Plus, AI reads its amounts and shows them under Subtotal, Tax and Fees. Nothing is filled in until you press Use these amounts. If there isn't a receipt, tick No receipt available and give a reason.",
+    "Add the receipt, invoice or timesheet. With Plus, AI reads its amounts and shows them under Subtotal, Tax and Fees. Nothing is filled in until you press Use these amounts. If there isn't a receipt, tick No receipt available and give a reason. The reason prints on the cover sheet.",
   /** Settings tour step for the Plus reading switch (only shown where the switch exists). */
   tourReadAmountsSwitchTitle: "Read amounts with AI",
   tourReadAmountsSwitchBody:
@@ -422,12 +430,11 @@ export const UI = {
    *  is omitted, not the whole clause, when that account was deleted (I-30). */
   summaryMetaEdited: (date: string, name: string | null) =>
     name ? ` · Last edited ${date} by ${name}` : ` · Last edited ${date}`,
-  /** Reminder shown above the summary. Appendix A §5 words it "This is a draft written by AI from
-   *  your records. Check every figure and fill in anything in [brackets] before using it."; the
-   *  user asked for clearer wording on 2026-09-18, and then for the bracket sentence to go — a
-   *  reviewer reads the draft anyway, and any placeholder is visible in the text itself. */
+  /** Reminder shown above the summary, verbatim (PR #18 review #9). Appendix A §5's original
+   *  wording ("... fill in anything in [brackets] before using it") assumed placeholders that
+   *  the model no longer leaves; this is the calm, grey note that replaced it. */
   summaryAiReminder:
-    "AI wrote this draft from your own records. Read it through and check the figures before you send it anywhere.",
+    "This is a draft written by AI from your records. Check every figure and fill in anything before using it.",
   /** Changed-records notice (P7, Appendix A §5, verbatim). */
   summaryChangedNotice: (monthLabel: string) =>
     `Expenses in ${monthLabel} have changed since this summary was written. Write again to include the changes, or edit the text yourself.`,
@@ -442,11 +449,10 @@ export const UI = {
   summaryNoneForMonth: (monthLabel: string) => `No summary for ${monthLabel} yet`,
   /** Saved-months list heading (§7.1). Wording to review. */
   summarySavedHeading: "Saved summaries",
-  /** One saved-months row (§7.1). Wording to review. */
-  summarySavedRow: (monthLabel: string, date: string, edited: boolean) =>
-    `${monthLabel} · ${edited ? "Last edited" : "Draft written"} ${date}`,
-  /** Autosave/Save status (§7.2). Wording to review. */
-  summarySave: "Save",
+  /** One saved-months row's second line, under the month (§7.1). Wording to review. */
+  summarySavedRowDate: (date: string, edited: boolean) => `${edited ? "Last edited" : "Draft written"} ${date}`,
+  /** Autosave/Save status (§7.2, PR #18 review #14). */
+  summarySave: "Save changes",
   summarySaving: "Saving…",
   summarySaved: "Saved",
   summarySaveFailed: "Couldn't save. Your text is still here.",
@@ -454,16 +460,10 @@ export const UI = {
   /** Copy text outcomes (§7.3, Appendix A wording for the success case). */
   summaryCopied: "Summary copied.",
   summaryCopyRefused: "Couldn't copy. Select the text and copy it yourself.",
-  /** Visually-hidden label for the plain `<textarea>` (accessibility; no visible label in the
-   *  design — the reminder and title already say what it is). Wording to review. */
-  summaryTextareaLabel: "Monthly summary text",
-  /** Tabs above the summary, so the draft reads as a report rather than raw Markdown
-   *  (user feedback 2026-09-18). */
-  summaryViewLabel: "How the summary is shown",
-  summaryViewPreview: "Preview",
-  summaryViewEdit: "Edit",
-  /** Preview with nothing in it — a summary saved as an empty string. */
-  summaryPreviewEmpty: "Nothing to show yet.",
+  /** The rich editor's two toolbar buttons (PR #18 review #8) — `aria-label`s, since the icons
+   *  carry no visible text. */
+  summaryBold: "Bold",
+  summaryBulletList: "Bullet list",
   /** Download route, when building the file itself fails (Phase 11 §6). */
   summaryPrepareFailed: "The summary couldn't be prepared right now. Please try again.",
 
@@ -500,14 +500,18 @@ export const UI = {
 } as const;
 
 /**
- * `UI.amountsSummary` split just before "Total paid", so the panel can render that part bold
- * without parsing the joined sentence back apart. A plain export rather than a `UI` entry: the
- * American-spelling guard (`strings.test.ts`) calls every `UI` function expecting a string
- * back, and this one returns a pair.
+ * `UI.amountsSummary` as four label/value cells, for the panel's figure strip that mirrors the
+ * Subtotal/Tax/Fees boxes above it — same words as the sentence, so the two can't drift. A plain
+ * export rather than a `UI` entry: the American-spelling guard (`strings.test.ts`) calls every
+ * `UI` function expecting a string back, and this one returns a list.
  */
-export function amountsSummaryParts(amounts: ReadAmounts): { lead: string; totalPaid: string } {
-  const { lead, total } = amountsLineParts(amounts, TOTAL_PAID_LABEL);
-  return { lead, totalPaid: total };
+export function amountFigures(amounts: ReadAmounts): { label: string; value: string; total: boolean }[] {
+  return [
+    { label: AMOUNT_FIELD_LABELS.subtotal, value: formatMoney(amounts.subtotalCents), total: false },
+    { label: AMOUNT_FIELD_LABELS.tax, value: formatMoney(amounts.taxCents), total: false },
+    { label: AMOUNT_FIELD_LABELS.fees, value: formatMoney(amounts.feesCents), total: false },
+    { label: TOTAL_PAID_LABEL, value: formatMoney(amounts.totalCents), total: true },
+  ];
 }
 
 /** Longest unlock reason — long enough for a real explanation, short enough that nobody pastes a

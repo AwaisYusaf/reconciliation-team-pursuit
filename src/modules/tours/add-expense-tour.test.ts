@@ -132,4 +132,9 @@ describe("Add Expense tour proof/receipt steps (Phase 10, Plus)", () => {
     expect(body(true, "add-expense-receipt")).toContain("With Plus, AI reads its amounts");
     expect(body(true, "add-expense-receipt")).toContain(`Nothing is filled in until you press ${UI.useTheseAmounts}`);
   });
+
+  it("the receipt step keeps 'The reason prints on the cover sheet' on both versions (PR #18 review #14: the Plus variant had dropped it)", () => {
+    expect(body(false, "add-expense-receipt")).toContain("The reason prints on the cover sheet.");
+    expect(body(true, "add-expense-receipt")).toContain("The reason prints on the cover sheet.");
+  });
 });

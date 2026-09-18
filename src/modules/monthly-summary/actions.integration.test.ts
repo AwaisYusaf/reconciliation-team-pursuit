@@ -65,7 +65,7 @@ describe.skipIf(!hasDatabase)("monthly-summary actions (integration, Phase 11)",
   const { actionSession } = await import("@/src/lib/action-session");
   const { writeSummary } = await import("@/src/services/openai/write-summary");
   const { writeSummaryAction, saveSummaryAction } = await import("./actions");
-  const { loadMonthlySummaryScreen, loadMonthFacts, loadSummaryCard } = await import("./queries");
+  const { loadMonthlySummaryScreen, loadMonthFacts } = await import("./queries");
   const {
     createExpenseAction,
     deleteExpenseAction,
@@ -1153,49 +1153,4 @@ describe.skipIf(!hasDatabase)("monthly-summary actions (integration, Phase 11)",
     });
   });
 
-  describe("loadSummaryCard", () => {
-    it("base plan → {use:false, writtenAt:null}, even with a summary row already in the database", async () => {
-      const org = await makeOrgWithExpense(freshMonth());
-      asSession(org.orgId, org.userId);
-      const write = await writeSummaryAction({ sourceId: org.fundingSourceId, month: org.month, expectedVersion: null });
-      if (!write.ok) throw new Error("unreachable");
-
-      await db.update(organizations).set({ plan: "reconciliation" }).where(eq(organizations.id, org.orgId));
-      const card = await loadSummaryCard(org.orgId, org.fundingSourceId, org.month);
-      expect(card).toEqual({ use: false, writtenAt: null });
-    });
-
-    it("AI plan, no summary for the month yet → use:true, writtenAt:null", async () => {
-      const org = await makeOrgWithExpense(freshMonth());
-      const card = await loadSummaryCard(org.orgId, org.fundingSourceId, org.month);
-      expect(card).toEqual({ use: true, writtenAt: null });
-    });
-
-    it("AI plan with a written summary → use:true, writtenAt matches the stored writtenAt", async () => {
-      const org = await makeOrgWithExpense(freshMonth());
-      asSession(org.orgId, org.userId);
-      const write = await writeSummaryAction({ sourceId: org.fundingSourceId, month: org.month, expectedVersion: null });
-      if (!write.ok) throw new Error("unreachable");
-
-      const card = await loadSummaryCard(org.orgId, org.fundingSourceId, org.month);
-      expect(card!.use).toBe(true);
-      expect(card!.writtenAt).not.toBeNull();
-      const row = await summaryRow(org.orgId, org.fundingSourceId, org.month);
-      expect(card!.writtenAt).toEqual(row!.writtenAt);
-    });
-
-    it("another org's source id → null", async () => {
-      const org = await makeOrgWithExpense(freshMonth());
-      const other = await createTestOrg({ name: `Summary card other org ${Date.now()}` });
-      createdOrgIds.push(other.orgId);
-      const card = await loadSummaryCard(other.orgId, org.fundingSourceId, org.month);
-      expect(card).toBeNull();
-    });
-
-    it("an invalid month key → null", async () => {
-      const org = await makeOrgWithExpense(freshMonth());
-      const card = await loadSummaryCard(org.orgId, org.fundingSourceId, "not-a-month");
-      expect(card).toBeNull();
-    });
-  });
 });

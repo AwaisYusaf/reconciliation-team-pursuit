@@ -3,7 +3,14 @@
  */
 import { describe, expect, it } from "vitest";
 
-import { checkSummaryStructure, parseSummaryMarkdown, toHtml, toPlainText } from "./summary-markdown";
+import {
+  checkSummaryStructure,
+  parseSummaryMarkdown,
+  serializeSummaryMarkdown,
+  toEditorDoc,
+  toHtml,
+  toPlainText,
+} from "./summary-markdown";
 import { SUMMARY_SECTION_TITLES } from "./strings";
 
 function validDoc(): string {
@@ -92,6 +99,51 @@ describe("parseSummaryMarkdown", () => {
 
   it("empty markdown yields no blocks", () => {
     expect(parseSummaryMarkdown("")).toEqual([]);
+  });
+});
+
+describe("backslash escapes (PR #18 review #8 — the Tiptap round trip)", () => {
+  it("a leading \\# is read as literal text, not a heading", () => {
+    const blocks = parseSummaryMarkdown("\\## not a heading");
+    expect(blocks).toEqual([
+      { type: "paragraph", inlines: [{ text: "## not a heading", bold: false, italic: false }] },
+    ]);
+  });
+
+  it("a leading \\- is read as literal text, not a bullet", () => {
+    const blocks = parseSummaryMarkdown("\\- not a bullet");
+    expect(blocks).toEqual([
+      { type: "paragraph", inlines: [{ text: "- not a bullet", bold: false, italic: false }] },
+    ]);
+  });
+
+  it("\\* is a literal * — a lone escaped star never opens emphasis, and two escaped stars never pair", () => {
+    expect(parseSummaryMarkdown("a lone \\*")).toEqual([
+      { type: "paragraph", inlines: [{ text: "a lone *", bold: false, italic: false }] },
+    ]);
+    expect(parseSummaryMarkdown("\\*\\*not bold\\*\\*")).toEqual([
+      { type: "paragraph", inlines: [{ text: "**not bold**", bold: false, italic: false }] },
+    ]);
+  });
+
+  it("\\\\ is a literal \\", () => {
+    expect(parseSummaryMarkdown("a literal \\\\")).toEqual([
+      { type: "paragraph", inlines: [{ text: "a literal \\", bold: false, italic: false }] },
+    ]);
+  });
+
+  it("an escaped marker still returns to normal emphasis parsing for the rest of the line", () => {
+    const blocks = parseSummaryMarkdown("\\# **bold** after");
+    expect(blocks).toEqual([
+      {
+        type: "paragraph",
+        inlines: [
+          { text: "# ", bold: false, italic: false },
+          { text: "bold", bold: true, italic: false },
+          { text: " after", bold: false, italic: false },
+        ],
+      },
+    ]);
   });
 });
 
@@ -193,5 +245,72 @@ describe("checkSummaryStructure", () => {
   it("fails on an empty document (no headings at all)", () => {
     const result = checkSummaryStructure("just prose, no headings");
     expect(result).toEqual({ ok: false, problem: "No section headings found." });
+  });
+});
+
+describe("toEditorDoc / serializeSummaryMarkdown (PR #18 review #8 — the Tiptap round trip)", () => {
+  it("round-trips a document with all three block types, bold, italic and bold+italic", () => {
+    const original =
+      "## Heading Two\n\n" +
+      "A plain paragraph with **bold**, *italic* and ***both***.\n\n" +
+      "- first item\n- second **bold** item\n- third *italic* item";
+
+    const roundTripped = serializeSummaryMarkdown(toEditorDoc(original));
+    expect(roundTripped).toBe(original);
+    // Structural equality too, not just the same string by coincidence.
+    expect(parseSummaryMarkdown(roundTripped)).toEqual(parseSummaryMarkdown(original));
+  });
+
+  it("round-trips a heading at each level (1-3)", () => {
+    const original = "# One\n\n## Two\n\n### Three";
+    expect(serializeSummaryMarkdown(toEditorDoc(original))).toBe(original);
+  });
+
+  it("round-trips text that looks like Markdown, escaped on both sides of the trip", () => {
+    const original = [
+      "\\## not a heading",
+      "\\- not a bullet",
+      "\\*\\*not bold\\*\\*",
+      "a lone \\*",
+      "a literal \\\\",
+    ].join("\n\n");
+
+    const roundTripped = serializeSummaryMarkdown(toEditorDoc(original));
+    expect(roundTripped).toBe(original);
+    expect(parseSummaryMarkdown(roundTripped)).toEqual(parseSummaryMarkdown(original));
+
+    // And the editor doc itself really does hold the literal, unescaped text — the escaping is
+    // only ever a Markdown-file concern, never visible inside the editor.
+    const doc = toEditorDoc(original);
+    expect(doc.content).toEqual([
+      { type: "paragraph", content: [{ type: "text", text: "## not a heading" }] },
+      { type: "paragraph", content: [{ type: "text", text: "- not a bullet" }] },
+      { type: "paragraph", content: [{ type: "text", text: "**not bold**" }] },
+      { type: "paragraph", content: [{ type: "text", text: "a lone *" }] },
+      { type: "paragraph", content: [{ type: "text", text: "a literal \\" }] },
+    ]);
+  });
+
+  it("an empty summary becomes one empty paragraph, and serializes back to an empty string", () => {
+    const doc = toEditorDoc("");
+    expect(doc).toEqual({ type: "doc", content: [{ type: "paragraph" }] });
+    expect(serializeSummaryMarkdown(doc)).toBe("");
+  });
+
+  it("bold and italic marks survive independently — editing one run never drops the other's mark", () => {
+    const doc = toEditorDoc("**bold** and *italic* and ***both***");
+    expect(doc.content).toEqual([
+      {
+        type: "paragraph",
+        content: [
+          { type: "text", text: "bold", marks: [{ type: "bold" }] },
+          { type: "text", text: " and " },
+          { type: "text", text: "italic", marks: [{ type: "italic" }] },
+          { type: "text", text: " and " },
+          { type: "text", text: "both", marks: [{ type: "bold" }, { type: "italic" }] },
+        ],
+      },
+    ]);
+    expect(serializeSummaryMarkdown(doc)).toBe("**bold** and *italic* and ***both***");
   });
 });

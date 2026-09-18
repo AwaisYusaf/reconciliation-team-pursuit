@@ -47,6 +47,52 @@ build departs from §3, and why. §6 is the verification record.
 
 ---
 
+## 2b. PR #18 review fixes (2026-09-18)
+
+Five corrections to the reading path, all found in the PR #18 review. Each is covered by a test
+that fails when the fix is reverted.
+
+- **Proof amounts are forced positive.** A proof of payment is a bank line, and a bank line writes
+  money leaving the account as a debit — `-165.00`, or `(165.00)`. Keeping that sign made the panel
+  warn that the proofs disagreed with a receipt for the same payment, and, on a **No receipt**
+  expense (where §3.5 falls back to summing proofs), filled a *negative* Subtotal that saves as a
+  refund. Fixed at both ends: the proof instruction now tells the model the amount paid is 165.00
+  either way, and `parseReadAmountsResponse` takes `Math.abs` of all four fields on the `proof`
+  branch. Receipts are untouched — a refund receipt is a real negative.
+- **The model's amounts are parsed strictly**, `/^-?\d+(\.\d{1,2})?$/`, not with
+  `parseMoneyToCents`. That parser is the *form's*: it forgives what a person types, reading
+  "12,50" as 1250 dollars and "1.234,56" as 1.23. Applied to a model's reply that is a hundredfold
+  error waiting on a European-formatted receipt, on a document the City reads. Anything not exactly
+  a plain decimal — including a padded `" 12.50 "` — is treated as "no amount found" for the whole
+  file rather than guessed at. Costs the user one typed figure; the alternative costs a wrong
+  number on a cover sheet.
+- **`READ_MAX_OUTPUT_TOKENS = 400`** on the read request. The answer is five short fields, about 40
+  tokens; the cap is protection against a document whose own text talks the model into writing an
+  essay. The sibling of `SUMMARY_MAX_OUTPUT_TOKENS` (PHASE-11 §5).
+- **At most four reads in flight per organisation** (`src/modules/amount-reading/in-flight.ts`,
+  `MAX_IN_FLIGHT_PER_ORG = 4`). The `readAmounts` rate limit bounds reads per *hour*, not reads at
+  the same *instant*, and one read is memory-hungry while it lasts: the file is buffered, inspected
+  (a HEIC is decoded and re-encoded) and base64-encoded, so a 25 MB upload is held several times
+  over. The form only ever sends two at once; nothing stopped a script posting hundreds together
+  and exhausting the container. The slot is taken *before* the body is buffered — that is the
+  memory being bounded — and released in the route's `finally`, so a success, a failure and a
+  thrown handler all return it and the organisation can never lock itself out. Over the cap: 429.
+  `ponytail:` in-process counter, single container — the same ceiling as `rate-limit.ts` and
+  `monthly-summary/single-flight.ts`.
+- **A document refused for length says so, instead of blaming the AI.** The `MAX_PAGES_READ`
+  refusal now carries `code: "too-long"` in the route's JSON body; `use-amount-reads.ts` maps it to
+  `{ status: "none", reason: "too-long" }`, `aggregateAmountSuggestion` carries the reason onto the
+  `SuggestionLine`, and the panel prints `UI.readAmountsTooLongLine` ("Too long to read (over 10
+  pages). Enter the amounts yourself.") rather than "No amount found" — which would have read as a
+  model that couldn't cope, for a file the model never saw.
+
+Deferred, deliberately, and recorded in `docs/TASKS.md`: reading the **first** `MAX_PAGES_READ`
+pages of a long PDF instead of refusing it outright. The reviewer called it a small change; it is,
+but it changes what the feature promises (a total read from part of a document is not the
+document's total), so it wants its own decision rather than a quiet add.
+
+---
+
 ## 1. What this is, in one paragraph
 
 When a receipt or proof of payment is chosen on Add Expense, the app sends it to OpenAI and

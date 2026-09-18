@@ -296,6 +296,11 @@ export function buildMonthFacts(input: {
   allowedAmounts.add(budget.overall.remaining.text);
   allowedAmounts.add(budget.overall.contractTotal.text);
   allowedPercents.add(budget.overall.percentComplete);
+  // The prompt asks the model to call out any line item "at or above 100%", so the phrase itself
+  // has to be a figure it is allowed to write. Without this, a month with an over-budget line
+  // item had the draft rejected twice and the run logged as failed — the app inviting a word it
+  // then refused (PR #18 review).
+  allowedPercents.add("100%");
   for (const row of changes.lineItems) {
     allowedAmounts.add(row.previous.text);
     allowedAmounts.add(row.current.text);

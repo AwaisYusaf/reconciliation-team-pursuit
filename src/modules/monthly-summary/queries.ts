@@ -219,40 +219,6 @@ export async function loadMonthlySummaryScreen(
 }
 
 /**
- * The packet card's needs (§7): whether the plan can see summaries at all, and when the
- * current month's summary was written — cheap, one `select` beyond the access check. `null`
- * for an invalid month key or a source not owned by this organisation, same "not found"
- * convention as every other entry point here.
- */
-export async function loadSummaryCard(
-  orgId: string,
-  sourceId: string,
-  month: MonthKey,
-): Promise<{ use: boolean; writtenAt: Date | null } | null> {
-  if (!isValidMonthKey(month)) return null;
-
-  const source = await findFundingSource(orgId, sourceId);
-  if (!source) return null;
-
-  const access = await summariesAccessForOrg(orgId);
-  if (!access.use) return { use: false, writtenAt: null };
-
-  const [row] = await db
-    .select({ writtenAt: monthlySummaries.writtenAt })
-    .from(monthlySummaries)
-    .where(
-      and(
-        eq(monthlySummaries.orgId, orgId),
-        eq(monthlySummaries.fundingSourceId, sourceId),
-        eq(monthlySummaries.month, month),
-      ),
-    )
-    .limit(1);
-
-  return { use: true, writtenAt: row?.writtenAt ?? null };
-}
-
-/**
  * The saved summary's content and the two names a title/filename needs (Phase 11 §7.4, P13).
  * `null` for an invalid month key, a non-uuid source id, a source not owned by this
  * organisation, or no summary for that month — every case the route treats as "not found".

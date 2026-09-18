@@ -14,6 +14,31 @@ import "server-only";
 import type { ReadAmounts, ReadKind } from "@/src/domain/amount-suggestion";
 import { parseMoneyToCents } from "@/src/domain/money";
 
+/**
+ * The model must answer with a plain decimal, and nothing else (PR #18 review).
+ *
+ * `parseMoneyToCents` is the *form's* parser: it forgives what a person types, so it reads
+ * "12,50" as 1250 dollars and "1.234,56" as 1.23. Applied to a model's reply that is a mistake
+ * rather than a kindness — a European-formatted receipt would silently become a hundredfold
+ * error on a document the City reads. Anything not matching this shape is treated as "no amount
+ * found" for the whole file.
+ */
+/**
+ * Accepted: a plain decimal, or one grouped in threes with commas. Rejected: anything ambiguous.
+ *
+ * "12,50" is 12.50 in Europe and 1,250 here, and "1.234,56" flips both separators — the form's
+ * own parser forgives those, which is right for a person typing but wrong for a model's reply:
+ * it turned a €12.50 receipt into $1,250.00 (PR #18 review). Groups must be exactly three
+ * digits, so "12,50" is refused while "1,234.56" — which a model writes often, and which can
+ * only mean one thing — is read. A refused value makes the whole file "no amount found".
+ */
+const STRICT_DECIMAL = /^-?(?:\d+|\d{1,3}(?:,\d{3})+)(?:\.\d{1,2})?$/;
+
+function modelAmountToCents(value: string): number | null {
+  if (!STRICT_DECIMAL.test(value)) return null;
+  return parseMoneyToCents(value);
+}
+
 import { completedOutputText, isRecord, readUsage } from "./responses";
 
 export type ReadAmountsOutcome =
@@ -27,6 +52,12 @@ export type ReadAmountsResult = ReadAmountsOutcome & {
 };
 
 const ENDPOINT = "https://api.openai.com/v1/responses";
+
+/**
+ * Bounds the reply. The answer is five short fields — about 40 tokens — so this is pure
+ * protection against a document whose text talks the model into writing an essay (PR #18 review).
+ */
+const READ_MAX_OUTPUT_TOKENS = 400;
 
 /** Generic name sent to OpenAI instead of the user's real filename (Phase 10 §3.4 "a generic
  *  filename, never the user's"). */
@@ -64,7 +95,9 @@ function instructionFor(kind: ReadKind): string {
   }
   return (
     "This document is a proof of payment (a bank transaction line, a transfer screenshot, an " +
-    "ATM slip). Read the single amount paid and report it as both the subtotal and the total. " +
+    "ATM slip). Read the single amount paid and report it as both the subtotal and the total, " +
+    "always as a positive number — a bank line shows money leaving the account as a debit, often " +
+    "written \"-165.00\" or \"(165.00)\", and the amount paid is 165.00 either way. " +
     "Report tax and fees as \"0\" unless the document itself shows separate tax or fee amounts. " +
     shared
   );
@@ -118,6 +151,7 @@ export async function readAmounts(
             content: [{ type: "input_text", text: instructionFor(input.kind) }, filePart],
           },
         ],
+        max_output_tokens: READ_MAX_OUTPUT_TOKENS,
         text: {
           format: {
             type: "json_schema",
@@ -148,7 +182,7 @@ export async function readAmounts(
     return { outcome: "failed", inputTokens: null, outputTokens: null };
   }
 
-  return parseReadAmountsResponse(json);
+  return parseReadAmountsResponse(json, input.kind);
 }
 
 function toFilePart(
@@ -170,7 +204,7 @@ function toFilePart(
  * money-parsing rules (Phase 10 §3.5's "server converts to cents") are unit-testable without a
  * network call.
  */
-export function parseReadAmountsResponse(json: unknown): ReadAmountsResult {
+export function parseReadAmountsResponse(json: unknown, kind: ReadKind = "receipt"): ReadAmountsResult {
   const usage = readUsage(json);
 
   // An `incomplete` response, an incomplete output item, or a refusal — `completedOutputText`
@@ -196,19 +230,36 @@ export function parseReadAmountsResponse(json: unknown): ReadAmountsResult {
   }
 
   // Any non-null string that fails to parse means the field set can't be trusted (Phase 10 §3.5).
-  const taxCents = tax === null ? 0 : parseMoneyToCents(tax);
+  const taxCents = tax === null ? 0 : modelAmountToCents(tax);
   if (taxCents === null) return { outcome: "none", ...usage };
-  const feesCents = fees === null ? 0 : parseMoneyToCents(fees);
+  const feesCents = fees === null ? 0 : modelAmountToCents(fees);
   if (feesCents === null) return { outcome: "none", ...usage };
 
-  let subtotalCents = subtotal === null ? null : parseMoneyToCents(subtotal);
+  let subtotalCents = subtotal === null ? null : modelAmountToCents(subtotal);
   if (subtotal !== null && subtotalCents === null) return { outcome: "none", ...usage };
-  let totalCents = total === null ? null : parseMoneyToCents(total);
+  let totalCents = total === null ? null : modelAmountToCents(total);
   if (total !== null && totalCents === null) return { outcome: "none", ...usage };
 
   if (subtotalCents === null && totalCents === null) return { outcome: "none", ...usage };
   if (subtotalCents === null) subtotalCents = (totalCents as number) - taxCents - feesCents;
   if (totalCents === null) totalCents = subtotalCents + taxCents + feesCents;
+
+  if (kind === "proof") {
+    // A proof says what was paid. A bank line writes that as a debit — "-165.00" or "(165.00)" —
+    // and keeping the sign made the panel warn that proofs disagreed with receipts of the same
+    // amount, and, on a no-receipt expense, filled a negative subtotal that saves as a refund
+    // (PR #18 review). Tax and fees follow the same amount.
+    return {
+      outcome: "found",
+      amounts: {
+        subtotalCents: Math.abs(subtotalCents),
+        taxCents: Math.abs(taxCents),
+        feesCents: Math.abs(feesCents),
+        totalCents: Math.abs(totalCents),
+      },
+      ...usage,
+    };
+  }
 
   return {
     outcome: "found",
