@@ -46,15 +46,24 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             <div className="font-serif text-lg sm:text-xl lg:text-2xl font-bold leading-tight text-ink truncate">
               {session.orgName}
             </div>
-            <div className="text-[13px] sm:text-[15px] text-sub mt-0.5 sm:mt-1 flex items-center gap-1.5 min-w-0">
+            {/* The full logo's artwork side by side (mark, then wordmark), as in the landing nav. */}
+            <div className="mt-1 sm:mt-1.5 flex items-center gap-1.5 min-w-0">
               <Image
                 src="/brand/stayfunded-mark.png"
                 alt=""
-                width={22}
-                height={20}
-                className="h-5 w-auto shrink-0"
+                width={628}
+                height={570}
+                className="h-5 sm:h-6 shrink-0"
+                style={{ width: "auto" }}
               />
-              <span className="truncate">{APP_NAME}</span>
+              <Image
+                src="/brand/stayfunded-wordmark.png"
+                alt={APP_NAME}
+                width={720}
+                height={84}
+                className="h-[11px] sm:h-[13px] min-w-0"
+                style={{ width: "auto" }}
+              />
             </div>
           </div>
           <div className="shrink-0 flex items-center gap-2.5">

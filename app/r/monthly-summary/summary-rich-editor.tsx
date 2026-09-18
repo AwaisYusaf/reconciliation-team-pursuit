@@ -82,48 +82,66 @@ export function SummaryRichEditor({
   // in app/globals.css.
   return (
     <div className="border border-line rounded-[3px] bg-surface">
-      <div className="flex gap-1 px-2 py-1 border-b border-line bg-paper rounded-t-[3px]" role="toolbar">
+      <div className="flex items-center gap-1 px-2 py-1.5 border-b border-line bg-paper rounded-t-[3px]" role="toolbar">
         <ToolbarButton
           label={UI.summaryBold}
           active={editor.isActive("bold")}
           disabled={readOnly}
           onClick={() => editor.chain().focus().toggleBold().run()}
-        />
+        >
+          <span className="font-serif text-[17px] font-bold leading-none">B</span>
+        </ToolbarButton>
         <ToolbarButton
           label={UI.summaryBulletList}
           active={editor.isActive("bulletList")}
           disabled={readOnly}
           onClick={() => editor.chain().focus().toggleBulletList().run()}
-        />
+        >
+          <svg aria-hidden viewBox="0 0 20 20" className="w-[18px] h-[18px]" fill="currentColor">
+            <circle cx="4" cy="5.5" r="1.5" />
+            <circle cx="4" cy="10" r="1.5" />
+            <circle cx="4" cy="14.5" r="1.5" />
+            <rect x="8" y="4.75" width="10" height="1.5" rx="0.75" />
+            <rect x="8" y="9.25" width="10" height="1.5" rx="0.75" />
+            <rect x="8" y="13.75" width="10" height="1.5" rx="0.75" />
+          </svg>
+        </ToolbarButton>
       </div>
       <EditorContent editor={editor} className="summary-doc px-4 py-5 sm:px-8 sm:py-7" />
     </div>
   );
 }
 
+/** An icon button; `label` is its accessible name and hover tooltip, since the icon carries no text. */
 function ToolbarButton({
   label,
   active,
   disabled,
   onClick,
+  children,
 }: {
   label: string;
   active: boolean;
   disabled: boolean;
   onClick: () => void;
+  children: React.ReactNode;
 }) {
   return (
     <button
       type="button"
+      aria-label={label}
+      title={label}
       aria-pressed={active}
       disabled={disabled}
       onClick={onClick}
       className={cn(
-        "min-h-11 px-3 text-[15px] rounded-[3px] disabled:cursor-not-allowed disabled:opacity-60",
-        active ? "bg-section text-accent font-semibold" : "text-sub hover:bg-section hover:text-ink",
+        "inline-flex items-center justify-center w-11 h-11 sm:w-9 sm:h-9 rounded-[3px] border transition-colors disabled:cursor-not-allowed disabled:opacity-60",
+        active
+          ? "bg-surface border-line text-accent shadow-sm"
+          : "border-transparent text-sub hover:bg-surface hover:text-ink",
       )}
     >
-      {label}
+      {children}
     </button>
   );
 }

@@ -16,7 +16,7 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/src/components/ui/button";
 import { ConfirmButton } from "@/src/components/ui/confirm-button";
 import { DownloadButton } from "@/src/components/ui/download-button";
-import { PLUS_FRAME_STYLE } from "@/src/components/ui/plus-badge";
+import { PLUS_FRAME_STYLE, SparkleIcon } from "@/src/components/ui/plus-badge";
 import { Card, DangerPanel, SectionTitle } from "@/src/components/ui/surfaces";
 import { toast } from "@/src/components/ui/toast";
 import { UI } from "@/src/domain/strings";
@@ -294,7 +294,10 @@ function SummaryBody({
 
         {/* A calm note, not an alert (PR #18 review #9) — red stays for the changed-records notice
             above and real errors; this is neither. */}
-        <p className="border-l-[3px] border-line pl-3 text-[15px] text-sub mb-4">{UI.summaryAiReminder}</p>
+        <p className="flex items-start gap-2 rounded-[3px] bg-section px-3.5 py-2.5 text-[14px] text-sub mb-4">
+          <SparkleIcon className="w-4 h-4 mt-0.5 shrink-0 text-accent" />
+          {UI.summaryAiReminder}
+        </p>
 
         {/* While the model writes, the editor gives way to a shimmer: the text on screen is about
             to be replaced, so inviting edits to it would be a lie (user feedback 2026-09-18). */}

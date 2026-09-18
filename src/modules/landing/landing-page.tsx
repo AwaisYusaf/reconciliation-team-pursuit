@@ -127,17 +127,16 @@ export function LandingPage() {
   return (
     <>
 <header className="sticky top-0 z-50 transition-all duration-200 px-4 sm:px-6 py-3">
-<div className="max-w-3xl mx-auto rounded-full bg-[#38231a] border border-[#5b3a29] shadow-xl shadow-black/40 pl-3 sm:pl-5 pr-2.5 sm:pr-3 py-2 flex items-center justify-between">
+<div className="max-w-3xl mx-auto rounded-full bg-[#38231a] border border-[#5b3a29] shadow-xl shadow-black/40 pl-2.5 sm:pl-3 pr-2.5 sm:pr-3 py-2 flex items-center justify-between">
 
-<Link className="flex items-center gap-2.5 group" href="/">
-{/* The mark's arrow sticks out on the right, so its ring sits ~4% left of the image's centre;
-    the nudge centres the ring, not the image, in the white circle. */}
-<div className="w-9 h-9 rounded-full bg-white flex items-center justify-center flex-shrink-0 shadow-sm group-hover:scale-105 transition-transform">
-<Image src="/brand/stayfunded-mark.png" alt="" width={28} height={26} className="h-6 w-auto translate-x-[1px]" />
-</div>
-<div className="flex flex-col">
-<span className="text-base font-semibold tracking-tight text-white font-lp-serif leading-none">{APP_NAME}</span>
-</div>
+{/* The full logo's own artwork, laid out side by side: its stacked form (mark over wordmark
+    over tagline) would be unreadable at nav height. White so the brown logo reads on the pill. */}
+<Link
+  className="flex items-center gap-2 rounded-full bg-white pl-1.5 pr-4 py-1 shadow-sm transition-transform hover:scale-[1.02]"
+  href="/"
+>
+<Image src="/brand/stayfunded-mark.png" alt="" width={628} height={570} className="h-7" style={{ width: "auto" }} priority />
+<Image src="/brand/stayfunded-wordmark.png" alt={APP_NAME} width={720} height={84} className="h-[15px]" style={{ width: "auto" }} priority />
 </Link>
 
 <nav className="hidden lg:flex items-center space-x-6 text-xs font-medium text-[#edbca5]/85">
