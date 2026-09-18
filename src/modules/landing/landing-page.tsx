@@ -1237,8 +1237,11 @@ Receipt + Bank Proof
 <footer className="bg-[#201a15] py-12 text-[#edbca5]/80 text-xs">
 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col md:flex-row items-center justify-between gap-4">
 <div className="flex items-center gap-3 flex-shrink-0">
-<div className="w-7 h-7 flex items-center justify-center flex-shrink-0"><Image src="/brand/stayfunded-mark.png" alt="" width={28} height={26} className="h-7 w-auto" /></div>
-<span className="font-semibold text-white text-sm font-lp-serif whitespace-nowrap">{APP_NAME}</span>
+{/* Same white capsule as the nav: the brown logo would vanish on the dark footer. */}
+<div className="flex items-center gap-2 rounded-full bg-white pl-1.5 pr-4 py-1 shadow-sm flex-shrink-0">
+<Image src="/brand/stayfunded-mark.png" alt="" width={628} height={570} className="h-7" style={{ width: "auto" }} />
+<Image src="/brand/stayfunded-wordmark.png" alt={APP_NAME} width={720} height={84} className="h-[15px]" style={{ width: "auto" }} />
+</div>
 <span className="hidden lg:inline text-[#edbca5]/80 whitespace-nowrap">• Nonprofit &amp; CVI Grant Reconciliation Engine</span>
 </div>
 <div className="flex flex-wrap items-center justify-center gap-5">
