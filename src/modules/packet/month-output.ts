@@ -158,3 +158,11 @@ export function monthOutputFailureMessage(kind: MonthOutputKind, error: unknown)
     ? `Packet generation failed at ${at}. Please try again — if it keeps failing, contact Mantaq.`
     : "The packet could not be generated just now. Please try again — if it keeps failing, contact Mantaq.";
 }
+
+/**
+ * The answer once the organisation's generation budget (`generate`) is spent — the same words
+ * whether the file was being downloaded or shared.
+ */
+export function generationBudgetMessage(retryAfterSeconds: number): string {
+  return `Too many documents requested at once. Try again in ${retryAfterSeconds} second${retryAfterSeconds === 1 ? "" : "s"}.`;
+}

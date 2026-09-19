@@ -113,13 +113,16 @@ describe("Rich editor/skeleton wiring on the Monthly summary screen (PR #18 revi
 });
 
 describe("write route wiring", () => {
-  it("the route calls sameOrigin before writeSummaryAction", () => {
+  it("the route checks the origin before writeSummaryAction", () => {
+    // The guards moved into `readSignedInJson` (PHASE-12), shared with the sharing routes; the
+    // route must still run them before the action, and the helper must check the origin.
     const source = read("app/api/monthly-summary/write/route.ts");
-    const sameOriginCall = source.indexOf("sameOrigin(request)");
+    const guardCall = source.indexOf("readSignedInJson(request");
     const actionCall = source.indexOf("writeSummaryAction(");
-    expect(sameOriginCall).toBeGreaterThan(-1);
+    expect(guardCall).toBeGreaterThan(-1);
     expect(actionCall).toBeGreaterThan(-1);
-    expect(actionCall).toBeGreaterThan(sameOriginCall);
+    expect(actionCall).toBeGreaterThan(guardCall);
+    expect(read("src/lib/json-request.ts")).toContain("sameOrigin(request)");
   });
 
   it("the client writes via fetch(\"/api/monthly-summary/write\"), not a direct writeSummaryAction import", () => {

@@ -1,6 +1,6 @@
 # Phase 12 — Share the month's packet and summary with a link
 
-Status: **Phase 1 built** (2026-09-19); Phases 2–5 not started. The product spec is Appendix A, copied word for
+Status: **Phases 1–2 built** (2026-09-19); Phases 3–5 not started. The product spec is Appendix A, copied word for
 word from `docs/tickets/share-packet-link.md`. §2 records where this plan departs from it and why.
 Every build phase in §9 names its sources and its own checks, so each can run in a fresh chat.
 
@@ -295,6 +295,46 @@ DROP INDEX "generated_artifacts_scope_id_uq";
 - The rate limits.
 
 Checks: I-1..I-12.
+
+**Results (2026-09-19).**
+- **Built:**
+  - `src/modules/sharing/`:
+    - `actions.ts`: `createSharedLinkAction`, `updateSharedFileAction`,
+      `changeSharedLinkPasswordAction`, `stopSharingAction`. Input is validated with zod, and
+      every lookup by id goes through one `activeShareScope(orgId, id)`.
+    - `queries.ts`: `loadSharedLinks`, `shareUrl`.
+    - `public.ts`: `loadPublicShare`, `openShare`, `unlockSharedFile`, `sharedFileUrl`.
+    - `single-flight.ts`.
+  - `app/api/shared-links/{create,update}/route.ts`.
+  - The four `LIMITS` entries (`sharePasswordPerLinkIp`, `sharePasswordPerIp`, `shareOpen`,
+    `sharePasswordSet`) and the "Sharing (PHASE-12)" block in `UI`.
+  - `generationBudgetMessage` in `month-output.ts`, now used by both download routes and
+    sharing, so the 429 text exists once.
+- **Deviation, a new shared helper:**
+  - The two new routes would have been the second and third copies of the monthly-summary write
+    route's guard block (session → origin → size → JSON). `src/lib/json-request.ts`
+    (`readSignedInJson`) now holds it, and all three routes use it.
+  - The write route's behaviour is unchanged: `write-route.test.ts` still passes (7).
+  - Its source-reading wiring test (`screen.test.ts`) now follows the call into the helper.
+- **Addition, Stop sharing beats a running Update:** "Update shared file" re-checks that the link is
+  still active in the same `UPDATE` that moves the file. A Stop sharing that lands while a packet
+  is building wins, rather than being silently undone.
+- **Tests:**
+  - `actions.integration.test.ts` (20): I-1..I-12, I-15, I-16, I-18, I-22, and a right password
+    resetting that visitor's count.
+  - `routes.test.ts` (10): both routes' guards.
+  - `strings.test.ts` now pins the Appendix A wordings.
+  - Full suite 1744 passed. Typecheck and lint are clean.
+- **Mutation checks**, each caught and restored:
+  - `revoked_at` filter dropped (I-8);
+  - cancelled filter dropped (I-18);
+  - password checked before the limits are consumed (I-7, I-15 and the reset test);
+  - reset skipped on a right password;
+  - `activeShareScope` without `org_id` (I-9).
+  - The first attempt at the "check before consuming" mutation was built wrong (it still consumed
+    first) and passed. It was rebuilt and caught.
+- **Not verified:** the public routes and screen (Phases 3–4). There is no browser pass yet,
+  since nothing is on screen.
 
 ### Phase 3 — Public side
 The proxy change, the headers, the `/s` layout, page and not-found page, and the unlock and file

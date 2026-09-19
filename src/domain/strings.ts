@@ -509,6 +509,70 @@ export const UI = {
   tourSummaryCardTitle: "Monthly summary",
   tourSummaryCardBody:
     "Included with Plus. Opens the summary screen, where AI writes a draft of this month's summary from your expenses for you to check and edit. It's never part of the packet.",
+
+  /* ----------------------------------------------------------------- Sharing (PHASE-12) */
+  // Appendix A verbatim unless marked "wording to review" (PHASE-12 §12).
+
+  shareButton: "Share link",
+  shareDialogTitle: (monthLabel: string) => `Share ${monthLabel} files`,
+  shareChoicePacket: "Packet (PDF)",
+  shareChoicePacketHint: "Opens in the browser. Clickable references work in Chrome, Edge and Safari.",
+  shareChoiceSummary: "Summary (Excel)",
+  shareChoiceSummaryHint: "Downloads the Excel file.",
+  shareAlreadyShared: "Already shared",
+  shareRequirePassword: "Require a password",
+  sharePasswordLabel: "Password",
+  shareCreate: "Create link",
+  shareCreatingPacket: "Preparing the packet…",
+  /** Wording to review: the ticket only names the packet's busy label. */
+  shareCreatingSummary: "Preparing…",
+  shareCopy: "Copy link",
+  shareCopied: "Link copied",
+  /** Wording to review. */
+  shareCopyRefused: "Couldn't copy the link. Select it and copy it yourself.",
+  sharePasswordNote: "Password protected. Send the password separately, for example by text.",
+  sharedLinksTitle: "Shared links",
+  sharedPasswordProtected: "Password protected",
+  sharedNoPassword: "No password",
+  sharedOn: (date: string, name: string) => `Shared on ${date} by ${name}`,
+  shareChangePassword: "Change password",
+  shareStop: "Stop sharing",
+  shareStopTitle: (monthLabel: string, noun: "packet" | "summary") =>
+    `Stop sharing the ${monthLabel} ${noun}?`,
+  shareStopBody: "Anyone who has the link won't be able to open it.",
+  shareRecordsChanged: (date: string) =>
+    `Your records changed since you shared this file on ${date}. The link still gives the older file.`,
+  shareUpdate: "Update shared file",
+  /** Wording to review. */
+  shareUpdated: "Shared file updated.",
+  /** Wording to review (P5). */
+  sharePasswordTooShort: "Use at least 6 characters.",
+  sharePasswordTooLong: "Use at most 128 characters.",
+  /** Wording to review. */
+  sharePasswordAdded: "Password added.",
+  sharePasswordChanged: "Password changed.",
+  sharePasswordRemoved: "Password removed.",
+  /** Wording to review: a second tab or person shared the same file first. */
+  shareAlreadyExists: "That file is already shared.",
+  /** Wording to review (P13). */
+  shareInProgress: "This file is already being prepared.",
+  /** Wording to review: the row was stopped, or never belonged to this organization. */
+  shareNoLongerShared: "That link is no longer shared.",
+  /** Wording to review (C4): cancelled blocks nothing else, so a cancelled org still sees its rows. */
+  shareCancelledNote: "These links don't open while your organization's plan is cancelled.",
+
+  // The public pages at /s/… (Appendix A §5).
+  sharePasswordProtected: "This file is password protected.",
+  shareOpenFile: "Open file",
+  sharePasswordWrong: "That password isn't right.",
+  shareTooManyTries: "Too many tries. Please wait 15 minutes and try again.",
+  shareUnavailable: "This link is no longer available. Please ask the sender for a new one.",
+  /** Wording to review: Excel links stay on the page after the password, while the file downloads. */
+  shareDownloadStarted: "Your download has started.",
+  /** Wording to review: the saved file could not be read from storage (never rebuilt, P10). */
+  shareOpenFailed: "This file can't be opened right now. Please try again in a few minutes.",
+  /** Wording to review: past the per-address open limit (`shareOpen`). */
+  shareTooManyOpens: "Too many requests. Please wait a few minutes and try again.",
 } as const;
 
 /**

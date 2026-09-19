@@ -4,6 +4,7 @@ import { isValidMonthKey, type MonthKey } from "@/src/domain/dates";
 import { attachmentHeader } from "@/src/lib/http";
 import { findFundingSource } from "@/src/modules/funding-sources/queries";
 import {
+  generationBudgetMessage,
   monthOutputFailureMessage,
   prepareMonthOutput,
   resolveMonthOutput,
@@ -44,7 +45,7 @@ export async function GET(request: Request) {
   if (!budget.allowed) {
     const seconds = budget.retryAfterSeconds;
     return new NextResponse(
-      `Too many documents requested at once. Try again in ${seconds} second${seconds === 1 ? "" : "s"}.`,
+      generationBudgetMessage(seconds),
       { status: 429, headers: { "Content-Type": "text/plain; charset=utf-8", "Retry-After": String(seconds) } },
     );
   }
