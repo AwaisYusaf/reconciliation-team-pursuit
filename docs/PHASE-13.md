@@ -128,8 +128,9 @@ outlive this phase.
    `src/domain/dashes.ts`). The prompt rule is a request; the cleaner makes it a guarantee:
    - a dash touching a number as a minus sign (`–$145.00`) becomes `-$145.00`, so the figure
      checker sees the sign the model meant;
-   - an unspaced en dash between two numbers, or two words, is a range: `2–3` → `2 to 3`,
-     `January–March` → `January to March`;
+   - an unspaced dash between two numbers is a range: `2–3` → `2 to 3`. Between two words, an
+     en dash becomes a hyphen (`January-March`), since it may join a compound such as
+     `Detroit–Wayne`, and an em dash becomes a comma;
    - any other em or en dash becomes a comma, with tidy-ups for `, ,`, `, .`, a dash at the start
      or end of a line, and a dash next to a bracket or colon;
    - **names from the month's data are kept as typed**: a line item, expense, vendor or payment
@@ -268,3 +269,20 @@ Before and after, grouped by screen, with a short reason when it isn't only a da
 - Unit tests for domain and generation pass (603), as do the generation, packet and sharing
   integration tests (276). Typecheck and lint are clean.
 - `scenarios.md` S10 still quotes the old note. It's a record of a past run, so it's left as is.
+
+### Phase 2: the AI summary (2026-09-19)
+
+- `src/domain/dashes.ts`: `replaceDashes` judges each dash by what touches it (§5), and
+  `textsWithDashes` collects the typed strings in the month's facts that must keep theirs. It
+  has 13 unit tests, covering every rule, a never-leaves-one input, idempotence and overlapping
+  kept names.
+- `runModelAttempts` cleans both attempts before `checkDraft`. I-8a (integration): a stubbed reply
+  with an em dash aside and en dash bullets is saved clean, keeps `Groceries — Eastern Market` as
+  typed, and needs no retry. **Mutations:** skipping the clean fails I-8a, and so does dropping
+  `keep`.
+- The prompt lost its six dashes (including the data delimiter's) and gained the no-dashes rule.
+  **One addition beyond dashes:** the prompt said "organisation", and the real draft below wrote
+  "totalled", so the prompt now says "organization" and asks for American English spelling. The
+  read-amounts prompt lost its one dash, and its wording is otherwise unchanged.
+- **Real draft (one call, local Mantaq August 2026, 1,656 in and 819 out tokens):** no dashes
+  even before cleaning, structure and figures pass. Nothing was saved.

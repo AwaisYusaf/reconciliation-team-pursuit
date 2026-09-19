@@ -396,6 +396,36 @@ describe.skipIf(!hasDatabase)("monthly-summary actions (integration, Phase 11)",
     expect(rows[0].costMicroUsd).toBe(100 * 2 + 20 * 12);
   });
 
+  it("I-8a: a draft is saved with no dash, and a name from the data keeps its own (D-113)", async () => {
+    const org = await makeOrgWithExpense(freshMonth());
+    const typedName = "Groceries \u2014 Eastern Market";
+    await db.update(expenses).set({ name: typedName }).where(eq(expenses.id, org.expenseId));
+    asSession(org.orgId, org.userId);
+    const sections = ["Spending by line item", "Budget position", "Changes from last month", "Items to note"];
+    writeSummaryMock.mockResolvedValue({
+      outcome: "written",
+      markdown: [
+        "## Overview",
+        `The month was quiet \u2014 one expense, ${typedName}, and nothing else.`,
+        ...sections.flatMap((title) => [`## ${title}`, "\u2013 Salary: nothing to report."]),
+      ].join("\n"),
+      inputTokens: 10,
+      outputTokens: 5,
+    });
+
+    const result = await writeSummaryAction({ sourceId: org.fundingSourceId, month: org.month, expectedVersion: null });
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error("unreachable");
+
+    const saved = (await summaryRow(org.orgId, org.fundingSourceId, org.month))!.contentMarkdown;
+    expect(saved).toBe(result.data.contentMarkdown);
+    expect(saved).toContain(`The month was quiet, one expense, ${typedName}, and nothing else.`);
+    expect(saved).toContain("## Items to note\n- Salary: nothing to report.");
+    expect(saved.replaceAll(typedName, "")).not.toMatch(/[\u2013\u2014]/);
+    // One call: the en dash bullets, cleaned, already pass the structure check.
+    expect(writeSummaryMock).toHaveBeenCalledTimes(1);
+  });
+
   it("I-9..I-14: real expense edits mark the summary stale via loadMonthlySummaryScreen", async () => {
     const org = await makeOrgWithExpense(freshMonth());
     asSession(org.orgId, org.userId);

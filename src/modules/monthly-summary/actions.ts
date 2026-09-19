@@ -12,6 +12,7 @@ import { and, eq, sql } from "drizzle-orm";
 
 import { db, type Database } from "@/src/db";
 import { aiUsageEvents, monthlySummaries, type SummaryTrigger } from "@/src/db/schema";
+import { replaceDashes, textsWithDashes } from "@/src/domain/dashes";
 import { isValidMonthKey, monthLabel, type MonthKey } from "@/src/domain/dates";
 import type { MonthFacts } from "@/src/domain/monthly-summary-facts";
 import { UI } from "@/src/domain/strings";
@@ -168,19 +169,26 @@ type ModelOutcome = { outcome: "accepted"; markdown: string } | { outcome: "reje
  * Attempt 1, then (P4) one automatic retry with `retryFeedbackFor` when the draft's figures or
  * structure don't check out. A transport/refusal failure on either attempt stops immediately —
  * only a checked-and-rejected draft gets the retry, never a failed call.
+ *
+ * Each draft loses its dashes before it is checked (D-113), so the checks judge exactly the text
+ * that is saved. Names and descriptions from the month's data keep theirs, as typed.
  */
 async function runModelAttempts(
   facts: MonthFacts,
 ): Promise<{ result: ModelOutcome; inputTokens: number | null; outputTokens: number | null }> {
+  const typed = textsWithDashes(facts);
+  const clean = (markdown: string) => replaceDashes(markdown, { keep: typed });
+
   const attempt1 = await writeSummary({ facts });
   if (attempt1.outcome === "failed") {
     return { result: { outcome: "failed" }, inputTokens: attempt1.inputTokens, outputTokens: attempt1.outputTokens };
   }
 
-  const check1 = checkDraft(attempt1.markdown, facts);
+  const draft1 = clean(attempt1.markdown);
+  const check1 = checkDraft(draft1, facts);
   if (check1.ok) {
     return {
-      result: { outcome: "accepted", markdown: attempt1.markdown },
+      result: { outcome: "accepted", markdown: draft1 },
       inputTokens: attempt1.inputTokens,
       outputTokens: attempt1.outputTokens,
     };
@@ -193,9 +201,10 @@ async function runModelAttempts(
     return { result: { outcome: "failed" }, inputTokens, outputTokens };
   }
 
-  const check2 = checkDraft(attempt2.markdown, facts);
+  const draft2 = clean(attempt2.markdown);
+  const check2 = checkDraft(draft2, facts);
   if (check2.ok) {
-    return { result: { outcome: "accepted", markdown: attempt2.markdown }, inputTokens, outputTokens };
+    return { result: { outcome: "accepted", markdown: draft2 }, inputTokens, outputTokens };
   }
   return { result: { outcome: "rejected" }, inputTokens, outputTokens };
 }
