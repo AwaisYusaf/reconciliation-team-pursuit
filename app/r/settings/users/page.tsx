@@ -23,7 +23,7 @@ export default async function UsersPage() {
     <div>
       <PageHeader
         title="Users"
-        subtext="Everyone signed in under this organization."
+        subtext="Everyone who can sign in to this organization."
         actions={
           <Link href="/r/settings" className="text-[15px] text-accent underline hover:text-accent-dark">
             Back to Settings

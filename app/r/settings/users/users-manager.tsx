@@ -41,7 +41,9 @@ function GeneratedPasswordPanel({
       <div className="flex flex-wrap items-center gap-3 justify-between">
         <div>
           <div className="font-bold">Password (shown once): {password}</div>
-          <div className="mt-1">Hand it over out of band. It cannot be shown again.</div>
+          <div className="mt-1">
+            Give it to the user yourself, for example by text. It can&apos;t be shown again.
+          </div>
         </div>
         <div className="flex gap-2">
           <Button
@@ -110,7 +112,7 @@ export function UsersManager({ users }: { users: OrgUser[] }) {
                         onClick={() =>
                           startTransition(async () => {
                             const result = await setUserNameAction(user.id, editingName);
-                            if (reportResult(result, "Name updated")) {
+                            if (reportResult(result, "Name updated.")) {
                               setEditingId(null);
                               router.refresh();
                             }
@@ -156,14 +158,14 @@ export function UsersManager({ users }: { users: OrgUser[] }) {
                       onClick={() =>
                         startTransition(async () => {
                           const result = await setUserPasswordAction(user.id);
-                          if (reportResult(result, "Password reset")) {
+                          if (reportResult(result, "Password reset.")) {
                             if (result.data) setShownPassword({ userId: user.id, password: result.data.password });
                             router.refresh();
                           }
                         })
                       }
                     >
-                      Set password
+                      Reset password
                     </Button>
                   </div>
                 </Td>
@@ -205,7 +207,7 @@ export function UsersManager({ users }: { users: OrgUser[] }) {
             onClick={() =>
               startTransition(async () => {
                 const result = await createOrgUserAction({ name, email });
-                if (reportResult(result, "User added")) {
+                if (reportResult(result, "User added.")) {
                   setShownPassword({ userId: "new", password: result.data.password });
                   setName("");
                   setEmail("");

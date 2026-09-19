@@ -51,12 +51,12 @@ async function main(): Promise<void> {
   // `pg_dump` failing mid-pipe still closes stdin cleanly, so the bytes are checked rather
   // than the exit status of a process this one cannot see.
   if (dump.byteLength === 0) {
-    throw new Error("No dump received on stdin — did pg_dump fail? Nothing was uploaded.");
+    throw new Error("No dump received on stdin. Did pg_dump fail? Nothing was uploaded.");
   }
   if (dump.subarray(0, 5).toString("latin1") !== CUSTOM_FORMAT_MAGIC) {
     throw new Error(
       "Input is not a pg_dump custom-format archive (missing PGDMP header). " +
-        "Nothing was uploaded — check the pg_dump command uses -Fc.",
+        "Nothing was uploaded. Check the pg_dump command uses -Fc.",
     );
   }
   if (dump.byteLength < MIN_PLAUSIBLE_BYTES) {

@@ -33,7 +33,7 @@ export async function removeMonthDocumentAction(
   // whole reason archived sources stay selectable at all. Uploading a month document to one is
   // already refused (`app/api/files/upload/route.ts`); deleting one out of it is the same
   // record, from the other end, so it is refused here too.
-  if (owned.archivedAt) return fail("That funding source is archived.");
+  if (owned.archivedAt) return fail("That funding source is archived. Unarchive it in Settings to remove documents.");
 
   // The document's own month is what the guard checks. Scoped by organisation and funding
   // source, so another org's or another source's id simply finds nothing.

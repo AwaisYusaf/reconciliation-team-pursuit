@@ -41,19 +41,19 @@ const FIELDS: {
 }[] = [
   { label: "Name", value: (s) => s.name || NONE, differs: (a, b) => a.name !== b.name },
   {
-    label: "Funding Source",
+    label: "Funding source",
     value: (s) => s.fundingSourceName || NONE,
     differs: (a, b) => (a.fundingSourceName ?? "") !== (b.fundingSourceName ?? ""),
   },
   {
-    label: "Line Item",
+    label: "Line item",
     value: (s) => s.lineItemName || NONE,
     // lineItemId is deliberately never shown on its own (noise) — but a change to the id with
     // an unchanged name (a rename collision, or a delete/recreate) must still surface as a row.
     differs: (a, b) => a.lineItemId !== b.lineItemId || a.lineItemName !== b.lineItemName,
   },
   {
-    label: "Payment Source",
+    label: "Payment source",
     value: (s) => s.paymentSource || NONE,
     differs: (a, b) => a.paymentSource !== b.paymentSource,
   },
@@ -81,12 +81,12 @@ const FIELDS: {
     differs: (a, b) => a.feesCents !== b.feesCents,
   },
   {
-    label: "Tax Reimbursable",
+    label: "Tax reimbursable",
     value: (s) => (s.taxReimbursable ? "Yes" : "No"),
     differs: (a, b) => a.taxReimbursable !== b.taxReimbursable,
   },
   {
-    label: "Fees Reimbursable",
+    label: "Fees reimbursable",
     value: (s) => (s.feesReimbursable ? "Yes" : "No"),
     differs: (a, b) => a.feesReimbursable !== b.feesReimbursable,
   },
@@ -103,12 +103,12 @@ const FIELDS: {
     diffable: true,
   },
   {
-    label: "No Receipt",
+    label: "No receipt available",
     value: (s) => (s.noReceipt ? "Yes" : "No"),
     differs: (a, b) => a.noReceipt !== b.noReceipt,
   },
   {
-    label: "No Receipt Reason",
+    label: "Reason for no receipt",
     value: (s) => s.noReceiptReason || NONE,
     differs: (a, b) => (a.noReceiptReason ?? "") !== (b.noReceiptReason ?? ""),
     diffable: true,

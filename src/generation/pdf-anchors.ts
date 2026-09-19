@@ -6,7 +6,7 @@
  * packet, because the copy keeps the page's geometry and only its identity changes.
  *
  * Two anchors per expense:
- * - the **heading**, found by its reference token (`(2026-02-014):`), which is unique on the sheet
+ * - the **heading**, found by its `(2026-02-014):` token, which is unique on the sheet
  *   by construction (R6.4) and is the only string that is — two pay periods for one person print
  *   identical rows;
  * - the **table row**, which prints no reference (R2.6) and so cannot be found by text. Rows are
@@ -171,7 +171,9 @@ export function coverSheetAnchors(
       next && next.page === token.page ? (token.yMax + next.yMin) / 2 : token.pageHeight - 72;
     const rowRect = toPdfRect({ xMin: tableLeft, yMin: top, xMax: token.xMax + 4, yMax: bottom }, token.pageHeight);
 
-    const matches = words.filter((w) => w.text === `(${row.reference}):` || w.text === row.reference);
+    // Only the heading's own `(ref):` token. A bare reference also matched a name or role that
+    // quotes another expense ("Office Depot invoice 2026-02-002"), which failed the whole packet.
+    const matches = words.filter((w) => w.text === `(${row.reference}):`);
     if (matches.length !== 1) {
       throw new AnchorError(
         `Reference ${row.reference} appears ${matches.length} times on the cover sheet; the heading must be unique.`,

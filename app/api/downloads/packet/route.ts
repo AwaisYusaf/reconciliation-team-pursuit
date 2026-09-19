@@ -12,6 +12,7 @@ import {
 } from "@/src/modules/packet/month-output";
 import { getSession } from "@/src/services/auth/session";
 import { consume } from "@/src/services/rate-limit";
+import { SESSION_EXPIRED } from "@/src/lib/action-result";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -26,7 +27,7 @@ export const maxDuration = 600;
  */
 export async function GET(request: Request) {
   const session = await getSession();
-  if (!session) return new NextResponse("Not signed in", { status: 401 });
+  if (!session) return new NextResponse(SESSION_EXPIRED, { status: 401 });
 
   // Absent header falls through on purpose: every browser since Safari 16.4 sends it, and
   // SameSite=Lax plus the same-origin policy already cover the realistic cases — so a

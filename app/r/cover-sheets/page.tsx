@@ -55,7 +55,7 @@ export default async function CoverSheetsPage({
         <TourSequenceSkip tour="cover_sheets" />
         <PageHeader
           title="Cover Sheets"
-          subtext={`Breakdown documents for ${monthLabel(session.activeMonth)}.`}
+          subtext={`Cover sheets for ${monthLabel(session.activeMonth)}, one for each line item.`}
         />
         <PickFundingSource
           sources={activeSources}
@@ -85,9 +85,9 @@ export default async function CoverSheetsPage({
   if (lineItems.length === 0) {
     return (
       <div>
-        <PageHeader title="Cover Sheets" subtext={`Breakdown documents for ${label}.`} />
+        <PageHeader title="Cover Sheets" subtext={`Cover sheets for ${label}, one for each line item.`} />
         <EmptyState>
-          No line items yet — set up your budget in{" "}
+          No line items yet. Set up your budget in{" "}
           <Link href="/r/line-items" className="text-accent underline">
             Line Items
           </Link>
@@ -105,7 +105,7 @@ export default async function CoverSheetsPage({
       <TourGuide tour="cover_sheets" steps={COVER_SHEETS_TOUR_STEPS} alreadySeen={seenCoverSheetsTour} />
       <PageHeader
         title="Cover Sheets"
-        subtext={`Breakdown documents for ${label}.`}
+        subtext={`Cover sheets for ${label}, one for each line item.`}
         actions={
           <div data-tour="cover-sheet-line-item-picker">
             <LineItemSelect lineItems={lineItems} selected={selected} />

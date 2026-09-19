@@ -14,11 +14,11 @@ Writes `expenses`, `expense_documents`, upserts `vendor_defaults` (R8.2). Reads 
 |---|---|
 | Funding source | Select, above Line item (Phase 6/D-93). Pre-filled and **not editable** when the org has only one source (spec §2/§4) — rendered as static text, no control. Changing it clears Line item and re-applies the new source's tax/fee rules. |
 | Name | Free text (payee/label). Type-ahead: substring suggestions max 6; exact match autofills line item + description with `#F3E9DD` flash (still editable) — the remembered line item only applies if it belongs to the currently selected funding source, otherwise the field is left empty (D-93). |
-| Line item | Select, required. Lists only the selected funding source's line items, each labelled `"{name} — Remaining {amount}"` (D-93, Appendix A §4). |
+| Line item | Select, required. Lists only the selected funding source's line items, each labelled `"{name} · {amount} remaining"` (D-93, Appendix A §4). |
 | Payment source | Select of the org's active payment-source labels (R5.1), required. As of D-93 this only records *how* something was paid — it no longer drives the reimbursement flags. |
 | Month | Select, defaults to the active month (R2.2); editable in add and edit. Moving months never moves S3 objects (keys are historical). |
 | Date | Date input, defaults today in America/Detroit (R2.5), any date allowed. |
-| Description / role | Textarea, label: `Description / role — this exact text will print on the cover sheet`. |
+| Description / role | Textarea, label: `Description / role (prints on the cover sheet exactly as typed)`. |
 | Subtotal / Tax / Fees | Money inputs; negatives allowed (refunds). |
 | Include in reimbursement | Tax / Fees checkboxes, shown only when that amount is non-zero; defaults from the selected **funding source** (R1.3, D-93 — no longer the payment source) |
 | Reimbursable box | Live reimbursable per R1.3, with the receipt total beneath it and the shortfall named when they differ (R1.3a) |
@@ -30,8 +30,8 @@ Writes `expenses`, `expense_documents`, upserts `vendor_defaults` (R8.2). Reads 
 | Narrative | Required textarea (R4.7, prints per R6.6), helper: "Prints as a paragraph under this expense on the cover sheet." |
 
 ## Behavior
-- Save validation: name, line item, payment source, and narrative are required — error: `Please enter a name, choose a line item, and choose a payment source.` for the first three, `Enter a narrative for this expense.` (R4.7) when narrative is blank. Amounts default 0. `No receipt available` requires reason.
-- Saving without proofs/receipt is **allowed** (capture-first philosophy) — the record is simply documentation-incomplete and shows up in gates (R4.5 pattern). The form shows a passive notice when saving incomplete: "Saved — still missing proof of payment." Narrative has no such passive path: unlike proof/receipt, it blocks the save itself (R4.7) rather than only gating the download later. Expenses saved before R4.7 existed keep whatever narrative they have (possibly none) and are not rejected on read, only on the next save.
+- Save validation: name, line item, payment source, and narrative are required — error: `Enter a name, choose a line item, and choose a payment source.` for the first three, `Enter a narrative for this expense.` (R4.7) when narrative is blank. Amounts default 0. `No receipt available` requires reason.
+- Saving without proofs/receipt is **allowed** (capture-first philosophy) — the record is simply documentation-incomplete and shows up in gates (R4.5 pattern). The form shows a passive notice when saving incomplete: "Expense saved. It's still missing proof of payment." Narrative has no such passive path: unlike proof/receipt, it blocks the save itself (R4.7) rather than only gating the download later. Expenses saved before R4.7 existed keep whatever narrative they have (possibly none) and are not rejected on read, only on the next save.
 - Uploads: presigned POST direct to S3 (server-generated docId keys under the client-generated expense uuid), then `attachDocument(docId)` runs process & attach (R4.6) with progress + per-file status chips. `createExpense` receives the expense uuid + the list of attached docIds — never raw S3 keys. Abandoned drafts are removed by the nightly sweep (>24 h, no expense row).
 - Document removals (chips' ×) are immediate and labeled "Removed now — not undone by Cancel"; Cancel discards field edits only.
 - After save: to Expenses list, new row highlighted. Edit mode identical, prefilled, plus Delete (confirm dialog). Projection uses the edit-mode formula (R3.7). Editing a month marked Submitted shows the R10.6 warning banner — keyed by `{fundingSourceId}:{month}` (D-93), so it fires if either the current or a newly chosen source has that month submitted.
@@ -74,13 +74,13 @@ Fields in order:
 1. "Name" text input, value "Quincy Smith", with an open suggestion dropdown under it showing
    matches: "Quincy Smith", "Quajh Zimmerman" (white panel, 1px border, hover row). Add a
    second demo state further down the page… no — keep one field, dropdown open.
-2. "Budget line item" select, value "Salary", with a subtle #F3E9DD autofill flash background
+2. "Line item" select, value "Salary", with a subtle #F3E9DD autofill flash background
    on this and the description field.
 3. "Payment source" select, value "Paid by us, reimbursement requested" (other options:
    "Invoiced to fiduciary in advance", "Paid directly by fiduciary").
 4. Side-by-side row: "Month" select (value "March 2026") and "Date" date input (value
    03/02/2026).
-5. "Description / role — this exact text will print on the cover sheet" textarea, value
+5. "Description / role (prints on the cover sheet exactly as typed)" textarea, value
    "Director".
 6. Row of three money inputs: Subtotal $9,211.50 · Tax $0.00 · Fees $0.00.
 7. A bordered emphasis box (2px #211B16 border, white): "Reimbursable amount: $9,211.50" in
@@ -103,6 +103,6 @@ Fields in order:
     cover sheet."
 
 Bottom: primary "Save expense" button and a quiet "Cancel" link. Also show the validation
-error style once: red text "Please enter a name, choose a line item, and choose a payment
+error style once: red text "Enter a name, choose a line item, and choose a payment
 source." above the save button.
 ```

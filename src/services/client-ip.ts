@@ -55,7 +55,7 @@ export function clientIpFrom(store: { get(name: string): string | null | undefin
   // Production refuses to run that way, the same as it refuses the local storage driver.
   if (process.env.NODE_ENV === "production") {
     throw new Error(
-      "TRUSTED_PROXY_HOPS must be set in production — without it login rate limits cannot " +
+      "TRUSTED_PROXY_HOPS must be set in production. Without it, login rate limits cannot " +
         "tell clients apart and become an account lockout. Set it to the number of reverse " +
         "proxies in front of the app (Caddy or nginx terminating TLS is 1).",
     );

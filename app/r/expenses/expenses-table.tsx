@@ -45,13 +45,13 @@ export type RowDocument = {
 
 /** How the list is ordered. Sorting is client-side: the month's rows are all loaded already. */
 const SORTS = {
-  "date-desc": { label: "Date — newest first", compare: (a: ExpenseRow, b: ExpenseRow) => b.date.localeCompare(a.date) },
-  "date-asc": { label: "Date — oldest first", compare: (a: ExpenseRow, b: ExpenseRow) => a.date.localeCompare(b.date) },
+  "date-desc": { label: "Date (newest first)", compare: (a: ExpenseRow, b: ExpenseRow) => b.date.localeCompare(a.date) },
+  "date-asc": { label: "Date (oldest first)", compare: (a: ExpenseRow, b: ExpenseRow) => a.date.localeCompare(b.date) },
   reference: { label: "Reference", compare: (a: ExpenseRow, b: ExpenseRow) => a.reference.localeCompare(b.reference) },
-  "name-asc": { label: "Name — A to Z", compare: (a: ExpenseRow, b: ExpenseRow) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }) },
-  "name-desc": { label: "Name — Z to A", compare: (a: ExpenseRow, b: ExpenseRow) => b.name.localeCompare(a.name, undefined, { sensitivity: "base" }) },
-  "amount-desc": { label: "Amount — highest first", compare: (a: ExpenseRow, b: ExpenseRow) => b.reimbursableCents - a.reimbursableCents },
-  "amount-asc": { label: "Amount — lowest first", compare: (a: ExpenseRow, b: ExpenseRow) => a.reimbursableCents - b.reimbursableCents },
+  "name-asc": { label: "Name (A to Z)", compare: (a: ExpenseRow, b: ExpenseRow) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }) },
+  "name-desc": { label: "Name (Z to A)", compare: (a: ExpenseRow, b: ExpenseRow) => b.name.localeCompare(a.name, undefined, { sensitivity: "base" }) },
+  "amount-desc": { label: "Amount (highest first)", compare: (a: ExpenseRow, b: ExpenseRow) => b.reimbursableCents - a.reimbursableCents },
+  "amount-asc": { label: "Amount (lowest first)", compare: (a: ExpenseRow, b: ExpenseRow) => a.reimbursableCents - b.reimbursableCents },
 } as const;
 
 type SortKey = keyof typeof SORTS;
@@ -118,7 +118,7 @@ function HistoryModal({
   if (!row) return null;
 
   return (
-    <Modal open title={`${row.reference} — ${row.name}`} onClose={onClose} size="lg">
+    <Modal open title={`${row.reference} · ${row.name}`} onClose={onClose} size="lg">
       {diffEvent ? (
         <div>
           <AuditDiffContent key={diffEvent.id} event={diffEvent} />
@@ -140,15 +140,15 @@ function HistoryModal({
                   partial list without admitting it is worse than one showing fewer rows. */}
               {history.truncated && (
                 <p className="text-[15px] text-sub mb-3">
-                  Showing the most recent changes only — this expense has more history than
+                  Showing the most recent changes only. This expense has more history than
                   fits here.
                 </p>
               )}
               <TableCard minWidth={640}>
                 <thead>
                   <tr>
-                    <Th>Date/Time</Th>
-                    <Th>Actor</Th>
+                    <Th>Date and time</Th>
+                    <Th>User</Th>
                     <Th>Action</Th>
                     <Th align="right" />
                   </tr>
@@ -364,14 +364,14 @@ export function ExpensesTable({
 
       {incomplete > 0 && (
         <DangerPanel tone="notice" className="mb-6">
-          {incomplete} record{incomplete === 1 ? " is" : "s are"} missing documents —{" "}
+          {incomplete} expense{incomplete === 1 ? " is" : "s are"} missing documentation.{" "}
           {docFilter === "Missing documentation" ? (
             <button
               type="button"
               onClick={() => setDocFilter(ALL_DOCUMENTATION)}
               className="underline"
             >
-              show all records
+              Show all expenses
             </button>
           ) : (
             <button
@@ -379,13 +379,14 @@ export function ExpensesTable({
               onClick={() => setDocFilter("Missing documentation")}
               className="underline"
             >
-              show only those
+              Show only those
             </button>
           )}{" "}
           or{" "}
           <Link href="/r/packet" className="underline">
-            view Month-End Packet
+            go to the Month-End Packet
           </Link>
+          .
         </DangerPanel>
       )}
 
@@ -421,7 +422,7 @@ export function ExpensesTable({
         }}
       >
         {confirming &&
-          `${confirming.name} — ${formatMoney(confirming.reimbursableCents)}. It moves to the trash with its files, and can be restored.`}
+          `${confirming.name} (${formatMoney(confirming.reimbursableCents)}) moves to the trash${confirming.allDocuments.length > 0 ? " with its files" : ""} and can be restored.`}
       </Dialog>
 
       <div className="flex flex-wrap gap-[18px] mb-5" data-tour="expenses-filters">
@@ -500,13 +501,13 @@ export function ExpensesTable({
           <tr>
             <Th sticky>Ref / Date</Th>
             <Th>Name</Th>
-            <Th>Line Item</Th>
-            {multiSource && <Th>Funding Source</Th>}
-            <Th>Source</Th>
+            <Th>Line item</Th>
+            {multiSource && <Th>Funding source</Th>}
+            <Th>Payment source</Th>
             <Th align="right">Amount</Th>
             <Th>Proof</Th>
             <Th>Receipt</Th>
-            <Th>Support</Th>
+            <Th>Supporting</Th>
             <Th>Narrative</Th>
             <Th align="right" stickyEnd />
           </tr>
@@ -521,7 +522,7 @@ export function ExpensesTable({
                   <button
                     type="button"
                     onClick={() => openDocuments(row.allDocuments, 0)}
-                    title={`Open the ${row.allDocuments.length} document(s) filed under ${row.reference}`}
+                    title={`Open the ${row.allDocuments.length} document${row.allDocuments.length === 1 ? "" : "s"} filed under ${row.reference}`}
                     className="tabular-nums text-[15px] underline decoration-line underline-offset-2 hover:opacity-80 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent rounded-[2px]"
                     data-tour="expenses-reference-viewer"
                   >
@@ -567,7 +568,7 @@ export function ExpensesTable({
                     {row.supporting.length}
                   </button>
                 ) : (
-                  "—"
+                  "-"
                 )}
               </Td>
               <Td>

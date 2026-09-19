@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 import { isValidMonthKey } from "@/src/domain/dates";
+import { UI } from "@/src/domain/strings";
 import { sameOrigin } from "@/src/lib/same-origin";
 import { consume } from "@/src/services/rate-limit";
 import { getSession } from "@/src/services/auth/session";
@@ -9,6 +10,7 @@ import { lockMonth } from "@/src/modules/packet/lock";
 import { ingestExpenseDocument, ingestMonthDocument } from "@/src/services/storage/documents";
 import { MAX_UPLOAD_BYTES, type DocumentScope } from "@/src/services/storage/keys";
 import type { MonthDocumentCategory } from "@/src/db/schema";
+import { SESSION_EXPIRED } from "@/src/lib/action-result";
 
 export const runtime = "nodejs";
 
@@ -31,17 +33,17 @@ const MONTH_CATEGORIES: MonthDocumentCategory[] = [
 export async function POST(request: NextRequest) {
   const session = await getSession();
   if (!session) {
-    return NextResponse.json({ ok: false, error: "Not signed in." }, { status: 401 });
+    return NextResponse.json({ ok: false, error: SESSION_EXPIRED }, { status: 401 });
   }
 
   if (!sameOrigin(request)) {
-    return NextResponse.json({ ok: false, error: "Bad origin." }, { status: 403 });
+    return NextResponse.json({ ok: false, error: "This upload couldn't be verified. Reload the page and try again." }, { status: 403 });
   }
 
   const limit = consume("presign", session.orgId);
   if (!limit.allowed) {
     return NextResponse.json(
-      { ok: false, error: "Too many uploads at once. Try again shortly." },
+      { ok: false, error: "Too many uploads at once. Wait a minute, then try again." },
       { status: 429 },
     );
   }
@@ -51,7 +53,7 @@ export async function POST(request: NextRequest) {
   const declaredLength = Number(request.headers.get("content-length") ?? "0");
   if (declaredLength > MAX_UPLOAD_BYTES + 1_000_000) {
     return NextResponse.json(
-      { ok: false, error: "That file is larger than 25 MB." },
+      { ok: false, error: "That file is larger than the 25 MB limit. Upload a smaller copy, for example a lower-resolution scan." },
       { status: 413 },
     );
   }
@@ -60,12 +62,12 @@ export async function POST(request: NextRequest) {
   try {
     form = await request.formData();
   } catch {
-    return NextResponse.json({ ok: false, error: "That upload was malformed." }, { status: 400 });
+    return NextResponse.json({ ok: false, error: "That file didn't upload completely. Try again." }, { status: 400 });
   }
 
   const file = form.get("file");
   if (!(file instanceof File)) {
-    return NextResponse.json({ ok: false, error: "No file was received." }, { status: 400 });
+    return NextResponse.json({ ok: false, error: "No file arrived. Choose the file and try again." }, { status: 400 });
   }
 
   const target = String(form.get("target") ?? "expense");
@@ -89,7 +91,7 @@ export async function POST(request: NextRequest) {
     // expenses) — month documents were the one create path that slipped through.
     if (source.archivedAt) {
       return NextResponse.json(
-        { ok: false, error: "That funding source is archived." },
+        { ok: false, error: "That funding source is archived. Unarchive it in Settings to add documents." },
         { status: 400 },
       );
     }
@@ -147,7 +149,10 @@ export async function POST(request: NextRequest) {
     console.error("upload failed", { orgId: session.orgId });
     void error;
     return NextResponse.json(
-      { ok: false, error: "That file could not be saved. Try again." },
+      {
+        ok: false,
+        error: `That file couldn't be saved. Try again, and if it keeps failing, contact support at ${UI.supportEmail}.`,
+      },
       { status: 500 },
     );
   }

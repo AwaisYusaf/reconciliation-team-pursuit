@@ -79,7 +79,7 @@ async function main() {
       console.log(`Password reset for ${user.email}.`);
       console.log(`Signed out ${revoked.length} active session${revoked.length === 1 ? "" : "s"}.`);
       if (!argument("password")) {
-        console.log(`\nNew password (shown once — hand it over out of band):\n\n  ${password}\n`);
+        console.log(`\nNew password (shown once, hand it over out of band):\n\n  ${password}\n`);
       }
       return;
     }
@@ -105,7 +105,7 @@ async function main() {
     console.log(`Password reset for ${staff.email}.`);
     console.log(`Signed out ${revoked.length} active session${revoked.length === 1 ? "" : "s"}.`);
     if (!argument("password")) {
-      console.log(`\nNew password (shown once — hand it over out of band):\n\n  ${password}\n`);
+      console.log(`\nNew password (shown once, hand it over out of band):\n\n  ${password}\n`);
     }
   } finally {
     await pool.end();

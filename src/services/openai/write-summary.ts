@@ -20,7 +20,7 @@ const ENDPOINT = "https://api.openai.com/v1/responses";
 /** Bumped whenever `SUMMARY_PROMPT`'s wording changes, so a stored draft's usage row can be
  *  told apart from one written under an earlier prompt if that's ever needed. Not persisted
  *  today — kept here so it exists the moment it's needed. */
-export const SUMMARY_PROMPT_VERSION = "2026-09-18.1";
+export const SUMMARY_PROMPT_VERSION = "2026-09-19.1";
 
 /**
  * The fixed backend prompt (P4, P5, P6, P16, P17, P18). `SUMMARY_SECTION_TITLES` is interpolated

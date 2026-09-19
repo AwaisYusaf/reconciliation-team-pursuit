@@ -39,7 +39,7 @@ describe("storageQuotaError", () => {
     const message = storageQuotaError(used, 2 * MB);
     expect(message).toContain(`${Math.round(used / MB)} MB`);
     expect(message).toContain(`${Math.round(MAX_ORG_BYTES / MB)} MB`);
-    expect(message).toContain("contact Mantaq");
+    expect(message).toContain("contact support");
   });
 
   it("allows an empty organisation's first upload", () => {

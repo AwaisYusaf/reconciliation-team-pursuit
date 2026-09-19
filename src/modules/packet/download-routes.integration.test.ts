@@ -174,7 +174,7 @@ describe.skipIf(!hasDatabase)("packet and summary download routes (integration, 
       getSessionMock.mockResolvedValue(null);
       const res = await get(request(kind, { month: freshMonth(), source: sourceId }));
       expect(res.status).toBe(401);
-      expect(await res.text()).toBe("Not signed in");
+      expect(await res.text()).toBe("You've been signed out. Sign in and try again.");
     });
 
     it("403 on a cross-site request; a missing header falls through", async () => {
@@ -209,8 +209,8 @@ describe.skipIf(!hasDatabase)("packet and summary download routes (integration, 
       expect(refused.status).toBe(409);
       expect(refused.headers.get("Content-Type")).toBe("text/plain; charset=utf-8");
       expect(await refused.text()).toBe(
-        "1 expense was deleted from this reporting period and has not been confirmed:\n" +
-          "• Trashed expense — A item — $10.00",
+        "1 expense was deleted from this month and hasn't been confirmed:\n" +
+          "• Trashed expense · A item · $10.00",
       );
 
       const confirmed = await get(request(kind, { month, source: sourceId, confirmedDeletions: "1" }));
@@ -225,7 +225,7 @@ describe.skipIf(!hasDatabase)("packet and summary download routes (integration, 
       expect(res.status).toBe(409);
       expect(res.headers.get("Content-Type")).toBe("text/plain; charset=utf-8");
       expect(await res.text()).toBe(
-        "1 record is missing documentation:\n• Blocking expense — A item — missing both",
+        "1 expense is missing documentation:\n• Blocking expense · A item · missing both",
       );
     });
 

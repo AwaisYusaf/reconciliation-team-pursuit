@@ -152,7 +152,7 @@ describe("validateRecurring", () => {
 
   it("rejects a zero amount but allows a negative one (a recurring credit)", () => {
     expect(validateRecurring({ name: "Adobe", amountCents: 0, lineItemId: "x" })).toBe(
-      "Enter an amount.",
+      "Enter an amount other than $0.00.",
     );
     expect(validateRecurring({ name: "Refund", amountCents: -5000, lineItemId: "x" })).toBeNull();
   });
@@ -242,10 +242,10 @@ describe("removeConfirmation wording", () => {
   // D-79) — a hand-typed match is refused by the action before a confirmation is offered.
   it("says plainly what will be deleted", () => {
     expect(removeConfirmation("Quincy Smith", 0)).toBe(
-      "Remove Quincy Smith? This deletes the expense.",
+      "This moves the Quincy Smith expense to the trash. You can restore it from there.",
     );
     expect(removeConfirmation("Quincy Smith", 2)).toBe(
-      "Remove Quincy Smith? This deletes the expense and 2 attached files.",
+      "This moves the Quincy Smith expense and its 2 attached files to the trash. You can restore it from there.",
     );
   });
 });

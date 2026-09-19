@@ -29,8 +29,13 @@ export const SHARE_BUTTON_ID = "share-link-button";
  * POST to one of the long-running share routes and read back its ActionResult. A dropped
  * connection, a signed-out session and an answer that isn't the route's JSON each get their own
  * words, rather than all reading as "check your connection" after a two-minute build.
+ * `unexpected` is the fault message, since a failed update must not read as "couldn't be shared".
  */
-export async function postShareRoute<T>(path: string, body: unknown): Promise<ActionResult<T>> {
+export async function postShareRoute<T>(
+  path: string,
+  body: unknown,
+  unexpected: string = UI.shareUnexpected,
+): Promise<ActionResult<T>> {
   let response: Response;
   try {
     response = await fetch(path, {
@@ -42,11 +47,11 @@ export async function postShareRoute<T>(path: string, body: unknown): Promise<Ac
     return fail(UI.shareNetworkFailed);
   }
   if (response.status === 401) return fail(SESSION_EXPIRED);
-  if (!(response.headers.get("content-type") ?? "").includes("application/json")) return fail(UI.shareUnexpected);
+  if (!(response.headers.get("content-type") ?? "").includes("application/json")) return fail(unexpected);
   try {
     return (await response.json()) as ActionResult<T>;
   } catch {
-    return fail(UI.shareUnexpected);
+    return fail(unexpected);
   }
 }
 

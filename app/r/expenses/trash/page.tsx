@@ -69,7 +69,7 @@ export default async function ExpenseTrashPage({
     <div>
       <PageTitle className="mb-1.5">Trash</PageTitle>
       <Subtext className="mb-6">
-        Deleted expenses, across every month. Restore one, or delete it for good.
+        Deleted expenses, across every month. Restore one, or delete it permanently.
       </Subtext>
 
       <TrashTable

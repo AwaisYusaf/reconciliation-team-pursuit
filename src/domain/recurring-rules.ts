@@ -107,9 +107,9 @@ export function addedState(
 export function removeConfirmation(name: string, documentCount: number): string {
   const files =
     documentCount > 0
-      ? ` and ${documentCount} attached file${documentCount === 1 ? "" : "s"}`
+      ? ` and its ${documentCount} attached file${documentCount === 1 ? "" : "s"}`
       : "";
-  return `Remove ${name}? This deletes the expense${files}.`;
+  return `This moves the ${name} expense${files} to the trash. You can restore it from there.`;
 }
 
 /** Validation for the add/edit form (R8.3). */
@@ -121,7 +121,7 @@ export function validateRecurring(input: {
   if (!input.name.trim() || !input.lineItemId || input.amountCents === null) {
     return "Enter a name, an amount, and a line item.";
   }
-  if (input.amountCents === 0) return "Enter an amount.";
+  if (input.amountCents === 0) return "Enter an amount other than $0.00.";
   return null;
 }
 

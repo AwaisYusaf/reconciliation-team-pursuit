@@ -67,8 +67,10 @@ function rememberedAmounts(vendor: Vendor): string {
   if (subtotal !== null) parts.push(formatMoney(subtotal));
   if (tax !== null && (tax > 0 || subtotal === null)) parts.push(`+${formatMoney(tax)} tax`);
   if (fees !== null && (fees > 0 || subtotal === null)) parts.push(`+${formatMoney(fees)} fees`);
-  return parts.length > 0 ? parts.join(" ") : "—";
+  return parts.length > 0 ? parts.join(" ") : "-";
 }
+
+const AMOUNT_PLACEHOLDERS = { subtotal: "Subtotal", tax: "Tax", fees: "Fees" } as const;
 
 export function VendorTable({
   vendors,
@@ -134,7 +136,7 @@ export function VendorTable({
                     ))}
                   </Select>
                 ) : (
-                  lineItems.find((item) => item.id === vendor.defaultLineItemId)?.name ?? "—"
+                  lineItems.find((item) => item.id === vendor.defaultLineItemId)?.name ?? "-"
                 )}
               </Td>
               <Td className="text-[15px] text-sub leading-snug">
@@ -159,12 +161,12 @@ export function VendorTable({
                       .map((source) => (
                         <option key={source.id} value={source.label}>
                           {source.label}
-                          {source.active ? "" : " (retired)"}
+                          {source.active ? "" : " (deactivated)"}
                         </option>
                       ))}
                   </Select>
                 ) : (
-                  vendor.defaultPaymentSource || "—"
+                  vendor.defaultPaymentSource || "-"
                 )}
               </Td>
               <Td className="text-[15px] text-sub leading-snug">
@@ -177,7 +179,7 @@ export function VendorTable({
                     }
                   />
                 ) : (
-                  vendor.defaultDescription || "—"
+                  vendor.defaultDescription || "-"
                 )}
               </Td>
               <Td align="right" className="text-[15px] text-sub whitespace-nowrap">
@@ -188,7 +190,7 @@ export function VendorTable({
                         key={field}
                         value={editing[field]}
                         aria-label={`Default ${field}`}
-                        placeholder={field}
+                        placeholder={AMOUNT_PLACEHOLDERS[field]}
                         className="w-[104px]"
                         onChange={(event) => setEditing({ ...editing, [field]: event.target.value })}
                       />
@@ -219,7 +221,7 @@ export function VendorTable({
                                 defaultTax: editing.tax,
                                 defaultFees: editing.fees,
                               }),
-                            "Vendor saved",
+                            "Vendor saved.",
                           );
                           setEditing(null);
                         }}
@@ -242,12 +244,12 @@ export function VendorTable({
                         confirmLabel="Delete vendor"
                         body={
                           <>
-                            <strong>{vendor.name}</strong> and everything remembered about it —
-                            line item, description, payment source and amounts — are deleted.
+                            <strong>{vendor.name}</strong> and everything remembered about it
+                            (line item, description, payment source and amounts) will be deleted.
                             Expenses already recorded for this vendor keep their own details.
                           </>
                         }
-                        onConfirm={() => run(() => deleteVendorAction(vendor.id), "Vendor removed")}
+                        onConfirm={() => run(() => deleteVendorAction(vendor.id), "Vendor deleted.")}
                       >
                         Delete
                       </ConfirmButton>

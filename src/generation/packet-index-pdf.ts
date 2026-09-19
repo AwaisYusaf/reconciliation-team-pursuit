@@ -202,7 +202,7 @@ export async function buildIndexSection(
       y -= TITLE_SIZE + 8;
       page.drawText(
         winAnsiSafe(
-          `${rows.length} expense${rows.length === 1 ? "" : "s"} · every receipt, invoice and proof of payment in this packet is filed under its reference below`,
+          `${rows.length} expense${rows.length === 1 ? "" : "s"}. Every receipt, invoice and proof of payment in this packet is filed under its reference below.`,
         ),
         { x: MARGIN, y: y - SUBTITLE_SIZE, size: SUBTITLE_SIZE, font: fonts.regular, color: BLACK },
       );
@@ -261,7 +261,7 @@ export async function buildIndexSection(
     if (expense === undocumented[0]) {
       y -= 16;
       page.drawText(
-        winAnsiSafe("These expenses carry no supporting document, for the reason stated:"),
+        winAnsiSafe("Expenses with no receipt available:"),
         { x: MARGIN, y, size: NOTE_SIZE, font: fonts.bold, color: BLACK },
       );
       y -= 14;

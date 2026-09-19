@@ -63,6 +63,33 @@ Layout rules that follow from the scale:
 
 ---
 
+## Words (D-113, PHASE-13)
+
+Every string the app shows or prints follows these rules. The people using the app are
+non-technical, and some of these words reach the City on signed documents.
+
+1. **No em or en dashes, anywhere the app writes.** Two thoughts become two sentences, or a comma
+   or colon joins them. An aside goes in commas or brackets. Ranges use "to" ("1 to 10 of 45").
+   Separators are " · " on screens and " | " on documents and browser tab titles. An empty table
+   cell shows "-". Text people type keeps whatever they typed. `src/domain/no-dashes.test.ts`
+   fails on a dash in any string, template or JSX text in app code.
+2. **Plain American English.** "Organization"; "check" or "select", never "tick".
+3. **Say what happened, then what to do.** Never blame the user. "Please" only when asking for
+   real effort.
+4. **No internal words.** Never "Mantaq", "S3", "artifact", "request", "session", "server
+   action", "Phase N" or a rule number. Support is "support" (`UI.supportEmail`).
+5. **One name per thing:** expense, line item, funding source, receipt, proof of payment,
+   narrative, cover sheet, packet, month documents. "Sign in" and "Sign out".
+6. **Sentence case** for buttons, headings, labels, dialog titles and menu items. Tab names are
+   proper names and keep Title Case: Dashboard, Add Expense, Expenses, Cover Sheets, Month-End
+   Packet, Contract Summary, Line Items, Recurring, Settings.
+7. **Full sentences end with a period**, toasts included. Labels, buttons and headings don't.
+8. **Contractions are fine in messages** ("can't", "won't").
+9. **"…" (one character) for work in progress:** "Saving…", "Preparing the packet…".
+10. **City-approved document wording keeps its words:** the tax and fees notes, "Please see
+    below…", cover sheet titles, the summary sheet's layout and column names, and the footer's
+    parts and order.
+
 ## PREAMBLE (paste this block first, verbatim)
 
 ```
@@ -96,7 +123,7 @@ with centered secondary text.
 
 App chrome (when the prompt includes the shell): white header bar with 1px bottom border —
 left: organisation name in Georgia 24px bold with "Stay Funded 360" in 15px
-#5B5147 beneath; right: quiet "Log out" secondary button. Below it a "Month" labeled select
+#5B5147 beneath; right: quiet "Sign out" secondary button. Below it a "Month" labeled select
 (200px) and a horizontal nav of text tabs: Dashboard, Add Expense, Expenses, Cover Sheets,
 Recurring, Month-End Packet, Contract Summary, Line Items, Settings — active tab: bold #211B16
 with 3px #5B3A29 underline; inactive: #5B5147. Content area: max-width 1100px, centered,

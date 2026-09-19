@@ -90,8 +90,8 @@ describe("contract context strip (R7.3)", () => {
 
   it("joins into the packet's single subtitle line", () => {
     expect(contractContextLine(FULL, FEB)).toBe(
-      "Contract 6007211  ·  Contract total: $940,000.00  ·  Base PO 3086984  ·  " +
-        "Performance PO 3089749  ·  Invoice period: 2/1/2026 to 2/28/2026",
+      "Contract 6007211  |  Contract total: $940,000.00  |  Base PO 3086984  |  " +
+        "Performance PO 3089749  |  Invoice period: 2/1/2026 to 2/28/2026",
     );
   });
 });

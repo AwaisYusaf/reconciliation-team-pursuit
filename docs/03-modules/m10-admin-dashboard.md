@@ -80,7 +80,7 @@ tests). Screens hold together at 1280px and 768px.
 ```
 Design the AB SOLUTIONS ADMIN screens — a staff-only dashboard, not the customer app. Header:
 "AB Solutions admin" (serif, bold, #211B16) with the staff member's name ("Awais Malik") in
-13px #5B5147 beneath it; a secondary "Log out" button on the right. No month or funding-source
+13px #5B5147 beneath it; a secondary "Sign out" button on the right. No month or funding-source
 selectors, no tab row.
 
 ### Screen 1 — Organizations

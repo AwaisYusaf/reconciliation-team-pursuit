@@ -50,12 +50,12 @@ export function SubmittedMarker({
             confirmLabel="Undo submission"
             body={
               <>
-                This also discards the figures captured when the month was marked submitted, which
-                are what later changes are compared against. Marking it submitted again captures
-                the month as it stands then, not as it stood before.
+                This also discards the figures saved when the month was marked as submitted, which
+                later changes are compared against. If you mark it as submitted again, the figures
+                are saved as they stand at that time, not as they stood before.
               </>
             }
-            onConfirm={() => run(() => clearMonthSubmittedAction(month, fundingSourceId), "Submission mark removed.")}
+            onConfirm={() => run(() => clearMonthSubmittedAction(month, fundingSourceId), "Month no longer marked as submitted.")}
           >
             Undo
           </ConfirmButton>

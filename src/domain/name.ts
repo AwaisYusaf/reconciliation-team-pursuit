@@ -11,4 +11,4 @@ export const nameSchema = z
   .string()
   .trim()
   .min(1, "Enter your name.")
-  .max(120, "That name is too long.");
+  .max(120, "That name is too long. Use 120 characters or fewer.");

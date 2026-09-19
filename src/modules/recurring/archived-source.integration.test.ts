@@ -112,7 +112,11 @@ describe.skipIf(!hasDatabase)("recurring actions refuse archived funding sources
       });
 
       expect(result.ok).toBe(false);
-      if (!result.ok) expect(result.error).toBe("That funding source is archived.");
+      if (!result.ok) {
+        expect(result.error).toBe(
+          "That funding source is archived. Unarchive it in Settings to save recurring items on it.",
+        );
+      }
 
       const after = await db
         .select({ id: recurringItems.id })
@@ -211,7 +215,11 @@ describe.skipIf(!hasDatabase)("recurring actions refuse archived funding sources
 
       const result = await addRecurringToMonthAction(item.id, MONTH);
       expect(result.ok).toBe(false);
-      if (!result.ok) expect(result.error).toBe("That funding source is archived.");
+      if (!result.ok) {
+        expect(result.error).toBe(
+          "That funding source is archived. Unarchive it in Settings to add expenses to it.",
+        );
+      }
 
       const afterCount = await db
         .select({ id: expenses.id })

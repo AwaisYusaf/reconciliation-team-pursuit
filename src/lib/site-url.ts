@@ -39,7 +39,7 @@ export function siteOrigin(): string {
   const problem = appUrlProblem(value);
   if (!problem) return new URL(value!).origin;
   if (process.env.NODE_ENV === "production") {
-    throw new Error(`APP_URL is unusable in production — ${problem}. Shared links are built from it.`);
+    throw new Error(`APP_URL is unusable in production: ${problem}. Shared links are built from it.`);
   }
   return DEVELOPMENT_ORIGIN;
 }

@@ -11,7 +11,7 @@ Route `/r/settings`, sidebar-sectioned single page (D-91). No month scoping.
 
 ## Sections
 1. **Organisation** — Organisation name; Document display name (`doc_name`, non-empty, helper: "Printed on cover sheets and the packet — e.g. 'Team Pursuit'"); below Save, a switch "Read amounts from uploaded documents" (Phase 10, D-105) — rendered only when the organisation's plan is `reconciliation_ai`, hidden entirely (not disabled) on the base plan. Admins toggle it immediately (`setReadAmountsEnabledAction`, admin-only); managers see it disabled. Help text: "Receipts and proofs of payment are sent to OpenAI to suggest amounts. OpenAI doesn't use them for training. Nothing is saved until you confirm."
-2. **Funding Sources** (D-93, replaces the old Contract and Advances sections) — a list of the organisation's funding sources (name, type, archived badge, Edit, Archive/Unarchive), and an add/edit form: name (required, unique per org), type (Grant/Donation/Line of credit/Other), document name (optional — placeholder shows the organisation's own doc name, used when blank), Project name, Contract number, Base PO number, Performance PO number, Total contract value (optional, else derived), Contract start/end, Fiduciary name, Advances received, and two checkboxes — "Does this funder reimburse sales tax?" / "…fees?" (moved here from payment sources, R1.3). Admins and managers may both create/edit/archive. Archiving requires at least one other active source remaining, and clears the organisation's active selection if it pointed at the archived source.
+2. **Funding sources** (D-93, replaces the old Contract and Advances sections) — a list of the organisation's funding sources (name, type, archived badge, Edit, Archive/Unarchive), and an add/edit form: name (required, unique per org), type (Grant/Donation/Line of credit/Other), document name (optional — placeholder shows the organisation's own doc name, used when blank), Project name, Contract number, Base PO number, Performance PO number, Total contract value (optional, else derived), Contract start/end, Fiduciary name, Advances received, and two checkboxes — "This funder reimburses sales tax" / "…fees" (moved here from payment sources, R1.3). Admins and managers may both create/edit/archive. Archiving requires at least one other active source remaining, and clears the organisation's active selection if it pointed at the archived source.
 3. **Lists** — two editors side by side (D-19, SOW §1 configurability):
    - *Payment sources:* rows `label | active toggle | Edit`, `+ Add payment source`. Deactivating hides from pickers; history keeps its snapshot (R5.1). At least one active source required. As of D-93, a payment source means only *how* something was paid — it no longer carries tax/fee reimbursement rules.
    - *Supporting document types:* same editor, seeded six (R11.1).
@@ -42,7 +42,7 @@ Card 1 "Organization": "Organization name" = "Team Pursuit Global"; "Document di
 
 Card 2 "Contract": Project name = "Community Violence Intervention"; Contract number =
 "6007211"; Base PO number = "3086984"; Performance PO number = "3089749"; Total contract
-value = "$940,000.00" with helper "Leave empty to use the sum of scheduled values"; Contract
+value = "$940,000.00" with helper "Leave at 0.00 to use the total of the line items' scheduled values."; Contract
 start = 07/01/2025; Contract end = 06/30/2026; Fiduciary name = "Detroit Crime Commission".
 
 Card 3 "Advances": Total advances received = "$665,000.00" with helper "Appears in the

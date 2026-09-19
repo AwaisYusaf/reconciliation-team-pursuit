@@ -49,7 +49,7 @@ export function CoverSheetProofs({ proofs }: { proofs: PreviewProof[] }) {
             title={`Preview ${proof.filename}`}
             className="block w-full mt-2 border border-line bg-surface-2 px-3 py-4 text-[11px] text-muted text-left cursor-zoom-in"
           >
-            {proof.filename} — every page appears in the downloaded document
+            {proof.filename} (every page appears in the downloaded document)
           </button>
         ),
       )}

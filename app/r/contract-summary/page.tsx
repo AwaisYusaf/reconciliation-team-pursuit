@@ -93,7 +93,7 @@ export default async function ContractSummaryPage() {
         <PageTitle className="mb-1.5">Contract Summary</PageTitle>
         <Subtext className="mb-[26px]">Contract position for {monthLabel(month)}.</Subtext>
         <EmptyState>
-          No line items yet — set up your budget in{" "}
+          No line items yet. Set up your budget in{" "}
           <Link href="/r/line-items" className="text-accent underline">
             Line Items
           </Link>
@@ -202,7 +202,7 @@ export default async function ContractSummaryPage() {
           href={`/api/downloads/summary?month=${month}&source=${fundingSourceId}`}
           disabled={refusal !== null}
         >
-          Download Summary (Excel)
+          Download summary (Excel)
         </DownloadButton>
         {refusal && <p className="mt-2.5 text-sm text-danger">{refusal}</p>}
       </div>
@@ -262,7 +262,7 @@ function ReportingPeriodRows({ period }: { period: ReportingPeriod }) {
   ) : period.submittedAt ? (
     UI.submittedOn(formatDateUS(todayIso(period.submittedAt)))
   ) : (
-    "—"
+    "-"
   );
 
   return (

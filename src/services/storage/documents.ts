@@ -72,19 +72,20 @@ export function expenseBudgetError(
   if (current.bytes + incoming.bytes > MAX_EXPENSE_BYTES) {
     return (
       `This expense already holds ${megabytes(current.bytes)} MB of its ` +
-      `${megabytes(MAX_EXPENSE_BYTES)} MB, and this file would take it over. Split the receipts ` +
-      "across two expenses, or remove something already attached."
+      `${megabytes(MAX_EXPENSE_BYTES)} MB limit, and this file would put it over. Split the ` +
+      "receipts across two expenses, or remove a file already attached."
     );
   }
   if (current.pages + incoming.pages > MAX_EXPENSE_PAGES) {
     return (
-      `This expense already holds ${current.pages} pages of its ${MAX_EXPENSE_PAGES}, and this ` +
-      `file adds ${incoming.pages}. Every page becomes a page of the packet, so the limit is ` +
-      "there to keep the submission readable."
+      `This expense already holds ${current.pages} pages of its ${MAX_EXPENSE_PAGES}-page limit, ` +
+      `and this file adds ${incoming.pages}. Every page becomes a page of the packet, so the ` +
+      "limit keeps it readable. Split the receipts across two expenses, or remove a file " +
+      "already attached."
     );
   }
   if (current.files >= MAX_DOCUMENTS_PER_EXPENSE) {
-    return `An expense can hold at most ${MAX_DOCUMENTS_PER_EXPENSE} files.`;
+    return `An expense can hold at most ${MAX_DOCUMENTS_PER_EXPENSE} files. Split them across two expenses.`;
   }
   return null;
 }
@@ -135,8 +136,9 @@ export function storageQuotaError(usedBytes: number, incomingBytes: number): str
   const usedMb = Math.round(usedBytes / (1024 * 1024));
   const limitMb = Math.round(MAX_ORG_BYTES / (1024 * 1024));
   return (
-    `This organization is using ${usedMb} MB of its ${limitMb} MB of storage, and this file ` +
-    "would take it over. Remove some documents from an earlier month, or contact Mantaq."
+    `Your organization is using ${usedMb} MB of its ${limitMb} MB of storage, and this file ` +
+    `would put it over. Remove some documents from an earlier month, or contact support at ` +
+    `${UI.supportEmail}.`
   );
 }
 
@@ -193,7 +195,7 @@ export async function orgStorageError(
  *  packet before its own PDF-only inspection. */
 export function precheck(file: { size: number; type: string }): string | null {
   if (file.size > MAX_UPLOAD_BYTES) {
-    return "That file is larger than 25 MB. Upload a smaller export.";
+    return "That file is larger than the 25 MB limit. Upload a smaller copy, for example a lower-resolution scan.";
   }
   // An empty type means the browser had no mapping for the extension, not that the file is
   // unsupported — common for HEIC and for files with no extension at all. The magic-byte
@@ -226,7 +228,7 @@ export async function ingestExpenseDocument(input: {
     // The type prints in the packet, so it must be one the organisation offers.
     if (!input.supportingType) return { ok: false, error: "Choose a document type first." };
     if (!(await isKnownSupportingDocType(input.orgId, input.supportingType))) {
-      return { ok: false, error: "That document type is not one of yours." };
+      return { ok: false, error: "That document type is no longer in use. Choose another type and add the file again." };
     }
   }
 
@@ -255,7 +257,7 @@ export async function ingestExpenseDocument(input: {
   if (input.scope === "receipt" && expense.noReceipt) {
     return {
       ok: false,
-      error: 'This expense is marked "No receipt available" — untick that before attaching a receipt.',
+      error: 'This expense is marked "No receipt available". Uncheck it before attaching a receipt.',
     };
   }
 
@@ -280,7 +282,8 @@ export async function ingestExpenseDocument(input: {
   if (inspection.body.byteLength > MAX_UPLOAD_BYTES) {
     return {
       ok: false,
-      error: "That file is larger than 25 MB once converted for storage. Upload a smaller export.",
+      error:
+        "Once converted for storage, that file is larger than the 25 MB limit. Upload a smaller copy, for example a lower-resolution photo.",
     };
   }
 
@@ -428,7 +431,10 @@ export async function ingestMonthDocument(input: {
       ),
     );
   if (total >= MAX_MONTH_DOCUMENTS) {
-    return { ok: false, error: `A month can hold at most ${MAX_MONTH_DOCUMENTS} documents.` };
+    return {
+      ok: false,
+      error: `A month can hold at most ${MAX_MONTH_DOCUMENTS} documents. Remove one before adding another.`,
+    };
   }
 
   // A full organisation is rejected before inspection, which costs a sharp decode of up to
@@ -452,7 +458,8 @@ export async function ingestMonthDocument(input: {
   if (inspection.body.byteLength > MAX_UPLOAD_BYTES) {
     return {
       ok: false,
-      error: "That file is larger than 25 MB once converted for storage. Upload a smaller export.",
+      error:
+        "Once converted for storage, that file is larger than the 25 MB limit. Upload a smaller copy, for example a lower-resolution photo.",
     };
   }
 
@@ -498,7 +505,7 @@ export async function ingestMonthDocument(input: {
           ),
         );
       if (live >= MAX_MONTH_DOCUMENTS) {
-        return `A month can hold at most ${MAX_MONTH_DOCUMENTS} documents.`;
+        return `A month can hold at most ${MAX_MONTH_DOCUMENTS} documents. Remove one before adding another.`;
       }
 
       const quotaError = await orgStorageError(tx, input.orgId, incomingBytes);

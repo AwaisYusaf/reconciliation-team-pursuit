@@ -124,7 +124,7 @@ async function main(): Promise<void> {
   const index = await buildIndexSectionPdf(snapshot);
   const indexText = await textOf(index);
   check("every reference is searchable text", ["001", "002", "003"].every((n) => indexText.includes(`2026-02-${n}`)));
-  check("discloses an undocumented expense (D-74)", indexText.includes("no supporting document"));
+  check("discloses an undocumented expense (D-74)", indexText.includes("Expenses with no receipt available:"));
   check("gives its stated reason", indexText.includes("participant stipends"));
 
   console.log("\npage footers");

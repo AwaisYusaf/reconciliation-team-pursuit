@@ -45,7 +45,7 @@ async function main() {
   const rawName = argument("name") ?? process.env.STAFF_NAME;
 
   if (skipExisting && !rawEmail) {
-    console.log("No STAFF_EMAIL configured — no staff account to create.");
+    console.log("No STAFF_EMAIL configured, so there is no staff account to create.");
     return;
   }
 
@@ -98,7 +98,7 @@ async function main() {
     if (existingStaff) {
       // Idempotent on a redeploy: left exactly as it is, password included.
       if (skipExisting) {
-        console.log(`Staff account for ${email} already exists — left unchanged.`);
+        console.log(`Staff account for ${email} already exists. Left unchanged.`);
         return;
       }
       throw new Error(`An account already exists for ${email}`);
@@ -149,7 +149,7 @@ async function main() {
     // Only a generated one is printed — a password that came from a flag or the environment is
     // already known to whoever set it, and printing it would put it in the deploy log.
     if (!suppliedPassword) {
-      console.log(`\nPassword (shown once — hand it over out of band):\n\n  ${password}\n`);
+      console.log(`\nPassword (shown once, hand it over out of band):\n\n  ${password}\n`);
     }
   } finally {
     await pool.end();

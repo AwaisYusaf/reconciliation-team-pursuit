@@ -141,7 +141,7 @@ ensure_staff() {
   if $COMPOSE exec -T app npm run --silent db:create-staff -- --skip-existing; then
     return 0
   fi
-  echo "warning: the admin account was not created — nobody can open /a until it exists." >&2
+  echo "warning: the admin account was not created, so nobody can open /a until it exists." >&2
   echo "         Check STAFF_EMAIL / STAFF_NAME / STAFF_PASSWORD in .env, then re-run:" >&2
   echo "         $COMPOSE exec app npm run db:create-staff -- --skip-existing" >&2
 }
@@ -158,7 +158,7 @@ smoke() {
   if $COMPOSE exec -T app npx tsx --conditions=react-server scripts/render-smoke.ts; then
     return 0
   fi
-  echo "warning: the render smoke test failed — the app is serving, but generated documents" >&2
+  echo "warning: the render smoke test failed. The app is serving, but generated documents" >&2
   echo "         are not what they should be. Check before telling anyone to download a packet." >&2
 }
 

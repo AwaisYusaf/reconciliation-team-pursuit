@@ -168,7 +168,7 @@ export function RecurringManager({
     startTransition(async () => {
       const result = await work();
       if (!reportResult(result, successMessage)) {
-        setError(result.error ?? "Something went wrong.");
+        setError(result.error ?? "That change couldn't be saved. Try again.");
         return;
       }
       onDone?.();
@@ -189,7 +189,7 @@ export function RecurringManager({
     run(
       () => addRecurringToMonthAction(row.id, month),
       () => flash(row.id),
-      `${row.name} added to ${monthLabel}`,
+      `${row.name} added to ${monthLabel}.`,
     );
   }
 
@@ -272,7 +272,10 @@ export function RecurringManager({
               setDraft({ ...currentDraft, defaultDescription: event.target.value })
             }
           />
-          <Helper>Used as the cover-sheet role when this item is added to a month.</Helper>
+          <Helper>
+            Becomes the expense&apos;s description, which prints on the cover sheet, when this
+            item is added to a month.
+          </Helper>
         </div>
 
         <div className="mt-[18px]">
@@ -348,7 +351,7 @@ export function RecurringManager({
                   setDraft(null);
                   revealSaved(currentDraft);
                 },
-                currentDraft.id ? "Recurring item saved" : "Recurring item added",
+                currentDraft.id ? "Recurring item saved." : "Recurring item added.",
               )
             }
           >
@@ -374,7 +377,7 @@ export function RecurringManager({
                 run(
                   () => deleteRecurringItemAction(currentDraft.id!),
                   () => setDraft(null),
-                  "Removed from the recurring list",
+                  "Recurring item deleted.",
                 )
               }
             >
@@ -414,8 +417,8 @@ export function RecurringManager({
               // dialog doesn't vanish out from under a failure the general error banner is
               // about to show — the dialog would otherwise hide that banner behind its overlay.
               setConfirmRemove(null);
-              if (reportResult(result, "Removed from this month")) router.refresh();
-              else setError(result.error ?? "Something went wrong.");
+              if (reportResult(result, "Removed from this month.")) router.refresh();
+              else setError(result.error ?? "That expense couldn't be removed from this month. Try again.");
             });
           },
         }}
@@ -472,8 +475,8 @@ export function RecurringManager({
               <Th align="right" className="w-[150px]">
                 Amount
               </Th>
-              <Th>Line Item</Th>
-              {multiSource && <Th>Funding Source</Th>}
+              <Th>Line item</Th>
+              {multiSource && <Th>Funding source</Th>}
               <Th align="right" className="w-[320px]" />
             </tr>
           </thead>
@@ -561,7 +564,7 @@ export function RecurringManager({
       {visible.length > PAGE_SIZE && (
         <div className="flex items-center justify-between gap-4 mt-4 flex-wrap">
           <span className="text-sm text-sub">
-            Showing {(safePage - 1) * PAGE_SIZE + 1}–{Math.min(safePage * PAGE_SIZE, visible.length)}{" "}
+            Showing {(safePage - 1) * PAGE_SIZE + 1} to {Math.min(safePage * PAGE_SIZE, visible.length)}{" "}
             of {visible.length}
           </span>
           <div className="flex items-center gap-3.5">

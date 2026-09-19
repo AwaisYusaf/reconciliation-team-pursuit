@@ -11,6 +11,8 @@
 import { useState } from "react";
 import toast from "react-hot-toast";
 
+import { UI } from "@/src/domain/strings";
+
 import { buttonClassName, type ButtonVariant } from "./button";
 
 /**
@@ -32,7 +34,7 @@ export function useDownload(): { busy: boolean; download: (href: string) => Prom
       if (!response.ok) {
         // The route answers a refusal in plain text, listing what is missing.
         const message = (await response.text()).trim();
-        toast.error(message || "That download is not available right now.");
+        toast.error(message || `That download isn't available right now. Try again, and if it keeps failing, contact support at ${UI.supportEmail}.`);
         return;
       }
 
@@ -47,7 +49,7 @@ export function useDownload(): { busy: boolean; download: (href: string) => Prom
       anchor.remove();
       toast.success("Download started.");
     } catch {
-      toast.error("Download failed — check your connection and try again.");
+      toast.error("The download failed. Check your connection and try again.");
     } finally {
       // Revoking synchronously can cancel the download before the browser has finished
       // reading the blob, so the handle is released a little later instead.

@@ -54,7 +54,7 @@ export function cascadeConfirmation(
   // recurring items came with it, so an empty one — a name and its budget figures — went on the
   // first click, from a control sitting beside Edit.
   if (parts.length === 0) {
-    return "Its name and budget figures are deleted. This cannot be undone.";
+    return "Its name and budget figures will be deleted. This can't be undone.";
   }
   return `Deleting also removes ${parts.join(" and ")}.`;
 }

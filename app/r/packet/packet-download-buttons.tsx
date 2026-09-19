@@ -101,10 +101,11 @@ export function PacketDownloadButtons({
 
   async function updateSharedFile(link: SharedLinkView, confirmedDeletions: boolean) {
     setUpdatingIds((ids) => new Set(ids).add(link.id));
-    const result = await postShareRoute<undefined>("/api/shared-links/update", {
-      shareId: link.id,
-      confirmedDeletions,
-    });
+    const result = await postShareRoute<undefined>(
+      "/api/shared-links/update",
+      { shareId: link.id, confirmedDeletions },
+      UI.shareUpdateUnexpected,
+    );
     setUpdatingIds((ids) => {
       const next = new Set(ids);
       next.delete(link.id);
@@ -116,7 +117,7 @@ export function PacketDownloadButtons({
 
   function restore(item: DeletedItem) {
     startRestoring(async () => {
-      if (reportResult(await restoreExpenseAction(item.id), `${item.name} restored`)) {
+      if (reportResult(await restoreExpenseAction(item.id), `${item.name} restored.`)) {
         router.refresh();
       }
     });
@@ -131,7 +132,7 @@ export function PacketDownloadButtons({
           disabled={blocked || packetDownload.busy}
           onClick={() => requestDownload("packet")}
         >
-          {packetDownload.busy ? "Assembling…" : "Download Packet (PDF)"}
+          {packetDownload.busy ? "Preparing the packet…" : "Download packet (PDF)"}
         </button>
         <button
           type="button"
@@ -139,7 +140,7 @@ export function PacketDownloadButtons({
           disabled={blocked || summaryDownload.busy}
           onClick={() => requestDownload("summary")}
         >
-          {summaryDownload.busy ? "Preparing…" : "Download Summary (Excel)"}
+          {summaryDownload.busy ? "Preparing…" : "Download summary (Excel)"}
         </button>
         <button
           id={SHARE_BUTTON_ID}
@@ -192,8 +193,7 @@ export function PacketDownloadButtons({
       >
         <p className="mb-3">
           {deletedItems.length} expense{deletedItems.length === 1 ? " was" : "s were"} deleted
-          from this reporting period. Restore anything that shouldn&apos;t have gone, or continue
-          if the rest were intentional.
+          from this month. Restore any that were deleted by mistake, then continue.
         </p>
         {locked && <p className="mb-3 font-semibold">{UI.monthLocked(label)}</p>}
         <ul className="flex flex-col divide-y divide-danger/25 -mx-1">
@@ -202,7 +202,7 @@ export function PacketDownloadButtons({
               <div className="min-w-0">
                 <div className="font-bold truncate">{item.name}</div>
                 <div className="text-sm opacity-80 truncate">
-                  {item.lineItemName} — {formatMoney(item.amountCents)} — deleted {item.deletedAt}
+                  {item.lineItemName} · {formatMoney(item.amountCents)} · deleted {item.deletedAt}
                 </div>
               </div>
               <button

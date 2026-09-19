@@ -234,7 +234,9 @@ export async function createExpenseAction(
 
   const source = await requireOwnedFundingSource(current, input.fundingSourceId);
   if ("denied" in source) return source.denied;
-  if (source.archivedAt) return fail("That funding source is archived.");
+  if (source.archivedAt) {
+    return fail("That funding source is archived. Unarchive it in Settings to add expenses to it.");
+  }
 
   // Scoped to the funding source too, not just the org: this is the invariant that makes
   // "saving against another source's line item is impossible" hold even if this check were
@@ -396,7 +398,9 @@ export async function updateExpenseAction(input: ExpenseInput): Promise<ActionRe
   // Moving source is allowed; moving INTO an archived source is not. An expense that already
   // sits on an archived source (source unchanged) stays editable — history corrections.
   const sourceChanged = existing.fundingSourceId !== input.fundingSourceId;
-  if (sourceChanged && source.archivedAt) return fail("That funding source is archived.");
+  if (sourceChanged && source.archivedAt) {
+    return fail("That funding source is archived. Unarchive it in Settings to move expenses into it.");
+  }
 
   const row = toRow(input);
 

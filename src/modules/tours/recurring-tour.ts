@@ -18,6 +18,6 @@ export const RECURRING_TOUR_STEPS: readonly TourStep[] = [
   {
     target: "recurring-added-item",
     title: "Already added",
-    body: "Added items still need their proof of payment. Open each one from the Expenses tab to attach it.",
+    body: "Each added expense still needs its proof of payment. Open it on the Expenses tab to attach it.",
   },
 ];

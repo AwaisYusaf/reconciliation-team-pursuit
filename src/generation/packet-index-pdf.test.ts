@@ -168,7 +168,7 @@ describe("packet expense index", () => {
     );
     const text = await extractText(bytes);
 
-    expect(text).toContain("no supporting document");
+    expect(text).toContain("Expenses with no receipt available:");
     expect(text).toContain("2026-02-002");
     expect(text).toContain("ATM Withdrawal");
     expect(text).toContain("participant stipends");
@@ -178,6 +178,6 @@ describe("packet expense index", () => {
     const text = await extractText(
       await buildIndexSectionPdf(snapshotWith([expense({ referenceSeq: 1, name: "Canva" })])),
     );
-    expect(text).not.toContain("no supporting document");
+    expect(text).not.toContain("no receipt available");
   });
 });

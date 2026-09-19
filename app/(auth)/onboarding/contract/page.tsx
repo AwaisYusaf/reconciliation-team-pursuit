@@ -18,7 +18,7 @@ export default async function OnboardingContractPage() {
       <Eyebrow>Step 2 of 2</Eyebrow>
       <PageTitle className="leading-tight mt-2.5 mb-2">Your contract</PageTitle>
       <p className="text-[15px] text-sub leading-relaxed m-0 mb-[26px] max-w-[60ch]">
-        This appears on the summary sheet you send for review.
+        These details appear on the summary sheet you send for review.
       </p>
 
       <OnboardingContractForm />

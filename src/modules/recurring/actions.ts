@@ -58,7 +58,9 @@ export async function saveRecurringItemAction(input: {
     .limit(1);
   if (owned.length === 0) return fail("Choose a line item.");
   // A template exists to create new expenses, which an archived source no longer takes (D-93).
-  if (owned[0].archivedAt) return fail("That funding source is archived.");
+  if (owned[0].archivedAt) {
+    return fail("That funding source is archived. Unarchive it in Settings to save recurring items on it.");
+  }
 
   const values = {
     name: input.name.trim(),
@@ -151,7 +153,9 @@ export async function addRecurringToMonthAction(
   const item = rows[0];
   if (!item) return fail("That recurring item no longer exists.");
   // Same rule as createExpenseAction: an archived source takes no new expenses (D-93).
-  if (item.sourceArchivedAt) return fail("That funding source is archived.");
+  if (item.sourceArchivedAt) {
+    return fail("That funding source is archived. Unarchive it in Settings to add expenses to it.");
+  }
 
   // Fall back to the vendor library's description when the item has none of its own.
   const [vendor] = await db

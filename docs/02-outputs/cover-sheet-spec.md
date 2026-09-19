@@ -40,7 +40,7 @@ One per line item per month **per funding source** (D-93, Phase 6) — the sourc
      The note names whatever was actually excluded and is omitted when nothing was (R6.5a).
    - **Narrative paragraph** (if `narrative` set): regular weight, no highlight, full width (R6.6).
    - **Proof images:** each proof (kind=proof, status=attached) in sort order as an inline image, max width = text width (6.5"), height scaled to preserve aspect; PDFs uploaded as proofs are rasterized first at **150 DPI via the shared `raster.ts`** (one image per source page). 6 pt spacing between images, 12 pt before the next heading.
-   - Expenses always have ≥1 attached proof in valid output (R4.1/R4.6); the "proof of payment missing" placeholder box exists only in the m04 on-screen gated preview, never in a downloaded file.
+   - Expenses always have ≥1 attached proof in valid output (R4.1/R4.6); the "Proof of payment missing" placeholder box exists only in the m04 on-screen gated preview, never in a downloaded file.
 
 Unlike the manual docs, every table row gets its proof block (manual sheets skipped some) and heading names always equal table Names (the heading additionally carries the reference, D-83) — both are deliberate corrections (D-18 family).
 

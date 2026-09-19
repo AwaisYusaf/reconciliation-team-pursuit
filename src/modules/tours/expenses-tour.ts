@@ -10,17 +10,17 @@ export const EXPENSES_TOUR_STEPS: readonly TourStep[] = [
   {
     target: "expenses-filters",
     title: "Filters",
-    body: "Search, and filter by line item, documentation status or payment source — they combine, so narrowing one keeps the others in effect.",
+    body: "Search, and filter by line item, documentation or payment source. Filters work together, so changing one keeps the others in place.",
   },
   {
     target: "expenses-reference-viewer",
     title: "Reference number",
-    body: "Tap the reference number to open every document filed under that expense at once.",
+    body: "Press the reference number to open every document filed under that expense at once.",
   },
   {
     target: "expenses-row-menu-panel",
     autoOpen: "expenses-row-menu-trigger",
     title: "Edit, delete, history",
-    body: "Open the ⋮ menu on a row to edit it, delete it, or — for admins — see its full history.",
+    body: "Open the ⋮ menu on a row to edit or delete it. Admins can also see its full history.",
   },
 ];

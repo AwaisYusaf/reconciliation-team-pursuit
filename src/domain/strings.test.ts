@@ -6,6 +6,7 @@ import {
   coverSheetFilename,
   coverSheetHeading,
   coverSheetTitle,
+  downloadBlockedReason,
   lineItemDeleteBlocked,
   monthlySummaryFilename,
   monthlySummaryTitle,
@@ -51,16 +52,16 @@ describe("UI copy (R12)", () => {
   it("pins the strings the rules fix", () => {
     expect(UI.reimburseHint).toBe("Sales tax is excluded. The funder does not reimburse it.");
     expect(UI.blockedTitle).toBe("This packet cannot be downloaded yet.");
-    expect(UI.blockedTitleLineItem).toBe("Downloads unavailable for this line item.");
+    expect(UI.blockedTitleLineItem).toBe("This cover sheet cannot be downloaded yet.");
     expect(UI.blockedIntro).toBe(
       "The following records are missing a receipt/justification, proof of payment, or narrative:",
     );
     expect(UI.forgotPassword).toBe("Forgot your password? Email");
     expect(UI.supportEmail).toBe("tech@teampursuit.org");
     expect(UI.taxExceedsSubtotalWarning).toBe(
-      "Tax is more than the subtotal — double-check this entry.",
+      "Tax is more than the subtotal. Double-check this entry.",
     );
-    expect(UI.subtotalIsZeroWarning).toBe("Subtotal is $0.00 — double-check this entry.");
+    expect(UI.subtotalIsZeroWarning).toBe("Subtotal is $0.00. Double-check this entry.");
   });
 
   it("quotes the line item name in the delete refusal", () => {
@@ -417,6 +418,15 @@ describe("one plan name (PR #18 review #13): \"Plus\" in badges/tours, \"Reconci
 });
 
 describe("`/a` staff dashboard UI strings (Phase 9 Phase 4)", () => {
+  it("never doubles the period after a reason that already ends in one (PHASE-13 review)", () => {
+    expect(UI.orgAccessPausedWithReason("Invoice unpaid.")).toBe(
+      "Your organization's access is paused: Invoice unpaid. Please contact support.",
+    );
+    expect(UI.orgAccessPausedWithReason("Invoice unpaid")).toBe(
+      "Your organization's access is paused: Invoice unpaid. Please contact support.",
+    );
+  });
+
   it("organizationsCount is singular only at exactly 1", () => {
     expect(UI.organizationsCount(0)).toBe("0 organizations");
     expect(UI.organizationsCount(1)).toBe("1 organization");
@@ -441,56 +451,93 @@ describe("`/a` staff dashboard UI strings (Phase 9 Phase 4)", () => {
   });
 
   it("American spelling guard: no UI/PLAN_LABELS/STATUS_LABELS value ever regresses to 'organisation'", () => {
-    // Plausible args for every function-valued UI entry, so its output text is checked too,
-    // not just the literal entries.
-    const sampleValues: string[] = [
-      ...Object.values(PLAN_LABELS),
-      ...Object.values(STATUS_LABELS),
-      ...Object.entries(UI).map(([key, value]) => {
-        if (typeof value === "string") return value;
-        switch (key) {
-          case "suspendDialogTitle":
-          case "reinstateDialogTitle":
-            return (value as (name: string) => string)("Eastside Youth Alliance");
-          case "noReceiptNote":
-            return (value as (reason: string) => string)("reason");
-          case "complimentaryUntil":
-          case "complimentaryEnded":
-            return (value as (date: string) => string)("1 Jan 2027");
-          case "usageFundingSources":
-            return (value as (a: number, b: number) => string)(2, 1);
-          case "usageExpenses":
-            return (value as (t: number, m: number, label: string) => string)(412, 38, "September 2026");
-          case "usageStorage":
-            return (value as (used: string, limit: string) => string)("212 MB", "5 GB");
-          case "organizationsCount":
-            return (value as (n: number) => string)(2);
-          case "historyPlanChanged":
-            return (value as (from: string, to: string) => string)("Reconciliation", "Reconciliation + AI");
-          case "historyStatusChanged":
-            return (value as (from: string, to: string) => string)("Trial", "Active");
-          case "historyPlanAndStatusChanged":
-            return (value as (a: string, b: string, c: string, d: string) => string)(
-              "Reconciliation",
-              "Reconciliation + AI",
-              "Trial",
-              "Active",
-            );
-          case "historyComplimentaryGrantedUntil":
-          case "historyComplimentaryChangedUntil":
-            return (value as (date: string) => string)("30 Jun 2027");
-          default:
-            // Any other function-valued entry: call with a generic string arg as a best effort.
-            return (value as (...args: unknown[]) => string)("x");
-        }
-      }),
-    ];
-
-    for (const text of sampleValues) {
+    for (const text of sampleUiTexts()) {
       expect(text.toLowerCase()).not.toContain("organisation");
     }
   });
+
+  it("no-dash guard: no UI/PLAN_LABELS/STATUS_LABELS value contains an em or en dash (D-113)", () => {
+    const texts = sampleUiTexts();
+    expect(texts.length).toBeGreaterThan(200);
+    const withDash = texts.filter((text) => /[\u2013\u2014]/.test(text));
+    expect(withDash).toEqual([]);
+  });
 });
+
+/**
+ * Every `UI`, `PLAN_LABELS` and `STATUS_LABELS` value, plus the refusal helpers after them, with
+ * each function-valued `UI` entry called on plausible arguments so its output text is checked
+ * too, not just the literal entries. An entry with two shapes (a refund, a missing reason or
+ * name) is called both ways.
+ */
+function sampleUiTexts(): string[] {
+  const amounts = { subtotalCents: 15000, taxCents: 900, feesCents: 600, totalCents: 16500 };
+  const refund = { subtotalCents: -14500, taxCents: 0, feesCents: 0, totalCents: -14500 };
+  return [
+    ...Object.values(PLAN_LABELS),
+    ...Object.values(STATUS_LABELS),
+    downloadBlockedReason(1),
+    downloadBlockedReason(3),
+    lineItemDeleteBlocked("Salary"),
+    ...Object.entries(UI).flatMap(([key, value]): string[] => {
+      if (typeof value === "string") return [value];
+      switch (key) {
+        case "amountsSummary":
+        case "receiptLineAmounts":
+          return [amounts, refund].map((sample) => (value as (a: typeof amounts) => string)(sample));
+        case "unlockEventLine":
+          return [
+            (value as (d: string, n: string, r: string | null) => string)("9/1/2026", "Misty", "City asked"),
+            (value as (d: string, n: string, r: string | null) => string)("9/1/2026", "Misty", null),
+          ];
+        case "summaryMetaEdited":
+          return [
+            (value as (d: string, n: string | null) => string)("9/1/2026", "Misty"),
+            (value as (d: string, n: string | null) => string)("9/1/2026", null),
+          ];
+        case "summarySavedRowDate":
+          return [true, false].map((edited) => (value as (d: string, e: boolean) => string)("9/1/2026", edited));
+        case "shareStopTitle":
+          return (["packet", "summary"] as const).map((noun) =>
+            (value as (m: string, n: "packet" | "summary") => string)("March 2026", noun),
+          );
+        case "suspendDialogTitle":
+        case "reinstateDialogTitle":
+          return [(value as (name: string) => string)("Eastside Youth Alliance")];
+        case "noReceiptNote":
+          return [(value as (reason: string) => string)("reason")];
+        case "complimentaryUntil":
+        case "complimentaryEnded":
+          return [(value as (date: string) => string)("1 Jan 2027")];
+        case "usageFundingSources":
+          return [(value as (a: number, b: number) => string)(2, 1)];
+        case "usageExpenses":
+          return [(value as (t: number, m: number, label: string) => string)(412, 38, "September 2026")];
+        case "usageStorage":
+          return [(value as (used: string, limit: string) => string)("212 MB", "5 GB")];
+        case "organizationsCount":
+          return [(value as (n: number) => string)(2)];
+        case "historyPlanChanged":
+          return [(value as (from: string, to: string) => string)("Reconciliation", "Reconciliation + AI")];
+        case "historyStatusChanged":
+          return [(value as (from: string, to: string) => string)("Trial", "Active")];
+        case "historyPlanAndStatusChanged":
+          return [(value as (a: string, b: string, c: string, d: string) => string)(
+            "Reconciliation",
+            "Reconciliation + AI",
+            "Trial",
+            "Active",
+          )];
+        case "historyComplimentaryGrantedUntil":
+        case "historyComplimentaryChangedUntil":
+          return [(value as (date: string) => string)("30 Jun 2027")];
+        default:
+          // Any other function-valued entry: call with a generic string arg as a best effort.
+          return [(value as (...args: unknown[]) => string)("x")];
+      }
+    }),
+  ];
+}
 
 describe("sharing copy (PHASE-12, Appendix A verbatim)", () => {
   it("pins the ticket's wording", () => {

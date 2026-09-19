@@ -207,7 +207,7 @@ export function storage(): StorageDriver {
     cached = new S3StorageDriver(bucket, process.env.S3_REGION ?? "us-east-1");
   } else {
     if (process.env.NODE_ENV === "production") {
-      throw new Error("S3_BUCKET must be set in production — refusing to store files on local disk");
+      throw new Error("S3_BUCKET must be set in production. Refusing to store files on local disk.");
     }
     cached = new LocalStorageDriver();
   }

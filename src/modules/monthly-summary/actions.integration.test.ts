@@ -282,7 +282,7 @@ describe.skipIf(!hasDatabase)("monthly-summary actions (integration, Phase 11)",
 
     const writeResult = await writeSummaryAction({ sourceId: org.fundingSourceId, month: org.month, expectedVersion: null });
     expect(writeResult.ok).toBe(false);
-    if (!writeResult.ok) expect(writeResult.error).toMatch(/Signed out/);
+    if (!writeResult.ok) expect(writeResult.error).toMatch(/signed out/);
 
     const saveResult = await saveSummaryAction({ sourceId: org.fundingSourceId, month: org.month, markdown: "x", expectedVersion: 1 });
     expect(saveResult.ok).toBe(false);
@@ -405,7 +405,9 @@ describe.skipIf(!hasDatabase)("monthly-summary actions (integration, Phase 11)",
     writeSummaryMock.mockResolvedValue({
       outcome: "written",
       markdown: [
-        "## Overview",
+        // Uncleaned, this heading fails the structure check ("Overview" plus a dash), so the
+        // test also pins that the draft is cleaned before it is checked, not only before it is saved.
+        "## Overview \u2014",
         `The month was quiet \u2014 one expense, ${typedName}, and nothing else.`,
         ...sections.flatMap((title) => [`## ${title}`, "\u2013 Salary: nothing to report."]),
       ].join("\n"),

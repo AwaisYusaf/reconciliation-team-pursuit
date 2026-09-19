@@ -19,7 +19,7 @@ import {
 import { AccountBadges } from "./badges";
 import { DirectoryFilters } from "./directory-filters";
 
-export const metadata = { title: "Organizations — AB Solutions admin" };
+export const metadata = { title: "Organizations | AB Solutions admin" };
 
 /**
  * The directory's state lives in the URL, not in component state: searching, filtering and

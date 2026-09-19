@@ -24,7 +24,9 @@
 // code, not snapshot data; without this every cached packet stays unlinked.
 // Bumped "packet-13": no dashes in anything the packet prints (D-113). The footer separates its
 // parts with bars, the summary and index titles read as phrases, the embedded cover sheet heading
-// is `{Name} ({reference}):`, and the outline reads `{reference} | {Name}`.
+// is `{Name} ({reference}):`, and the outline reads `{reference} | {Name}`. The copy review
+// (PHASE-13 §9) also reworded the index's subtitle and its no-receipt heading, and the summary
+// page's contract line now separates its parts with bars too.
 export const PACKET_GENERATOR_VERSION = "packet-13";
 
 // Bumped "summary-3": the detail sheet gained a Receipt Total column (R1.3a). Without this, pinned and cached

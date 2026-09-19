@@ -530,7 +530,7 @@ export function ExpenseForm({
         // One patient retry, then treat it as a real failure (D-73).
         if (response.status === 429) {
           setStatus(
-            `Uploading ${index + 1} of ${queued.length} — waiting for the queue…`,
+            `Uploading ${index + 1} of ${queued.length}. Waiting a few seconds…`,
           );
           await new Promise((resolve) =>
             setTimeout(resolve, RATE_LIMIT_RETRY_MS),
@@ -618,10 +618,9 @@ export function ExpenseForm({
       setStatus(null);
       if (uploadError) {
         // The expense exists; the file did not attach. Send the user to the record so
-        // they can retry rather than losing what they entered.
-        setError(
-          `${uploadError} — the expense was saved; add the file again from Edit.`,
-        );
+        // they can retry rather than losing what they entered. A toast, not the form's error:
+        // this form unmounts on the way to Edit, and the message went with it (PHASE-13 review).
+        toast.error(`${uploadError} The expense was saved. Add the file again below.`);
         router.push(`/r/expenses/${created.data.id}/edit`);
         router.refresh();
         return;
@@ -655,7 +654,7 @@ export function ExpenseForm({
               if (
                 reportResult(
                   await removeExpenseDocumentAction(id),
-                  "File removed",
+                  "File removed.",
                 )
               ) {
                 router.refresh();
@@ -683,7 +682,7 @@ export function ExpenseForm({
               if (
                 reportResult(
                   await removeExpenseDocumentAction(id),
-                  "File removed",
+                  "File removed.",
                 )
               ) {
                 router.refresh();
@@ -728,7 +727,7 @@ export function ExpenseForm({
             />
             {attachedReceipts.length > 0 && (
               <Helper className="text-danger">
-                Saving with this ticked removes the{" "}
+                Saving with this checked removes the{" "}
                 {attachedReceipts.length} receipt file
                 {attachedReceipts.length === 1 ? "" : "s"} already attached.
               </Helper>
@@ -753,9 +752,9 @@ export function ExpenseForm({
         ) : (
           selectedMonthSubmittedOn && (
             <DangerPanel tone="notice" className="mb-5">
-              {monthLabel(values.month)} was submitted on {selectedMonthSubmittedOn}{" "}
-              — changes will not alter the packet that was downloaded, but
-              regenerated documents will differ.
+              {monthLabel(values.month)} was submitted on {selectedMonthSubmittedOn}. Your
+              changes won&apos;t alter the packet already downloaded, but documents downloaded
+              from now on will include them.
             </DangerPanel>
           )
         ))}
@@ -867,7 +866,7 @@ export function ExpenseForm({
 
           <div>
             <Label id="lineItem-label" htmlFor="lineItem">
-              Budget line item
+              Line item
             </Label>
             <Select
               id="lineItem"
@@ -881,7 +880,7 @@ export function ExpenseForm({
                 const r = remainingForMonth[item.id];
                 return (
                   <option key={item.id} value={item.id}>
-                    {r === undefined ? item.name : `${item.name} — Remaining ${formatMoney(r)}`}
+                    {r === undefined ? item.name : `${item.name} · ${formatMoney(r)} remaining`}
                   </option>
                 );
               })}
@@ -908,7 +907,7 @@ export function ExpenseForm({
               {selectablePaymentSources.map((label) => (
                 <option key={label} value={label}>
                   {label}
-                  {options.paymentSources.includes(label) ? "" : " (retired)"}
+                  {options.paymentSources.includes(label) ? "" : " (no longer in use)"}
                 </option>
               ))}
             </Select>
@@ -949,7 +948,7 @@ export function ExpenseForm({
 
           <div data-tour="add-expense-description">
             <Label htmlFor="description">
-              Description / role — this exact text will print on the cover sheet
+              Description / role (prints on the cover sheet exactly as typed)
             </Label>
             <Textarea
               id="description"
@@ -1076,8 +1075,7 @@ export function ExpenseForm({
               {receiptTotal !== reimbursableCents && (
                 <>
                   {" "}
-                  — {formatMoney(receiptTotal - reimbursableCents)} not
-                  reimbursed
+                  ({formatMoney(receiptTotal - reimbursableCents)} not reimbursed)
                 </>
               )}
             </div>
@@ -1117,7 +1115,7 @@ export function ExpenseForm({
                   if (
                     reportResult(
                       await removeExpenseDocumentAction(id),
-                      "File removed",
+                      "File removed.",
                     )
                   ) {
                     router.refresh();
@@ -1236,8 +1234,9 @@ export function ExpenseForm({
                   },
                 }}
               >
-                It moves to the trash with its {existing!.documents.length} attached file
-                {existing!.documents.length === 1 ? "" : "s"}, and can be restored.
+                {existing!.documents.length === 0
+                  ? "It moves to the trash and can be restored."
+                  : `It moves to the trash with its ${existing!.documents.length} attached file${existing!.documents.length === 1 ? "" : "s"} and can be restored.`}
               </Dialog>
             </>
           )}

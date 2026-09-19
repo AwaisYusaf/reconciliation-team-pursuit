@@ -10,7 +10,7 @@ import { getSession } from "@/src/services/auth/session";
 
 import { MonthlySummarySection } from "@/src/components/monthly-summary/summary-section";
 
-export const metadata = { title: pageTitle("Monthly Summary") };
+export const metadata = { title: pageTitle(UI.summaryTitle) };
 
 /**
  * The Monthly summary screen (Phase 11 §7.1). Follows the header's funding source and month,

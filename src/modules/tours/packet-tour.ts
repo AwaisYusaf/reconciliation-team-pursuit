@@ -15,7 +15,7 @@ import { UI } from "@/src/domain/strings";
 export const PACKET_TOUR_STEPS: readonly TourStep[] = [
   {
     target: "packet-doc-complete",
-    title: "Documentation Complete",
+    title: "Documentation complete",
     body: "Every line item needs a Yes here before you can download.",
   },
   {
