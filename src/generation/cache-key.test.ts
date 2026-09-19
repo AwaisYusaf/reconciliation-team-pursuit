@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { canonicalJson, inputsHash } from "./cache-key";
+import { canonicalJson, inputsHash, recordsHash } from "./cache-key";
 
 describe("canonicalJson", () => {
   it("sorts object keys, so column order cannot change the hash", () => {
@@ -75,5 +75,29 @@ describe("inputsHash", () => {
 
   it("fits the column and stays hex", () => {
     expect(inputsHash({ snapshot, generatorVersion: "v1" })).toMatch(/^[0-9a-f]{32}$/);
+  });
+});
+
+describe("recordsHash (PHASE-12 P14)", () => {
+  const snapshot = { month: "2026-03", expenses: [{ id: "a", subtotalCents: 1_000 }] };
+
+  it("ignores key order", () => {
+    expect(recordsHash({ expenses: [{ subtotalCents: 1_000, id: "a" }], month: "2026-03" })).toBe(
+      recordsHash(snapshot),
+    );
+  });
+
+  it("changes when an amount changes", () => {
+    expect(recordsHash({ ...snapshot, expenses: [{ id: "a", subtotalCents: 1_001 }] })).not.toBe(
+      recordsHash(snapshot),
+    );
+  });
+
+  it("carries no generator version, unlike the artifact's cache key", () => {
+    expect(inputsHash({ snapshot, generatorVersion: "packet-12" })).not.toBe(
+      inputsHash({ snapshot, generatorVersion: "packet-13" }),
+    );
+    expect(recordsHash(snapshot)).toMatch(/^[0-9a-f]{32}$/);
+    expect(recordsHash(snapshot)).not.toBe(inputsHash({ snapshot, generatorVersion: "packet-12" }));
   });
 });

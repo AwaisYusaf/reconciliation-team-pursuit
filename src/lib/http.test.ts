@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { attachmentHeader } from "./http";
+import { attachmentHeader, inlineHeader } from "./http";
 
 describe("attachmentHeader", () => {
   it("sends both the quoted name and the encoded one", () => {
@@ -59,5 +59,21 @@ describe("attachmentHeader", () => {
   it("bounds the length, so the header cannot exceed what a proxy will accept", () => {
     const header = attachmentHeader(`${"a".repeat(5000)}.pdf`);
     expect(header.length).toBeLessThan(400);
+  });
+});
+
+describe("inlineHeader", () => {
+  it("is inline, with the same two filename forms", () => {
+    expect(inlineHeader("Team_Pursuit_March_2026_Packet.pdf")).toBe(
+      'inline; filename="Team_Pursuit_March_2026_Packet.pdf"; ' +
+        "filename*=UTF-8''Team_Pursuit_March_2026_Packet.pdf",
+    );
+  });
+
+  it("gets the same sanitising as attachmentHeader", () => {
+    const header = inlineHeader('a".pdf\r\nSet-Cookie: x');
+    expect(header.match(/filename="/g)).toHaveLength(1);
+    expect(header).not.toContain("\r");
+    expect(inlineHeader(`${"a".repeat(5000)}.pdf`).length).toBe(attachmentHeader(`${"a".repeat(5000)}.pdf`).length - 4);
   });
 });

@@ -1,16 +1,14 @@
 import { NextResponse } from "next/server";
 
-import { isValidMonthKey, monthLabel, type MonthKey } from "@/src/domain/dates";
-import { blockingRecords } from "@/src/domain/gate";
-import { packetFilename } from "@/src/domain/strings";
-import { resolveArtifact } from "@/src/generation/artifacts";
-import { inputsHash } from "@/src/generation/cache-key";
-import { gateExpenses, loadMonthSnapshot } from "@/src/generation/month-snapshot";
-import { buildDeliverablePacket } from "@/src/generation/packet-build";
+import { isValidMonthKey, type MonthKey } from "@/src/domain/dates";
 import { PacketError } from "@/src/generation/packet-pdf";
 import { attachmentHeader } from "@/src/lib/http";
-import { deletedItemsRefusal, loadTrashedExpenses } from "@/src/modules/expenses/queries";
-import { findFundingSource, loadSourceContext } from "@/src/modules/funding-sources/queries";
+import { findFundingSource } from "@/src/modules/funding-sources/queries";
+import {
+  monthOutputFailureMessage,
+  prepareMonthOutput,
+  resolveMonthOutput,
+} from "@/src/modules/packet/month-output";
 import { getSession } from "@/src/services/auth/session";
 import { consume } from "@/src/services/rate-limit";
 
@@ -18,16 +16,6 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 /** Assembling a few hundred rasterised pages takes far longer than a normal request. */
 export const maxDuration = 600;
-
-/** Bump when the packet's layout or ordering changes, so cached artifacts rebuild (R10.4). */
-// Bumped "packet-10": the packet embeds the cover sheet, whose font resolution changed (D-78).
-// Neither that nor D-77's reordering touches a snapshot field, so without a bump the cache key is
-// byte-identical and every existing month keeps serving the old packet.
-// Bumped "packet-11": the packet embeds the cover sheet, whose heading now carries the
-// reference (D-83). Without this, pinned and cached packets keep serving the old sheets.
-// Bumped "packet-12": the packet now carries internal links and an outline (D-83). Links are
-// code, not snapshot data; without this every cached packet stays unlinked.
-const GENERATOR_VERSION = "packet-12";
 
 /**
  * Download the month-end packet.
@@ -67,69 +55,43 @@ export async function GET(request: Request) {
   // foreign id is the same 404, so a probe learns nothing.
   const source = await findFundingSource(session.orgId, url.searchParams.get("source") ?? "");
   if (!source) return new NextResponse("Unknown funding source", { status: 404 });
-  const fundingSourceId = source.id;
 
   // The packet screen's dialog is the only place this confirmation is asked for — re-checked
-  // here so a direct hit on this URL cannot skip the review a UI-only gate would only pretend
-  // to enforce.
-  const confirmedDeletions = url.searchParams.get("confirmedDeletions") === "1";
-  const deletedThisMonth = await loadTrashedExpenses(session.orgId, fundingSourceId, month);
-  if (deletedThisMonth.length > 0 && !confirmedDeletions) {
-    return new NextResponse(deletedItemsRefusal(deletedThisMonth), {
-      status: 409,
+  // (with the documentation gate, R4.3) in `prepareMonthOutput`, so a direct hit on this URL
+  // cannot skip the review a UI-only gate would only pretend to enforce.
+  const prepared = await prepareMonthOutput({
+    orgId: session.orgId,
+    source,
+    month: month as MonthKey,
+    kind: "packet",
+    confirmedDeletions: url.searchParams.get("confirmedDeletions") === "1",
+  });
+  if (!prepared.ok) {
+    return new NextResponse(prepared.message, {
+      status: prepared.status,
       headers: { "Content-Type": "text/plain; charset=utf-8" },
     });
-  }
-
-  const snapshot = await loadMonthSnapshot(session.orgId, fundingSourceId, month as MonthKey);
-  const label = monthLabel(month as MonthKey);
-
-  // Filenames gain the source name only once the organisation has more than one source (R10.3).
-  const { single } = await loadSourceContext(session.orgId, session.activeFundingSourceId);
-
-  // A month with no expenses is downloadable — summary and month documents only — so the
-  // organisation can still submit a period in which nothing was spent.
-  const blocking = blockingRecords(gateExpenses(snapshot.expenses));
-  if (blocking.length > 0) {
-    return new NextResponse(
-      `${blocking.length} ${blocking.length === 1 ? "record is" : "records are"} missing documentation:\n` +
-        blocking.map((record) => `• ${record.label}`).join("\n"),
-      { status: 409, headers: { "Content-Type": "text/plain; charset=utf-8" } },
-    );
   }
 
   let body: Buffer;
   let contentType: string;
 
   try {
-    ({ body, contentType } = await resolveArtifact({
-      orgId: session.orgId,
-      fundingSourceId,
-      month: month as MonthKey,
-      type: "packet_pdf",
-      extension: "pdf",
-      hash: inputsHash({ snapshot, generatorVersion: GENERATOR_VERSION }),
-      build: async () => (await buildDeliverablePacket(snapshot)).pdf,
-    }));
+    ({ body, contentType } = await resolveMonthOutput(prepared));
   } catch (error) {
-    // PacketError names the section or file that failed, which is what the screen shows.
     const at = error instanceof PacketError ? error.at : null;
     console.error("packet generation failed", { orgId: session.orgId, month, at, error });
-    return new NextResponse(
-      at
-        ? `Packet generation failed at ${at}. Please try again — if it keeps failing, contact Mantaq.`
-        : "The packet could not be generated just now. Please try again — if it keeps failing, contact Mantaq.",
-      { status: 500, headers: { "Content-Type": "text/plain; charset=utf-8" } },
-    );
+    return new NextResponse(monthOutputFailureMessage("packet", error), {
+      status: 500,
+      headers: { "Content-Type": "text/plain; charset=utf-8" },
+    });
   }
 
   return new NextResponse(new Uint8Array(body), {
     headers: {
       "Content-Type": contentType,
       "Content-Length": String(body.byteLength),
-      "Content-Disposition": attachmentHeader(
-        packetFilename(snapshot.docName, label, single ? undefined : source.name),
-      ),
+      "Content-Disposition": attachmentHeader(prepared.filename),
       "X-Content-Type-Options": "nosniff",
       "Cache-Control": "private, no-store",
     },

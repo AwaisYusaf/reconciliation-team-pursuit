@@ -14,6 +14,7 @@ import {
   gateExpenses,
   loadMonthSnapshot,
 } from "@/src/generation/month-snapshot";
+import { COVER_SHEET_GENERATOR_VERSION } from "@/src/generation/versions";
 import { attachmentHeader } from "@/src/lib/http";
 import { isUuid } from "@/src/lib/ids";
 import { findFundingSource, loadSourceContext } from "@/src/modules/funding-sources/queries";
@@ -22,14 +23,6 @@ import { consume } from "@/src/services/rate-limit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-/** Bump when the sheet's layout changes, so cached artifacts rebuild (R10.4). */
-// Bumped "cover-7": the converter now resolves Aptos to Carlito instead of falling back to
-// DejaVu Sans (D-78), so every rendered sheet changes metrics. The font lives in the image, not
-// in the snapshot, so without this bump pinned and cached artifacts keep serving the wide render.
-// Bumped "cover-8": the heading now carries the expense reference (D-83). Without this, pinned and
-// cached sheets keep printing headings the packet's links cannot anchor on.
-const GENERATOR_VERSION = "cover-8";
 
 /**
  * Download one line item's cover sheet, as .docx or .pdf.
@@ -121,7 +114,7 @@ export async function GET(request: Request) {
       extension: format,
       hash: inputsHash({
         snapshot,
-        generatorVersion: GENERATOR_VERSION,
+        generatorVersion: COVER_SHEET_GENERATOR_VERSION,
         // The two formats are the same document, so they must not share a cache entry.
         scope: `${lineItemId}:${format}`,
       }),

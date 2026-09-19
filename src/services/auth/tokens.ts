@@ -74,6 +74,20 @@ export function hashSessionToken(token: string): string {
   return createHmac("sha256", authSecret()).update(token, "utf8").digest("hex");
 }
 
+/**
+ * An HMAC-SHA256 over `data`, keyed by a key derived from `AUTH_SECRET` for one named purpose,
+ * base64url encoded (PHASE-12: the shared-link unlock cookie).
+ *
+ * The per-purpose key keeps signatures from different features from ever being interchangeable,
+ * or equal to a session token's database key. Unlike the signed-URL helpers D-41 removed, this
+ * has a caller and signs something the server itself checks. Rotating `AUTH_SECRET` voids every
+ * signature, as it does every session.
+ */
+export function signWithAuthSecret(purpose: string, data: string): string {
+  const key = createHmac("sha256", authSecret()).update(`purpose:${purpose}`, "utf8").digest();
+  return createHmac("sha256", key).update(data, "utf8").digest("base64url");
+}
+
 /** Expiry instant for a session created now. */
 export function sessionExpiry(now: Date = new Date()): Date {
   return new Date(now.getTime() + SESSION_TTL_MS);

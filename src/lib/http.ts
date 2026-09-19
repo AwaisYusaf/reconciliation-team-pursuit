@@ -14,6 +14,18 @@
  * older clients from inventing a name.
  */
 export function attachmentHeader(filename: string): string {
+  return contentDisposition("attachment", filename);
+}
+
+/**
+ * `Content-Disposition` for a file the browser should show rather than save — a shared packet
+ * opened in the browser's PDF viewer (PHASE-12). The name still reaches the viewer's own Save.
+ */
+export function inlineHeader(filename: string): string {
+  return contentDisposition("inline", filename);
+}
+
+function contentDisposition(type: "attachment" | "inline", filename: string): string {
   // An uploaded name can be arbitrarily long. Left unbounded it produces a header larger
   // than most reverse proxies accept, which makes the document undownloadable rather than
   // merely oddly named.
@@ -27,7 +39,7 @@ export function attachmentHeader(filename: string): string {
       .replace(/["\\]/g, "")
       .trim() || "download";
 
-  return `attachment; filename="${fallback}"; filename*=UTF-8''${encodeExtValue(bounded)}`;
+  return `${type}; filename="${fallback}"; filename*=UTF-8''${encodeExtValue(bounded)}`;
 }
 
 const MAX_FILENAME_LENGTH = 120;

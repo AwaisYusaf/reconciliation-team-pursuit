@@ -60,7 +60,7 @@ describe.skipIf(!hasDatabase)("adding or editing a second source changes nothing
   const { loadPacketReadiness } = await import("@/src/modules/packet/queries");
 
   const session = vi.mocked(actionSession);
-  const GENERATOR_VERSION = "packet-12"; // app/api/downloads/packet/route.ts
+  const { PACKET_GENERATOR_VERSION: GENERATOR_VERSION } = await import("@/src/generation/versions");
 
   const MONTH = "2097-05";
   const OTHER_MONTH = "2097-06";

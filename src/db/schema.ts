@@ -1099,10 +1099,101 @@ export const generatedArtifacts = pgTable(
       sql`coalesce(${t.lineItemId}, '00000000-0000-0000-0000-000000000000'::uuid)`,
       t.inputsHash,
     ),
+    // The target of `shared_links_artifact_fk` (PHASE-12 P9). Trivially unique — `id` is the
+    // primary key — but Postgres only lets a foreign key reference columns under a unique
+    // constraint, and referencing all five is what makes a share unable to point at another
+    // org's, source's, month's or kind's file.
+    uniqueIndex("generated_artifacts_scope_id_uq").on(
+      t.id,
+      t.orgId,
+      t.fundingSourceId,
+      t.month,
+      t.type,
+    ),
     foreignKey({
       columns: [t.fundingSourceId, t.orgId],
       foreignColumns: [fundingSources.id, fundingSources.orgId],
     }),
+  ],
+);
+
+/* -------------------------------------------------------- shared links */
+
+/**
+ * A month's packet PDF or summary workbook shared by public link (PHASE-12, D-112).
+ *
+ * Opening `/s/{token}` serves exactly the artifact this row points at — read from storage, never
+ * rebuilt. At most one active link per (source, month, kind); Stop sharing sets `revoked_at` and
+ * keeps the row, so a token can never be handed out again.
+ */
+export const sharedLinks = pgTable(
+  "shared_links",
+  {
+    id: id(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    fundingSourceId: uuid("funding_source_id").notNull(),
+    month: char({ length: 7 }).notNull(),
+    /** `packet_pdf` or `summary_xlsx` only (`shared_links_artifact_type_ck`). */
+    artifactType: artifactType("artifact_type").notNull(),
+    /** The pinned file the link serves; moves on Update shared file, the token does not. */
+    artifactId: uuid("artifact_id").notNull(),
+    /**
+     * Stored as written, not hashed (PHASE-12 P4): the Shared links box must be able to show the
+     * link again. Twelve base62 characters.
+     */
+    token: text().notNull(),
+    /** argon2id; null means the link opens without a password. Never sent to a browser. */
+    passwordHash: text("password_hash"),
+    /** The download name when the file was last shared or updated (R10.3). */
+    filename: text().notNull(),
+    /** `recordsHash(snapshot)` when the file was last shared or updated (PHASE-12 P14). */
+    recordsHash: text("records_hash").notNull(),
+    /** Who first shared it (P21). Null once that account is removed. */
+    createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+    /** When and by whom the current file was put behind the link — moves on Update (P15). */
+    sharedAt: timestamp("shared_at", { withTimezone: true }).notNull(),
+    sharedBy: uuid("shared_by").references(() => users.id, { onDelete: "set null" }),
+    /** Stop sharing. The row stays so the token stays reserved (P16). */
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    revokedBy: uuid("revoked_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    // Every row, stopped ones included: an old link can never come back.
+    uniqueIndex("shared_links_token_uq").on(t.token),
+    // One PDF link and one Excel link per source and month; also serves the packet tab's list.
+    uniqueIndex("shared_links_active_uq")
+      .on(t.orgId, t.fundingSourceId, t.month, t.artifactType)
+      .where(sql`${t.revokedAt} is null`),
+    // Serves the FK check when generated_artifacts rows are removed.
+    index("shared_links_artifact_idx").on(t.artifactId),
+    foreignKey({
+      columns: [t.fundingSourceId, t.orgId],
+      foreignColumns: [fundingSources.id, fundingSources.orgId],
+    }),
+    // NO ACTION, not RESTRICT: deleting an organisation cascades into both tables in one
+    // statement, and NO ACTION is only checked at the end of it. Named explicitly because the
+    // generated name would pass Postgres's 63-character limit.
+    foreignKey({
+      name: "shared_links_artifact_fk",
+      columns: [t.artifactId, t.orgId, t.fundingSourceId, t.month, t.artifactType],
+      foreignColumns: [
+        generatedArtifacts.id,
+        generatedArtifacts.orgId,
+        generatedArtifacts.fundingSourceId,
+        generatedArtifacts.month,
+        generatedArtifacts.type,
+      ],
+    }),
+    check("shared_links_month_ck", sql`${t.month} ~ '^\\d{4}-(0[1-9]|1[0-2])$'`),
+    check(
+      "shared_links_artifact_type_ck",
+      sql`${t.artifactType} in ('packet_pdf', 'summary_xlsx')`,
+    ),
+    check("shared_links_token_ck", sql`${t.token} ~ '^[0-9A-Za-z]{12}$'`),
   ],
 );
 
@@ -1311,6 +1402,7 @@ export type MonthSnapshotRow = typeof monthSnapshots.$inferSelect;
 export type MonthSnapshotTotals = typeof monthSnapshotTotals.$inferSelect;
 export type AiUsageEvent = typeof aiUsageEvents.$inferSelect;
 export type MonthlySummary = typeof monthlySummaries.$inferSelect;
+export type SharedLink = typeof sharedLinks.$inferSelect;
 
 export type DocumentKind = (typeof documentKind.enumValues)[number];
 export type DocumentStatus = (typeof documentStatus.enumValues)[number];

@@ -12,6 +12,8 @@
  * the fallback session secret is that the app runs with no configuration at all.
  */
 
+import { appUrlProblem } from "@/src/lib/site-url";
+
 /** Settings that must be present before production serves a single request. */
 const REQUIRED_IN_PRODUCTION: Array<{ name: string; why: string }> = [
   {
@@ -25,6 +27,12 @@ const REQUIRED_IN_PRODUCTION: Array<{ name: string; why: string }> = [
   {
     name: "S3_BUCKET",
     why: "without it uploads would be written to the container's local disk and lost on redeploy",
+  },
+  {
+    name: "APP_URL",
+    why:
+      "shared links are built from it; without it a link emailed to the City would point at " +
+      "the wrong address (D-112)",
   },
   {
     name: "TRUSTED_PROXY_HOPS",
@@ -45,6 +53,11 @@ export async function register(): Promise<void> {
       `Refusing to start: ${missing.length} required setting${missing.length === 1 ? " is" : "s are"} missing.\n${detail}\n` +
         "See .env.example for the full list.",
     );
+  }
+
+  const appUrl = appUrlProblem(process.env.APP_URL);
+  if (appUrl) {
+    throw new Error(`Refusing to start: APP_URL is unusable — ${appUrl}. Set it to the public address, e.g. https://stayfunded360.com.`);
   }
 
   // A wrong hop count is worse than none: it makes a forged X-Forwarded-For trustworthy.

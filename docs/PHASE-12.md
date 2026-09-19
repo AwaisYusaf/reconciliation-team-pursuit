@@ -1,6 +1,6 @@
 # Phase 12 — Share the month's packet and summary with a link
 
-Status: **planned, not started** (2026-09-19). The product spec is Appendix A, copied word for
+Status: **Phase 1 built** (2026-09-19); Phases 2–5 not started. The product spec is Appendix A, copied word for
 word from `docs/tickets/share-packet-link.md`. §2 records where this plan departs from it and why.
 Every build phase in §9 names its sources and its own checks, so each can run in a fresh chat.
 
@@ -41,24 +41,27 @@ organization is paused or cancelled.
 | # | Decision | Why |
 |---|---|---|
 | P1 | **Links use `APP_URL`, and production refuses to start without it** (`REQUIRED_IN_PRODUCTION` in `instrumentation.ts`, validated as an http(s) URL). | A link is built once and emailed. A wrong or missing domain would only show up in the City's inbox; a boot failure shows up at deploy. User, 2026-09-19. |
-| P2 | **Wrong passwords are counted per link and visitor IP** (`sharePassword`: 5 per 15 minutes, in-process like the login limits). The count is taken *before* checking, so the sixth try is refused even when it is right, and a right password resets it. | D-44: an attacker's wrong guesses must never lock the real user out. Per link alone, anyone holding the link could block the City for 15 minutes. User, 2026-09-19. |
+| P2 | **Wrong passwords are counted per link and visitor IP** (`sharePasswordPerLinkIp`: 5 per 15 minutes, in-process like the login limits). Every limit is checked *before* the password is, so a sixth try is refused even when it is right; the fifth wrong try already answers "Too many tries…", since nothing is left. A right password resets that visitor's count. A second limit, `sharePasswordPerIp` (30 per 15 minutes across all links), bounds argon2 work from one address, as `loginPerIp` does for sign-in. There is deliberately **no** per-link limit across addresses. | D-44: an attacker's wrong guesses must never lock the real user out. A per-link cap would let anyone holding the link, from enough addresses, block the City. User, 2026-09-19: "that visitor only". |
 | P3 | **Token: 12 characters of `[0-9A-Za-z]`** from `crypto.randomBytes` with rejection sampling (bytes ≥ 248 are dropped, so every character is equally likely). Unique across all rows, including stopped ones. | See C1. The unique index over every row means a stopped link's token can never come back. |
 | P4 | **The token is stored as written**, not hashed. | The Shared links box shows the link again for Copy link. Sessions hash their token because nobody needs to read it back. Anyone who can read this table can already read the files themselves from storage. |
 | P5 | **Passwords: 6–128 characters, argon2id** (`hashPassword`/`verifyPassword`), never sent to the browser. Only a `hasPassword` boolean leaves the server. | 6 is the ticket's minimum. 128 bounds argon2's input on an unauthenticated path. |
 | P6 | **"For a while" is 12 hours.** After the right password, a signed cookie (`share_unlock`, `__Secure-` prefix in production, `Path=/s/<token>`, HttpOnly, SameSite=Lax) holds `expiry.HMAC(share id, password hash, expiry)` keyed by `AUTH_SECRET`. | Binding the password hash means changing, adding or removing a password invalidates every earlier unlock at once (Appendix A §3: "The old password stops working straight away"). Revoking the link needs nothing extra, because every request looks the share up again. |
-| P7 | **The password form posts to a route handler, not a Server Action.** | In Next 16, setting a cookie in a Server Action re-renders the current page in the same round trip (`node_modules/next/dist/docs/01-app/03-api-reference/04-functions/cookies.md`, "Cookie Behavior in Server Functions"). The re-rendered `/s/<token>` would run its own "unlocked, go to the file" redirect inside the action response, and the client router would try to fetch a PDF as a page. A plain form POST answered with a 303 avoids that, and also works without JavaScript. |
+| P7 | **The password form posts to a route handler, not a Server Action.** `POST /s/<token>/unlock` answers JSON. The small client form shows errors inline, and on success does `location.replace(fileUrl)` for the PDF (so Back doesn't land on a page that immediately redirects) and `location.assign` for Excel, then says the download has started. | In Next 16, setting a cookie in a Server Action re-renders the current page in the same round trip (`node_modules/next/dist/docs/01-app/03-api-reference/04-functions/cookies.md`, "Cookie Behavior in Server Functions"). The re-rendered `/s/<token>` would run its own "unlocked, go to the file" redirect inside the action response, and the client router would fetch the PDF as page data. A route handler plus a hard navigation avoids the router entirely. |
 | P8 | **Sharing pins the artifact** (`generated_artifacts.downloaded_at`), exactly as a download does. | Pinning records what the City received (R10.6), and a shared file is exactly that. Pinned rows are never swept, so a link's file can't disappear under it. |
 | P9 | **The link points at one `generated_artifacts` row through a five-column foreign key**: `(artifact_id, org_id, funding_source_id, month, artifact_type)` → `generated_artifacts(id, org_id, funding_source_id, month, type)`. | Appendix A: "A link must never give access to anything else in the organization: only its one file." With this key, a row pointing at another org's, source's, month's or kind's file can't be stored at all. |
-| P10 | **Opening a link streams the saved object and never calls a generator.** The storage driver gains `stream(key)`. The file is sent whole with `Accept-Ranges: none`. | A 73 MB packet read into a Buffer per open would sit in memory on a 3.7 GB box shared with Postgres. pdf-lib's output isn't linearized, so Chrome's viewer gains little from range requests. One request per open also keeps the per-IP backstop (`shareOpen`, 60 per 15 minutes) meaningful. |
+| P10 | **Opening a link streams the saved object and never calls a generator.** The storage driver gains `stream(key)` and `stat(key)`. The file is sent whole with `Accept-Ranges: none`. `HEAD` is exported explicitly and answers from `stat` alone. | A 73 MB packet read into a Buffer per open would sit in memory on a 3.7 GB box shared with Postgres. pdf-lib's output isn't linearized, so Chrome's viewer gains little from range requests, and with ranges Firefox's pdf.js would make hundreds of 64 KB requests. Next answers `HEAD` by running `GET` when no `HEAD` is exported, so every link preview would otherwise open a 70 MB stream. |
 | P11 | **Downloads and sharing share one gate-and-build path.** The deletions check, snapshot, filename rule and R4.3 gate move from the two download routes into `prepareMonthOutput` (`src/modules/packet/month-output.ts`). Generator versions move to `src/generation/versions.ts`. | Two copies of a gate drift, and this project's escaped defects were exactly that. The download routes keep their own session, cross-site, rate-limit and response code, and must behave byte for byte as before. |
 | P12 | **Creating and updating a shared file run in POST route handlers** that wrap Server Actions (`app/api/shared-links/{create,update}/route.ts`), like `app/api/monthly-summary/write/route.ts`. Change password and Stop sharing are ordinary Server Actions. | A packet can take a minute or two to build. A Server Action that long blocks every other action in the tab. |
 | P13 | **One build at a time per file** (org, source, month, kind), with an in-process set like `monthly-summary/single-flight.ts`. The database's active-row index settles any race that slips past it. | A double click or two people sharing together must not build a 70 MB packet twice. |
-| P14 | **"Records changed" compares the shared artifact's `inputs_hash` with the hash the month would have now**, from `loadMonthSnapshot`, which only reads the database. It is computed on page load only when the month has a shared link. | It is the same hash that decides whether a download rebuilds, so the notice appears exactly when a download would give a different file. That includes a changed month document, budget, prior month or organization name. A generator version bump also triggers it (§8). |
+| P14 | **"Records changed" compares a stored `records_hash` with the month's current one.** `recordsHash(snapshot)` in `cache-key.ts` is the snapshot's canonical hash *without* the generator version. It is stored on the row at share and at Update, and compared on page load (the snapshot reads only the database, about six queries, and only when the month has a shared link). | The message says "Your records changed", so it must only appear when records did. Comparing the file's cache key would show it on every shared row after any release that bumps a generator version. It still appears for a changed month document, budget, prior month or organization name, because the file's figures would differ. |
 | P15 | **"Shared on … by …" shows the last share or update.** Update moves `shared_at` and `shared_by`. | Appendix A §4: "The 'Shared on' line then shows the new date." |
-| P16 | **Stop sharing soft-revokes the row** (`revoked_at`, `revoked_by`) instead of deleting it. | The token stays reserved forever, and who stopped it is kept. |
+| P16 | **Stop sharing soft-revokes the row** (`revoked_at`, `revoked_by`) and clears `password_hash`. The row is kept. | The token stays reserved forever, and who stopped it is kept. A dead link has no reason to keep a password hash. |
 | P17 | **Unavailable pages return 404** through `app/s/[token]/not-found.tsx`, with one wording for every cause. All of `/s/*` carries `X-Robots-Tag: noindex, nofollow` and `Referrer-Policy: no-referrer`. `robots.txt` is unchanged. | A 404 and noindex keep links out of search results. A `robots.txt` Disallow would stop crawlers from ever seeing the noindex. `no-referrer` keeps the token out of any Referer header. |
 | P18 | **No `Sec-Fetch-Site` check on the public routes.** | Links arrive from webmail, which is exactly the cross-site navigation the download routes refuse. |
 | P19 | **Packet tour copy:** the "Download" step now reads "Download the packet PDF for signing and the Excel summary, or share either with a link." | The Share link button sits inside that step's highlighted row. |
+| P20 | **The public route also checks `keyBelongsToOrg(s3Key, orgId)`**, ignores the `[filename]` path segment and reads no query parameters. | Defence in depth behind P9: the key comes from the database, but a check that costs nothing makes a future bug fail closed. |
+| P21 | **The row keeps `created_by`** (who first shared it) as well as `shared_by` (who put the current file there). | Update moves `shared_by`. Without `created_by` the first sharer would be lost. |
+| P22 | **Sharing counts as delivery in the staff dashboard.** Its "packets downloaded" figure counts pinned packet rows, and sharing pins (P8). | Accepted: a shared packet has reached the City. Recorded so the number isn't read as downloads only. |
 
 ### 2.3 Answers from the user (2026-09-19)
 
@@ -83,9 +86,11 @@ organization is paused or cancelled.
 | month | char(7) | `shared_links_month_ck` |
 | artifact_type | `artifact_type` | `shared_links_artifact_type_ck`: `packet_pdf` or `summary_xlsx` |
 | artifact_id | uuid | five-column FK to `generated_artifacts` (P9), NO ACTION |
-| token | text | `shared_links_token_uq` over every row |
+| token | text | `shared_links_token_uq` over every row; `shared_links_token_ck` `^[0-9A-Za-z]{12}$` |
 | password_hash | text, null | argon2id |
 | filename | text | the file name when last shared or updated (R10.3; carries the source name once the org has more than one) |
+| records_hash | text | `recordsHash(snapshot)` when last shared or updated (P14) |
+| created_by | uuid, null | → users, set null (P21) |
 | shared_by | uuid, null | → users, set null |
 | shared_at | timestamptz | moves on Update |
 | revoked_at | timestamptz, null | Stop sharing |
@@ -96,6 +101,12 @@ organization is paused or cancelled.
   `revoked_at is null`. This is the "one PDF link and one Excel link" rule.
 - `generated_artifacts` gains `generated_artifacts_scope_id_uq` on
   (id, org_id, funding_source_id, month, type), which the five-column FK needs as its target.
+- The five-column FK is named explicitly, `shared_links_artifact_fk`: drizzle's generated name
+  would pass Postgres's 63-character limit.
+- **Ordering in the migration:** drizzle-kit writes foreign keys before `CREATE INDEX` statements
+  (see 0029 and 0030). This FK needs `generated_artifacts_scope_id_uq` to exist first, so that
+  index statement is moved above it by hand, as 0023 did. A migration test in the style of
+  `src/db/migration-0027.test.ts` pins the order.
 
 ---
 
@@ -131,8 +142,8 @@ organization is paused or cancelled.
 | `stopSharingAction({ shareId })` | Sets `revoked_at` and `revoked_by`. | Stopped or foreign link |
 | `loadSharedLinks(orgId, sourceId, month)` | Active rows for the packet tab: kind, URL, `hasPassword`, shared date and name, `changed`, plus `orgCancelled`. | — |
 | `GET /s/<token>` (page) | Malformed or unavailable → 404 page. No password, or a valid unlock cookie → redirect to the file. Otherwise the password form. | — |
-| `POST /s/<token>/unlock` | Same-origin form post: checks the password (P2), sets the unlock cookie, 303 to the file. Otherwise 303 back with `?e=wrong` or `?e=wait`. | — |
-| `GET /s/<token>/<filename>` | `shareOpen` budget, looks the share up again, checks the cookie when a password is set, and streams the saved object. PDF is `inline`, Excel is `attachment`. `no-store`, `nosniff`, `Accept-Ranges: none`. | Unavailable or locked → 303 to `/s/<token>`; storage failure → 503 "This file can't be opened right now. Please try again in a few minutes." |
+| `POST /s/<token>/unlock` | Same-origin JSON post from the password form: checks the limits, then the password (P2); on success sets the unlock cookie and answers `{ ok: true, url }`. | Bad origin, body too large → 403/413; `{ ok: false, error }` with "That password isn't right.", "Too many tries. Please wait 15 minutes and try again." or the unavailable wording |
+| `GET` / `HEAD /s/<token>/<filename>` | `shareOpen` budget, looks the share up again, checks the cookie when a password is set, and streams the saved object. PDF is `inline`, Excel is `attachment`. `no-store`, `nosniff`, `Accept-Ranges: none`. `HEAD` answers from `stat` without opening the object. | Unavailable or locked → 303 to `/s/<token>`; storage failure → 503 "This file can't be opened right now. Please try again in a few minutes." |
 
 Every action starts with `actionSession()`, then `requireOwnedFundingSource`. Every lookup by
 `shareId` is scoped to the session's org and to active rows. Both roles, every plan, locked months
@@ -150,8 +161,10 @@ treats a share as unavailable when it is revoked, its org is suspended, or its o
   same robots and referrer rules.
 - **`app/s/layout.tsx`:** the sign-in page's centred paper shell.
 - **`app/s/[token]/page.tsx`:** the Stay Funded 360 logo (`/brand/stayfunded-logo.png`, as on
-  sign-in), "This file is password protected.", a password field and **Open file**. It is a plain
-  form, with the error message from `?e=` shown inline.
+  sign-in), "This file is password protected.", and the password form (`unlock-form.tsx`, a small
+  client component: the field, **Open file**, errors inline with `role="alert"`). There is no
+  `loading.tsx` and no Suspense under `app/s`: a 404 status only survives if `notFound()` runs
+  before streaming starts.
 - **`app/s/[token]/not-found.tsx`:** the logo and "This link is no longer available. Please ask
   the sender for a new one."
 - **Redirects use relative `Location` headers**, so nothing depends on the host Next sees behind
@@ -191,7 +204,7 @@ treats a share as unavailable when it is revoked, its org is suspended, or its o
 | Month with no expenses | Shareable, as it is downloadable. |
 | "All" sources in the header | The page shows the source picker, so there is no Share link button. |
 | Two people share the same file at once | Single-flight refuses the second while the first builds; the active-row index refuses a late duplicate; the UI refreshes to show the row. |
-| Generator version bump | Every shared row shows "records changed" although no record moved. Update gives the new format behind the same link. Accepted. |
+| Generator version bump | No "records changed" (P14): a shared file keeps its older format until the next Update, which only a real record change offers. Accepted: the link gives the file as it was shared, which is what Appendix A promises. |
 | A prior month, budget, source setting, organization name or month document changes | "Records changed": the snapshot covers all of them, and the file would differ. |
 | The org goes from one source to two | The filename rule changes but the hash doesn't. The shared file keeps its name until the next Update. |
 | Update on a locked month or archived source | Allowed. Sharing changes no record. |
@@ -209,12 +222,71 @@ Each phase ends with typecheck, lint and the **full** suite green, plus its own 
 follows plan → review → implement → review → browser test → commit.
 
 ### Phase 1 — Foundations (no screen changes)
+- **First, tests that pin today's download behaviour**: every refusal and the 200 response of
+  `/api/downloads/packet` and `/summary`, meaning status, body and headers. They are proven
+  against the pre-refactor routes before the refactor lands.
 - §4 in full, with the two download routes switched to `prepareMonthOutput`.
 - The migration.
 - The token and unlock-cookie helpers.
 - The APP_URL boot check.
 
 Checks: U-1..U-8; the existing download-route and login tests pass untouched; db-migration review.
+
+**Results (2026-09-19).**
+- **Built:**
+  - `src/generation/versions.ts` holds all three generator versions, the cover sheet's too, so a
+    reader never finds two of three there. The copied `"packet-12"` in
+    `funding-sources/isolation.integration.test.ts` now imports it.
+  - `src/modules/packet/month-output.ts`: `prepareMonthOutput`, `MONTH_OUTPUTS`,
+    `monthOutputHash`, `resolveMonthOutput`, `ensureMonthOutput`, `monthOutputFailureMessage`.
+    The two download routes now call it; the cover-sheet route only takes its version from the
+    new module.
+  - `resolveArtifact` returns `artifactId`. The new `ensureArtifact` pins without reading the
+    object, and a conflicting insert falls back to the winning row and pins it.
+  - Storage gained `stream` and `stat` on both drivers. `http.ts` gained `inlineHeader`.
+  - `src/services/client-ip.ts` (`clientIp`, `clientIpFrom`) is moved out of the sign-in
+    actions. `signWithAuthSecret` is in `tokens.ts`.
+  - `src/lib/site-url.ts` (`siteOrigin`, `appUrlProblem`); `instrumentation.ts` now requires a
+    valid `APP_URL` in production.
+  - `recordsHash` in `cache-key.ts`.
+  - `src/modules/sharing/token.ts` and `unlock-cookie.ts`.
+  - Schema `shared_links`, plus `generated_artifacts_scope_id_uq`. Migration
+    `0031_shared_links` has its index statement moved above the foreign key by hand.
+  - `data-model.md`, `.env.example`, `.env.production.example` and `deploy-ec2.md` are updated.
+- **Tests:**
+  - `packet/download-routes.integration.test.ts` (21) pins both routes: every refusal's status
+    and literal text, the refusal order, the 200 headers, pinning and cache reuse, the
+    second-source filename, and 429. It was run against the pre-refactor routes (all 21 passed)
+    before the refactor, then after it (all 21 passed).
+  - `artifacts.integration.test.ts` (8), `client-ip.test.ts` (5), `site-url.test.ts` (5),
+    `token.test.ts` (12), `unlock-cookie.test.ts` (12), `migration-0031.test.ts` (3), and
+    additions to `http.test.ts` and `cache-key.test.ts`.
+  - Full suite 1713 passed, none failed. Typecheck and lint are clean.
+- **Mutation checks**, each caught and restored:
+  - the source-name filename rule dropped;
+  - the deletions and documentation gates swapped;
+  - the token's bias guard removed;
+  - the password hash dropped from the cookie signature;
+  - `ensureArtifact` reading the object instead of checking it exists. The first run of this
+    one was **not** caught: the test called `mockRestore()` before asserting, which clears the
+    spy's calls. It is fixed and now fails as it should.
+- **Migration:** applied to the local database. The down script below was rehearsed inside a
+  rolled-back transaction. Postgres truncates the source foreign key's generated name to 63
+  characters, as it already does for every sibling table's.
+- **Deviations:**
+  - `month-output.ts` sits in `src/modules/packet/`, as planned; the design pass had suggested
+    `src/generation/`, but it reads the database, which `src/generation` must not.
+  - The planned `withBody` flag became a second function, `ensureArtifact`, so the download
+    routes keep a non-null `body` type.
+- **Not verified:** anything from Phase 2 onward. There is no browser pass, because Phase 1 has
+  no screen change; downloads are covered by the pinned route tests.
+
+Down script for `0031` (rehearsed in a transaction, 2026-09-19):
+
+```sql
+DROP TABLE "shared_links";
+DROP INDEX "generated_artifacts_scope_id_uq";
+```
 
 ### Phase 2 — Sharing server surface
 - `src/modules/sharing/`: `queries.ts`, `actions.ts`, `single-flight.ts`, `public.ts`
@@ -246,8 +318,8 @@ Checks: B-1, B-4..B-6, B-8 at 1280, 768 and 375 px.
 ## 10. Tests and verification
 
 ### Unit (U) — pure, no database
-- U-1 Token: length 12, alphabet, uniform rejection bound, `isShareToken` accepts and refuses.
-- U-2 Unlock cookie: valid, tampered, expired, other share, password changed, password removed.
+- U-1 Token: length 12, alphabet, uniform rejection bound; `isShareToken` refuses 11 and 13 characters, `-`, `_`, `../` and non-ASCII.
+- U-2 Unlock cookie: valid, tampered, expired, expiry too far ahead, malformed, other share, password changed, password removed.
 - U-3 `inlineHeader`: injection characters, length cap, RFC 8187 form.
 - U-4 `siteOrigin` and the APP_URL boot check (missing, not http(s), trailing path).
 - U-5 `clientIpFrom`: the same answers as today's login cases.
@@ -255,7 +327,8 @@ Checks: B-1, B-4..B-6, B-8 at 1280, 768 and 375 px.
   existing tests pass unchanged.
 - U-7 `resolveArtifact` returns the id on hit, miss and conflicting insert; `withBody: false`
   never reads the object.
-- U-8 Storage `stream` (local driver): bytes equal `get`, size correct, root escape refused.
+- U-8 Storage `stream` and `stat` (local driver): bytes equal `get`, size correct, root escape refused.
+- U-11 `recordsHash`: ignores key order, changes when an amount changes, ignores the generator version.
 - U-9 Proxy: `/s/x` public, `/signup` unaffected, `/sx` not public.
 - U-10 Isolation (source-reading, after `download-isolation.test.ts`): nothing under `app/s/**` or
   in `modules/sharing/public.ts` imports a generator, `resolveArtifact` or `getSession`.
@@ -288,6 +361,9 @@ Checks: B-1, B-4..B-6, B-8 at 1280, 768 and 375 px.
 - I-18 Org suspended → unavailable; reinstated → available; cancelled → unavailable.
 - I-19 A cross-origin unlock post is refused.
 - I-20 `shareOpen` refuses past its budget.
+- I-21 `HEAD` never opens the object.
+- I-22 Deleting an org that has shares succeeds (the NO ACTION FK checks at statement end).
+- I-23 Unknown, malformed and stopped tokens get an identical status and body.
 
 ### Mutation checks (break it, see a test fail, restore)
 - Drop the `revoked_at` filter.
@@ -343,6 +419,7 @@ From Appendix A, verbatim:
 
 Added by this plan (wording to review):
 - "Preparing…" (Excel);
+- "Your download has started." (after the password, Excel links);
 - "Use at least 6 characters." / "Use at most 128 characters.";
 - "That file is already shared." / "This file is already being prepared.";
 - "That link is no longer shared.";
