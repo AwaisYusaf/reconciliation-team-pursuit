@@ -9,12 +9,12 @@ import "server-only";
  * wording live here; each caller keeps only what is its own (session, origin, rate limit, and
  * how the result is answered).
  */
-import type { ArtifactType } from "@/src/db/schema";
 import { monthLabel, type MonthKey } from "@/src/domain/dates";
 import { blockingRecords } from "@/src/domain/gate";
 import { packetFilename } from "@/src/domain/strings";
 import { ensureArtifact, resolveArtifact, type ResolveArtifactInput } from "@/src/generation/artifacts";
-import { inputsHash } from "@/src/generation/cache-key";
+import { artifactTypeOf, type SharedArtifactType, type SharedFileKind } from "@/src/domain/shared-links";
+import { inputsHash, recordsHash } from "@/src/generation/cache-key";
 import { gateExpenses, loadMonthSnapshot, type MonthSnapshot } from "@/src/generation/month-snapshot";
 import { buildDeliverablePacket } from "@/src/generation/packet-build";
 import { PacketError } from "@/src/generation/packet-pdf";
@@ -23,10 +23,10 @@ import { PACKET_GENERATOR_VERSION, SUMMARY_GENERATOR_VERSION } from "@/src/gener
 import { deletedItemsRefusal, loadTrashedExpenses } from "@/src/modules/expenses/queries";
 import { loadSourceContext } from "@/src/modules/funding-sources/queries";
 
-export type MonthOutputKind = "packet" | "summary";
+export type MonthOutputKind = SharedFileKind;
 
 type MonthOutputSpec = {
-  type: Extract<ArtifactType, "packet_pdf" | "summary_xlsx">;
+  type: SharedArtifactType;
   extension: "pdf" | "xlsx";
   generatorVersion: string;
   build: (snapshot: MonthSnapshot) => Promise<Buffer>;
@@ -35,7 +35,7 @@ type MonthOutputSpec = {
 
 export const MONTH_OUTPUTS: Record<MonthOutputKind, MonthOutputSpec> = {
   packet: {
-    type: "packet_pdf",
+    type: artifactTypeOf("packet"),
     extension: "pdf",
     generatorVersion: PACKET_GENERATOR_VERSION,
     build: async (snapshot) => (await buildDeliverablePacket(snapshot)).pdf,
@@ -43,7 +43,7 @@ export const MONTH_OUTPUTS: Record<MonthOutputKind, MonthOutputSpec> = {
       packetFilename(snapshot.docName, monthLabel(month), sourceName),
   },
   summary: {
-    type: "summary_xlsx",
+    type: artifactTypeOf("summary"),
     extension: "xlsx",
     generatorVersion: SUMMARY_GENERATOR_VERSION,
     build: (snapshot) => buildSummaryWorkbook(snapshot),
@@ -55,6 +55,23 @@ export const MONTH_OUTPUTS: Record<MonthOutputKind, MonthOutputSpec> = {
 /** The output's cache key for a snapshot — what decides whether its saved file is current. */
 export function monthOutputHash(kind: MonthOutputKind, snapshot: MonthSnapshot): string {
   return inputsHash({ snapshot, generatorVersion: MONTH_OUTPUTS[kind].generatorVersion });
+}
+
+/**
+ * The records one output is built from, hashed without any generator version — what a shared
+ * file's "Your records changed" notice compares (PHASE-12 P14).
+ *
+ * The packet reads the whole snapshot. The summary workbook reads no documents — neither an
+ * expense's receipts and proofs nor the month documents — so a late receipt or a bank statement
+ * must not flag a shared workbook whose figures are unchanged (PHASE-12 review).
+ */
+export function monthOutputRecordsHash(kind: MonthOutputKind, snapshot: MonthSnapshot): string {
+  if (kind === "packet") return recordsHash(snapshot);
+  return recordsHash({
+    ...snapshot,
+    monthDocuments: [],
+    expenses: snapshot.expenses.map((expense) => ({ ...expense, documents: [] })),
+  });
 }
 
 export type PreparedMonthOutput = {

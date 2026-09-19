@@ -156,6 +156,29 @@ describe.skipIf(!hasDatabase)("artifact cache ids, ensureArtifact and storage st
     expect(rows[0].downloadedAt).not.toBeNull();
   });
 
+  it("a download and a share of the same missing file share one build", async () => {
+    const month = freshMonth();
+    const hash = "f".repeat(32);
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => (release = resolve));
+    const build = vi.fn(async () => {
+      await held;
+      return Buffer.from("built once");
+    });
+
+    const shared = ensureArtifact(input(month, hash, build));
+    const downloaded = resolveArtifact(input(month, hash, build));
+    // Both requests have missed the cache and are waiting on the build before it finishes.
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    release();
+    const [share, download] = await Promise.all([shared, downloaded]);
+
+    expect(build).toHaveBeenCalledTimes(1);
+    expect(share.artifactId).toBe(download.artifactId);
+    expect(download.body.toString()).toBe("built once");
+    expect(await rowsFor(month)).toHaveLength(1);
+  });
+
   describe("storage stream and stat (local driver)", () => {
     it("streams exactly the stored bytes and reports their size", async () => {
       const key = `org/${orgId}/stream-test/file.bin`;

@@ -22,7 +22,25 @@ import { CONTENT_TYPES } from "./content-types";
 
 export { canonicalJson, inputsHash } from "./cache-key";
 
-export { CONTENT_TYPES } from "./content-types";
+/**
+ * Builds running now, by exact output (scope + hash). A second request for the same bytes waits
+ * for the first build instead of starting its own: downloading the packet and sharing it at the
+ * same moment would otherwise assemble a 70 MB packet twice, at about three times its size in
+ * memory each, on a 3.7 GB box shared with Postgres (PHASE-12 review). Both callers then store
+ * and record the same deterministic bytes, which `generated_artifacts_content_uq` already makes
+ * idempotent.
+ *
+ * ponytail: in-process, single container — the same ceiling as `rate-limit.ts`.
+ */
+const buildsInFlight = new Map<string, Promise<Buffer>>();
+
+function buildOnce(key: string, build: () => Promise<Buffer>): Promise<Buffer> {
+  const running = buildsInFlight.get(key);
+  if (running) return running;
+  const started = build().finally(() => buildsInFlight.delete(key));
+  buildsInFlight.set(key, started);
+  return started;
+}
 
 export type ResolveArtifactInput = {
   orgId: string;
@@ -79,6 +97,8 @@ async function resolve(
   const lineItemId = input.lineItemId ?? null;
   const contentType = CONTENT_TYPES[input.extension];
   const store = storage();
+  const buildKey = [input.orgId, input.fundingSourceId, input.month, input.type, lineItemId, input.hash].join(":");
+  const build = () => buildOnce(buildKey, input.build);
 
   const scope = and(
     eq(generatedArtifacts.orgId, input.orgId),
@@ -118,13 +138,13 @@ async function resolve(
     // says nothing about the object — a throttle, a timeout, an expired credential. The
     // bytes are deterministic (R10.1), so rebuilding and writing back to the same key
     // restores the artifact without losing the record that it was downloaded.
-    const body = await input.build();
+    const body = await build();
     await store.put({ key: hit.s3Key, body, contentType });
     await pin(hit.id);
     return { artifactId: hit.id, body, contentType, cached: false };
   }
 
-  const body = await input.build();
+  const body = await build();
   const key = generatedArtifactKey({
     orgId: input.orgId,
     fundingSourceId: input.fundingSourceId,
@@ -184,8 +204,13 @@ async function resolve(
       ),
     );
   for (const row of stale) {
-    await db.delete(generatedArtifacts).where(eq(generatedArtifacts.id, row.id));
-    await store.delete(row.s3Key).catch(() => {});
+    // Re-checked in the delete itself: a share or download may have pinned this row since the
+    // select, and a pinned row is permanent (R10.6) — possibly the file behind a shared link.
+    const [deleted] = await db
+      .delete(generatedArtifacts)
+      .where(and(eq(generatedArtifacts.id, row.id), isNull(generatedArtifacts.downloadedAt)))
+      .returning({ id: generatedArtifacts.id });
+    if (deleted) await store.delete(row.s3Key).catch(() => {});
   }
 
   return { artifactId, body, contentType, cached: false };

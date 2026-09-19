@@ -10,16 +10,15 @@ import { and, asc, eq, isNull, sql } from "drizzle-orm";
 import { db } from "@/src/db";
 import { organizations, sharedLinks, users } from "@/src/db/schema";
 import { formatDateUS, todayIso, type MonthKey } from "@/src/domain/dates";
+import { sharedFileKindOf, type SharedFileKind } from "@/src/domain/shared-links";
 import { userDisplay } from "@/src/domain/user-display";
-import { recordsHash } from "@/src/generation/cache-key";
 import { loadMonthSnapshot } from "@/src/generation/month-snapshot";
 import { siteOrigin } from "@/src/lib/site-url";
-
-import type { MonthOutputKind } from "@/src/modules/packet/month-output";
+import { monthOutputRecordsHash } from "@/src/modules/packet/month-output";
 
 export type SharedLinkView = {
   id: string;
-  kind: MonthOutputKind;
+  kind: SharedFileKind;
   url: string;
   hasPassword: boolean;
   /** `formatDateUS` in the organisation's calendar, as "Submitted {date}" is (PHASE-12 C3). */
@@ -83,21 +82,31 @@ export async function loadSharedLinks(
   ]);
 
   const orgCancelled = org?.subscriptionStatus === "cancelled";
-  if (rows.length === 0) return { links: [], orgCancelled };
+  const links = rows.flatMap((row) => {
+    const kind = sharedFileKindOf(row.artifactType);
+    return kind ? [{ ...row, kind }] : [];
+  });
+  if (links.length === 0) return { links: [], orgCancelled };
 
-  const current = recordsHash(await loadMonthSnapshot(orgId, fundingSourceId, month));
+  // Each file compares against the records it is built from (the summary reads no documents).
+  const snapshot = await loadMonthSnapshot(orgId, fundingSourceId, month);
+  const current = new Map<SharedFileKind, string>();
+  const currentFor = (kind: SharedFileKind) => {
+    if (!current.has(kind)) current.set(kind, monthOutputRecordsHash(kind, snapshot));
+    return current.get(kind)!;
+  };
 
   return {
     orgCancelled,
-    links: rows.map((row) => ({
+    links: links.map((row) => ({
       id: row.id,
-      kind: row.artifactType === "packet_pdf" ? "packet" : "summary",
+      kind: row.kind,
       url: shareUrl(row.token),
       hasPassword: row.hasPassword,
       sharedOn: formatDateUS(todayIso(row.sharedAt)),
       // A removed account leaves no user row, the same as the lock history (D-89).
       sharedBy: row.sharerEmail ? userDisplay(row.sharerName, row.sharerEmail) : "Unknown",
-      recordsChanged: row.recordsHash !== current,
+      recordsChanged: row.recordsHash !== currentFor(row.kind),
     })),
   };
 }

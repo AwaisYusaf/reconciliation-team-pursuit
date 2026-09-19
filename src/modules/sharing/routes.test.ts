@@ -16,6 +16,7 @@ vi.mock("@/src/services/auth/session", () => ({ getSession: vi.fn() }));
 import { POST as createPost } from "@/app/api/shared-links/create/route";
 import { POST as updatePost } from "@/app/api/shared-links/update/route";
 import { createSharedLinkAction, updateSharedFileAction } from "@/src/modules/sharing/actions";
+import { UI } from "@/src/domain/strings";
 import { getSession } from "@/src/services/auth/session";
 
 const getSessionMock = vi.mocked(getSession);
@@ -76,6 +77,14 @@ describe.each(ROUTES)("$name route", ({ post, action, body }) => {
     const response = await post(request({ rawBody: "{not json" }));
     expect(response.status).toBe(400);
     expect(action).not.toHaveBeenCalled();
+  });
+
+  it("answers a fault the action didn't word in the same JSON shape, not Next's HTML 500", async () => {
+    action.mockRejectedValue(new Error("database went away"));
+    const response = await post(request({ body }));
+    expect(response.status).toBe(500);
+    expect(response.headers.get("content-type")).toMatch(/application\/json/);
+    expect(await response.json()).toEqual({ ok: false, error: UI.shareUnexpected });
   });
 
   it("passes a valid body to the action and returns its result untouched", async () => {

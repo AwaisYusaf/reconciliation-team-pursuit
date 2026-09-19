@@ -1194,6 +1194,10 @@ export const sharedLinks = pgTable(
       sql`${t.artifactType} in ('packet_pdf', 'summary_xlsx')`,
     ),
     check("shared_links_token_ck", sql`${t.token} ~ '^[0-9A-Za-z]{12}$'`),
+    // A stopped link keeps no password (P16): the hash has no further use.
+    check("shared_links_revoked_password_ck", sql`${t.revokedAt} is null or ${t.passwordHash} is null`),
+    // One way only: `revoked_by` is set null when that account is removed, the stop stays.
+    check("shared_links_revoked_by_ck", sql`${t.revokedBy} is null or ${t.revokedAt} is not null`),
   ],
 );
 

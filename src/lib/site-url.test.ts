@@ -12,6 +12,12 @@ describe("appUrlProblem", () => {
     expect(appUrlProblem("http://localhost:3001/")).toBeNull();
   });
 
+  it("requires https in production: a link's token would otherwise travel in cleartext", () => {
+    expect(appUrlProblem("https://stayfunded360.com", true)).toBeNull();
+    expect(appUrlProblem("http://stayfunded360.com", true)).toMatch(/not an https address/);
+    expect(appUrlProblem("http://localhost:3001", false)).toBeNull();
+  });
+
   it("names what is wrong otherwise", () => {
     expect(appUrlProblem(undefined)).toBe("it is not set");
     expect(appUrlProblem("")).toBe("it is not set");
@@ -34,6 +40,6 @@ describe("siteOrigin", () => {
   it("refuses to guess in production", () => {
     vi.stubEnv("APP_URL", "");
     vi.stubEnv("NODE_ENV", "production");
-    expect(() => siteOrigin()).toThrow(/APP_URL must be set in production/);
+    expect(() => siteOrigin()).toThrow(/APP_URL is unusable in production/);
   });
 });

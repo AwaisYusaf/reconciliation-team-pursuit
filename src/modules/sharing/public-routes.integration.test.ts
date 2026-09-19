@@ -32,7 +32,7 @@ describe.skipIf(!hasDatabase)("shared link routes (integration, PHASE-12)", asyn
   const { ingestExpenseDocument } = await import("@/src/services/storage/documents");
   const { storage } = await import("@/src/services/storage/driver");
   const { UI } = await import("@/src/domain/strings");
-  const { createSharedLinkAction, stopSharingAction } = await import("./actions");
+  const { createSharedLinkAction, stopSharedLinkAction } = await import("./actions");
   const { POST: unlockPost } = await import("@/app/s/[token]/unlock/route");
   const { GET: fileGet, HEAD: fileHead } = await import("@/app/s/[token]/[filename]/route");
 
@@ -153,8 +153,7 @@ describe.skipIf(!hasDatabase)("shared link routes (integration, PHASE-12)", asyn
         kind === "packet" ? "application/pdf" : "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
       );
       expect(response.headers.get("Cache-Control")).toBe("private, no-store");
-      expect(response.headers.get("X-Robots-Tag")).toMatch(/noindex/);
-      expect(response.headers.get("Referrer-Policy")).toBe("no-referrer");
+      // X-Robots-Tag and Referrer-Policy come from next.config.ts for all of /s/* (headers.test.ts).
       expect(response.headers.get("X-Content-Type-Options")).toBe("nosniff");
       expect(response.headers.get("Accept-Ranges")).toBe("none");
     }
@@ -196,10 +195,10 @@ describe.skipIf(!hasDatabase)("shared link routes (integration, PHASE-12)", asyn
     expect(locked.headers.get("Location")).toBe(`/s/${row.token}`);
 
     for (let i = 1; i <= 4; i += 1) {
-      const wrong = await unlockPost(unlockRequest(row.token, "nope"), context(row.token));
+      const wrong = await unlockPost(unlockRequest(row.token, "wrong-guess"), context(row.token));
       expect(await wrong.json()).toEqual({ ok: false, error: UI.sharePasswordWrong });
     }
-    const fifth = await unlockPost(unlockRequest(row.token, "nope"), context(row.token));
+    const fifth = await unlockPost(unlockRequest(row.token, "wrong-guess"), context(row.token));
     expect(fifth.status).toBe(429);
     expect(await fifth.json()).toEqual({ ok: false, error: UI.shareTooManyTries });
     const rightButLate = await unlockPost(unlockRequest(row.token, "right-password"), context(row.token));
@@ -218,7 +217,7 @@ describe.skipIf(!hasDatabase)("shared link routes (integration, PHASE-12)", asyn
 
   it("I-17: a stopped link sends the file URL back to its page", async () => {
     const row = await shared("summary");
-    await stopSharingAction({ shareId: row.id });
+    await stopSharedLinkAction({ shareId: row.id });
     const response = await fileGet(fileRequest(row.token, row.filename), context(row.token));
     expect(response.status).toBe(303);
     expect(response.headers.get("Location")).toBe(`/s/${row.token}`);
@@ -227,21 +226,31 @@ describe.skipIf(!hasDatabase)("shared link routes (integration, PHASE-12)", asyn
     expect(await unlock.json()).toEqual({ ok: false, error: UI.shareUnavailable });
   }, 60_000);
 
-  it("I-19: a password posted from another site is refused before it is checked", async () => {
+  it("I-19: a password posted from another site is refused and spends none of the visitor's tries", async () => {
     const row = await shared("summary", "right-password");
-    const response = await unlockPost(unlockRequest(row.token, "right-password", { origin: "http://evil.example" }), context(row.token));
-    expect(response.status).toBe(403);
-    expect(response.headers.get("set-cookie")).toBeNull();
+    const ip = "203.0.113.77";
+    for (let i = 0; i < 6; i += 1) {
+      const response = await unlockPost(unlockRequest(row.token, "right-password", { origin: "http://evil.example", ip }), context(row.token));
+      expect(response.status).toBe(403);
+      expect(response.headers.get("set-cookie")).toBeNull();
+    }
+    const own = await unlockPost(unlockRequest(row.token, "right-password", { ip }), context(row.token));
+    expect(await own.json()).toMatchObject({ ok: true });
   }, 60_000);
 
-  it("I-20: one address is refused after sixty opens in the window", async () => {
+  it("I-20: exactly shareOpen.limit opens per address; the next goes back to the page with a notice", async () => {
+    const { LIMITS } = await import("@/src/services/rate-limit");
     const row = await shared("summary");
-    for (let i = 0; i < 60; i += 1) {
-      await fileHead(fileRequest(row.token, row.filename, { method: "HEAD", ip: "198.51.100.60" }), context(row.token));
+    const ip = "198.51.100.60";
+    for (let i = 0; i < LIMITS.shareOpen.limit; i += 1) {
+      const head = await fileHead(fileRequest(row.token, row.filename, { method: "HEAD", ip }), context(row.token));
+      expect(head.status).toBe(200);
     }
-    const refused = await fileGet(fileRequest(row.token, row.filename, { ip: "198.51.100.60" }), context(row.token));
-    expect(refused.status).toBe(429);
-    expect(await refused.text()).toBe(UI.shareTooManyOpens);
+    const head = await fileHead(fileRequest(row.token, row.filename, { method: "HEAD", ip }), context(row.token));
+    expect(head.status).toBe(429);
+    const refused = await fileGet(fileRequest(row.token, row.filename, { ip }), context(row.token));
+    expect(refused.status).toBe(303);
+    expect(refused.headers.get("Location")).toBe(`/s/${row.token}?e=busy`);
     const other = await fileGet(fileRequest(row.token, row.filename, { ip: "198.51.100.61" }), context(row.token));
     expect(other.status).toBe(200);
   }, 60_000);
@@ -261,7 +270,7 @@ describe.skipIf(!hasDatabase)("shared link routes (integration, PHASE-12)", asyn
 
   it("I-23: unknown, malformed and stopped tokens get the same answer", async () => {
     const row = await shared("summary");
-    await stopSharingAction({ shareId: row.id });
+    await stopSharedLinkAction({ shareId: row.id });
     const answers = [];
     for (const token of ["AAAAAAAAAAAA", "not-a-token", row.token]) {
       const response = await fileGet(fileRequest(token, "x.pdf"), context(token));
@@ -271,7 +280,7 @@ describe.skipIf(!hasDatabase)("shared link routes (integration, PHASE-12)", asyn
     expect(answers[1]).toEqual(answers[2]);
   }, 60_000);
 
-  it("a missing stored object is a 503, never a rebuild", async () => {
+  it("a missing stored object sends the browser back with a notice (HEAD: 503), never a rebuild", async () => {
     const row = await shared("summary");
     const [artifact] = await db.select().from(generatedArtifacts).where(eq(generatedArtifacts.id, row.artifactId));
     await storage().delete(artifact.s3Key);
@@ -282,9 +291,69 @@ describe.skipIf(!hasDatabase)("shared link routes (integration, PHASE-12)", asyn
     const writes = put.mock.calls.length;
     put.mockRestore();
 
-    expect(response.status).toBe(503);
-    expect(await response.text()).toBe(UI.shareOpenFailed);
+    expect(response.status).toBe(303);
+    expect(response.headers.get("Location")).toBe(`/s/${row.token}?e=unreadable`);
     expect(head.status).toBe(503);
     expect(writes).toBe(0);
+  }, 60_000);
+
+  it("P20: a share whose file key points into another organization is unavailable", async () => {
+    const row = await shared("summary");
+    await db
+      .update(generatedArtifacts)
+      .set({ s3Key: "org/00000000-0000-7000-8000-00000000dead/elsewhere.xlsx" })
+      .where(eq(generatedArtifacts.id, row.artifactId));
+    const response = await fileGet(fileRequest(row.token, row.filename), context(row.token));
+    expect(response.status).toBe(303);
+    expect(response.headers.get("Location")).toBe(`/s/${row.token}`);
+  }, 60_000);
+
+  it("the unlock body is capped even without a Content-Length, and bad JSON is refused", async () => {
+    const row = await shared("summary", "right-password");
+    const big = JSON.stringify({ password: "x".repeat(5_000) });
+    const post = (body: BodyInit, headers: Record<string, string>) =>
+      new NextRequest(`http://localhost/s/${row.token}/unlock`, {
+        method: "POST",
+        body,
+        headers: { host: "localhost", origin: "http://localhost", "content-type": "application/json", ...headers },
+        duplex: "half",
+      } as never);
+
+    expect((await unlockPost(post(big, { "content-length": String(big.length) }), context(row.token))).status).toBe(413);
+    // A streamed body carries no Content-Length; the reader still stops at the cap.
+    const streamed = new Blob([big]).stream();
+    expect((await unlockPost(post(streamed, {}), context(row.token))).status).toBe(413);
+    expect((await unlockPost(post("{nope", { "content-length": "5" }), context(row.token))).status).toBe(400);
+  }, 60_000);
+
+  it("a form posted before the page's script loaded is answered with redirects, never a password in a URL", async () => {
+    const row = await shared("packet", "right-password");
+    const form = (password: string, origin = "http://localhost") => {
+      const body = new URLSearchParams({ password }).toString();
+      return new NextRequest(`http://localhost/s/${row.token}/unlock`, {
+        method: "POST",
+        body,
+        headers: {
+          host: "localhost",
+          origin,
+          "content-type": "application/x-www-form-urlencoded",
+          "content-length": String(body.length),
+          "x-forwarded-for": "203.0.113.55",
+        },
+      });
+    };
+
+    const wrong = await unlockPost(form("wrong-guess"), context(row.token));
+    expect(wrong.status).toBe(303);
+    expect(wrong.headers.get("Location")).toBe(`/s/${row.token}?e=wrong`);
+
+    const foreign = await unlockPost(form("right-password", "http://evil.example"), context(row.token));
+    expect(foreign.headers.get("Location")).toBe(`/s/${row.token}?e=refused`);
+
+    const right = await unlockPost(form("right-password"), context(row.token));
+    expect(right.status).toBe(303);
+    expect(right.headers.get("Location")).toBe(`/s/${row.token}/${encodeURIComponent(row.filename)}`);
+    expect(right.headers.get("set-cookie")).toMatch(new RegExp(`Path=/s/${row.token}`, "i"));
+    for (const answer of [wrong, foreign, right]) expect(answer.headers.get("Location")).not.toMatch(/password/);
   }, 60_000);
 });

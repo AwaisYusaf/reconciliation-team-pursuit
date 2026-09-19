@@ -1,5 +1,5 @@
 {
-  "id": "ca7bc9df-a482-4048-8c08-36e60883a659",
+  "id": "705246e0-5011-4246-8a61-1572102f7c6b",
   "prevId": "7c36ae67-0cea-4bc8-9ab2-916ef8f7c4f7",
   "version": "7",
   "dialect": "postgresql",
@@ -3620,6 +3620,14 @@
         "shared_links_token_ck": {
           "name": "shared_links_token_ck",
           "value": "\"shared_links\".\"token\" ~ '^[0-9A-Za-z]{12}$'"
+        },
+        "shared_links_revoked_password_ck": {
+          "name": "shared_links_revoked_password_ck",
+          "value": "\"shared_links\".\"revoked_at\" is null or \"shared_links\".\"password_hash\" is null"
+        },
+        "shared_links_revoked_by_ck": {
+          "name": "shared_links_revoked_by_ck",
+          "value": "\"shared_links\".\"revoked_by\" is null or \"shared_links\".\"revoked_at\" is not null"
         }
       },
       "isRLSEnabled": false

@@ -41,6 +41,7 @@ describe.skipIf(!hasDatabase)("sharing actions and public lookup (integration, P
   const { loadSharedLinks } = await import("./queries");
   const { loadPublicShare, openShare, unlockSharedFile } = await import("./public");
   const { beginShareBuild, endShareBuild, shareBuildKey } = await import("./single-flight");
+  const { generateShareToken } = await import("./token");
 
   const sessionMock = vi.mocked(actionSession);
 
@@ -203,8 +204,8 @@ describe.skipIf(!hasDatabase)("sharing actions and public lookup (integration, P
 
     const existing = await rowFor(org, month, "summary_xlsx");
     await expect(
-      db.insert(sharedLinks).values({ ...existing, id: undefined, token: "ZZZZZZZZZZZZ" } as never),
-    ).rejects.toThrow();
+      db.insert(sharedLinks).values({ ...existing, id: undefined, token: generateShareToken() } as never),
+    ).rejects.toMatchObject({ cause: expect.objectContaining({ constraint: "shared_links_active_uq" }) });
   }, 60_000);
 
   it("I-3: refuses a blocked month and unconfirmed deletions with the download routes' texts", async () => {
@@ -265,8 +266,8 @@ describe.skipIf(!hasDatabase)("sharing actions and public lookup (integration, P
       error: UI.sharePasswordTooShort,
       fieldErrors: { password: UI.sharePasswordTooShort },
     });
-    expect(await actions.createSharedLinkAction({ fundingSourceId: org.sourceId, month: "2081-13", kind: "summary", password: null, confirmedDeletions: false })).toEqual({ ok: false, error: "That request was malformed." });
-    expect(await actions.createSharedLinkAction({ fundingSourceId: org.sourceId, month, kind: "cover" as never, password: null, confirmedDeletions: false })).toEqual({ ok: false, error: "That request was malformed." });
+    expect(await actions.createSharedLinkAction({ fundingSourceId: org.sourceId, month: "2081-13", kind: "summary", password: null, confirmedDeletions: false })).toEqual({ ok: false, error: UI.requestRefused });
+    expect(await actions.createSharedLinkAction({ fundingSourceId: org.sourceId, month, kind: "cover" as never, password: null, confirmedDeletions: false })).toEqual({ ok: false, error: UI.requestRefused });
     expect(await rowFor(org, month, "summary_xlsx")).toBeUndefined();
   });
 
@@ -298,37 +299,106 @@ describe.skipIf(!hasDatabase)("sharing actions and public lookup (integration, P
     expect(opened?.s3Key).toBe(artifact.s3Key);
   }, 60_000);
 
-  it("I-6: a month document or a prior month's edit also marks the file out of date", async () => {
+  it("I-6: a month document marks the packet out of date but not the summary, which holds no documents", async () => {
     const prior = freshMonth();
     const month = freshMonth();
     const priorExpense = await documentedExpense(org, prior);
     await documentedExpense(org, month);
+    await share(org, month, "packet");
     await share(org, month, "summary");
+    const changed = async () =>
+      Object.fromEntries(
+        (await loadSharedLinks(org.orgId, org.sourceId, month as never)).links.map((link) => [link.kind, link.recordsChanged]),
+      );
+    expect(await changed()).toEqual({ packet: false, summary: false });
 
     const upload = await ingestMonthDocument({
       orgId: org.orgId, fundingSourceId: org.sourceId, month, category: "bank_statement",
       file: await pdfFile(),
     });
     expect(upload.ok).toBe(true);
-    expect((await loadSharedLinks(org.orgId, org.sourceId, month as never)).links[0].recordsChanged).toBe(true);
+    // The packet prints the bank statement; the workbook's figures are exactly as they were.
+    expect(await changed()).toEqual({ packet: true, summary: false });
 
-    const row = await rowFor(org, month, "summary_xlsx");
-    await actions.updateSharedFileAction({ shareId: row.id, confirmedDeletions: false });
-    expect((await loadSharedLinks(org.orgId, org.sourceId, month as never)).links[0].recordsChanged).toBe(false);
+    const packetRow = await rowFor(org, month, "packet_pdf");
+    await actions.updateSharedFileAction({ shareId: packetRow.id, confirmedDeletions: false });
+    expect(await changed()).toEqual({ packet: false, summary: false });
 
-    // `freshMonth` only moves forward, so `prior` is an earlier month whose amounts the summary
-    // sheet prints.
+    // `freshMonth` only moves forward, so `prior` is an earlier month whose amounts both files
+    // print (the summary sheet's previously billed column).
     expect(prior < month).toBe(true);
     await db.update(expenses).set({ subtotalCents: 9_999 }).where(eq(expenses.id, priorExpense));
-    expect((await loadSharedLinks(org.orgId, org.sourceId, month as never)).links[0].recordsChanged).toBe(true);
-  }, 60_000);
+    expect(await changed()).toEqual({ packet: true, summary: true });
+  }, 120_000);
 
-  it("the Update refuses a stopped link, and a stop landing mid-update wins", async () => {
+  it("the Update refuses a link stopped before it starts", async () => {
     const month = freshMonth();
     await share(org, month, "summary");
     const row = await rowFor(org, month, "summary_xlsx");
-    await actions.stopSharingAction({ shareId: row.id });
+    await actions.stopSharedLinkAction({ shareId: row.id });
     expect(await actions.updateSharedFileAction({ shareId: row.id, confirmedDeletions: false })).toEqual({ ok: false, error: UI.shareNoLongerShared });
+  }, 60_000);
+
+  it("a Stop sharing that lands while the Update builds wins, and the link keeps its old file", async () => {
+    const month = freshMonth();
+    const expenseId = await documentedExpense(org, month);
+    await share(org, month, "summary");
+    const row = await rowFor(org, month, "summary_xlsx");
+    await db.update(expenses).set({ subtotalCents: 4_321 }).where(eq(expenses.id, expenseId));
+
+    // Stop the link at the last moment before the update writes: while the new file is stored.
+    const store = storage();
+    const original = store.put.bind(store);
+    const put = vi.spyOn(store, "put").mockImplementationOnce(async (options) => {
+      await actions.stopSharedLinkAction({ shareId: row.id });
+      return original(options);
+    });
+    const result = await actions.updateSharedFileAction({ shareId: row.id, confirmedDeletions: false });
+    const puts = put.mock.calls.length;
+    put.mockRestore();
+
+    expect(puts).toBe(1);
+    expect(result).toEqual({ ok: false, error: UI.shareNoLongerShared });
+    const [after] = await db.select().from(sharedLinks).where(eq(sharedLinks.id, row.id));
+    expect(after.artifactId).toBe(row.artifactId);
+    expect(after.revokedAt).not.toBeNull();
+  }, 60_000);
+
+  it("Update applies the download checks: unconfirmed deletions and missing documentation are refused", async () => {
+    const month = freshMonth();
+    const gone = await documentedExpense(org, month);
+    await documentedExpense(org, month);
+    await share(org, month, "summary");
+    const row = await rowFor(org, month, "summary_xlsx");
+
+    await db.update(expenses).set({ deletedAt: new Date() }).where(eq(expenses.id, gone));
+    const refused = await actions.updateSharedFileAction({ shareId: row.id, confirmedDeletions: false });
+    expect(!refused.ok && refused.error).toMatch(/^1 expense was deleted from this reporting period/);
+    expect((await rowFor(org, month, "summary_xlsx")).artifactId).toBe(row.artifactId);
+
+    await db.insert(expenses).values({
+      orgId: org.orgId, fundingSourceId: org.sourceId, lineItemId: org.itemId, month, date: `${month}-06`,
+      name: "Blocking expense", narrative: "A narrative.", paymentSource: "Cash", subtotalCents: 500,
+      taxReimbursable: false, feesReimbursable: true, sortOrder: 5, referenceSeq: await claimReferenceSeq(org.orgId, org.sourceId, month),
+    });
+    expect(await actions.updateSharedFileAction({ shareId: row.id, confirmedDeletions: true })).toEqual({
+      ok: false,
+      error: "1 record is missing documentation:\n• Blocking expense — A item — missing both",
+    });
+    expect((await rowFor(org, month, "summary_xlsx")).artifactId).toBe(row.artifactId);
+  }, 60_000);
+
+  it("I-11: a second Update of the same file while one builds is refused", async () => {
+    const month = freshMonth();
+    await share(org, month, "summary");
+    const row = await rowFor(org, month, "summary_xlsx");
+    const key = shareBuildKey(org.orgId, org.sourceId, month, "summary");
+    expect(beginShareBuild(key)).toBe(true);
+    try {
+      expect(await actions.updateSharedFileAction({ shareId: row.id, confirmedDeletions: false })).toEqual({ ok: false, error: UI.shareInProgress });
+    } finally {
+      endShareBuild(key);
+    }
   }, 60_000);
 
   /* ----------------------------------------------------------- password + stop */
@@ -357,17 +427,46 @@ describe.skipIf(!hasDatabase)("sharing actions and public lookup (integration, P
     await share(org, month, "summary", "hunter22");
     const first = await rowFor(org, month, "summary_xlsx");
 
-    expect(await actions.stopSharingAction({ shareId: first.id })).toEqual({ ok: true, data: undefined });
+    expect(await actions.stopSharedLinkAction({ shareId: first.id })).toEqual({ ok: true, data: undefined });
     expect(await loadPublicShare(first.token)).toBeNull();
     const [stopped] = await db.select().from(sharedLinks).where(eq(sharedLinks.id, first.id));
     expect(stopped.revokedAt).not.toBeNull();
     expect(stopped.revokedBy).toBe(org.userId);
     expect(stopped.passwordHash).toBeNull();
-    expect(await actions.stopSharingAction({ shareId: first.id })).toEqual({ ok: false, error: UI.shareNoLongerShared });
+    expect(await actions.stopSharedLinkAction({ shareId: first.id })).toEqual({ ok: false, error: UI.shareNoLongerShared });
 
     const again = await share(org, month, "summary");
-    expect(again.ok && again.data.url.endsWith(first.token)).toBe(false);
+    expect(again.ok).toBe(true);
+    if (!again.ok) return;
+    const token = again.data.url.slice(-12);
+    expect(token).not.toBe(first.token);
+    expect(await loadPublicShare(token)).not.toBeNull();
     expect(await loadPublicShare(first.token)).toBeNull();
+  }, 60_000);
+
+  it("a stopped link leaves the Shared links box, and sharing again shows one row", async () => {
+    const month = freshMonth();
+    await share(org, month, "summary");
+    const row = await rowFor(org, month, "summary_xlsx");
+    await actions.stopSharedLinkAction({ shareId: row.id });
+    expect((await loadSharedLinks(org.orgId, org.sourceId, month as never)).links).toEqual([]);
+
+    await share(org, month, "summary");
+    const view = await loadSharedLinks(org.orgId, org.sourceId, month as never);
+    expect(view.links).toHaveLength(1);
+    expect(view.links[0].id).not.toBe(row.id);
+  }, 60_000);
+
+  it("the database keeps a stopped link from holding a password, or a stopper without a stop", async () => {
+    const month = freshMonth();
+    await share(org, month, "summary", "hunter22");
+    const row = await rowFor(org, month, "summary_xlsx");
+    await expect(
+      db.update(sharedLinks).set({ revokedAt: new Date() }).where(eq(sharedLinks.id, row.id)),
+    ).rejects.toMatchObject({ cause: expect.objectContaining({ constraint: "shared_links_revoked_password_ck" }) });
+    await expect(
+      db.update(sharedLinks).set({ revokedBy: org.userId }).where(eq(sharedLinks.id, row.id)),
+    ).rejects.toMatchObject({ cause: expect.objectContaining({ constraint: "shared_links_revoked_by_ck" }) });
   }, 60_000);
 
   /* ------------------------------------------------------------ isolation */
@@ -380,7 +479,7 @@ describe.skipIf(!hasDatabase)("sharing actions and public lookup (integration, P
     as(other);
     expect(await actions.updateSharedFileAction({ shareId: row.id, confirmedDeletions: false })).toEqual({ ok: false, error: UI.shareNoLongerShared });
     expect(await actions.changeSharedLinkPasswordAction({ shareId: row.id, password: null })).toEqual({ ok: false, error: UI.shareNoLongerShared });
-    expect(await actions.stopSharingAction({ shareId: row.id })).toEqual({ ok: false, error: UI.shareNoLongerShared });
+    expect(await actions.stopSharedLinkAction({ shareId: row.id })).toEqual({ ok: false, error: UI.shareNoLongerShared });
     expect(await actions.createSharedLinkAction({ fundingSourceId: org.sourceId, month, kind: "packet", password: null, confirmedDeletions: false })).toEqual({ ok: false, error: "Choose a funding source." });
 
     const [unchanged] = await db.select().from(sharedLinks).where(eq(sharedLinks.id, row.id));
@@ -403,7 +502,9 @@ describe.skipIf(!hasDatabase)("sharing actions and public lookup (integration, P
       { artifactType: "packet_pdf" }, // another kind
     ];
     for (const change of attempts) {
-      await expect(db.update(sharedLinks).set(change).where(eq(sharedLinks.id, row.id))).rejects.toThrow();
+      await expect(db.update(sharedLinks).set(change).where(eq(sharedLinks.id, row.id))).rejects.toMatchObject({
+        cause: expect.objectContaining({ constraint: "shared_links_artifact_fk" }),
+      });
     }
   }, 60_000);
 
@@ -433,9 +534,9 @@ describe.skipIf(!hasDatabase)("sharing actions and public lookup (integration, P
     const ip = "198.51.100.7";
 
     for (let attempt = 1; attempt <= 4; attempt += 1) {
-      expect((await unlockSharedFile({ token, password: "wrong", ip })).outcome).toBe("wrong");
+      expect((await unlockSharedFile({ token, password: "wrong-guess", ip })).outcome).toBe("wrong");
     }
-    expect((await unlockSharedFile({ token, password: "wrong", ip })).outcome).toBe("too_many");
+    expect((await unlockSharedFile({ token, password: "wrong-guess", ip })).outcome).toBe("too_many");
     expect((await unlockSharedFile({ token, password: "right-password", ip })).outcome).toBe("too_many");
     expect((await unlockSharedFile({ token, password: "right-password", ip: "198.51.100.8" })).outcome).toBe("open");
   }, 60_000);
@@ -445,11 +546,44 @@ describe.skipIf(!hasDatabase)("sharing actions and public lookup (integration, P
     await share(org, month, "summary", "right-password");
     const { token } = await rowFor(org, month, "summary_xlsx");
     const ip = "198.51.100.9";
-    for (let i = 0; i < 4; i += 1) await unlockSharedFile({ token, password: "wrong", ip });
+    for (let i = 0; i < 4; i += 1) await unlockSharedFile({ token, password: "wrong-guess", ip });
     expect((await unlockSharedFile({ token, password: "right-password", ip })).outcome).toBe("open");
     for (let i = 0; i < 4; i += 1) {
-      expect((await unlockSharedFile({ token, password: "wrong", ip })).outcome).toBe("wrong");
+      expect((await unlockSharedFile({ token, password: "wrong-guess", ip })).outcome).toBe("wrong");
     }
+  }, 60_000);
+
+  it("a guess no password could match costs no try: empty, too short or too long", async () => {
+    const month = freshMonth();
+    await share(org, month, "summary", "right-password");
+    const { token } = await rowFor(org, month, "summary_xlsx");
+    const ip = "198.51.100.30";
+    for (const guess of ["", "short", "x".repeat(129), 12345678, null]) {
+      for (let i = 0; i < 6; i += 1) {
+        expect((await unlockSharedFile({ token, password: guess, ip })).outcome).toBe("wrong");
+      }
+    }
+    expect((await unlockSharedFile({ token, password: "right-password", ip })).outcome).toBe("open");
+  }, 60_000);
+
+  it("P2: one address is refused across links once its sharePasswordPerIp budget is spent", async () => {
+    const { consume, LIMITS } = await import("@/src/services/rate-limit");
+    const month = freshMonth();
+    await share(org, month, "summary", "right-password");
+    const { token } = await rowFor(org, month, "summary_xlsx");
+    const ip = "198.51.100.44";
+    for (let i = 0; i < LIMITS.sharePasswordPerIp.limit; i += 1) consume("sharePasswordPerIp", ip);
+    expect((await unlockSharedFile({ token, password: "right-password", ip })).outcome).toBe("too_many");
+    expect((await unlockSharedFile({ token, password: "right-password", ip: "198.51.100.45" })).outcome).toBe("open");
+  }, 60_000);
+
+  it("an IPv6 visitor's guesses count against their whole /64", async () => {
+    const month = freshMonth();
+    await share(org, month, "summary", "right-password");
+    const { token } = await rowFor(org, month, "summary_xlsx");
+    for (let i = 1; i <= 5; i += 1) await unlockSharedFile({ token, password: "wrong-guess", ip: `2001:db8:1:2::${i}` });
+    expect((await unlockSharedFile({ token, password: "right-password", ip: "2001:db8:1:2::99" })).outcome).toBe("too_many");
+    expect((await unlockSharedFile({ token, password: "right-password", ip: "2001:db8:1:3::1" })).outcome).toBe("open");
   }, 60_000);
 
   it("I-18: a paused or cancelled organization's links are unavailable, and work again once restored", async () => {
@@ -475,6 +609,68 @@ describe.skipIf(!hasDatabase)("sharing actions and public lookup (integration, P
     expect(await loadPublicShare("../../etc/pw")).toBeNull();
     expect((await unlockSharedFile({ token: "AAAAAAAAAAAA", password: "x", ip: "203.0.113.5" })).outcome).toBe("unavailable");
   });
+
+  it("create and update refuse once the organization's generation budget is spent", async () => {
+    const { consume, LIMITS } = await import("@/src/services/rate-limit");
+    const month = freshMonth();
+    await share(org, month, "summary");
+    const row = await rowFor(org, month, "summary_xlsx");
+    for (let i = 0; i < LIMITS.generate.limit; i += 1) consume("generate", org.orgId);
+
+    const budget = expect.stringMatching(/^Too many documents requested at once\. Try again in \d+ seconds?\.$/);
+    expect(await share(org, freshMonth(), "summary")).toEqual({ ok: false, error: budget });
+    expect(await actions.updateSharedFileAction({ shareId: row.id, confirmedDeletions: false })).toEqual({ ok: false, error: budget });
+  }, 60_000);
+
+  it("Change password is refused once the user's sharePasswordSet budget is spent", async () => {
+    const { consume, LIMITS } = await import("@/src/services/rate-limit");
+    const month = freshMonth();
+    await share(org, month, "summary");
+    const row = await rowFor(org, month, "summary_xlsx");
+    for (let i = 0; i < LIMITS.sharePasswordSet.limit; i += 1) consume("sharePasswordSet", org.userId);
+    expect(await actions.changeSharedLinkPasswordAction({ shareId: row.id, password: "another-pass" })).toEqual({
+      ok: false,
+      error: expect.stringMatching(/^Too many password changes\. Try again in \d+ minutes?\.$/),
+    });
+    expect((await rowFor(org, month, "summary_xlsx")).passwordHash).toBeNull();
+  }, 60_000);
+
+  it("C4: a cancelled organization can't share or update — its links wouldn't open", async () => {
+    const month = freshMonth();
+    await share(org, month, "summary");
+    const row = await rowFor(org, month, "summary_xlsx");
+    await db.update(organizations).set({ subscriptionStatus: "cancelled" }).where(eq(organizations.id, org.orgId));
+    try {
+      expect(await share(org, month, "packet")).toEqual({ ok: false, error: UI.shareCancelledRefused });
+      expect(await actions.updateSharedFileAction({ shareId: row.id, confirmedDeletions: false })).toEqual({
+        ok: false,
+        error: UI.shareCancelledRefused,
+      });
+      expect(await rowFor(org, month, "packet_pdf")).toBeUndefined();
+    } finally {
+      await db.update(organizations).set({ subscriptionStatus: "active" }).where(eq(organizations.id, org.orgId));
+    }
+  }, 60_000);
+
+  it("the box lists the packet first, and a sharer whose account is gone reads Unknown", async () => {
+    const month = freshMonth();
+    await documentedExpense(org, month);
+    await share(org, month, "summary");
+    await share(org, month, "packet");
+    expect((await loadSharedLinks(org.orgId, org.sourceId, month as never)).links.map((link) => link.kind)).toEqual([
+      "packet",
+      "summary",
+    ]);
+
+    const [temp] = await db
+      .insert(users)
+      .values({ orgId: org.orgId, email: `gone-${Date.now()}@example.test`, passwordHash: await hashPassword("original-password-here"), role: "manager" })
+      .returning({ id: users.id });
+    await db.update(sharedLinks).set({ sharedBy: temp.id }).where(and(eq(sharedLinks.orgId, org.orgId), eq(sharedLinks.month, month), eq(sharedLinks.artifactType, "packet_pdf")));
+    await db.delete(users).where(eq(users.id, temp.id));
+    const [packet] = (await loadSharedLinks(org.orgId, org.sourceId, month as never)).links;
+    expect(packet.sharedBy).toBe("Unknown");
+  }, 120_000);
 
   it("I-22: deleting an organization that has shared links succeeds", async () => {
     const doomed = await makeOrg("Share Doomed");

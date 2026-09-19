@@ -1,6 +1,6 @@
 import { UI } from "@/src/domain/strings";
 
-import { ShareCard } from "../share-card";
+import { ShareCard } from "./share-card";
 
 /**
  * Every way a link can be unusable — never existed, malformed, stopped, or the organization is

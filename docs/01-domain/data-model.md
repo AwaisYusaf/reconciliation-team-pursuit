@@ -402,6 +402,9 @@ and keeps the row.
 Partial unique `shared_links_active_uq` on `(org_id, funding_source_id, month, artifact_type)`
 **where revoked_at is null** — one PDF link and one Excel link per source and month; it also serves
 the packet tab's list. Index `(artifact_id)` serves the foreign-key check.
+Checks `shared_links_revoked_password_ck` (`revoked_at is null or password_hash is null` — a stopped
+link keeps no password) and `shared_links_revoked_by_ck` (`revoked_by is null or revoked_at is not
+null` — one way only, since `revoked_by` is set null when that account is removed).
 
 ## Relationships summary
 

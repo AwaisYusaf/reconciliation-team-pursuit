@@ -61,3 +61,22 @@ describe("isUnlocked", () => {
     expect(isUnlocked(share, value, NOW)).toBe(false);
   });
 });
+
+describe("the production cookie", () => {
+  it("is __Secure- and Secure, which browsers require of each other", async () => {
+    const { vi } = await import("vitest");
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("AUTH_SECRET", "x".repeat(48));
+    vi.resetModules();
+    try {
+      const production = await import("./unlock-cookie");
+      const cookie = production.unlockCookie(share, NOW);
+      expect(production.UNLOCK_COOKIE).toBe("__Secure-share_unlock");
+      expect(cookie.name).toBe("__Secure-share_unlock");
+      expect(cookie.options.secure).toBe(true);
+    } finally {
+      vi.unstubAllEnvs();
+      vi.resetModules();
+    }
+  });
+});

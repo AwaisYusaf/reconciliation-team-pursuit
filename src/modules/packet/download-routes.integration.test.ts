@@ -34,6 +34,7 @@ describe.skipIf(!hasDatabase)("packet and summary download routes (integration, 
   const { claimReferenceSeq } = await import("@/src/modules/expenses/references");
   const { ingestExpenseDocument } = await import("@/src/services/storage/documents");
   const { ORIGINAL_RULES } = await import("@/src/modules/expenses/reimbursement");
+  const { storage } = await import("@/src/services/storage/driver");
 
   const { GET: packetGet } = await import("@/app/api/downloads/packet/route");
   const { GET: summaryGet } = await import("@/app/api/downloads/summary/route");
@@ -254,7 +255,13 @@ describe.skipIf(!hasDatabase)("packet and summary download routes (integration, 
       expect(first.headers.get("X-Content-Type-Options")).toBe("nosniff");
       expect(first.headers.get("Cache-Control")).toBe("private, no-store");
 
+      // Served from the cache: equal bytes alone would also hold after a rebuild, since outputs
+      // are deterministic, so the second request must also write nothing.
+      const put = vi.spyOn(storage(), "put");
       const second = await get(request(kind, { month, source: sourceId }));
+      const writes = put.mock.calls.length;
+      put.mockRestore();
+      expect(writes).toBe(0);
       expect(Buffer.from(await second.arrayBuffer()).equals(body)).toBe(true);
 
       const rows = await db

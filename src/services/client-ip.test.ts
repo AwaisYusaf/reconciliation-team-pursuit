@@ -4,7 +4,7 @@
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { clientIpFrom } from "./client-ip";
+import { clientIpFrom, rateLimitSubject } from "./client-ip";
 
 function headersOf(values: Record<string, string>) {
   return new Headers(values);
@@ -42,5 +42,28 @@ describe("clientIpFrom", () => {
   it("refuses an over-long value that could pin memory in the limiter", () => {
     vi.stubEnv("TRUSTED_PROXY_HOPS", "1");
     expect(clientIpFrom(headersOf({ "x-forwarded-for": "1".repeat(46) }))).toBe("direct");
+  });
+});
+
+describe("rateLimitSubject", () => {
+  it("keeps an IPv4 address whole", () => {
+    expect(rateLimitSubject("203.0.113.9")).toBe("203.0.113.9");
+  });
+
+  it("groups an IPv6 address by its /64, however it is written", () => {
+    const subject = "2001:db8:85a3:0::/64";
+    expect(rateLimitSubject("2001:db8:85a3::1")).toBe(subject);
+    expect(rateLimitSubject("2001:0db8:85a3:0000:ffff:ffff:ffff:ffff")).toBe(subject);
+    expect(rateLimitSubject("2001:db8:85a3:0:1:2:3:4")).toBe(subject);
+    expect(rateLimitSubject("fe80::1%en0")).toBe("fe80:0:0:0::/64");
+  });
+
+  it("keeps an IPv4 address written as IPv6 separate from other IPv4 visitors", () => {
+    expect(rateLimitSubject("::ffff:203.0.113.9")).toBe("203.0.113.9");
+    expect(rateLimitSubject("::ffff:203.0.113.10")).not.toBe(rateLimitSubject("::ffff:203.0.113.9"));
+  });
+
+  it("gives different /64s different subjects", () => {
+    expect(rateLimitSubject("2001:db8:85a3:1::1")).not.toBe(rateLimitSubject("2001:db8:85a3:2::1"));
   });
 });

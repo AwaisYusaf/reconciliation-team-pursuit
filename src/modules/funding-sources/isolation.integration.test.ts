@@ -1,11 +1,11 @@
-﻿/**
- * P7.1 â€” the acceptance criterion "Adding or editing a second source changes nothing in the
+/**
+ * P7.1 — the acceptance criterion "Adding or editing a second source changes nothing in the
  * first" (docs/PHASE-6.md §5 Phase 7, §6, Appendix A).
  *
  * Source A is fully populated through the real actions where one exists (line items, a
  * performance, expenses with attached documents, a month document, a submission). Every
  * figure and row Phase 6 scoped by funding source is captured. Source B is then created and
- * put through its own full lifecycle â€” created, given a same-named line item, expenses in the
+ * put through its own full lifecycle — created, given a same-named line item, expenses in the
  * same month, a month document, submitted, edited, archived and unarchived, with one of its
  * expenses moved to another month. Source A is re-read afterward and must be byte-for-byte the
  * same as before, including its reference counter and its month snapshot's cache hash.
@@ -110,7 +110,7 @@ describe.skipIf(!hasDatabase)("adding or editing a second source changes nothing
     };
   }
 
-  /** Opens the documentation gate without touching storage â€” a real action doesn't exist
+  /** Opens the documentation gate without touching storage — a real action doesn't exist
    *  for attaching a proven document, only for the upload pipeline (sharp/inspectUpload),
    *  which this test does not need to exercise. */
   async function attachProof(expenseId: string) {
@@ -311,7 +311,7 @@ describe.skipIf(!hasDatabase)("adding or editing a second source changes nothing
       .where(and(eq(fundingSources.orgId, orgId), eq(fundingSources.name, "Foundation Grant B")));
     sourceB = bRow.id;
 
-    // Same name as one of A's line items â€” allowed, because uniqueness is scoped per source.
+    // Same name as one of A's line items — allowed, because uniqueness is scoped per source.
     const bSalary = await saveLineItemAction({
       fundingSourceId: sourceB,
       name: "Salary",

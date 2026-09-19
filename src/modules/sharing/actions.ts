@@ -4,19 +4,26 @@
  * Sharing a month's packet or summary by link (PHASE-12 §5).
  *
  * Admins and managers alike, on every plan; locked months and archived sources are allowed,
- * because sharing changes no record (Appendix A §1). Create and Update build a file and can take
- * a minute or two for a big packet, so the screen reaches them through the POST routes in
- * `app/api/shared-links/` rather than as Server Actions (P12); they are exported here so that
- * every check lives in one place, and each still authenticates itself.
+ * because sharing changes no record (Appendix A §1). A cancelled organisation is refused: its
+ * links can't open (C4), so a new one would only be a dead link in the City's inbox. Create and
+ * Update build a file and can take a minute or two for a big packet, so the screen reaches them
+ * through the POST routes in `app/api/shared-links/` rather than as Server Actions (P12); they
+ * are exported here so that every check lives in one place, and each still authenticates itself.
  */
 import { and, eq, isNull } from "drizzle-orm";
 import { z } from "zod";
 
 import { db } from "@/src/db";
-import { sharedLinks } from "@/src/db/schema";
+import { organizations, sharedLinks } from "@/src/db/schema";
 import { isValidMonthKey, type MonthKey } from "@/src/domain/dates";
+import {
+  artifactTypeOf,
+  SHARE_PASSWORD_MAX,
+  SHARE_PASSWORD_MIN,
+  sharedFileKindOf,
+  type SharedFileKind,
+} from "@/src/domain/shared-links";
 import { UI } from "@/src/domain/strings";
-import { recordsHash } from "@/src/generation/cache-key";
 import { fail, ok, type ActionResult } from "@/src/lib/action-result";
 import { actionSession } from "@/src/lib/action-session";
 import { isUuid } from "@/src/lib/ids";
@@ -24,10 +31,10 @@ import { findFundingSource, requireOwnedFundingSource } from "@/src/modules/fund
 import {
   ensureMonthOutput,
   generationBudgetMessage,
-  MONTH_OUTPUTS,
   monthOutputFailureMessage,
+  monthOutputRecordsHash,
   prepareMonthOutput,
-  type MonthOutputKind,
+  type PreparedMonthOutput,
 } from "@/src/modules/packet/month-output";
 import { hashPassword } from "@/src/services/auth/passwords";
 import { consume } from "@/src/services/rate-limit";
@@ -36,11 +43,11 @@ import { shareUrl } from "./queries";
 import { beginShareBuild, endShareBuild, shareBuildKey } from "./single-flight";
 import { generateShareToken } from "./token";
 
-/** 6–128 characters, not trimmed, no composition rules (P5). */
+/** P5: not trimmed, no composition rules. The bounds are shared with the screen and the public check. */
 const passwordSchema = z
   .string()
-  .min(6, UI.sharePasswordTooShort)
-  .max(128, UI.sharePasswordTooLong)
+  .min(SHARE_PASSWORD_MIN, UI.sharePasswordTooShort)
+  .max(SHARE_PASSWORD_MAX, UI.sharePasswordTooLong)
   .nullable();
 
 const createSchema = z.object({
@@ -63,13 +70,7 @@ const passwordChangeSchema = z.object({
 
 const stopSchema = z.object({ shareId: z.string().refine(isUuid) });
 
-/** The first message zod has for the input — the password rule is the only one a person sees. */
-function invalid(error: z.ZodError): ActionResult<never> {
-  const password = error.issues.find((issue) => issue.path[0] === "password");
-  return password ? fail(password.message, { password: password.message }) : fail("That request was malformed.");
-}
-
-export type SharedLinkCreated = { url: string; kind: MonthOutputKind; hasPassword: boolean };
+export type SharedLinkCreated = { url: string; kind: SharedFileKind; hasPassword: boolean };
 
 /** Token collisions at ~71 bits don't happen; the retry only keeps one from surfacing as an error. */
 const TOKEN_ATTEMPTS = 3;
@@ -83,7 +84,7 @@ const TOKEN_ATTEMPTS = 3;
 export async function createSharedLinkAction(input: {
   fundingSourceId: string;
   month: string;
-  kind: MonthOutputKind;
+  kind: SharedFileKind;
   password: string | null;
   confirmedDeletions: boolean;
 }): Promise<ActionResult<SharedLinkCreated>> {
@@ -97,60 +98,43 @@ export async function createSharedLinkAction(input: {
 
   const source = await requireOwnedFundingSource(session, parsed.data.fundingSourceId);
   if ("denied" in source) return source.denied;
+  if (await activeShareId(session.orgId, source.id, month, kind)) return fail(UI.shareAlreadyExists);
 
-  const type = MONTH_OUTPUTS[kind].type;
-  if (await activeShareId(session.orgId, source.id, month, type)) return fail(UI.shareAlreadyExists);
+  return buildSharedFile(
+    { orgId: session.orgId, source, month, kind, confirmedDeletions },
+    async ({ artifactId, prepared }) => {
+      const passwordHash = password === null ? null : await hashPassword(password);
+      const now = new Date();
 
-  const buildKey = shareBuildKey(session.orgId, source.id, month, kind);
-  if (!beginShareBuild(buildKey)) return fail(UI.shareInProgress);
-  try {
-    const budget = consume("generate", session.orgId);
-    if (!budget.allowed) return fail(generationBudgetMessage(budget.retryAfterSeconds));
+      for (let attempt = 0; attempt < TOKEN_ATTEMPTS; attempt += 1) {
+        const token = generateShareToken();
+        const [inserted] = await db
+          .insert(sharedLinks)
+          .values({
+            orgId: session.orgId,
+            fundingSourceId: source.id,
+            month,
+            artifactType: artifactTypeOf(kind),
+            artifactId,
+            token,
+            passwordHash,
+            filename: prepared.filename,
+            recordsHash: monthOutputRecordsHash(kind, prepared.snapshot),
+            createdBy: session.userId,
+            sharedAt: now,
+            sharedBy: session.userId,
+          })
+          .onConflictDoNothing()
+          .returning({ token: sharedLinks.token });
 
-    const prepared = await prepareMonthOutput({ orgId: session.orgId, source, month, kind, confirmedDeletions });
-    if (!prepared.ok) return fail(prepared.message);
-
-    let artifactId: string;
-    try {
-      ({ artifactId } = await ensureMonthOutput(prepared));
-    } catch (error) {
-      console.error("shared file generation failed", { orgId: session.orgId, month, kind, error });
-      return fail(monthOutputFailureMessage(kind, error));
-    }
-
-    const passwordHash = password === null ? null : await hashPassword(password);
-    const now = new Date();
-
-    for (let attempt = 0; attempt < TOKEN_ATTEMPTS; attempt += 1) {
-      const token = generateShareToken();
-      const [inserted] = await db
-        .insert(sharedLinks)
-        .values({
-          orgId: session.orgId,
-          fundingSourceId: source.id,
-          month,
-          artifactType: type,
-          artifactId,
-          token,
-          passwordHash,
-          filename: prepared.filename,
-          recordsHash: recordsHash(prepared.snapshot),
-          createdBy: session.userId,
-          sharedAt: now,
-          sharedBy: session.userId,
-        })
-        .onConflictDoNothing()
-        .returning({ token: sharedLinks.token });
-
-      if (inserted) return ok({ url: shareUrl(inserted.token), kind, hasPassword: passwordHash !== null });
-      // Nothing inserted: either someone shared this file in the meantime (another container,
-      // or a tab that raced past the single-flight check), or the token collided.
-      if (await activeShareId(session.orgId, source.id, month, type)) return fail(UI.shareAlreadyExists);
-    }
-    throw new Error("Could not allocate a unique share token");
-  } finally {
-    endShareBuild(buildKey);
-  }
+        if (inserted) return ok({ url: shareUrl(inserted.token), kind, hasPassword: passwordHash !== null });
+        // Nothing inserted: either someone shared this file in the meantime (another container,
+        // or a tab that raced past the single-flight check), or the token collided.
+        if (await activeShareId(session.orgId, source.id, month, kind)) return fail(UI.shareAlreadyExists);
+      }
+      throw new Error("Could not allocate a unique share token");
+    },
+  );
 }
 
 /**
@@ -168,53 +152,36 @@ export async function updateSharedFileAction(input: {
   if (!parsed.success) return invalid(parsed.error);
 
   const share = await loadActiveShare(session.orgId, parsed.data.shareId);
-  if (!share) return fail(UI.shareNoLongerShared);
+  const kind = share && sharedFileKindOf(share.artifactType);
+  if (!share || !kind) return fail(UI.shareNoLongerShared);
   const source = await findFundingSource(session.orgId, share.fundingSourceId);
   if (!source) return fail(UI.shareNoLongerShared);
 
-  const kind: MonthOutputKind = share.artifactType === "packet_pdf" ? "packet" : "summary";
-  const month = share.month as MonthKey;
-
-  const buildKey = shareBuildKey(session.orgId, source.id, month, kind);
-  if (!beginShareBuild(buildKey)) return fail(UI.shareInProgress);
-  try {
-    const budget = consume("generate", session.orgId);
-    if (!budget.allowed) return fail(generationBudgetMessage(budget.retryAfterSeconds));
-
-    const prepared = await prepareMonthOutput({
+  return buildSharedFile(
+    {
       orgId: session.orgId,
       source,
-      month,
+      month: share.month as MonthKey,
       kind,
       confirmedDeletions: parsed.data.confirmedDeletions,
-    });
-    if (!prepared.ok) return fail(prepared.message);
-
-    let artifactId: string;
-    try {
-      ({ artifactId } = await ensureMonthOutput(prepared));
-    } catch (error) {
-      console.error("shared file update failed", { orgId: session.orgId, month, kind, error });
-      return fail(monthOutputFailureMessage(kind, error));
-    }
-
-    // Still active is re-checked in the same statement: a Stop sharing that landed while the file
-    // was building must win, not be undone by this update.
-    const [updated] = await db
-      .update(sharedLinks)
-      .set({
-        artifactId,
-        filename: prepared.filename,
-        recordsHash: recordsHash(prepared.snapshot),
-        sharedAt: new Date(),
-        sharedBy: session.userId,
-      })
-      .where(activeShareScope(session.orgId, share.id))
-      .returning({ id: sharedLinks.id });
-    return updated ? ok() : fail(UI.shareNoLongerShared);
-  } finally {
-    endShareBuild(buildKey);
-  }
+    },
+    async ({ artifactId, prepared }) => {
+      // Still active is re-checked in the same statement: a Stop sharing that landed while the
+      // file was building must win, not be undone by this update.
+      const [updated] = await db
+        .update(sharedLinks)
+        .set({
+          artifactId,
+          filename: prepared.filename,
+          recordsHash: monthOutputRecordsHash(kind, prepared.snapshot),
+          sharedAt: new Date(),
+          sharedBy: session.userId,
+        })
+        .where(activeShareScope(session.orgId, share.id))
+        .returning({ id: sharedLinks.id });
+      return updated ? ok() : fail(UI.shareNoLongerShared);
+    },
+  );
 }
 
 /**
@@ -232,10 +199,7 @@ export async function changeSharedLinkPasswordAction(input: {
   if (!parsed.success) return invalid(parsed.error);
 
   const budget = consume("sharePasswordSet", session.userId);
-  if (!budget.allowed) {
-    const minutes = Math.ceil(budget.retryAfterSeconds / 60);
-    return fail(`Too many password changes. Try again in ${minutes} minute${minutes === 1 ? "" : "s"}.`);
-  }
+  if (!budget.allowed) return fail(UI.sharePasswordSetLimited(Math.ceil(budget.retryAfterSeconds / 60)));
 
   const passwordHash = parsed.data.password === null ? null : await hashPassword(parsed.data.password);
   const [updated] = await db
@@ -248,9 +212,9 @@ export async function changeSharedLinkPasswordAction(input: {
 
 /**
  * Turn a link off for good (Appendix A §3). The row stays so its token is never handed out again;
- * its password hash has no further use and goes.
+ * its password hash has no further use and goes (`shared_links_revoked_password_ck`).
  */
-export async function stopSharingAction(input: { shareId: string }): Promise<ActionResult<undefined>> {
+export async function stopSharedLinkAction(input: { shareId: string }): Promise<ActionResult<undefined>> {
   const session = await actionSession();
   if ("expired" in session) return session.expired;
 
@@ -267,6 +231,67 @@ export async function stopSharingAction(input: { shareId: string }): Promise<Act
 
 /* ------------------------------------------------------------------ helpers */
 // Not exported: every export of a "use server" file becomes a callable endpoint.
+
+/**
+ * Everything Create and Update share, in one order (P11, P13): the cancelled-plan refusal, one
+ * build per file at a time, the organisation's generation budget, the download routes' own
+ * checks, then the pinned file. `write` runs inside the single-flight claim, so the row is
+ * written before another build of the same file can start.
+ */
+async function buildSharedFile<T>(
+  input: {
+    orgId: string;
+    source: { id: string; name: string };
+    month: MonthKey;
+    kind: SharedFileKind;
+    confirmedDeletions: boolean;
+  },
+  write: (built: { artifactId: string; prepared: PreparedMonthOutput }) => Promise<ActionResult<T>>,
+): Promise<ActionResult<T>> {
+  if (await orgCancelled(input.orgId)) return fail(UI.shareCancelledRefused);
+
+  const buildKey = shareBuildKey(input.orgId, input.source.id, input.month, input.kind);
+  if (!beginShareBuild(buildKey)) return fail(UI.shareInProgress);
+  try {
+    const budget = consume("generate", input.orgId);
+    if (!budget.allowed) return fail(generationBudgetMessage(budget.retryAfterSeconds));
+
+    const prepared = await prepareMonthOutput(input);
+    if (!prepared.ok) return fail(prepared.message);
+
+    let artifactId: string;
+    try {
+      ({ artifactId } = await ensureMonthOutput(prepared));
+    } catch (error) {
+      console.error("shared file generation failed", {
+        orgId: input.orgId,
+        month: input.month,
+        kind: input.kind,
+        error,
+      });
+      return fail(monthOutputFailureMessage(input.kind, error));
+    }
+
+    return await write({ artifactId, prepared });
+  } finally {
+    endShareBuild(buildKey);
+  }
+}
+
+/** The first message zod has for the input — the password rule is the only one a person sees. */
+function invalid(error: z.ZodError): ActionResult<never> {
+  const password = error.issues.find((issue) => issue.path[0] === "password");
+  return password ? fail(password.message, { password: password.message }) : fail(UI.requestRefused);
+}
+
+async function orgCancelled(orgId: string): Promise<boolean> {
+  const [org] = await db
+    .select({ status: organizations.subscriptionStatus })
+    .from(organizations)
+    .where(eq(organizations.id, orgId))
+    .limit(1);
+  return org?.status === "cancelled";
+}
 
 /** One active share of this organisation. Every lookup by id goes through this scope. */
 function activeShareScope(orgId: string, shareId: string) {
@@ -291,7 +316,7 @@ async function activeShareId(
   orgId: string,
   fundingSourceId: string,
   month: MonthKey,
-  type: "packet_pdf" | "summary_xlsx",
+  kind: SharedFileKind,
 ): Promise<string | null> {
   const [row] = await db
     .select({ id: sharedLinks.id })
@@ -301,7 +326,7 @@ async function activeShareId(
         eq(sharedLinks.orgId, orgId),
         eq(sharedLinks.fundingSourceId, fundingSourceId),
         eq(sharedLinks.month, month),
-        eq(sharedLinks.artifactType, type),
+        eq(sharedLinks.artifactType, artifactTypeOf(kind)),
         isNull(sharedLinks.revokedAt),
       ),
     )

@@ -13,7 +13,14 @@ import { and, eq, isNull, ne } from "drizzle-orm";
 
 import { db } from "@/src/db";
 import { generatedArtifacts, organizations, sharedLinks } from "@/src/db/schema";
+import {
+  SHARE_PASSWORD_MAX,
+  SHARE_PASSWORD_MIN,
+  sharedFileKindOf,
+  type SharedFileKind,
+} from "@/src/domain/shared-links";
 import { verifyPassword } from "@/src/services/auth/passwords";
+import { rateLimitSubject } from "@/src/services/client-ip";
 import { consume, reset } from "@/src/services/rate-limit";
 import { keyBelongsToOrg } from "@/src/services/storage/keys";
 
@@ -25,7 +32,7 @@ export type PublicShare = {
   token: string;
   passwordHash: string | null;
   filename: string;
-  artifactType: "packet_pdf" | "summary_xlsx";
+  kind: SharedFileKind;
   s3Key: string;
   sizeBytes: number;
 };
@@ -70,14 +77,15 @@ export async function loadPublicShare(token: string): Promise<PublicShare | null
   // P20: the key comes from the database, but a check that costs nothing makes a future bug
   // fail closed rather than serve another organisation's object.
   if (!row || !keyBelongsToOrg(row.s3Key, row.orgId)) return null;
-  if (row.artifactType !== "packet_pdf" && row.artifactType !== "summary_xlsx") return null;
+  const kind = sharedFileKindOf(row.artifactType);
+  if (!kind) return null;
 
   return {
     id: row.id,
     token: row.token,
     passwordHash: row.passwordHash,
     filename: row.filename,
-    artifactType: row.artifactType,
+    kind,
     s3Key: row.s3Key,
     sizeBytes: row.sizeBytes,
   };
@@ -109,16 +117,16 @@ export type UnlockOutcome =
   | { outcome: "too_many" }
   | { outcome: "open"; url: string; cookie: ReturnType<typeof unlockCookie> | null };
 
-/** The longest password a share can have (P5) — anything longer is wrong without hashing. */
-const MAX_PASSWORD_LENGTH = 128;
-
 /**
  * Check a password typed on the public page (PHASE-12 P2).
  *
- * Both limits are consumed before the password is checked, so the sixth try is refused even when
- * it is right, and a guess that was never going to be checked still counts. The fifth wrong try
+ * A guess no share password could match — empty, shorter than the minimum, longer than the
+ * maximum — is wrong without costing a try or an argon2 hash: an accidental Enter on an empty
+ * field shouldn't use up one of five tries. Every other guess consumes both limits before the
+ * password is checked, so the sixth is refused even when it is right; the fifth wrong one
  * already answers "too many", since nothing is left of that visitor's budget. A right password
- * resets the per-link count for that visitor only.
+ * resets the per-link count for that visitor only. Both limits key on `rateLimitSubject`, so an
+ * IPv6 visitor can't mint fresh budgets across their /64.
  */
 export async function unlockSharedFile(input: {
   token: string;
@@ -131,20 +139,25 @@ export async function unlockSharedFile(input: {
   const url = sharedFileUrl(share);
   if (share.passwordHash === null) return { outcome: "open", url, cookie: null };
 
-  const linkKey = `${share.id}|${input.ip}`;
-  const perAddress = consume("sharePasswordPerIp", input.ip);
+  const password = input.password;
+  if (
+    typeof password !== "string" ||
+    password.length < SHARE_PASSWORD_MIN ||
+    password.length > SHARE_PASSWORD_MAX
+  ) {
+    return { outcome: "wrong" };
+  }
+
+  const subject = rateLimitSubject(input.ip);
+  const linkKey = `${share.id}|${subject}`;
+  const perAddress = consume("sharePasswordPerIp", subject);
   if (!perAddress.allowed) return { outcome: "too_many" };
   const perLink = consume("sharePasswordPerLinkIp", linkKey);
   if (!perLink.allowed) return { outcome: "too_many" };
 
-  const password = input.password;
-  const right =
-    typeof password === "string" &&
-    password.length > 0 &&
-    password.length <= MAX_PASSWORD_LENGTH &&
-    (await verifyPassword(share.passwordHash, password));
-
-  if (!right) return perLink.remaining === 0 ? { outcome: "too_many" } : { outcome: "wrong" };
+  if (!(await verifyPassword(share.passwordHash, password))) {
+    return perLink.remaining === 0 ? { outcome: "too_many" } : { outcome: "wrong" };
+  }
 
   reset("sharePasswordPerLinkIp", linkKey);
   return {

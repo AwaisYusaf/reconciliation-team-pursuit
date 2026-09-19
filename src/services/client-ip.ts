@@ -63,6 +63,35 @@ export function clientIpFrom(store: { get(name: string): string | null | undefin
   return "direct";
 }
 
+/**
+ * The subject a per-address limit counts against: an IPv4 address as is, an IPv6 address by its
+ * /64 prefix.
+ *
+ * One IPv6 subscriber is usually handed a whole /64, so keying on the full address would give
+ * them billions of fresh budgets — unlimited guesses at a shared link's password (PHASE-12
+ * review). Used by the shared-link limits; the login limits still key on the full address, as
+ * they always have.
+ */
+export function rateLimitSubject(ip: string): string {
+  if (!ip.includes(":")) return ip;
+  // An IPv4 address written as IPv6 (`::ffff:203.0.113.9`) is still one IPv4 client. Grouped by
+  // its /64 it would share one budget with every other IPv4 visitor, so one visitor's wrong
+  // guesses could lock everyone out — the thing D-44 forbids.
+  const embeddedV4 = /(\d{1,3}(?:\.\d{1,3}){3})$/.exec(ip);
+  if (embeddedV4) return embeddedV4[1];
+  const [head] = ip.split("%"); // drop a zone index
+  const [left, right = ""] = head.split("::");
+  const leftGroups = left ? left.split(":") : [];
+  const rightGroups = right ? right.split(":") : [];
+  const missing = head.includes("::") ? 8 - leftGroups.length - rightGroups.length : 0;
+  const groups = [...leftGroups, ...Array(Math.max(missing, 0)).fill("0"), ...rightGroups];
+  const prefix = groups
+    .slice(0, 4)
+    .map((group) => (parseInt(group || "0", 16) || 0).toString(16))
+    .join(":");
+  return `${prefix}::/64`;
+}
+
 /** The client's IP for the current request — for Server Actions, which have no request object. */
 export async function clientIp(): Promise<string> {
   return clientIpFrom(await headers());

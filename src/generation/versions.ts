@@ -3,8 +3,12 @@
  *
  * Bump a version when that output's bytes change for a reason the snapshot doesn't carry
  * (layout, ordering, fonts, links). Without a bump the cache key is byte-identical, so every
- * existing month keeps serving the old file — including pinned artifacts and any file already
- * shared by link (PHASE-12 §8: a bump shows "records changed" on every shared row).
+ * existing month keeps serving the old file.
+ *
+ * A bump never touches a file already shared by link, and does not flag its row "records
+ * changed" (PHASE-12 P14, §8): the link keeps serving its pinned file in the older format until
+ * the next Update, which is only offered once records change. After a correctness fix, tell the
+ * client to stop and re-share any link that must carry it.
  *
  * Kept here rather than in the route files because the download routes and sharing
  * (`src/modules/packet/month-output.ts`) must hash with the same value, and a route file

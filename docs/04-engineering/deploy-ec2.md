@@ -42,7 +42,7 @@ cd ~/ngo-expenses && ./deploy.sh
 
 It pulls, builds, migrates, restarts and then **verifies** — it does not report success until
 the container actually serves `/login`. A started container is not a working one:
-`instrumentation.ts` refuses to boot on a missing `AUTH_SECRET`, `S3_BUCKET` or `APP_URL` (D-112), and
+`instrumentation.ts` refuses to boot on a missing `AUTH_SECRET`, `S3_BUCKET` or https `APP_URL` (D-112) — `deploy.sh` checks `APP_URL` before building and prints it as "Shared links will use …", so confirm it names the permanent public domain: every link emailed to the City bakes it in — and
 `docker compose ps` still shows that container as up. The script prints the commit it moved
 from and the exact command to roll back to it.
 

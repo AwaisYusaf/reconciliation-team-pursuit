@@ -1,43 +1,52 @@
 "use client";
 
 /**
- * The "Shared links" box on the Month-End Packet tab, and the row it lists (PHASE-12 §7,
- * Appendix A §3–§4). The same row appears inside the share dialog when an already-shared file is
- * picked, so a file's link has one look wherever it shows.
+ * The "Shared links" box on the Month-End Packet tab, the row it lists, and the pieces the share
+ * dialog reuses (PHASE-12 §7, Appendix A §3–§4). The same row appears inside the share dialog when
+ * an already-shared file is picked, so a file's link has one look wherever it shows.
  *
  * Change password opens inline under its row rather than as another dialog, so it works the same
  * in the box and inside the share dialog.
  */
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useId, useRef, useState, useTransition } from "react";
 
 import { Button } from "@/src/components/ui/button";
 import { ConfirmButton } from "@/src/components/ui/confirm-button";
-import { FieldError, Input, Label } from "@/src/components/ui/field";
+import { FieldError, Helper, Input, Label } from "@/src/components/ui/field";
 import { DangerPanel, SubsectionTitle } from "@/src/components/ui/surfaces";
 import { reportResult, toast } from "@/src/components/ui/toast";
+import { SHARE_PASSWORD_MIN, type SharedFileKind } from "@/src/domain/shared-links";
 import { UI } from "@/src/domain/strings";
-import type { ActionResult } from "@/src/lib/action-result";
-import { changeSharedLinkPasswordAction, stopSharingAction } from "@/src/modules/sharing/actions";
+import { fail, SESSION_EXPIRED, type ActionResult } from "@/src/lib/action-result";
+import { changeSharedLinkPasswordAction, stopSharedLinkAction } from "@/src/modules/sharing/actions";
 import type { SharedLinkView } from "@/src/modules/sharing/queries";
 
-/** The shortest password a share accepts (P5); the server checks it again. */
-export const SHARE_PASSWORD_MIN = 6;
+/** The Share link button's id, where focus goes when a row it was on disappears. */
+export const SHARE_BUTTON_ID = "share-link-button";
 
 /**
- * POST to one of the long-running share routes and read back its ActionResult. A network drop or
- * an unexpected body becomes an ordinary failure the screen can show.
+ * POST to one of the long-running share routes and read back its ActionResult. A dropped
+ * connection, a signed-out session and an answer that isn't the route's JSON each get their own
+ * words, rather than all reading as "check your connection" after a two-minute build.
  */
 export async function postShareRoute<T>(path: string, body: unknown): Promise<ActionResult<T>> {
+  let response: Response;
   try {
-    const response = await fetch(path, {
+    response = await fetch(path, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
+  } catch {
+    return fail(UI.shareNetworkFailed);
+  }
+  if (response.status === 401) return fail(SESSION_EXPIRED);
+  if (!(response.headers.get("content-type") ?? "").includes("application/json")) return fail(UI.shareUnexpected);
+  try {
     return (await response.json()) as ActionResult<T>;
   } catch {
-    return { ok: false, error: "Couldn't reach the server — check your connection and try again." };
+    return fail(UI.shareUnexpected);
   }
 }
 
@@ -50,23 +59,110 @@ export async function copyLink(url: string): Promise<void> {
   }
 }
 
-export function kindLabel(kind: SharedLinkView["kind"]): string {
+export function kindLabel(kind: SharedFileKind): string {
   return kind === "packet" ? UI.shareChoicePacket : UI.shareChoiceSummary;
+}
+
+/** What a button says while its file builds — the ticket names the packet's wording. */
+export function buildingLabel(kind: SharedFileKind): string {
+  return kind === "packet" ? UI.shareCreatingPacket : UI.shareCreatingSummary;
+}
+
+/** A link, selectable in one tap, with its Copy link button. */
+export function LinkField({ url, kind }: { url: string; kind: SharedFileKind }) {
+  return (
+    <div className="flex flex-wrap items-center gap-2 mt-2">
+      <input
+        readOnly
+        value={url}
+        aria-label={`${kindLabel(kind)} link`}
+        onFocus={(event) => event.currentTarget.select()}
+        className="min-w-0 flex-1 basis-56 font-mono text-sm text-ink bg-section border border-line rounded-[3px] px-2.5 py-2.5"
+      />
+      <Button variant="secondary" onClick={() => void copyLink(url)}>
+        {UI.shareCopy}
+      </Button>
+    </div>
+  );
+}
+
+/**
+ * "Require a password" and, when ticked, the password itself — with Show, since the sharer has
+ * to send it to the City by text and the app never shows it again, and the minimum stated up
+ * front rather than learned by failing.
+ */
+export function PasswordFields({
+  required,
+  onRequiredChange,
+  password,
+  onPasswordChange,
+  error,
+  disabled = false,
+}: {
+  required: boolean;
+  onRequiredChange: (required: boolean) => void;
+  password: string;
+  onPasswordChange: (password: string) => void;
+  error: string | null;
+  disabled?: boolean;
+}) {
+  const id = useId();
+  const [shown, setShown] = useState(false);
+  return (
+    <div>
+      <label className="flex items-center gap-2.5 min-h-11 text-[15px] text-ink cursor-pointer">
+        <input
+          type="checkbox"
+          className="w-[18px] h-[18px] accent-accent"
+          checked={required}
+          disabled={disabled}
+          onChange={(event) => onRequiredChange(event.target.checked)}
+        />
+        {UI.shareRequirePassword}
+      </label>
+      {required && (
+        <div className="mt-2">
+          <Label htmlFor={id}>{UI.sharePasswordLabel}</Label>
+          <div className="flex gap-2">
+            <Input
+              id={id}
+              type={shown ? "text" : "password"}
+              autoComplete="new-password"
+              value={password}
+              disabled={disabled}
+              onChange={(event) => onPasswordChange(event.target.value)}
+              aria-describedby={`${id}-${error ? "error" : "hint"}`}
+              className="flex-1 min-w-0"
+            />
+            <Button variant="secondary" disabled={disabled} aria-pressed={shown} onClick={() => setShown(!shown)}>
+              {shown ? UI.shareHidePassword : UI.shareShowPassword}
+            </Button>
+          </div>
+          {error ? (
+            <FieldError id={`${id}-error`}>{error}</FieldError>
+          ) : (
+            <Helper id={`${id}-hint`}>{UI.sharePasswordHint}</Helper>
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export function SharedLinksBox({
   links,
   monthLabel,
-  blocked,
+  updateBlocked,
   orgCancelled,
-  updatingId,
+  updatingIds,
   onUpdate,
 }: {
   links: SharedLinkView[];
   monthLabel: string;
-  blocked: boolean;
+  /** Update shared file is held by the same rules as a download (Appendix A §4). */
+  updateBlocked: boolean;
   orgCancelled: boolean;
-  updatingId: string | null;
+  updatingIds: ReadonlySet<string>;
   onUpdate: (link: SharedLinkView) => void;
 }) {
   if (links.length === 0) return null;
@@ -80,8 +176,8 @@ export function SharedLinksBox({
             <SharedLinkRow
               link={link}
               monthLabel={monthLabel}
-              blocked={blocked}
-              updating={updatingId === link.id}
+              updateBlocked={updateBlocked}
+              updating={updatingIds.has(link.id)}
               onUpdate={() => onUpdate(link)}
             />
           </li>
@@ -94,25 +190,28 @@ export function SharedLinksBox({
 export function SharedLinkRow({
   link,
   monthLabel,
-  blocked,
+  updateBlocked,
   updating,
   onUpdate,
 }: {
   link: SharedLinkView;
   monthLabel: string;
-  blocked: boolean;
+  updateBlocked: boolean;
   updating: boolean;
   onUpdate: () => void;
 }) {
   const router = useRouter();
   const [stopping, startStopping] = useTransition();
   const [changingPassword, setChangingPassword] = useState(false);
+  const changeToggle = useRef<HTMLButtonElement>(null);
 
   function stop() {
     startStopping(async () => {
       // Refreshed either way: a failure here means the link was already stopped elsewhere.
-      reportResult(await stopSharingAction({ shareId: link.id }));
+      reportResult(await stopSharedLinkAction({ shareId: link.id }));
       router.refresh();
+      // This row is about to disappear; the Share link button is where the next step starts.
+      document.getElementById(SHARE_BUTTON_ID)?.focus();
     });
   }
 
@@ -124,38 +223,29 @@ export function SharedLinkRow({
       </div>
       <div className="text-sm text-muted mt-0.5">{UI.sharedOn(link.sharedOn, link.sharedBy)}</div>
 
-      <div className="flex flex-wrap items-center gap-2 mt-2">
-        <input
-          readOnly
-          value={link.url}
-          aria-label={`${kindLabel(link.kind)} link`}
-          onFocus={(event) => event.currentTarget.select()}
-          className="min-w-0 flex-1 basis-56 font-mono text-sm text-ink bg-section border border-line rounded-[3px] px-2.5 py-2"
-        />
-        <Button variant="secondary" className="min-h-9 px-3 text-[15px]" onClick={() => void copyLink(link.url)}>
-          {UI.shareCopy}
-        </Button>
-      </div>
+      <LinkField url={link.url} kind={link.kind} />
 
-      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-2 text-[15px]">
-        <button
-          type="button"
-          className="underline text-accent hover:text-accent-dark disabled:opacity-50"
+      <div className="flex flex-wrap items-center gap-x-3 mt-1">
+        <Button
+          ref={changeToggle}
+          variant="quiet"
           aria-expanded={changingPassword}
           disabled={stopping}
           onClick={() => setChangingPassword((open) => !open)}
         >
           {UI.shareChangePassword}
-        </button>
-        <span aria-hidden className="text-muted">·</span>
+        </Button>
+        <span aria-hidden className="text-muted">
+          ·
+        </span>
         <ConfirmButton
           variant="quiet"
-          className="min-h-0 px-0 py-0 underline text-danger font-normal"
+          className="text-danger!"
           disabled={stopping}
           title={UI.shareStopTitle(monthLabel, link.kind)}
           body={UI.shareStopBody}
           confirmLabel={UI.shareStop}
-          dismissLabel="Cancel"
+          dismissLabel={UI.cancel}
           onConfirm={stop}
         >
           {UI.shareStop}
@@ -168,16 +258,20 @@ export function SharedLinkRow({
           onDone={() => {
             setChangingPassword(false);
             router.refresh();
+            changeToggle.current?.focus();
           }}
-          onCancel={() => setChangingPassword(false)}
+          onCancel={() => {
+            setChangingPassword(false);
+            changeToggle.current?.focus();
+          }}
         />
       )}
 
       {link.recordsChanged && (
         <DangerPanel tone="notice" className="mt-3">
           <p>{UI.shareRecordsChanged(link.sharedOn)}</p>
-          <Button variant="secondary" className="mt-2.5" disabled={blocked || updating} onClick={onUpdate}>
-            {updating ? (link.kind === "packet" ? UI.shareCreatingPacket : UI.shareCreatingSummary) : UI.shareUpdate}
+          <Button variant="secondary" className="mt-2.5" disabled={updateBlocked || updating} onClick={onUpdate}>
+            {updating ? buildingLabel(link.kind) : UI.shareUpdate}
           </Button>
         </DangerPanel>
       )}
@@ -220,40 +314,35 @@ function PasswordEditor({
     });
   }
 
-  const fieldId = `share-password-${link.id}`;
+  // A form so Enter in the password field saves, as it would anywhere else.
   return (
-    <div className="mt-3 border border-line rounded-md p-3 bg-section">
-      <label className="flex items-center gap-2.5 text-[15px] text-ink cursor-pointer">
-        <input
-          type="checkbox"
-          className="w-[18px] h-[18px] accent-accent"
-          checked={required}
-          onChange={(event) => setRequired(event.target.checked)}
-        />
-        {UI.shareRequirePassword}
-      </label>
-      {required && (
-        <div className="mt-3">
-          <Label htmlFor={fieldId}>{UI.sharePasswordLabel}</Label>
-          <Input
-            id={fieldId}
-            type="password"
-            autoComplete="new-password"
-            value={password}
-            onChange={(event) => setPassword(event.target.value)}
-            aria-describedby={error ? `${fieldId}-error` : undefined}
-          />
-          {error && <FieldError id={`${fieldId}-error`}>{error}</FieldError>}
-        </div>
-      )}
-      <div className="flex flex-wrap gap-2 mt-3">
-        <Button className="min-h-9 px-3 text-[15px]" disabled={saving || unchanged} onClick={save}>
-          {saving ? "Saving…" : "Save"}
+    <form
+      noValidate
+      className="mt-2 border border-line rounded-md p-3 bg-section"
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (!saving && !unchanged) save();
+      }}
+    >
+      <PasswordFields
+        required={required}
+        onRequiredChange={(value) => {
+          setRequired(value);
+          setError(null);
+        }}
+        password={password}
+        onPasswordChange={setPassword}
+        error={error}
+        disabled={saving}
+      />
+      <div className="flex flex-wrap gap-3 mt-3">
+        <Button type="submit" disabled={saving || unchanged}>
+          {saving ? UI.saving : UI.save}
         </Button>
-        <Button variant="quiet" className="min-h-9 px-3 text-[15px]" disabled={saving} onClick={onCancel}>
-          Cancel
+        <Button variant="quiet" disabled={saving} onClick={onCancel}>
+          {UI.cancel}
         </Button>
       </div>
-    </div>
+    </form>
   );
 }

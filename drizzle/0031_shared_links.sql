@@ -1,3 +1,9 @@
+-- Fail fast rather than queue: every statement below waits for a lock on a table the running app
+-- writes to (generated_artifacts, and the FK targets organizations, users and funding_sources).
+-- A deploy that can't get one within 5 s aborts with the old app still serving, and is simply
+-- re-run, instead of holding sign-ins and downloads behind it. Applies to the rest of drizzle's
+-- migration transaction.
+SET LOCAL lock_timeout = '5s';--> statement-breakpoint
 -- Moved by hand above everything else (PHASE-12 §3): drizzle-kit writes foreign keys before
 -- indexes, and "shared_links_artifact_fk" references this index's columns, which Postgres only
 -- allows once a unique constraint on them exists.
@@ -22,7 +28,9 @@ CREATE TABLE "shared_links" (
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "shared_links_month_ck" CHECK ("shared_links"."month" ~ '^\d{4}-(0[1-9]|1[0-2])$'),
 	CONSTRAINT "shared_links_artifact_type_ck" CHECK ("shared_links"."artifact_type" in ('packet_pdf', 'summary_xlsx')),
-	CONSTRAINT "shared_links_token_ck" CHECK ("shared_links"."token" ~ '^[0-9A-Za-z]{12}$')
+	CONSTRAINT "shared_links_token_ck" CHECK ("shared_links"."token" ~ '^[0-9A-Za-z]{12}$'),
+	CONSTRAINT "shared_links_revoked_password_ck" CHECK ("shared_links"."revoked_at" is null or "shared_links"."password_hash" is null),
+	CONSTRAINT "shared_links_revoked_by_ck" CHECK ("shared_links"."revoked_by" is null or "shared_links"."revoked_at" is not null)
 );
 --> statement-breakpoint
 ALTER TABLE "shared_links" ADD CONSTRAINT "shared_links_org_id_organizations_id_fk" FOREIGN KEY ("org_id") REFERENCES "public"."organizations"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint

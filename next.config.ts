@@ -11,7 +11,8 @@ const nextConfig: NextConfig = {
         // Shared links and their password page must never appear in search results, and the token
         // in the URL must never leave in a Referer header (PHASE-12 P17). A header rather than a
         // robots.txt Disallow: a crawler blocked by robots.txt never fetches the page, so never
-        // sees the noindex, and can still list the bare URL. The routes also set these themselves.
+        // sees the noindex, and can still list the bare URL. This is the only place the file and
+        // unlock routes get them (`headers.test.ts`); the pages also say so in `app/s/layout.tsx`.
         source: "/s/:path*",
         headers: [
           { key: "X-Robots-Tag", value: "noindex, nofollow, noarchive" },

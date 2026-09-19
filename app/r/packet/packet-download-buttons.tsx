@@ -25,7 +25,7 @@ import { restoreExpenseAction } from "@/src/modules/expenses/actions";
 import type { SharedLinkView } from "@/src/modules/sharing/queries";
 
 import { ShareLinkDialog } from "./share-link-dialog";
-import { postShareRoute, SharedLinksBox } from "./shared-links";
+import { postShareRoute, SHARE_BUTTON_ID, SharedLinksBox } from "./shared-links";
 
 export type DeletedItem = {
   id: string;
@@ -63,7 +63,10 @@ export function PacketDownloadButtons({
   const [pending, setPending] = useState<Continuation | null>(null);
   // Mounted only while open, so every opening starts from a fresh form.
   const [shareDialog, setShareDialog] = useState<{ confirmedDeletions: boolean } | null>(null);
-  const [updatingId, setUpdatingId] = useState<string | null>(null);
+  // One entry per row whose file is building, so two Updates never share one busy state.
+  const [updatingIds, setUpdatingIds] = useState<ReadonlySet<string>>(new Set());
+  // Sharing and updating are refused for a cancelled plan (C4), as for a blocked month.
+  const shareBlocked = blocked || orgCancelled;
 
   const packetDownload = useDownload();
   const summaryDownload = useDownload();
@@ -97,12 +100,16 @@ export function PacketDownloadButtons({
   }
 
   async function updateSharedFile(link: SharedLinkView, confirmedDeletions: boolean) {
-    setUpdatingId(link.id);
+    setUpdatingIds((ids) => new Set(ids).add(link.id));
     const result = await postShareRoute<undefined>("/api/shared-links/update", {
       shareId: link.id,
       confirmedDeletions,
     });
-    setUpdatingId(null);
+    setUpdatingIds((ids) => {
+      const next = new Set(ids);
+      next.delete(link.id);
+      return next;
+    });
     reportResult(result, UI.shareUpdated);
     router.refresh();
   }
@@ -135,35 +142,39 @@ export function PacketDownloadButtons({
           {summaryDownload.busy ? "Preparing…" : "Download Summary (Excel)"}
         </button>
         <button
+          id={SHARE_BUTTON_ID}
           type="button"
           className={buttonClassName("secondary")}
-          disabled={blocked}
+          disabled={shareBlocked}
           onClick={() => gated((confirmedDeletions) => setShareDialog({ confirmedDeletions }))}
         >
           {UI.shareButton}
         </button>
       </div>
+      {/* Why Share link is off when the plan is cancelled, even before anything was shared. */}
+      {orgCancelled && sharedLinks.length === 0 && (
+        <p className="text-sm text-danger mt-2">{UI.shareCancelledRefused}</p>
+      )}
 
       <SharedLinksBox
         links={sharedLinks}
         monthLabel={label}
-        blocked={blocked}
+        updateBlocked={shareBlocked}
         orgCancelled={orgCancelled}
-        updatingId={updatingId}
+        updatingIds={updatingIds}
         onUpdate={(link) => gated((confirmed) => void updateSharedFile(link, confirmed))}
       />
 
       {shareDialog && (
         <ShareLinkDialog
-          open
           onClose={() => setShareDialog(null)}
           month={month}
           monthLabel={label}
           fundingSourceId={fundingSourceId}
           confirmedDeletions={shareDialog.confirmedDeletions}
           links={sharedLinks}
-          blocked={blocked}
-          updatingId={updatingId}
+          updateBlocked={shareBlocked}
+          updatingIds={updatingIds}
           onUpdate={(link, confirmed) => void updateSharedFile(link, confirmed)}
         />
       )}

@@ -87,6 +87,21 @@ preflight() {
     exit 1
   fi
 
+  # The app refuses to start without an https APP_URL (D-112), and every shared link emailed to
+  # the City is built from it. Checked here, before the build and the migration: a container that
+  # refuses to boot is only found after the old one has been replaced, which takes the site down.
+  # Printed on every deploy so the domain baked into links is never a surprise.
+  local app_url
+  # `|| true`: under `set -eo pipefail` a grep that finds no line would end the script here,
+  # silently, before the message below could say why.
+  app_url="$( (grep -E '^APP_URL=' .env || true) | tail -n 1 | cut -d= -f2- | tr -d "\"'")"
+  if [[ ! "$app_url" =~ ^https://[^/]+ ]]; then
+    echo "error: APP_URL in .env must be the public https address, e.g. https://stayfunded360.com" >&2
+    echo "       (now: '${app_url:-unset}'). Shared links are built from it." >&2
+    exit 1
+  fi
+  echo "==> Shared links will use ${app_url}"
+
   # Two concurrent builds on a 3.7 GB box is the realistic way to OOM this instance, and
   # the kernel picks the victim — which may be the-pride-api. One deploy at a time.
   if command -v flock >/dev/null 2>&1; then
