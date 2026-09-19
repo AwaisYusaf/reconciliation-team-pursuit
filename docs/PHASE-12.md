@@ -1,6 +1,6 @@
 # Phase 12 — Share the month's packet and summary with a link
 
-Status: **Phases 1–3 built** (2026-09-19); Phases 4–5 not started. The product spec is Appendix A, copied word for
+Status: **Phases 1–4 built** (2026-09-19); Phase 4's browser pass and Phase 5 not done. The product spec is Appendix A, copied word for
 word from `docs/tickets/share-packet-link.md`. §2 records where this plan departs from it and why.
 Every build phase in §9 names its sources and its own checks, so each can run in a fresh chat.
 

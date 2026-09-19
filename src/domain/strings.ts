@@ -515,6 +515,7 @@ export const UI = {
 
   shareButton: "Share link",
   shareDialogTitle: (monthLabel: string) => `Share ${monthLabel} files`,
+  shareWhichFile: "Which file",
   shareChoicePacket: "Packet (PDF)",
   shareChoicePacketHint: "Opens in the browser. Clickable references work in Chrome, Edge and Safari.",
   shareChoiceSummary: "Summary (Excel)",
