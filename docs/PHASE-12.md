@@ -1,6 +1,6 @@
 # Phase 12 — Share the month's packet and summary with a link
 
-Status: **Phases 1–2 built** (2026-09-19); Phases 3–5 not started. The product spec is Appendix A, copied word for
+Status: **Phases 1–3 built** (2026-09-19); Phases 4–5 not started. The product spec is Appendix A, copied word for
 word from `docs/tickets/share-packet-link.md`. §2 records where this plan departs from it and why.
 Every build phase in §9 names its sources and its own checks, so each can run in a fresh chat.
 
@@ -341,6 +341,60 @@ The proxy change, the headers, the `/s` layout, page and not-found page, and the
 routes.
 
 Checks: I-13..I-20, U-9, U-10; first browser pass (B-2, B-3).
+
+**Results (2026-09-19).**
+- **Built:**
+  - `proxy.ts` treats `/s/` as public (not `/s`, which would match `/signup`).
+  - `next.config.ts` sends `X-Robots-Tag: noindex, nofollow, noarchive` and
+    `Referrer-Policy: no-referrer` on `/s/:path*`.
+  - `app/s/layout.tsx` carries the metadata robots and referrer rules. `app/s/share-card.tsx` is
+    the sign-in card with the logo.
+  - `app/s/[token]/page.tsx` redirects to the file or shows the password card.
+    `not-found.tsx` shows the unavailable message. `unlock-form.tsx` is the client form.
+  - `app/s/[token]/unlock/route.ts` (POST, JSON) and `app/s/[token]/[filename]/route.ts`
+    (GET and HEAD, streamed, cookie read from the request).
+  - `CONTENT_TYPES` moved to `src/generation/content-types.ts`, so the public route doesn't import
+    `artifacts.ts`.
+- **Tests:**
+  - `public-routes.integration.test.ts` (10): I-13, I-14, I-15 over HTTP, I-17, I-19, I-20, I-21,
+    I-23, and a missing object answered with a 503 without a rebuild.
+  - `public-isolation.test.ts` (42): no file under `app/s` and not `public.ts` imports a
+    generator, the packet output path, the sharing actions or a session; the route streams.
+  - `proxy.test.ts` (+3).
+  - Full suite 1799 passed. Typecheck and lint are clean.
+- **Mutation checks**, each caught and restored:
+  - the file route ignoring a locked link (I-15);
+  - the unlock route skipping the origin check (I-19);
+  - serving through `get` instead of `stream` (I-14);
+  - the route importing `artifacts.ts` (isolation).
+- **Browser (dev server on :3100, fixture org "Share Browser Test", 2079-03):**
+  - B-3:
+    - An unknown token answers 404 with `X-Robots-Tag` and `Referrer-Policy`, plus
+      `<meta name="robots" content="noindex, nofollow">`, and shows the unavailable card.
+    - The no-password Excel link answers 307 to
+      `/s/…/Team_Pursuit_March_2079_Summary.xlsx`, which answers 200 as an attachment with the
+      Download Summary name.
+    - The password link answers 200 with the password card.
+  - B-2 in Chrome:
+    - A wrong password shows "That password isn't right."
+    - The right one moves the tab to `…/Team_Pursuit_March_2079_Packet.pdf`, and Chrome's own
+      PDF viewer opens it inline. The tab reads "Team Pursuit March 2079 Packet" (C2), with
+      8 pages and the viewer's download and print buttons.
+  - Over real HTTP with curl:
+    - The unlock sets `share_unlock` (`Path=/s/<token>`, HttpOnly, SameSite=Lax, 12 h).
+    - With the cookie, the file is served inline with every P10/P17 header. Without it, a 303
+      goes back to the link's page. HEAD answers with the length only.
+  - The served PDF carries 12 internal go-to links and the outline (checked with pdf-lib).
+  - The password and unavailable cards are also checked at 375 px.
+- **Fix found in the browser:** the title-size overrides on `PageTitle` did nothing useful. `cn`
+  doesn't merge Tailwind classes, so both sizes rendered and CSS order decided. The overrides are
+  gone, and the unavailable message is now body text.
+- **Not verified:**
+  - Clicking a reference inside Chrome's viewer. The extension's capture of the PDF plugin stayed
+    stale, so the click is left for B-7 on the large packet. The links are present in the served
+    bytes.
+  - Edge and Safari.
+  - No file was downloaded in the browser; the Excel download is verified by headers.
 
 ### Phase 4 — Packet tab
 The Share link button, the dialog, the Shared links box, the update flow and the tour copy.

@@ -36,6 +36,20 @@ describe("unauthenticated routing", () => {
   });
 });
 
+describe("shared links (PHASE-12)", () => {
+  it("lets a visitor with no account open a shared link, its file and its password post", () => {
+    expect(redirectTarget(proxy(request("/s/k7Qm2xPa9Xy1")))).toBeNull();
+    expect(redirectTarget(proxy(request("/s/k7Qm2xPa9Xy1/Team_Pursuit_March_2026_Packet.pdf")))).toBeNull();
+    expect(redirectTarget(proxy(request("/s/k7Qm2xPa9Xy1/unlock")))).toBeNull();
+  });
+
+  it("does not open anything that merely starts with /s", () => {
+    expect(redirectTarget(proxy(request("/sx")))).toBe("/login");
+    expect(redirectTarget(proxy(request("/s")))).toBe("/login");
+    expect(redirectTarget(proxy(request("/shared")))).toBe("/login");
+  });
+});
+
 describe("a cookie that is present but not valid", () => {
   // The regression: presence is not validity. Redirecting on presence alone traps the user.
   it("still lets them reach the login page", () => {
@@ -68,5 +82,11 @@ describe("matcher scope", () => {
     expect(matcher.test("/")).toBe(true);
     expect(matcher.test("/r/expenses")).toBe(true);
     expect(matcher.test("/login")).toBe(true);
+  });
+
+  it("covers shared links, including the file URL ending in .pdf or .xlsx", () => {
+    expect(matcher.test("/s/k7Qm2xPa9Xy1")).toBe(true);
+    expect(matcher.test("/s/k7Qm2xPa9Xy1/Team_Pursuit_March_2026_Packet.pdf")).toBe(true);
+    expect(matcher.test("/s/k7Qm2xPa9Xy1/Team_Pursuit_March_2026_Summary.xlsx")).toBe(true);
   });
 });

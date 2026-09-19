@@ -18,13 +18,11 @@ import type { MonthKey } from "@/src/domain/dates";
 import { storage } from "@/src/services/storage/driver";
 import { generatedArtifactKey } from "@/src/services/storage/keys";
 
+import { CONTENT_TYPES } from "./content-types";
+
 export { canonicalJson, inputsHash } from "./cache-key";
 
-export const CONTENT_TYPES: Record<string, string> = {
-  xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-  docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-  pdf: "application/pdf",
-};
+export { CONTENT_TYPES } from "./content-types";
 
 export type ResolveArtifactInput = {
   orgId: string;
