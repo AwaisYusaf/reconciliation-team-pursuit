@@ -14,8 +14,12 @@ import "server-only";
  * session and scopes the lookup to the organisation. That is strictly stronger than a
  * bearer URL, and it means there is one download path rather than two.
  */
+import { createReadStream } from "node:fs";
 import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { Readable } from "node:stream";
+
+import { webStreamFrom } from "./web-stream";
 
 export type PutOptions = {
   key: string;
@@ -23,10 +27,23 @@ export type PutOptions = {
   contentType: string;
 };
 
+/** An object's bytes as a stream, for serving large files without holding them in memory. */
+export type StoredStream = {
+  body: ReadableStream<Uint8Array>;
+  size: number;
+};
+
 export interface StorageDriver {
   readonly name: "s3" | "local";
   put(options: PutOptions): Promise<void>;
   get(key: string): Promise<Buffer>;
+  /**
+   * The object as a stream (PHASE-12 P10). A shared packet can be 70 MB and is opened by people
+   * outside the organisation; `get` would hold the whole file in memory for every open.
+   */
+  stream(key: string): Promise<StoredStream>;
+  /** The object's size, or null when it doesn't exist — answers `HEAD` without opening it. */
+  stat(key: string): Promise<{ size: number } | null>;
   exists(key: string): Promise<boolean>;
   delete(key: string): Promise<void>;
 }
@@ -63,6 +80,21 @@ export class LocalStorageDriver implements StorageDriver {
 
   async get(key: string): Promise<Buffer> {
     return readFile(this.absolute(key));
+  }
+
+  async stream(key: string): Promise<StoredStream> {
+    const target = this.absolute(key);
+    const { size } = await stat(target);
+    return { body: webStreamFrom(createReadStream(target)), size };
+  }
+
+  async stat(key: string): Promise<{ size: number } | null> {
+    try {
+      const { size } = await stat(this.absolute(key));
+      return { size };
+    } catch {
+      return null;
+    }
   }
 
   async exists(key: string): Promise<boolean> {
@@ -118,6 +150,29 @@ export class S3StorageDriver implements StorageDriver {
     );
     const bytes = await response.Body!.transformToByteArray();
     return Buffer.from(bytes);
+  }
+
+  async stream(key: string): Promise<StoredStream> {
+    const { GetObjectCommand } = await import("@aws-sdk/client-s3");
+    const client = await this.client();
+    const response = await client.send(new GetObjectCommand({ Bucket: this.bucket, Key: key }));
+    // On Node the SDK's body is the HTTP response itself, a Readable (`web-stream.ts` for why it
+    // isn't converted with `transformToWebStream`).
+    if (!(response.Body instanceof Readable) || response.ContentLength === undefined) {
+      throw new Error("Storage returned no readable body or no length");
+    }
+    return { body: webStreamFrom(response.Body), size: response.ContentLength };
+  }
+
+  async stat(key: string): Promise<{ size: number } | null> {
+    const { HeadObjectCommand } = await import("@aws-sdk/client-s3");
+    const client = await this.client();
+    try {
+      const response = await client.send(new HeadObjectCommand({ Bucket: this.bucket, Key: key }));
+      return response.ContentLength === undefined ? null : { size: response.ContentLength };
+    } catch {
+      return null;
+    }
   }
 
   async exists(key: string): Promise<boolean> {

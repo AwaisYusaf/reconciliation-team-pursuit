@@ -117,7 +117,7 @@ Name | Email | Role | Last sign-in, one row "Misty Chen · misty@eastside.org ·
 A Usage card: "Funding sources" "2 active, 1 archived", "Expenses" "142 total · 12 in September
 2026", "Last expense added" "9 Sep 2026", a labelled storage bar (#F1ECE2 track, #5B3A29 fill)
 reading "212 MB of 5 GB" at about 4% fill, "Months submitted · locked" "5 · 3", "Packets
-downloaded" "4" with a small helper line "Counts each packet the first time it was downloaded."
+downloaded" "4" with a small helper line "Counts each packet the first time it was downloaded or shared." (sharing a packet by link pins it as a download does — PHASE-12 P22)
 
 An Actions card: four outline buttons in a row — "Change plan", "Complimentary access",
 "Suspend" (only one of Suspend/Reinstate shows). Show the Suspend dialog open: red-bordered

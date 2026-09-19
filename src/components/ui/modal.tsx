@@ -26,12 +26,16 @@ export function Modal({
   onClose,
   children,
   size = "md",
+  dismissDisabled = false,
 }: {
   open: boolean;
   title: string;
   onClose: () => void;
   children: ReactNode;
   size?: keyof typeof MODAL_WIDTH;
+  /** Holds the popup open — no ×, Escape or backdrop — while work it started is still running,
+   *  as `Dialog`'s prop of the same name does. */
+  dismissDisabled?: boolean;
 }) {
   const titleId = useId();
   const closeRef = useRef<HTMLButtonElement>(null);
@@ -39,7 +43,7 @@ export function Modal({
   if (!open) return null;
 
   return (
-    <OverlayShell open onDismiss={onClose} initialFocusRef={closeRef}>
+    <OverlayShell open onDismiss={dismissDisabled ? () => {} : onClose} initialFocusRef={closeRef}>
       <div className={`w-full ${MODAL_WIDTH[size]} max-h-[calc(100dvh-2rem)] overflow-y-auto`}>
         <div
           role="dialog"
@@ -55,8 +59,9 @@ export function Modal({
               ref={closeRef}
               type="button"
               onClick={onClose}
+              disabled={dismissDisabled}
               aria-label="Close"
-              className="text-muted hover:text-ink text-xl leading-none px-1"
+              className="text-muted hover:text-ink text-xl leading-none px-1 disabled:opacity-40 disabled:cursor-not-allowed"
             >
               &times;
             </button>

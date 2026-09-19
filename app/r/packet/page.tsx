@@ -21,6 +21,7 @@ import { summariesAccessForOrg } from "@/src/modules/ai/access";
 import { loadTrashedExpenses } from "@/src/modules/expenses/queries";
 import { loadSourceContext } from "@/src/modules/funding-sources/queries";
 import { loadLockedMonths, loadLockEvents, loadPacketReadiness } from "@/src/modules/packet/queries";
+import { loadSharedLinks } from "@/src/modules/sharing/queries";
 import { PACKET_TOUR_STEPS } from "@/src/modules/tours/packet-tour";
 import { hasSeenTour } from "@/src/modules/tours/queries";
 import { getSession } from "@/src/services/auth/session";
@@ -66,13 +67,14 @@ export default async function PacketPage() {
     );
   }
 
-  const [readiness, deletedInMonth, seenPacketTour, events, lockedMonths, summariesAccess] = await Promise.all([
+  const [readiness, deletedInMonth, seenPacketTour, events, lockedMonths, summariesAccess, shared] = await Promise.all([
     loadPacketReadiness(session.orgId, fundingSourceId, month),
     loadTrashedExpenses(session.orgId, fundingSourceId, month),
     hasSeenTour(session.userId, "packet"),
     loadLockEvents(session.orgId, fundingSourceId, month),
     loadLockedMonths(session.orgId, fundingSourceId),
     summariesAccessForOrg(session.orgId),
+    loadSharedLinks(session.orgId, fundingSourceId, month),
   ]);
 
   // Locked state comes from `month_statuses.locked_at`, not from the newest event (PR #16
@@ -257,6 +259,8 @@ export default async function PacketPage() {
             blocked={blocked}
             deletedItems={deletedItems}
             locked={locked}
+            sharedLinks={shared.links}
+            orgCancelled={shared.orgCancelled}
           />
         </Card>
 

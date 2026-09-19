@@ -52,3 +52,14 @@ export function inputsHash(input: {
     .digest("hex")
     .slice(0, 32);
 }
+
+/**
+ * A hash of the records alone — the snapshot without any generator version (PHASE-12 P14).
+ *
+ * A shared file stores this so its row can say "Your records changed" only when records did. The
+ * artifact's own cache key also moves when a generator version is bumped, which would put that
+ * message on every shared row after a release although nothing in the organisation changed.
+ */
+export function recordsHash(snapshot: unknown): string {
+  return createHash("sha256").update(canonicalJson(snapshot)).digest("hex").slice(0, 32);
+}

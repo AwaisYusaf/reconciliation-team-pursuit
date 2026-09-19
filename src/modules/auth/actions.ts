@@ -7,7 +7,6 @@
  * never the security boundary (architecture §Application layout).
  */
 import { and, desc, eq, sql } from "drizzle-orm";
-import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 
@@ -39,6 +38,7 @@ import { hashPassword, validatePasswordPolicy, verifyPassword } from "@/src/serv
 import { emailInUse } from "@/src/modules/auth/emails";
 import { ORIGINAL_RULES } from "@/src/modules/expenses/reimbursement";
 import { primaryFundingSourceId, requireOwnedFundingSource } from "@/src/modules/funding-sources/queries";
+import { clientIp } from "@/src/services/client-ip";
 import { consume, reset } from "@/src/services/rate-limit";
 import { nameSchema } from "@/src/domain/name";
 
@@ -76,65 +76,8 @@ async function requireSessionOrExpired(): Promise<
   }
 }
 
-/**
- * The client's IP, for rate limiting.
- *
- * `X-Forwarded-For` is appended to by each hop, so the LAST entries are the ones our own
- * proxies wrote and the leftmost are attacker-controlled. Taking the leftmost value let an
- * attacker mint a fresh rate-limit bucket per request simply by varying the header, which
- * defeated the login limiter entirely — and that limiter is deliberately the only
- * brute-force bound, since lockout would be a denial of service against a shared account.
- *
- * `TRUSTED_PROXY_HOPS` says how many reverse proxies sit in front of the app (Caddy or
- * nginx terminating TLS is 1). We count that many entries back from the right. With no
- * proxies configured the header is ignored altogether.
- */
 /** RFC 5321 caps a forward path at 256 characters; 320 leaves room and refuses the absurd. */
 const MAX_EMAIL_LENGTH = 320;
-
-/**
- * Whether a proxy-supplied value is plausibly an address.
- *
- * Deliberately permissive about *which* address — the point is only that a caller cannot
- * substitute unbounded arbitrary text for their identity, not to parse every IPv6 form.
- */
-function isIpAddress(value: string): boolean {
-  if (value.length > 45) return false; // longest IPv6 with an embedded IPv4
-  return /^[0-9a-fA-F:.]+$/.test(value) && /[0-9a-fA-F]/.test(value);
-}
-
-async function clientIp(): Promise<string> {
-  const store = await headers();
-  const hops = Number(process.env.TRUSTED_PROXY_HOPS ?? "0");
-
-  if (hops > 0) {
-    const forwarded = store.get("x-forwarded-for");
-    if (forwarded) {
-      const entries = forwarded.split(",").map((entry) => entry.trim()).filter(Boolean);
-      const candidate = entries[entries.length - hops];
-      if (candidate && isIpAddress(candidate)) return candidate;
-    }
-    // Only accepted when it actually looks like an address. Unvalidated, this header let a
-    // caller send a fresh nonce per request, landing every attempt in a virgin bucket and
-    // making both login budgets unreachable — unbounded guessing against the one shared
-    // account, behind which there is deliberately no lockout.
-    const real = store.get("x-real-ip")?.trim();
-    if (real && isIpAddress(real)) return real;
-  }
-
-  // Without a proxy count the client cannot be identified, so every visitor shares one
-  // bucket — which turns the per-account limit into a weapon: an attacker's wrong guesses
-  // lock the real user out, exactly the denial of service the no-lockout design avoids.
-  // Production refuses to run that way, the same as it refuses the local storage driver.
-  if (process.env.NODE_ENV === "production") {
-    throw new Error(
-      "TRUSTED_PROXY_HOPS must be set in production — without it login rate limits cannot " +
-        "tell clients apart and become an account lockout. Set it to the number of reverse " +
-        "proxies in front of the app (Caddy or nginx terminating TLS is 1).",
-    );
-  }
-  return "direct";
-}
 
 /* ------------------------------------------------------------------ sign in */
 

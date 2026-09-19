@@ -16,11 +16,21 @@ import { SESSION_COOKIE } from "@/src/services/auth/tokens";
 // Public: the marketing landing page, the auth entry points, and the SEO files.
 const PUBLIC_PATHS = new Set(["/", "/login", "/signup", "/robots.txt", "/sitemap.xml"]);
 
+/**
+ * Shared links (PHASE-12, D-112): opened by people with no account. `/s/` with the slash — a
+ * bare `/s` prefix would also match `/signup` today and any `/s…` route added later. Access is
+ * decided by the token inside the page and routes, never here.
+ */
+const SHARED_LINK_PREFIX = "/s/";
+
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const hasSessionCookie = request.cookies.has(SESSION_COOKIE);
 
-  const isPublicRoute = PUBLIC_PATHS.has(pathname) || pathname.startsWith("/onboarding");
+  const isPublicRoute =
+    PUBLIC_PATHS.has(pathname) ||
+    pathname.startsWith("/onboarding") ||
+    pathname.startsWith(SHARED_LINK_PREFIX);
 
   // The absence of a cookie definitively means "not signed in", so this redirect is safe
   // and saves a render.

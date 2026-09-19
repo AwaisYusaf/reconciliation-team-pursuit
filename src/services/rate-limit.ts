@@ -98,6 +98,30 @@ export const LIMITS = {
    * logged regardless (P11).
    */
   summaryWrite: { limit: 30, windowMs: 60 * 60 * 1000 },
+  /**
+   * Password tries on a shared link, per link and visitor address (PHASE-12 P2).
+   *
+   * Keyed by both so one visitor's wrong guesses never lock another out (D-44): the City's
+   * reviewer on their own network is unaffected by anyone else guessing. Checked before the
+   * password, so the sixth try is refused even when it is right.
+   */
+  sharePasswordPerLinkIp: { limit: 5, windowMs: 15 * 60 * 1000 },
+  /**
+   * Password tries per address across every link — bounds argon2 work from one address, as
+   * `loginPerIp` does for sign-in. Deliberately no per-link limit across addresses: that would
+   * let anyone holding the link, from enough addresses, lock the recipient out.
+   */
+  sharePasswordPerIp: { limit: 30, windowMs: 15 * 60 * 1000 },
+  /**
+   * Opens of a shared file, per address — a backstop against a script re-pulling a 70 MB packet
+   * (PHASE-12 P10). One open is one request, since the file is served without ranges.
+   */
+  shareOpen: { limit: 60, windowMs: 15 * 60 * 1000 },
+  /**
+   * Setting a shared link's password, per user: each one is an argon2 hash on the threadpool
+   * sign-in uses, the same reasoning as `userProvisioning`.
+   */
+  sharePasswordSet: { limit: 20, windowMs: 60 * 60 * 1000 },
 } as const;
 
 export type LimitName = keyof typeof LIMITS;

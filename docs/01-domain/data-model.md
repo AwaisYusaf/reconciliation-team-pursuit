@@ -305,6 +305,7 @@ Index `(org_id, funding_source_id, month, created_at)`.
 | s3_key, size_bytes, page_count | | |
 
 Unique index `(org_id, funding_source_id, month, type, line_item_id)` **where downloaded_at is null** — one live cache entry per source; pinned rows accumulate as history.
+Unique index `generated_artifacts_scope_id_uq` on `(id, org_id, funding_source_id, month, type)` — trivially unique, it exists only as the target of `shared_links_artifact_fk` (PHASE-12 P9). Sharing a file pins it, exactly as a download does (PHASE-12 P8).
 
 ### user_tour_progress (Phase 7, D-94/D-95)
 | Field | Type | Notes |
@@ -373,9 +374,41 @@ packet does. Write again replaces `content_markdown`, `expenses_fingerprint`, `w
 Unique `(org_id, funding_source_id, month)` — one summary per source per month; this index also
 serves the saved-months list (ordered by month desc), so there is no separate `written_at` index.
 
+### shared_links (Phase 12, D-112)
+A month's packet PDF or summary workbook shared by public link at `/s/{token}`. Opening the link
+streams exactly the artifact the row points at, never rebuilt. Update shared file points the row
+at a newer artifact and keeps the token; Stop sharing sets `revoked_at`, clears `password_hash`
+and keeps the row.
+
+| Field | Type | Notes |
+|---|---|---|
+| id | uuid PK | |
+| org_id | uuid FK | cascade delete with organization |
+| funding_source_id | uuid | composite FK `(funding_source_id, org_id) → funding_sources(id, org_id)`, **no action** (D-93 2.3) |
+| month | char(7) | check `month ~ '^\d{4}-(0[1-9]\|1[0-2])$'` |
+| artifact_type | enum `artifact_type` | check: `packet_pdf` or `summary_xlsx` only |
+| artifact_id | uuid | FK `(artifact_id, org_id, funding_source_id, month, artifact_type) → generated_artifacts(id, org_id, funding_source_id, month, type)`, named `shared_links_artifact_fk`, **no action** — a link cannot point at another org's, source's, month's or kind's file (P9) |
+| token | text | twelve base62 characters, check `^[0-9A-Za-z]{12}$`; unique over **every** row, stopped ones included, so a token never comes back. Stored as written (P4) |
+| password_hash | text null | argon2id; null = opens without a password. Never sent to a browser |
+| filename | text | download name when last shared or updated (R10.3) |
+| records_hash | text | `recordsHash(snapshot)` when last shared or updated — the snapshot's hash without a generator version, compared on load for "Your records changed" (P14) |
+| created_by | uuid FK null | who first shared it; set null when that account is removed |
+| shared_at | timestamptz | when the current file was put behind the link; moves on Update |
+| shared_by | uuid FK null | who put it there; moves on Update; set null on removal |
+| revoked_at | timestamptz null | Stop sharing |
+| revoked_by | uuid FK null | set null on removal |
+| created_at / updated_at | timestamptz | |
+
+Partial unique `shared_links_active_uq` on `(org_id, funding_source_id, month, artifact_type)`
+**where revoked_at is null** — one PDF link and one Excel link per source and month; it also serves
+the packet tab's list. Index `(artifact_id)` serves the foreign-key check.
+Checks `shared_links_revoked_password_ck` (`revoked_at is null or password_hash is null` — a stopped
+link keeps no password) and `shared_links_revoked_by_ck` (`revoked_by is null or revoked_at is not
+null` — one way only, since `revoked_by` is set null when that account is removed).
+
 ## Relationships summary
 
-organizations 1—1 contract_settings (deprecated) · 1—n users, payment_sources, supporting_doc_types, funding_sources, line_items, expenses, month_documents, month_statuses, month_lock_events, vendor_defaults, recurring_items, generated_artifacts, ai_usage_events, monthly_summaries (cascade delete). funding_sources 1—n line_items, expenses, month_documents, month_statuses, month_lock_events, generated_artifacts, monthly_summaries (no action; funding sources are never deleted), ai_usage_events (set null on delete). expenses 1—n expense_documents. line_items 1—n expenses (restrict), recurring_items (cascade after confirm), vendor_defaults (set null). users 1—n user_tour_progress (cascade delete), month_lock_events (set null on delete), ai_usage_events (set null on delete), monthly_summaries as written_by/edited_by (set null on delete).
+organizations 1—1 contract_settings (deprecated) · 1—n users, payment_sources, supporting_doc_types, funding_sources, line_items, expenses, month_documents, month_statuses, month_lock_events, vendor_defaults, recurring_items, generated_artifacts, ai_usage_events, monthly_summaries, shared_links (cascade delete). generated_artifacts 1—n shared_links (no action; pinned artifacts are never deleted). funding_sources 1—n line_items, expenses, month_documents, month_statuses, month_lock_events, generated_artifacts, monthly_summaries, shared_links (no action; funding sources are never deleted), ai_usage_events (set null on delete). expenses 1—n expense_documents. line_items 1—n expenses (restrict), recurring_items (cascade after confirm), vendor_defaults (set null). users 1—n user_tour_progress (cascade delete), month_lock_events (set null on delete), ai_usage_events (set null on delete), monthly_summaries as written_by/edited_by, shared_links as created_by/shared_by/revoked_by (set null on delete).
 
 ## S3 layout (private bucket)
 

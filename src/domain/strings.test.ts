@@ -482,3 +482,25 @@ describe("`/a` staff dashboard UI strings (Phase 9 Phase 4)", () => {
     }
   });
 });
+
+describe("sharing copy (PHASE-12, Appendix A verbatim)", () => {
+  it("pins the ticket's wording", () => {
+    expect(UI.shareButton).toBe("Share link");
+    expect(UI.shareDialogTitle("March 2026")).toBe("Share March 2026 files");
+    expect(UI.shareChoicePacketHint).toBe("Opens in the browser. Clickable references work in Chrome, Edge and Safari.");
+    expect(UI.shareChoiceSummaryHint).toBe("Downloads the Excel file.");
+    expect(UI.shareCreatingPacket).toBe("Preparing the packet…");
+    expect(UI.sharePasswordNote).toBe("Password protected. Send the password separately, for example by text.");
+    expect(UI.sharedOn("4/8/2026", "Misty")).toBe("Shared on 4/8/2026 by Misty");
+    expect(UI.shareStopTitle("March 2026", "packet")).toBe("Stop sharing the March 2026 packet?");
+    expect(UI.shareStopTitle("March 2026", "summary")).toBe("Stop sharing the March 2026 summary?");
+    expect(UI.shareStopBody).toBe("Anyone who has the link won't be able to open it.");
+    expect(UI.shareRecordsChanged("4/8/2026")).toBe(
+      "Your records changed since you shared this file on 4/8/2026. The link still gives the older file.",
+    );
+    expect(UI.sharePasswordProtected).toBe("This file is password protected.");
+    expect(UI.sharePasswordWrong).toBe("That password isn't right.");
+    expect(UI.shareTooManyTries).toBe("Too many tries. Please wait 15 minutes and try again.");
+    expect(UI.shareUnavailable).toBe("This link is no longer available. Please ask the sender for a new one.");
+  });
+});

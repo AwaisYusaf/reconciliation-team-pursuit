@@ -1,25 +1,20 @@
 import { NextResponse } from "next/server";
 
 import { isValidMonthKey, type MonthKey } from "@/src/domain/dates";
-import { blockingRecords } from "@/src/domain/gate";
-import { resolveArtifact } from "@/src/generation/artifacts";
-import { inputsHash } from "@/src/generation/cache-key";
-import { gateExpenses, loadMonthSnapshot } from "@/src/generation/month-snapshot";
-import { buildSummaryWorkbook, summaryWorkbookName } from "@/src/generation/summary-xlsx";
 import { attachmentHeader } from "@/src/lib/http";
-import { deletedItemsRefusal, loadTrashedExpenses } from "@/src/modules/expenses/queries";
-import { findFundingSource, loadSourceContext } from "@/src/modules/funding-sources/queries";
+import { findFundingSource } from "@/src/modules/funding-sources/queries";
+import {
+  generationBudgetMessage,
+  monthOutputFailureMessage,
+  prepareMonthOutput,
+  resolveMonthOutput,
+} from "@/src/modules/packet/month-output";
 import { getSession } from "@/src/services/auth/session";
 import { consume } from "@/src/services/rate-limit";
 
 export const runtime = "nodejs";
 // Every response depends on the session and on live data, so nothing here may be cached.
 export const dynamic = "force-dynamic";
-
-/** Bump when the workbook's layout changes, so cached artifacts rebuild (R10.4). */
-// Bumped "summary-3": the detail sheet gained a Receipt Total column (R1.3a). Without this, pinned and cached
-// artifacts would keep serving output built before the change.
-const GENERATOR_VERSION = "summary-3";
 
 /**
  * Download the contract summary workbook for a month.
@@ -50,7 +45,7 @@ export async function GET(request: Request) {
   if (!budget.allowed) {
     const seconds = budget.retryAfterSeconds;
     return new NextResponse(
-      `Too many documents requested at once. Try again in ${seconds} second${seconds === 1 ? "" : "s"}.`,
+      generationBudgetMessage(seconds),
       { status: 429, headers: { "Content-Type": "text/plain; charset=utf-8", "Retry-After": String(seconds) } },
     );
   }
@@ -63,67 +58,46 @@ export async function GET(request: Request) {
   // foreign id is the same 404, so a probe learns nothing.
   const source = await findFundingSource(session.orgId, url.searchParams.get("source") ?? "");
   if (!source) return new NextResponse("Unknown funding source", { status: 404 });
-  const fundingSourceId = source.id;
 
-  // Re-checked here, not just in the packet screen's dialog — see the packet route's own
-  // comment on this same gate. A promise enforced only in the browser is not enforced.
-  const confirmedDeletions = url.searchParams.get("confirmedDeletions") === "1";
-  const deletedThisMonth = await loadTrashedExpenses(session.orgId, fundingSourceId, month);
-  if (deletedThisMonth.length > 0 && !confirmedDeletions) {
-    return new NextResponse(deletedItemsRefusal(deletedThisMonth), {
-      status: 409,
+  // Re-checked here (with the documentation gate, R4.3), not just in the packet screen's
+  // dialog — see `prepareMonthOutput`. A promise enforced only in the browser is not enforced.
+  const prepared = await prepareMonthOutput({
+    orgId: session.orgId,
+    source,
+    month: month as MonthKey,
+    kind: "summary",
+    confirmedDeletions: url.searchParams.get("confirmedDeletions") === "1",
+  });
+  if (!prepared.ok) {
+    return new NextResponse(prepared.message, {
+      status: prepared.status,
       headers: { "Content-Type": "text/plain; charset=utf-8" },
     });
-  }
-
-  const snapshot = await loadMonthSnapshot(session.orgId, fundingSourceId, month as MonthKey);
-
-  // Filenames gain the source name only once the organisation has more than one source (R10.3).
-  const { single } = await loadSourceContext(session.orgId, session.activeFundingSourceId);
-
-  const blocking = blockingRecords(gateExpenses(snapshot.expenses));
-  if (blocking.length > 0) {
-    return new NextResponse(
-      `${blocking.length} ${blocking.length === 1 ? "record is" : "records are"} missing documentation:\n` +
-        blocking.map((record) => `• ${record.label}`).join("\n"),
-      { status: 409, headers: { "Content-Type": "text/plain; charset=utf-8" } },
-    );
   }
 
   let body: Buffer;
   let contentType: string;
   try {
-    ({ body, contentType } = await resolveArtifact({
-      orgId: session.orgId,
-      fundingSourceId,
-      month: month as MonthKey,
-      type: "summary_xlsx",
-      extension: "xlsx",
-      hash: inputsHash({ snapshot, generatorVersion: GENERATOR_VERSION }),
-      build: () => buildSummaryWorkbook(snapshot),
-    }));
+    ({ body, contentType } = await resolveMonthOutput(prepared));
   } catch (error) {
-    // The refusals above are deliberate and worded; this is a genuine fault. The client
-    // shows whatever text comes back, so it gets something actionable rather than Next's
-    // generic 500 page, and the detail is logged rather than sent to the browser.
+    // The refusals above are deliberate and worded; this is a genuine fault. The detail is
+    // logged rather than sent to the browser.
     console.error("summary workbook generation failed", {
       orgId: session.orgId,
       month,
       error,
     });
-    return new NextResponse(
-      "The summary could not be generated just now. Please try again — if it keeps failing, contact Mantaq.",
-      { status: 500, headers: { "Content-Type": "text/plain; charset=utf-8" } },
-    );
+    return new NextResponse(monthOutputFailureMessage("summary", error), {
+      status: 500,
+      headers: { "Content-Type": "text/plain; charset=utf-8" },
+    });
   }
 
   return new NextResponse(new Uint8Array(body), {
     headers: {
       "Content-Type": contentType,
       "Content-Length": String(body.byteLength),
-      "Content-Disposition": attachmentHeader(
-        summaryWorkbookName(snapshot.docName, month as MonthKey, single ? undefined : source.name),
-      ),
+      "Content-Disposition": attachmentHeader(prepared.filename),
       // A pinned artifact is immutable, but the URL is not: it serves whatever the current
       // data hashes to, so a shared cache must never answer for it.
       "X-Content-Type-Options": "nosniff",

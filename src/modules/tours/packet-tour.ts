@@ -31,7 +31,7 @@ export const PACKET_TOUR_STEPS: readonly TourStep[] = [
   {
     target: "packet-downloads",
     title: "Download",
-    body: "Download the packet PDF for signing and the Excel summary.",
+    body: "Download the packet PDF for signing and the Excel summary, or share either with a link.",
   },
   {
     target: "packet-submit",
