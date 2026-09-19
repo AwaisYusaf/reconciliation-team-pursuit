@@ -16,9 +16,10 @@ Rules come from `docs/01-domain/domain-rules.md` (R-numbers), `docs/04-engineeri
 - **Money is integer cents** end to end; format only at render (`src/domain/format.ts`). Flag string
   round trips (format → parse → format), floats, `?? 0` on unparseable money (saves $0.00 silently).
 - **Printed strings come only from `src/domain/strings.ts`** (R-§12). Flag literals in generators.
-- **Generator versions**: `GENERATOR_VERSION` in `app/api/downloads/{packet,cover-sheet,summary}/route.ts`
-  must be bumped when output bytes change, and must **not** be bumped when they don't. Downloaded
-  artifacts are pinned forever (R10.6); a stale version serves an old cached file.
+- **Generator versions**: `PACKET_`/`SUMMARY_`/`COVER_SHEET_GENERATOR_VERSION` in
+  `src/generation/versions.ts` (moved out of the download routes by PHASE-12, so shares and downloads
+  read one value) must be bumped when output bytes change, and must **not** be bumped when they
+  don't. Downloaded artifacts are pinned forever (R10.6); a stale version serves an old cached file.
 - **Cache-key stability**: `MonthSnapshot` (`src/generation/month-snapshot.ts`) is hashed whole by
   `inputsHash`. Adding a field, reordering a query, or changing how `docName`/`settings` derive changes
   every key for existing orgs. `src/generation/snapshot-stability.integration.test.ts` holds constants
