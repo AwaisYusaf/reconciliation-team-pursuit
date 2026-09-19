@@ -42,7 +42,7 @@ organization is paused or cancelled.
 
 | # | Decision | Why |
 |---|---|---|
-| P1 | **Links use `APP_URL`, and production refuses to start without it** (`REQUIRED_IN_PRODUCTION` in `instrumentation.ts`, validated as an http(s) URL). | A link is built once and emailed. A wrong or missing domain would only show up in the City's inbox; a boot failure shows up at deploy. User, 2026-09-19. |
+| P1 | **Links use `APP_URL`, and production refuses to start without it** (`REQUIRED_IN_PRODUCTION` in `instrumentation.ts`; it must be an https URL in production, and `deploy.sh` checks it before deploying — review round). | A link is built once and emailed. A wrong or missing domain would only show up in the City's inbox; a boot failure shows up at deploy. User, 2026-09-19. |
 | P2 | **Wrong passwords are counted per link and visitor** (`sharePasswordPerLinkIp`: 5 per 15 minutes, in-process like the login limits). Every limit is checked *before* the password is, so a sixth try is refused even when it is right; the fifth wrong try already answers "Too many tries…", since nothing is left of that visitor's budget. A right password resets that visitor's count. A second limit, `sharePasswordPerIp` (30 per 15 minutes across all links), bounds argon2 work from one address, as `loginPerIp` does for sign-in. There is deliberately **no** per-link limit across addresses. **Review round:** a visitor is keyed by `rateLimitSubject` — an IPv4 address whole, an IPv6 address by its /64, an IPv4 address written as IPv6 by the IPv4 part — and a guess no password could match (empty, under 6 or over 128 characters) costs no try and no hash. | D-44: an attacker's wrong guesses must never lock the real user out. A per-link cap would let anyone holding the link, from enough addresses, block the City. User, 2026-09-19: "that visitor only". One IPv6 subscriber holds a whole /64, which keyed on full addresses would be billions of fresh budgets. |
 | P3 | **Token: 12 characters of `[0-9A-Za-z]`** from `crypto.randomBytes` with rejection sampling (bytes ≥ 248 are dropped, so every character is equally likely). Unique across all rows, including stopped ones. | See C1. The unique index over every row means a stopped link's token can never come back. |
 | P4 | **The token is stored as written**, not hashed. | The Shared links box shows the link again for Copy link. Sessions hash their token because nobody needs to read it back. Anyone who can read this table can already read the files themselves from storage. |
@@ -660,7 +660,7 @@ tests in 144 files pass, and typecheck and lint are clean.
 - U-1 Token: length 12, alphabet, uniform rejection bound; `isShareToken` refuses 11 and 13 characters, `-`, `_`, `../` and non-ASCII.
 - U-2 Unlock cookie: valid, tampered, expired, expiry too far ahead, malformed, other share, password changed, password removed.
 - U-3 `inlineHeader`: injection characters, length cap, RFC 8187 form.
-- U-4 `siteOrigin` and the APP_URL boot check (missing, not http(s), trailing path).
+- U-4 `siteOrigin` and the APP_URL boot check (missing, not http(s), http in production, trailing path).
 - U-5 `clientIpFrom`: the same answers as today's login cases.
 - U-6 `prepareMonthOutput` refusals keep today's texts and statuses. The two download routes'
   existing tests pass unchanged.
