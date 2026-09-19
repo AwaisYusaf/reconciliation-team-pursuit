@@ -69,7 +69,7 @@ describe.skipIf(!canRun)("coverSheetAnchors on a converted sheet", () => {
     const anchors = coverSheetAnchors(pdf, rows);
     const words = wordsOf(pdf);
     anchors.forEach((anchor, index) => {
-      const token = words.find((w) => w.text === `${rows[index].reference}:`)!;
+      const token = words.find((w) => w.text === `(${rows[index].reference}):`)!;
       expect(anchor.heading.page).toBe(token.page);
       expect(contains(anchor.heading.rect, toPdfRect(token, token.pageHeight))).toBe(true);
       // Scrolling to `top` shows the heading at the top of the viewport, not just below it.
@@ -117,7 +117,7 @@ describe.skipIf(!canRun)("coverSheetAnchors on a sheet that spans pages", () => 
     expect(Math.max(...anchors.map((a) => a.heading.page))).toBeGreaterThanOrEqual(1);
     const words = wordsOf(pdf);
     for (const [index, anchor] of anchors.entries()) {
-      const token = words.find((w) => w.text === `${many[index].reference}:`)!;
+      const token = words.find((w) => w.text === `(${many[index].reference}):`)!;
       expect(anchor.heading.page).toBe(token.page);
     }
   }, 180_000);

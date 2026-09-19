@@ -67,7 +67,7 @@ describe("inline notes (R6.5, R6.7)", () => {
     ).toEqual([
       "Paid in cash",
       TAX_NOTE,
-      "(Note: No receipt available — vendor closed)",
+      "(Note: No receipt available. Reason: vendor closed)",
     ]);
   });
 

@@ -82,8 +82,8 @@ describe("finishPacket", () => {
       { title: "Contract summary", toPage: 0, depth: 0 },
       { title: "Expense index", toPage: 1, depth: 0 },
       { title: "Transportation", toPage: 2, depth: 0 },
-      { title: "2026-02-001 — Rideshare 1", toPage: 2, depth: 1 },
-      { title: "2026-02-002 — Cash fare", toPage: 2, depth: 1 },
+      { title: "2026-02-001 | Rideshare 1", toPage: 2, depth: 1 },
+      { title: "2026-02-002 | Cash fare", toPage: 2, depth: 1 },
       { title: "Month documents", toPage: 5, depth: 0 },
     ]);
   });

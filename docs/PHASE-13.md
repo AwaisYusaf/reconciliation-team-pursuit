@@ -248,4 +248,23 @@ Before and after, grouped by screen, with a short reason when it isn't only a da
 
 ## 10. Results
 
-(Filled in as each phase finishes.)
+### Phase 1: documents (2026-09-19)
+
+- Built as §4. `packetIndexTitle` joined `packetSummaryTitle` in `strings.ts`, so both titles
+  have one home. The oversize warning now reads "It has been downloaded anyway, but DocuSign may
+  reject it."
+- `pdf-anchors.ts` matches `(ref):` or a bare `ref`. The old `ref:` form is gone, since nothing
+  prints it. **Mutation:** without the `(ref):` match, 4 anchor tests fail.
+- **Found while testing:** the index's no-receipt line now prints the same `Name (ref):` form as
+  the heading, so the trace test's "find the heading token" picked up the index copy first. The
+  test now looks only on cover sheet pages. Packet anchoring was never affected, because it
+  measures each converted cover sheet on its own.
+- The oversize-warning header test used the em dash as its example of non-Latin-1 text. It now
+  uses a curly quote, and still proves why the route encodes the header.
+- **Render check:** the local Mantaq August 2026 packet (8 pages) and workbook, built from the
+  database, contain no dash. The footer reads `Mantaq | August 2026 | 2026-08-006 | Page 5 of 8`,
+  the titles `Mantaq August 2026 Contract Summary` and `… Expense Index`, and the heading
+  `Review Vendor C (2026-08-006):`. `render-smoke.ts` passes.
+- Unit tests for domain and generation pass (603), as do the generation, packet and sharing
+  integration tests (276). Typecheck and lint are clean.
+- `scenarios.md` S10 still quotes the old note. It's a record of a past run, so it's left as is.

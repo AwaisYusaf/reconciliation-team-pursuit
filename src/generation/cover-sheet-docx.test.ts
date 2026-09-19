@@ -242,7 +242,7 @@ describe("notes below the table (R6.3 – R6.7)", () => {
 
   it("discloses a missing receipt with its reason (R6.7)", async () => {
     expect(await documentXml()).toContain(
-      "(Note: No receipt available — vendor could not reissue the receipt)",
+      "(Note: No receipt available. Reason: vendor could not reissue the receipt)",
     );
   });
 

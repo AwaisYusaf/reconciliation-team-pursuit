@@ -91,7 +91,7 @@ describe("packet summary section", () => {
 describe.skipIf(!hasPdftotext())("packet summary text", () => {
   it("prints the title and the R7.3 context line", async () => {
     const text = await extractText(await buildSummarySectionPdf(snapshot));
-    expect(text).toContain("Team Pursuit — Contract Summary — February 2026");
+    expect(text).toContain("Team Pursuit February 2026 Contract Summary");
     expect(text).toContain("Contract 6007211");
     expect(text).toContain("Base PO 3086984");
     expect(text).toContain("Invoice period: 2/1/2026 to 2/28/2026");
@@ -230,7 +230,7 @@ describe.skipIf(!hasPdftotext())("packet summary text", () => {
     const text = await extractText(
       await buildSummarySectionPdf({ ...snapshot, amounts: [], expenses: [] }),
     );
-    expect(text).toContain("Team Pursuit — Contract Summary — February 2026");
+    expect(text).toContain("Team Pursuit February 2026 Contract Summary");
     expect(text).toContain("$0.00");
   });
 });

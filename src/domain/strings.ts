@@ -13,9 +13,9 @@ import { SHARE_PASSWORD_MAX, SHARE_PASSWORD_MIN } from "@/src/domain/shared-link
 /** The product name, everywhere it appears in UI copy, page titles and generated-document fallbacks. */
 export const APP_NAME = "Stay Funded 360";
 
-/** A page's `<title>`, in the app's fixed "Section — App Name" form. */
+/** A page's `<title>`, in the app's fixed "Section | App Name" form (D-113). */
 export function pageTitle(section: string): string {
-  return `${section} — ${APP_NAME}`;
+  return `${section} | ${APP_NAME}`;
 }
 
 /** Printed on a cover sheet heading whenever tax > 0 (R6.5). Exact text — singular "Statement". */
@@ -69,15 +69,16 @@ export function expenseReference(month: string, seq: number): string {
  *
  * The reference is here, and only here on the sheet: it is the one string unique to the
  * expense — two pay periods for one person print identical table rows — and the packet's links
- * anchor on it. The colon stays attached so `pdftotext` reports `2026-02-014:` as one token.
+ * anchor on it. The colon stays attached so `pdftotext` reports `(2026-02-014):` as one token,
+ * which `pdf-anchors.ts` matches.
  */
 export function coverSheetHeading(name: string, reference: string): string {
-  return `${name} — ${reference}:`;
+  return `${name} (${reference}):`;
 }
 
 /** Disclosure appended to a heading when the expense has no receipt (R6.7). */
 export function noReceiptNote(reason: string): string {
-  return `(Note: No receipt available — ${reason.trim()})`;
+  return `(Note: No receipt available. Reason: ${reason.trim()})`;
 }
 
 /* ------------------------------------------------------------------- UI copy */
@@ -677,12 +678,17 @@ export function packetFooter(
   const parts = [docName, monthLabel];
   if (reference) parts.push(reference);
   parts.push(`Page ${page} of ${total}`);
-  return parts.join(" — ");
+  return parts.join(" | ");
 }
 
-/** Packet summary page title (packet-pdf-spec §1). */
+/** Packet summary page title (packet-pdf-spec "Canonical section order"), worded like the packet's own title. */
 export function packetSummaryTitle(docName: string, monthLabel: string): string {
-  return `${docName} — Contract Summary — ${monthLabel}`;
+  return `${docName} ${monthLabel} Contract Summary`;
+}
+
+/** Expense index page title (packet-pdf-spec "Canonical section order"), worded like the packet's own title. */
+export function packetIndexTitle(docName: string, monthLabel: string): string {
+  return `${docName} ${monthLabel} Expense Index`;
 }
 
 /**

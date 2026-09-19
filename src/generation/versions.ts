@@ -22,7 +22,10 @@
 // reference (D-83). Without this, pinned and cached packets keep serving the old sheets.
 // Bumped "packet-12": the packet now carries internal links and an outline (D-83). Links are
 // code, not snapshot data; without this every cached packet stays unlinked.
-export const PACKET_GENERATOR_VERSION = "packet-12";
+// Bumped "packet-13": no dashes in anything the packet prints (D-113). The footer separates its
+// parts with bars, the summary and index titles read as phrases, the embedded cover sheet heading
+// is `{Name} ({reference}):`, and the outline reads `{reference} | {Name}`.
+export const PACKET_GENERATOR_VERSION = "packet-13";
 
 // Bumped "summary-3": the detail sheet gained a Receipt Total column (R1.3a). Without this, pinned and cached
 // artifacts would keep serving output built before the change.
@@ -33,4 +36,6 @@ export const SUMMARY_GENERATOR_VERSION = "summary-3";
 // in the snapshot, so without this bump pinned and cached artifacts keep serving the wide render.
 // Bumped "cover-8": the heading now carries the expense reference (D-83). Without this, pinned and
 // cached sheets keep printing headings the packet's links cannot anchor on.
-export const COVER_SHEET_GENERATOR_VERSION = "cover-8";
+// Bumped "cover-9": the heading is `{Name} ({reference}):` and the no-receipt note reads
+// "(Note: No receipt available. Reason: …)" (D-113), neither of which the snapshot carries.
+export const COVER_SHEET_GENERATOR_VERSION = "cover-9";

@@ -20,7 +20,7 @@ const FOOTER_FROM_BOTTOM = inchesToPoints(0.35);
 export const MAX_PACKET_BYTES = 25 * 1024 * 1024;
 
 /**
- * Stamp `{DocName} — {Month YYYY} — [{reference} —] Page {i} of {N}` on every page (R10.5).
+ * Stamp `{DocName} | {Month YYYY} | [{reference} |] Page {i} of {N}` on every page (R10.5, D-113).
  *
  * Applied after assembly, which is the only point at which N is known — numbering pages as
  * sections are appended would print a total that later grows.
@@ -168,7 +168,7 @@ export async function finishPacket(
       target: { page: pages[lineItem.firstCoverPage] },
       children: navigation.expenses
         .filter((expense) => expense.lineItemId === lineItem.lineItemId)
-        .map((expense) => ({ title: `${expense.reference} — ${expense.name}`, target: headingOf(expense) })),
+        .map((expense) => ({ title: `${expense.reference} | ${expense.name}`, target: headingOf(expense) })),
     });
   }
   const firstMonth = firstOf("month");
@@ -200,6 +200,6 @@ export function formatBytes(bytes: number): string {
 export function oversizeWarning(bytes: number): string {
   return (
     `This packet is ${formatBytes(bytes)}, above DocuSign's ${formatBytes(MAX_PACKET_BYTES)} limit ` +
-    `even at the lowest image quality. It has been downloaded anyway — DocuSign may reject it.`
+    `even at the lowest image quality. It has been downloaded anyway, but DocuSign may reject it.`
   );
 }

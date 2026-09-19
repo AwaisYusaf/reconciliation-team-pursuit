@@ -4,6 +4,7 @@ import { formatBytes } from "./format";
 import {
   APP_NAME,
   coverSheetFilename,
+  coverSheetHeading,
   coverSheetTitle,
   lineItemDeleteBlocked,
   monthlySummaryFilename,
@@ -11,6 +12,7 @@ import {
   noReceiptNote,
   packetFilename,
   packetFooter,
+  packetIndexTitle,
   packetSummaryTitle,
   pageTitle,
   PLAN_LABELS,
@@ -31,7 +33,7 @@ describe("canonical document strings (R12)", () => {
       "Please see below for additional information for some of the above items.",
     );
     expect(noReceiptNote("Paid via CashApp; payment screenshot attached as proof.")).toBe(
-      "(Note: No receipt available — Paid via CashApp; payment screenshot attached as proof.)",
+      "(Note: No receipt available. Reason: Paid via CashApp; payment screenshot attached as proof.)",
     );
   });
 
@@ -41,7 +43,7 @@ describe("canonical document strings (R12)", () => {
   });
 
   it("trims the caller's reason without altering its wording", () => {
-    expect(noReceiptNote("  CashApp only  ")).toBe("(Note: No receipt available — CashApp only)");
+    expect(noReceiptNote("  CashApp only  ")).toBe("(Note: No receipt available. Reason: CashApp only)");
   });
 });
 
@@ -98,25 +100,24 @@ describe("admin dashboard strings (Phase 9, verbatim)", () => {
 });
 
 describe("pageTitle (product rename)", () => {
-  it("joins section and app name with an em dash, not a hyphen or en dash", () => {
-    expect(pageTitle("Dashboard")).toBe(`Dashboard — ${APP_NAME}`);
-    expect(pageTitle("Dashboard")).toContain("—"); // em dash, U+2014
-    expect(pageTitle("Dashboard")).not.toContain("–"); // en dash
+  it("joins section and app name with a bar, never a dash (D-113)", () => {
+    expect(pageTitle("Dashboard")).toBe(`Dashboard | ${APP_NAME}`);
+    expect(pageTitle("Dashboard")).not.toMatch(/[\u2013\u2014]/);
     expect(pageTitle("Dashboard")).not.toMatch(/ - /); // hyphen with spaces
   });
 
   it("still prepends the separator and app name for an empty section, rather than throwing", () => {
-    expect(pageTitle("")).toBe(` — ${APP_NAME}`);
+    expect(pageTitle("")).toBe(` | ${APP_NAME}`);
   });
 
-  it("does not collide with a section that already contains an em dash", () => {
-    expect(pageTitle("Before — After")).toBe(`Before — After — ${APP_NAME}`);
+  it("does not collide with a section that already contains a bar", () => {
+    expect(pageTitle("Before | After")).toBe(`Before | After | ${APP_NAME}`);
   });
 
   it("does not truncate a very long section label", () => {
     const longSection = "A".repeat(500);
     const title = pageTitle(longSection);
-    expect(title).toBe(`${longSection} — ${APP_NAME}`);
+    expect(title).toBe(`${longSection} | ${APP_NAME}`);
     expect(title.startsWith(longSection)).toBe(true);
   });
 });
@@ -128,13 +129,21 @@ describe("document titles (R6.1, R10.5)", () => {
     );
   });
 
-  it("builds the packet footer and summary title", () => {
+  it("builds the packet footer and the summary and index titles (D-113)", () => {
     expect(packetFooter("Team Pursuit", "February 2026", 7, 128)).toBe(
-      "Team Pursuit — February 2026 — Page 7 of 128",
+      "Team Pursuit | February 2026 | Page 7 of 128",
+    );
+    expect(packetFooter("Team Pursuit", "February 2026", 7, 128, "2026-02-014")).toBe(
+      "Team Pursuit | February 2026 | 2026-02-014 | Page 7 of 128",
     );
     expect(packetSummaryTitle("Team Pursuit", "February 2026")).toBe(
-      "Team Pursuit — Contract Summary — February 2026",
+      "Team Pursuit February 2026 Contract Summary",
     );
+    expect(packetIndexTitle("Team Pursuit", "February 2026")).toBe("Team Pursuit February 2026 Expense Index");
+  });
+
+  it("puts the reference in brackets on the cover sheet heading, colon attached (R6.4, D-113)", () => {
+    expect(coverSheetHeading("Jane Doe Pay Period 1", "2026-02-014")).toBe("Jane Doe Pay Period 1 (2026-02-014):");
   });
 });
 
