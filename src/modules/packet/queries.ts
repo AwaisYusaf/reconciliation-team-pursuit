@@ -277,8 +277,10 @@ export async function loadPacketReadiness(
     indexPages,
     monthDocumentPages,
     totalPages:
-      summaryPages +
-      indexPages +
+      // TEMPORARILY HIDDEN (D-114): the packet starts at the first cover sheet. Uncomment when the
+      // summary and expense index are wanted back; packet-pdf.ts lists every place to restore.
+      // summaryPages +
+      // indexPages +
       monthDocumentPages +
       readiness.reduce((sum, row) => sum + row.estimatedPages, 0),
     submittedAt: status[0]?.submittedAt ?? null,

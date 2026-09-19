@@ -211,8 +211,15 @@ describe.skipIf(!canRun)("packet traceability (integration)", async () => {
     // The summary, the index and the cover sheet cover the month or the whole category;
     // stamping one expense's number on them would assert something untrue.
     const referenceOnPage = /\| \d{4}-\d{2}-\d{3} \| Page/;
-    expect(referenceOnPage.test(pageText[0])).toBe(false);
-    expect(referenceOnPage.test(pageText[1])).toBe(false);
+    // TEMPORARILY HIDDEN (D-114): pages 1 and 2 were the summary and the index. While they are
+    // hidden, page 2 can be a receipt, so every non-evidence page is checked from the page map.
+    // expect(referenceOnPage.test(pageText[0])).toBe(false);
+    // expect(referenceOnPage.test(pageText[1])).toBe(false);
+    assembled.pages.forEach((page, index) => {
+      if (page.kind !== "receipt" && page.kind !== "supporting") {
+        expect(referenceOnPage.test(pageText[index])).toBe(false);
+      }
+    });
   });
 
   it("still numbers every page against the final total (R10.5)", () => {
@@ -239,10 +246,17 @@ describe.skipIf(!canRun)("packet traceability (integration)", async () => {
     expect(/\| \d{4}-\d{2}-\d{3} \| Page/.test(pageText[pageCount - 1])).toBe(false);
   });
 
-  it("still opens on the summary and the index", () => {
-    // Moving one section must not disturb the two that introduce the packet.
-    expect(pageText[0]).toContain("Contract Summary");
-    expect(pageText[1]).toMatch(/Ref|Expense/);
+  // TEMPORARILY HIDDEN (D-114): the summary and index are left out, so the packet opens on the
+  // first cover sheet. When they are uncommented, restore this test and drop the one below it.
+  // it("still opens on the summary and the index", () => {
+  //   // Moving one section must not disturb the two that introduce the packet.
+  //   expect(pageText[0]).toContain("Contract Summary");
+  //   expect(pageText[1]).toMatch(/Ref|Expense/);
+  // });
+  it("opens on the first cover sheet while the summary and index are hidden (D-114)", () => {
+    expect(pageText[0]).toContain("Transportation Breakdown");
+    expect(pageText.some((text) => text.includes("Contract Summary"))).toBe(false);
+    expect(pageText.some((text) => text.includes("Expense Index"))).toBe(false);
   });
 
   it("records what every page is, in order, from a real assembly (D-83)", async () => {
@@ -255,9 +269,13 @@ describe.skipIf(!canRun)("packet traceability (integration)", async () => {
 
     const kinds = pages.map((page) => page.kind);
     // Summary and index may each run to more than one page, but nothing else precedes them.
-    expect(kinds[0]).toBe("summary");
-    expect(kinds.indexOf("index")).toBe(kinds.lastIndexOf("summary") + 1);
-    expect(kinds.indexOf("cover")).toBe(kinds.lastIndexOf("index") + 1);
+    // TEMPORARILY HIDDEN (D-114): restore these three when the summary and index come back.
+    // expect(kinds[0]).toBe("summary");
+    // expect(kinds.indexOf("index")).toBe(kinds.lastIndexOf("summary") + 1);
+    // expect(kinds.indexOf("cover")).toBe(kinds.lastIndexOf("index") + 1);
+    expect(kinds[0]).toBe("cover");
+    expect(kinds).not.toContain("summary");
+    expect(kinds).not.toContain("index");
     for (const page of pages) if (page.kind === "cover") expect(page.lineItemId).toBe(lineItemId);
 
     // Three expenses, each with one single-page receipt; proofs live inside the cover sheet and
@@ -345,19 +363,25 @@ describe.skipIf(!canRun)("packet traceability (integration)", async () => {
       const toHeading = links.filter((l) => l.toPage === heading.page && l.top !== null && isCover(l.fromPage));
       // Row and heading both land on the heading, scrolled to the top.
       expect(toHeading.length).toBeGreaterThanOrEqual(2);
-      const indexPages = pageText.map((t, i) => (t.includes("Expense Index") ? i : -1)).filter((i) => i >= 0);
-      const fromIndex = links.filter((l) => indexPages.includes(l.fromPage));
-      // Four Ref cells; the no-receipt one stays inside the index, pointing at its disclosure.
-      expect(fromIndex).toHaveLength(4);
-      expect(fromIndex.filter((l) => indexPages.includes(l.toPage) && l.top !== null)).toHaveLength(1);
-      expect(pageText.some((t) => t.includes("no receipt available") && t.includes("Paid in cash"))).toBe(true);
+      // TEMPORARILY HIDDEN (D-114): no index, so no index links and no D-74 line. Restore these
+      // when the index comes back.
+      // const indexPages = pageText.map((t, i) => (t.includes("Expense Index") ? i : -1)).filter((i) => i >= 0);
+      // const fromIndex = links.filter((l) => indexPages.includes(l.fromPage));
+      // // Four Ref cells; the no-receipt one stays inside the index, pointing at its disclosure.
+      // expect(fromIndex).toHaveLength(4);
+      // expect(fromIndex.filter((l) => indexPages.includes(l.toPage) && l.top !== null)).toHaveLength(1);
+      // expect(pageText.some((t) => t.includes("no receipt available") && t.includes("Paid in cash"))).toBe(true);
+      // The trail still explains itself where it ends: the cover sheet prints the reason (R6.7).
+      expect(
+        pageText.some((t, i) => isCover(i) && /No\s+receipt\s+available/.test(t) && /Paid\s+in\s+cash/.test(t)),
+      ).toBe(true);
     });
 
     it("lists the packet in the outline, expenses under their line item", async () => {
       const outline = await readOutline(delivered);
       expect(outline.map((o) => o.title)).toEqual([
-        "Contract summary",
-        "Expense index",
+        // "Contract summary", // TEMPORARILY HIDDEN (D-114)
+        // "Expense index", // TEMPORARILY HIDDEN (D-114)
         "Transportation",
         `${MONTH}-001 | Rideshare 1`,
         `${MONTH}-002 | Rideshare 2`,

@@ -197,8 +197,15 @@ describe("packetContents", () => {
       ],
     });
 
-  it("opens on the summary and the index", () => {
-    expect(contents().slice(0, 2).map((section) => section.key)).toEqual(["summary", "index"]);
+  // TEMPORARILY HIDDEN (D-114): the summary and index are left out, so the listing opens on the
+  // first line item. When they are uncommented, restore the commented expectations in this block.
+  // it("opens on the summary and the index", () => {
+  //   expect(contents().slice(0, 2).map((section) => section.key)).toEqual(["summary", "index"]);
+  // });
+  it("opens on the first line item while the summary and index are hidden (D-114)", () => {
+    expect(contents()[0].key).toBe("li-1");
+    expect(contents().map((section) => section.key)).not.toContain("summary");
+    expect(contents().map((section) => section.key)).not.toContain("index");
   });
 
   it("ends with the month documents (D-77)", () => {
@@ -209,8 +216,8 @@ describe("packetContents", () => {
 
   it("puts every line item between the index and the month documents", () => {
     expect(contents().map((section) => section.key)).toEqual([
-      "summary",
-      "index",
+      // "summary", // TEMPORARILY HIDDEN (D-114)
+      // "index", // TEMPORARILY HIDDEN (D-114)
       "li-1",
       "li-2",
       "monthDocuments",
@@ -219,13 +226,14 @@ describe("packetContents", () => {
 
   it("keeps the line items in the order given, and carries their pages", () => {
     expect(contents().map((section) => section.label)).toEqual([
-      "Contract summary sheet",
-      "Expense index",
+      // "Contract summary sheet", // TEMPORARILY HIDDEN (D-114)
+      // "Expense index", // TEMPORARILY HIDDEN (D-114)
       "Salary cover sheet and documents",
       "Travel cover sheet and documents",
       "Month documents",
     ]);
-    expect(contents().map((section) => section.pages)).toEqual([2, 1, 21, 14, 30]);
+    // expect(contents().map((section) => section.pages)).toEqual([2, 1, 21, 14, 30]); // TEMPORARILY HIDDEN (D-114)
+    expect(contents().map((section) => section.pages)).toEqual([21, 14, 30]);
   });
 
   it("still lists the month documents row when the month has none", () => {
@@ -236,6 +244,7 @@ describe("packetContents", () => {
       monthDocumentPages: 0,
       lineItems: [],
     });
-    expect(empty.map((section) => section.key)).toEqual(["summary", "index", "monthDocuments"]);
+    // expect(empty.map((section) => section.key)).toEqual(["summary", "index", "monthDocuments"]); // TEMPORARILY HIDDEN (D-114)
+    expect(empty.map((section) => section.key)).toEqual(["monthDocuments"]);
   });
 });

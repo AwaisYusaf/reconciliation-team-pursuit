@@ -88,6 +88,41 @@ describe("finishPacket", () => {
     ]);
   });
 
+  it("bookmarks no contract summary when the packet has none, and starts at the line item (D-114)", async () => {
+    // The packet as it is built while sections 1 and 2 are hidden: it opens on the cover sheet.
+    const hidden = pages.slice(2);
+    const shifted: PacketNavigation = {
+      index: { refCells: [], disclosures: [] },
+      lineItems: [{ ...navigation.lineItems[0], firstCoverPage: 0 }],
+      expenses: navigation.expenses.map((expense) => ({
+        ...expense,
+        row: { ...expense.row, page: 0 },
+        heading: { ...expense.heading, page: 0 },
+      })),
+    };
+    const doc = await PDFDocument.create();
+    for (let i = 0; i < hidden.length; i += 1) doc.addPage([612, 792]);
+    const outline = await readOutline(
+      await finishPacket(Buffer.from(await doc.save()), "Trace", "February 2026", { pages: hidden, navigation: shifted }),
+    );
+    expect(outline[0]).toEqual({ title: "Transportation", toPage: 0, depth: 0 });
+    expect(outline.map((item) => item.title)).not.toContain("Contract summary");
+    expect(outline.map((item) => item.title)).not.toContain("Expense index");
+  });
+
+  it("leaves an empty month's single blank page unbookmarked (D-114)", async () => {
+    // A month with no expenses and no month documents, while the summary and index are hidden:
+    // nothing is appended, and pdf-lib's `save()` adds one blank page to an empty document, so
+    // the assembler hands over one page that the map records as nothing.
+    const empty = Buffer.from(await (await PDFDocument.create()).save());
+    const finished = await finishPacket(empty, "Trace", "February 2026", {
+      pages: [],
+      navigation: { index: { refCells: [], disclosures: [] }, lineItems: [], expenses: [] },
+    });
+    expect((await PDFDocument.load(finished)).getPageCount()).toBe(1);
+    expect(await readOutline(finished)).toEqual([]);
+  });
+
   it("changes nothing the footer stamp alone would produce: same page count, same text", async () => {
     const owners = pages.map((p) => ("reference" in p ? p.reference : null));
     const plain = await PDFDocument.load(await stampFooters(await blank(), "Trace", "February 2026", owners));

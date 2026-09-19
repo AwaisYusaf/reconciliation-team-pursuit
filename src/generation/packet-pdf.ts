@@ -28,8 +28,10 @@ import { expensesForLineItem, type MonthSnapshot } from "./month-snapshot";
 import { orderedMonthDocuments, packetDocumentsFor } from "./packet-order";
 import { coverSheetAnchors } from "./pdf-anchors";
 import type { Rect } from "./pdf-links";
-import { buildIndexSection } from "./packet-index-pdf";
-import { buildSummarySectionPdf } from "./packet-summary-pdf";
+// TEMPORARILY HIDDEN (D-114): the packet starts at the first cover sheet. Uncomment when the
+// summary and expense index are wanted back; `buildPacketPdf` below lists every place to restore.
+// import { buildIndexSection } from "./packet-index-pdf";
+// import { buildSummarySectionPdf } from "./packet-summary-pdf";
 import { DEFAULT_QUALITY, normalizeImage, rasterizePdf, type RasterQuality } from "./raster";
 
 const PAGE_WIDTH = inchesToPoints(8.5);
@@ -217,29 +219,45 @@ export async function buildPacketPdf(
     }
   }
 
+  /*
+   * TEMPORARILY HIDDEN (D-114): sections 1 and 2 (the contract summary and the expense index)
+   * are commented out, not deleted, so the packet starts at the first cover sheet. The client
+   * asked for this for now. Whenever they are required again, uncomment them. To bring them back:
+   *   1. uncomment the two sections below and their two imports at the top of this file;
+   *   2. uncomment the two rows in `packetContents` (packet-order.ts), so the screen lists them;
+   *   3. uncomment `summaryPages + indexPages +` in `totalPages` (src/modules/packet/queries.ts);
+   *   4. swap the D-114 assertions in packet-order.test.ts and packet-trace.integration.test.ts
+   *      back to the commented originals beside them;
+   *   5. bump PACKET_GENERATOR_VERSION (versions.ts), or cached packets keep starting at the
+   *      cover sheet.
+   * While hidden, `navigation.index` stays empty, so the finishing pass draws no index links. A
+   * month with no expenses and no month documents appends nothing at all; pdf-lib's `save()` then
+   * adds one blank page, so its packet is that page with only the footer on it (accepted).
+   */
+
   /* ------------------------------------------------ 1. contract summary */
-  try {
-    await owned({ kind: "summary" }, async () =>
-      appendGenerated(pdf, await buildSummarySectionPdf(snapshot)),
-    );
-  } catch (error) {
-    throw new PacketError("the contract summary section", error);
-  }
+  // try {
+  //   await owned({ kind: "summary" }, async () =>
+  //     appendGenerated(pdf, await buildSummarySectionPdf(snapshot)),
+  //   );
+  // } catch (error) {
+  //   throw new PacketError("the contract summary section", error);
+  // }
 
   /* --------------------------------------------------- 2. expense index */
   // Directly after the summary, where a contents page belongs: a reviewer meets the totals,
   // then the list of what makes them up, then the evidence.
-  try {
-    const index = await buildIndexSection(snapshot);
-    const firstIndexPage = pdf.getPageCount();
-    await owned({ kind: "index" }, async () => appendGenerated(pdf, index.pdf));
-    navigation.index = {
-      refCells: index.anchors.refCells.map((cell) => ({ ...cell, page: firstIndexPage + cell.page })),
-      disclosures: index.anchors.disclosures.map((line) => ({ ...line, page: firstIndexPage + line.page })),
-    };
-  } catch (error) {
-    throw new PacketError("the expense index section", error);
-  }
+  // try {
+  //   const index = await buildIndexSection(snapshot);
+  //   const firstIndexPage = pdf.getPageCount();
+  //   await owned({ kind: "index" }, async () => appendGenerated(pdf, index.pdf));
+  //   navigation.index = {
+  //     refCells: index.anchors.refCells.map((cell) => ({ ...cell, page: firstIndexPage + cell.page })),
+  //     disclosures: index.anchors.disclosures.map((line) => ({ ...line, page: firstIndexPage + line.page })),
+  //   };
+  // } catch (error) {
+  //   throw new PacketError("the expense index section", error);
+  // }
 
   /* --------------------------------------- 3..n. one section per line item */
   for (const lineItem of snapshot.lineItems) {
