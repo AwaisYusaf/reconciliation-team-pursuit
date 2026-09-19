@@ -1,6 +1,6 @@
 ---
 name: reconciliation-pr-review
-description: Review a pull request on the Team Pursuit reconciliation app (this repo) the way this project requires — ticket-matched, docs-first, verified by running and rendering rather than reasoning, with mutation-tested guards and a short Slack draft for the developer. Use when asked to review, check, re-review or give a green flag on a PR (a GitHub PR number/URL for AwaisYusaf/reconciliation-team-pursuit, or "the team member's PR"), or to confirm requested PR changes were fixed.
+description: Review a pull request on the Team Pursuit reconciliation app (this repo) the way this project requires — ticket-matched, docs-first, verified by running and rendering rather than reasoning, with mutation-tested guards, a code-structure and database-design pass against this repo's conventions, a usability pass for non-technical users, and a short Slack draft for the developer. Use when asked to review, check, re-review or give a green flag on a PR (a GitHub PR number/URL for AwaisYusaf/reconciliation-team-pursuit, or "the team member's PR"), or to confirm requested PR changes were fixed.
 ---
 
 # Reconciliation PR review
@@ -51,6 +51,19 @@ endpoint) → loaders/queries → generators (`src/generation/`) → UI → test
 Apply `references/repo-invariants.md` as you go. It is the checklist of this repo's house rules with
 file pointers; most real findings are a violation of one of them.
 
+Every review has three parts, and all go in the report:
+- **Functionality:** does it do what the ticket says, without regressions?
+- **Code structure and database design:** does it keep the repo and schema ready for a larger
+  product? Where files belong, naming and action conventions, duplication, type and string
+  suppliers, encoding, table and constraint design, migration shape and scale ceilings.
+- **Usability:** the users are non-technical. Doing the real task in the browser, is it easy,
+  findable and few-step? Ask for placement, order, wording or flow changes even when the ticket
+  was followed (`references/usability-review.md`).
+
+Read `references/code-structure-and-db-design.md` before reading the diff. It records how this repo
+is actually built. Judge the PR against those conventions, not against personal taste. When the
+code shows the file is stale, update the file.
+
 For anything the diff introduces that has siblings (a new column, enum value, scope id, supplier
 function), **grep every other path that writes or reads the same thing** — recurring add/remove,
 vendor autofill, `dev-fixture.ts`, `seed.ts`, onboarding, download routes, snapshot capture — and read
@@ -59,7 +72,8 @@ them. That is where the "two paths that must agree" defect lives.
 ### 4. Fan out specialists in parallel (diffs over ~200 lines)
 Launch read-only subagents in one message using the prompts in `references/specialist-prompts.md`:
 testing, data-migration (if migrations), security/tenancy, maintainability (docs-first + single
-supplier), performance, api-contract, design, and an adversarial red team. Give each the PR number,
+supplier), **architecture (repo structure, conventions, database design)**, performance,
+api-contract, design, and an adversarial red team. Give each the PR number,
 the plan path and the specific risks you already suspect. Continue your own reading meanwhile.
 
 Before calling a ticket mismatch a defect, check whether a later client decision changed the rule:
@@ -91,7 +105,10 @@ Clicks that land before hydration silently do nothing — retry with coordinates
 ### 7. Report
 Use `references/report-template.md`:
 - For the user (Awais): verdict first (green flag / changes needed), acceptance-criteria table,
-  verified findings ranked by impact with file:line and how each was proven, what was not verified,
+  verified findings ranked by impact with file:line and how each was proven, a separate
+  **Code structure and database design** section (blocking / should fix / note for later), a
+  **Usability asks** section (what the user sees → why it costs them → proposal), what
+  was not verified,
   and the state left on the machine (branch, DB migration level, backup restore command, test data).
 - **Slack draft for the developer: short and plain.** One-line intro, numbered points, each with
   `file:line`, what breaks, what to do. No praise paragraphs, no restated context. Developers skip long

@@ -87,3 +87,17 @@ Rules come from `docs/01-domain/domain-rules.md` (R-numbers), `docs/04-engineeri
 - Fixed-UUID fixtures need pre-cleanup or a crashed run poisons every later run.
 - `describe.skipIf(!hasPdftotext())` blocks silently skip on machines without poppler — the developer's
   "green" may not include them.
+
+## H. AI features (Phase 10/11, PR #18)
+- Gate: `src/modules/ai/access.ts` is the single answer (plan + switch + env). Every route/action
+  re-reads it from the DB; pages alone are not the boundary.
+- **Test with the real model in the browser**, not only mocks. PR #18's mocked suite was green
+  while the real model (a) read a bank line as `-$165.00`, which turned a proofs-only suggestion
+  into a negative Subtotal (a refund), and (b) wrote "100%" because the prompt asked it to, which
+  the figure verifier then rejected. **The prompt and the verifier are two paths that must
+  agree**: every number the prompt invites must be in the allowed set.
+- Model output that becomes money goes through a strict format check, not the lenient user-input
+  parser (`parseMoneyToCents` reads "1.234,56" as $1.23).
+- Every OpenAI request: `store: false`, `max_output_tokens`, a timeout the tests actually prove,
+  and a usage row even on failure.
+- Ask the user to put `OPENAI_*` in `.env.local` themselves; never handle the key.

@@ -50,6 +50,31 @@ that has a single supplier (see invariants §C); dead code left behind (removed 
 `@deprecated` columns still written); printed strings outside `strings.ts`; duplicated user-facing
 literals; scope creep smuggled into the PR.
 
+## architecture (repo structure, conventions, database design)
+Read `.claude/skills/reconciliation-pr-review/references/code-structure-and-db-design.md` first.
+It records how this repo is actually built. Judge the diff against it:
+- **File placement:** route-local components vs shared ones; `src/domain` purity; `"use server"`
+  exports; `@/` imports vs `../`.
+- **Naming and action conventions:** kebab-case files, `verbNounAction`, one object parameter for
+  multi-field input, runtime validation of untrusted arguments, `ActionResult` instead of throwing.
+- **Single suppliers:** types re-declared instead of `import type` from `schema.ts`, strings
+  half-moved to `strings.ts`, repeated blocks that should be one helper.
+- **Comments:** comments that cite "Phase N" ambiguously or have gone stale.
+- **Encoding:** BOM or mojibake in changed files. Run the check in the reference file.
+- **Database:**
+  - Is the column on the right table for where the product is heading (billing, Stripe)?
+  - Are invalid states storable (missing CHECK)?
+  - Enum vs table.
+  - Naming consistency with sibling tables (audit tables).
+  - Cascade vs keep for history.
+  - Actor deactivation vs delete.
+  - Do indexes serve the new queries?
+  - Lock level (`FOR UPDATE` vs `FOR NO KEY UPDATE`).
+  - Migration safety (`lock_timeout`, additive, backfill order).
+- **Scale ceilings:** client-side loading of all rows, per-request query fan-out against pool max 10.
+For each finding name the sibling the diff drifts from, and rank it blocking / should fix / note
+for later. Use `"category":"architecture: <sub-area>"` in the JSON.
+
 ## performance
 N+1 across sources/months on dashboard, expense form (new/edit) and lists; queries without a usable
 index for the new WHERE shapes (and redundant indexes that only add write cost); helpers inside

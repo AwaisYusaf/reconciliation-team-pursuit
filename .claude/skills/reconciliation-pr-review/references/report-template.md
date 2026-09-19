@@ -21,6 +21,17 @@ typecheck ✓ · lint ✓ · tests <passed>/<total> (<skipped> skipped) · build
 <Scenario in one or two sentences.> Proven by: <probe test / browser + DB / mutation / quoted code>.
 Fix: <one line>.
 
+### Code structure and database design
+Judged against `references/code-structure-and-db-design.md`, naming the existing sibling each item
+drifts from.
+- **Blocking** (expensive once data exists): <schema shape, missing constraint, cascade on history…> — `file:line`
+- **Should fix** (the next developer will copy it): <positional args, duplicated blocks, misplaced files, encoding…> — `file:line`
+- **Note for later** (scale / future features): <e.g. billing columns → own table when Stripe lands>
+
+### Usability asks (non-technical users: fewer, easier steps)
+Done in the browser as the user would, per `references/usability-review.md`.
+1. **<What the user sees>** — <why it costs them>. Proposal: <concrete change>. <"Needs your choice" if it departs from the ticket.>
+
 ### Test gaps (code works, nothing would catch it breaking)
 - …
 
@@ -46,6 +57,9 @@ PR #<n> review — <one-line overall>. <N> things before merge:
    <One or two sentences: scenario and what to do.>
 
 2. …
+
+Code structure / database:
+- <one line each, blocking and should-fix only, with `file:line` and the pattern to follow>
 
 Smaller:
 - <one line each>
