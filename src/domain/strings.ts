@@ -135,10 +135,10 @@ export const UI = {
   uploadFailed: "Upload failed. Try again.",
   noReceiptReasonRequired: "Enter the reason no receipt is available.",
   duplicateEmail: "An organization with that email already exists. Sign in instead.",
-  signInMissingFields: "Enter your organization email and password.",
-  signInUnknownEmail:
-    "We couldn't find an organization with that email. Create an account to get started.",
-  signInWrongPassword: "That password doesn't match this organization email.",
+  signInMissingFields: "Enter your email and password.",
+  /** Each user signs in with their own email, and sign-ups are usually closed (PHASE-13 §11 Q2). */
+  signInUnknownEmail: "We couldn't find an account with that email. Check the address and try again.",
+  signInWrongPassword: "That password doesn't match this email.",
   expenseMissingFields:
     "Enter a name, choose a line item, and choose a payment source.",
   /** m02 — narrative is required at save time (R4.7), unlike receipt/proof which gate only

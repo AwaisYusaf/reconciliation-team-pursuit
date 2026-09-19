@@ -20,7 +20,7 @@ Everything outside the eight feature screens: sign in, sign up, onboarding, and 
 Reads/writes `organizations`, `users`, `funding_sources`, `line_items` (onboarding creates the first funding source and its line items), `user_tour_progress` (D-94). Reads `staff_users` and writes `staff_sessions` on a staff sign-in, and writes `users.last_sign_in_at` on a customer one (Phase 9). Rules: R2.3 (month persistence), R9.1 (line item creation), §14 (funding source selection and isolation).
 
 ## Behavior notes
-- Login errors (exact): unknown email → `We couldn't find an organization with that email. Create an account to get started.` · wrong password → `That password doesn't match this organization email.` · empty → `Enter your organization email and password.` · suspended organisation, correct password → `Your organization's access is paused. Please contact support.` (§12, American spelling since the Phase 9 sweep)
+- Login errors (exact): unknown email → `We couldn't find an account with that email. Check the address and try again.` · wrong password → `That password doesn't match this email.` · empty → `Enter your email and password.` · suspended organisation, correct password → `Your organization's access is paused. Please contact support.` (§12, American spelling since the Phase 9 sweep)
 - Signup validation: org name required; valid email; password ≥ 12 chars; confirm matches; email unique (duplicate → R12 `duplicate-email` string). Show/Hide password toggle.
 - Onboarding step 1 "Set up your budget line items": editable rows (name + budget), starter **names** prefilled with budgets empty (Salary, Analytical Support, Promotional & Marketing, Social Services & Support, Community Programs & Events, Professional Development), add/remove rows, running `Total budget:` line, Continue disabled until one valid row.
 - Onboarding step 2 "Your contract": total contract value, start/end dates, fiduciary name — all optional; `Finish setup` / `Skip for now` both land on Dashboard with banner. (Full contract detail lives in Settings, m09.)
@@ -40,9 +40,9 @@ Design the authentication and onboarding flow for "Stay Funded 360" (4 screens +
 the app chrome demo).
 
 1) SIGN IN — centered card (max 440px) on the paper background: small serif line "Stay
-Funded 360", h1 "Sign in to your organisation", fields "Organisation email"
+Funded 360", h1 "Sign in to your organisation", fields "Email"
 (placeholder you@yourorganization.org) and "Password", full-width primary button "Sign in",
-inline error state example in red ("That password doesn't match this organisation email."),
+inline error state example in red ("That password doesn't match this email."),
 a quiet centered line "Forgot your password? Email {support address}.", and footer line "Don't have an
 account? Create an account" (link).
 

@@ -70,7 +70,8 @@ non-technical, and some of these words reach the City on signed documents.
 
 1. **No em or en dashes, anywhere the app writes.** Two thoughts become two sentences, or a comma
    or colon joins them. An aside goes in commas or brackets. Ranges use "to" ("1 to 10 of 45").
-   Separators are " · " on screens and " | " on documents and browser tab titles. An empty table
+   Separators are " · " on screens and " | " on documents and browser tab titles (the packet
+   summary's contract line keeps its " · ", which the City already knows). An empty table
    cell shows "-". Text people type keeps whatever they typed. `src/domain/no-dashes.test.ts`
    fails on a dash in any string, template or JSX text in app code.
 2. **Plain American English.** "Organization"; "check" or "select", never "tick".

@@ -468,7 +468,7 @@ The support address comes from `UI.supportEmail`, so the pending support-email d
 |---|---|---|---|
 | src/generation/packet-index-pdf.ts:205 `DOC` | 12 expenses · every receipt, invoice and proof of payment in this packet is filed under its reference below | 12 expenses. Every receipt, invoice and proof of payment in this packet is filed under its reference below. | Two sentences; " · " is the screen separator. Same width on the page |
 | src/generation/packet-index-pdf.ts:264 `DOC` | These expenses carry no supporting document, for the reason stated: | Expenses with no receipt available: | Plainer. The old line could be false: a no-receipt expense may still have supporting documents. Each line under it already says "no receipt available. Reason: …" |
-| src/domain/contract-context.ts:92 `DOC` | Contract 6007211  ·  Contract total: $940,000.00  ·  Base PO 3086984  ·  … | Contract 6007211  \|  Contract total: $940,000.00  \|  Base PO 3086984  \|  … | Rule 1: documents use bars. Only the packet summary page prints this line; the Contract Summary screen lays the items out separately |
+| src/domain/contract-context.ts:92 `DOC` | Contract 6007211  ·  Contract total: $940,000.00  ·  Base PO 3086984  ·  … | Contract 6007211  \|  Contract total: $940,000.00  \|  Base PO 3086984  \|  … | Rule 1: documents use bars. Only the packet summary page prints this line; the Contract Summary screen lays the items out separately **Reverted by Awais (§11 Q7): the line keeps its middle dots.** |
 
 "This month has no expenses." (index and packet page) is already good and is unchanged. The Excel summary is unchanged, so it stays `summary-3`.
 
@@ -855,7 +855,17 @@ The support address comes from `UI.supportEmail`, so the pending support-email d
 
 ## 11. Questions for Awais
 
-Product calls the reviewers raised and deliberately didn't make:
+Product calls the reviewers raised and deliberately didn't make. **Answered 2026-09-19:**
+
+- **Q1 support mailbox:** keep tech@teampursuit.org for now.
+- **Q2 sign-in wording:** yes. The login field is "Email". The errors are "We couldn't find an
+  account with that email. Check the address and try again.", "That password doesn't match this
+  email." and "Enter your email and password." (staff sign-in shares them).
+- **Q3 "the City":** keep it.
+- **Q7 contract line:** keep the middle dots. `contractContextLine` is back to " · ", and the
+  Words rule notes the exception.
+
+Still open: Q4 to Q6 and Q8 to Q12.
 
 1. **Support mailbox.** Every "contact support" line now names `UI.supportEmail`,
    tech@teampursuit.org. That's right for Team Pursuit, wrong for any other customer. It's

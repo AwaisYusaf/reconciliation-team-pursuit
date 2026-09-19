@@ -30,7 +30,7 @@ export function LoginForm() {
       {error && <DangerPanel className="mb-[22px]">{error}</DangerPanel>}
 
       <div className="mb-[18px]">
-        <Label htmlFor="email">Organization email</Label>
+        <Label htmlFor="email">Email</Label>
         <Input
           id="email"
           name="email"

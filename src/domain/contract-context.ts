@@ -89,5 +89,5 @@ export function contractContextLine(
 ): string {
   return contractContextItems(input, month)
     .map((item) => item.text)
-    .join("  |  ");
+    .join("  ·  ");
 }
