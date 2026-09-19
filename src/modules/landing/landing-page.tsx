@@ -381,7 +381,7 @@ export function LandingPage() {
 <div className="w-10 h-10 rounded-xl bg-brand-100/75 backdrop-blur-md text-brand-800 ring-1 ring-inset ring-white/40 border-2 border-primary/15 flex items-center justify-center font-semibold">
 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
 </div>
-<span className="text-xs font-semibold font-mono text-tertiary bg-tertiary-container/60 px-2.5 py-1 rounded-full">4–6 Wk Payment Holds</span>
+<span className="text-xs font-semibold font-mono text-tertiary bg-tertiary-container/60 px-2.5 py-1 rounded-full">4-6 Wk Payment Holds</span>
 </div>
 <h3 className="text-xl font-semibold text-on-surface font-lp-serif mb-2">Rejected Filing Packets</h3>
 <p className="text-xs sm:text-sm text-on-surface-variant mb-6 leading-relaxed">

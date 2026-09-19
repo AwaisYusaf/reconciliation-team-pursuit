@@ -120,7 +120,7 @@ function DocumentViewerOverlay({
     <div
       role="dialog"
       aria-modal="true"
-      aria-label={`${current.filename} — attachment preview`}
+      aria-label={`Preview of ${current.filename}`}
       className="fixed inset-0 z-50 bg-black/90 flex flex-col"
       onClick={(event) => {
         // Only the backdrop itself closes; a click that started on the image must not.

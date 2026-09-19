@@ -57,7 +57,7 @@ describe("Add Expense tour amounts step (Phase 10 §6, Appendix A)", () => {
     const steps = addExpenseTourSteps(true);
     const amountsStep = steps.find((s) => s.target === "add-expense-amounts")!;
     expect(amountsStep.body).toBe(
-      "Enter the amounts from the receipt, or use the amounts we find in the receipt you added above. If there's tax or fees, you'll be asked whether the funder pays for them.",
+      "Enter the amounts from the receipt, or use the ones AI finds in the receipt you added above. If it includes tax or fees, you'll be asked whether the funder pays for them.",
     );
     expect(amountsStep.body).toBe(UI.tourAmountsBodyWithReading);
   });
@@ -66,7 +66,7 @@ describe("Add Expense tour amounts step (Phase 10 §6, Appendix A)", () => {
     const steps = addExpenseTourSteps(false);
     const amountsStep = steps.find((s) => s.target === "add-expense-amounts")!;
     expect(amountsStep.body).toBe(
-      "Enter the amounts from the receipt. If there's tax or fees, you'll be asked whether the funder pays for them.",
+      "Enter the amounts from the receipt. If it includes tax or fees, you'll be asked whether the funder pays for them.",
     );
     expect(amountsStep.body).toBe(UI.tourAmountsBody);
   });
@@ -123,7 +123,7 @@ describe("Add Expense tour proof/receipt steps (Phase 10, Plus)", () => {
       "Always required. Add a bank transaction or payment screenshot. Without it, the month's packet can't be downloaded.",
     );
     expect(body(false, "add-expense-receipt")).toBe(
-      "Add the receipt, invoice or timesheet. If there isn't one, tick No receipt available and give a reason. The reason prints on the cover sheet.",
+      "Add the receipt, invoice or timesheet. If there isn't one, check No receipt available and give a reason. The reason prints on the cover sheet.",
     );
   });
 

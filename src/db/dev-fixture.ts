@@ -48,8 +48,8 @@ const FIXTURE: Array<{ lineItem: string; rows: Array<[name: string, description:
   {
     lineItem: "Salary",
     rows: [
-      ["Payroll — Pay Period 1", "Bi-weekly payroll for programme staff", 2282056],
-      ["Payroll — Pay Period 2", "Bi-weekly payroll for programme staff", 2282056],
+      ["Payroll - Pay Period 1", "Bi-weekly payroll for programme staff", 2282056],
+      ["Payroll - Pay Period 2", "Bi-weekly payroll for programme staff", 2282056],
     ],
   },
   {
@@ -158,7 +158,7 @@ async function attachDocuments(
     .where(and(eq(schema.expenses.orgId, orgId), eq(schema.expenses.month, MONTH)));
 
   if (rows.length === 0) {
-    console.log("No fixture expenses to document — run the fixture without `docs` first.");
+    console.log("No fixture expenses to document. Run the fixture without `docs` first.");
     return;
   }
 
@@ -273,7 +273,7 @@ async function main() {
       .orderBy(asc(schema.organizations.createdAt), asc(schema.organizations.id))
       .limit(1);
     const org = orgs[0];
-    if (!org) throw new Error("No organisation found — run `npm run db:seed` first");
+    if (!org) throw new Error("No organisation found. Run `npm run db:seed` first.");
     console.log(`Target organisation: ${org.name} (${org.id})`);
 
     const items = await db
@@ -301,14 +301,14 @@ async function main() {
       .from(schema.expenses)
       .where(and(eq(schema.expenses.orgId, org.id), eq(schema.expenses.month, MONTH)));
     if (existing.length > 0) {
-      console.log(`${MONTH} already has ${existing.length} expenses — nothing to do.`);
+      console.log(`${MONTH} already has ${existing.length} expenses. Nothing to do.`);
       return;
     }
 
     // Every fixture expense belongs to the org's first funding source (Phase 6, D-93):
     // the fixture only ever created one, so its own line items are all on it.
     const anyItem = items[0];
-    if (!anyItem) throw new Error("Organisation has no line items — run `npm run db:seed` first");
+    if (!anyItem) throw new Error("Organisation has no line items. Run `npm run db:seed` first.");
     const fundingSourceId = anyItem.fundingSourceId;
 
     // Number from wherever the month's counter already stands, not from 1: a month can be

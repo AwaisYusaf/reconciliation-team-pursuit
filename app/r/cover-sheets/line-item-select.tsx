@@ -41,7 +41,7 @@ export function LineItemSelect({
         }}
         className="min-w-[220px]"
       >
-        <option value={ALL_LINE_ITEMS}>All Line Items</option>
+        <option value={ALL_LINE_ITEMS}>All line items</option>
         {lineItems.map((item) => (
           <option key={item.id} value={item.id}>
             {item.name}

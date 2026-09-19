@@ -20,13 +20,13 @@ export const SETTINGS_TOUR_STEPS: readonly TourStep[] = [
     target: "settings-sidebar",
     autoOpen: "settings-tab-organization",
     title: "Settings sections",
-    body: "Six sections, switched instantly without changing the page — refreshing or sharing a link won't keep the same one open.",
+    body: "Switch between sections here. Refreshing the page or following a link to Settings starts again on Organization.",
   },
   {
     target: "settings-doc-name",
     autoOpen: "settings-tab-organization",
     title: "Document display name",
-    body: "This name, not the organization name above it, is what prints on cover sheets and the packet — unless a funding source overrides it.",
+    body: "Cover sheets and the packet print this name, not the organization name above it. A funding source can set its own instead.",
   },
   // Plus only (Phase 10): the switch isn't rendered on the base plan, so this step is dropped
   // there like any other absent target.
@@ -40,30 +40,30 @@ export const SETTINGS_TOUR_STEPS: readonly TourStep[] = [
     target: "settings-funding-sources-list",
     autoOpen: "settings-tab-fundingSources",
     title: "Funding sources",
-    body: "Every funder your organization tracks money for, each with its own budget, expenses and packet. Archive one instead of deleting it — its history stays intact and viewable.",
+    body: "Every funder your organization tracks money for, each with its own budget, expenses and packet. Archive one you no longer use. Its history stays intact and can still be viewed.",
   },
   {
     target: "settings-labels",
     autoOpen: "settings-tab-labels",
-    title: "Payment sources & document types",
-    body: "These labels appear throughout the app — on the expense form, filters, and printed documents. Retire one instead of deleting it once it's ever been used, so past expenses keep the label they were entered with.",
+    title: "Payment sources and document types",
+    body: "These labels appear on the expense form, in filters and on printed documents. Deactivate one you no longer use. Past expenses keep the label they were entered with.",
   },
   {
     target: "settings-vendors",
     autoOpen: "settings-tab-vendors",
     title: "Vendor library",
-    body: "Every vendor you've billed before, remembered here. Typing a name on the expense form pulls its usual line item and payment source from this list automatically.",
+    body: "Every vendor you've used before is remembered here. Type a vendor's name on the expense form and its usual line item and payment source fill in automatically.",
   },
   {
     target: "settings-users",
     autoOpen: "settings-tab-users",
     title: "Users",
-    body: "Everyone with access to this organization's data. Only an admin can add, remove, or change another user's role.",
+    body: "Everyone with access to this organization's data. Only an admin can add users, edit their names or reset their passwords.",
   },
   {
     target: "settings-app-guide",
     autoOpen: "settings-tab-account",
     title: "Show the app guide again",
-    body: "Bring back every walkthrough at once from here — or use the (i) button next to Log out to replay just the one for the screen you're on.",
+    body: "Bring back every walkthrough from here. To replay just the one for the screen you're on, use the (i) button next to Sign out.",
   },
 ];

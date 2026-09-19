@@ -11,7 +11,7 @@ import "server-only";
  */
 import { monthLabel, type MonthKey } from "@/src/domain/dates";
 import { blockingRecords } from "@/src/domain/gate";
-import { packetFilename } from "@/src/domain/strings";
+import { packetFilename, UI } from "@/src/domain/strings";
 import { ensureArtifact, resolveArtifact, type ResolveArtifactInput } from "@/src/generation/artifacts";
 import { artifactTypeOf, type SharedArtifactType, type SharedFileKind } from "@/src/domain/shared-links";
 import { inputsHash, recordsHash } from "@/src/generation/cache-key";
@@ -121,7 +121,7 @@ export async function prepareMonthOutput(input: {
       ok: false,
       status: 409,
       message:
-        `${blocking.length} ${blocking.length === 1 ? "record is" : "records are"} missing documentation:\n` +
+        `${blocking.length} ${blocking.length === 1 ? "expense is" : "expenses are"} missing documentation:\n` +
         blocking.map((record) => `• ${record.label}`).join("\n"),
     };
   }
@@ -166,14 +166,13 @@ export function ensureMonthOutput(prepared: PreparedMonthOutput) {
  * gets something actionable rather than a generic 500; the detail goes to the log instead.
  */
 export function monthOutputFailureMessage(kind: MonthOutputKind, error: unknown): string {
-  if (kind === "summary") {
-    return "The summary could not be generated just now. Please try again — if it keeps failing, contact Mantaq.";
-  }
+  const tryAgain = `Try again, and if it keeps failing, contact support at ${UI.supportEmail}.`;
+  if (kind === "summary") return `The Excel summary couldn't be generated. ${tryAgain}`;
   // PacketError names the section or file that failed, which is what the screen shows.
   const at = error instanceof PacketError ? error.at : null;
   return at
-    ? `Packet generation failed at ${at}. Please try again — if it keeps failing, contact Mantaq.`
-    : "The packet could not be generated just now. Please try again — if it keeps failing, contact Mantaq.";
+    ? `The packet couldn't be generated. It failed at ${at}. ${tryAgain}`
+    : `The packet couldn't be generated. ${tryAgain}`;
 }
 
 /**

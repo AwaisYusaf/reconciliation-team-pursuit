@@ -12,6 +12,9 @@ import { canPreviewInline } from "@/src/services/storage/preview";
 
 export const runtime = "nodejs";
 
+/** Plain text, because it is read in a browser tab (a signed packet's link opens straight here). */
+const NOT_FOUND = "This file isn't available. It may have been removed.";
+
 /**
  * Serve a stored document by id.
  *
@@ -25,12 +28,12 @@ export async function GET(
   context: { params: Promise<{ id: string }> },
 ) {
   const session = await getSession();
-  if (!session) return new NextResponse("Not signed in", { status: 401 });
+  if (!session) return new NextResponse("You've been signed out. Sign in and open the file again.", { status: 401 });
 
   const { id } = await context.params;
   // A malformed id would raise a Postgres 22P02 out of an unguarded handler; the intent
   // here is an indistinguishable "not found".
-  if (!isUuid(id)) return new NextResponse("Not found", { status: 404 });
+  if (!isUuid(id)) return new NextResponse(NOT_FOUND, { status: 404 });
   const url = new URL(request.url);
   const wantsThumbnail = url.searchParams.get("thumb") === "1";
   // Rendered in the viewer overlay instead of downloaded. Honoured only for the types the
@@ -73,11 +76,11 @@ export async function GET(
 
   const document = expenseDoc ?? monthDoc ?? signedPacket;
   // Indistinguishable from "belongs to another organisation", so a probe learns nothing.
-  if (!document) return new NextResponse("Not found", { status: 404 });
+  if (!document) return new NextResponse(NOT_FOUND, { status: 404 });
 
   // Belt and braces: the key came from our own row, but the prefix is still enforced.
   if (!keyBelongsToOrg(document.key, session.orgId)) {
-    return new NextResponse("Not found", { status: 404 });
+    return new NextResponse(NOT_FOUND, { status: 404 });
   }
 
   const key = wantsThumbnail ? thumbnailKey(document.key) : document.key;
@@ -90,7 +93,7 @@ export async function GET(
     // PDFs have no thumbnail. Serving the original here would send megabytes of PDF
     // labelled as a JPEG into an <img>, which can only ever render broken — so callers
     // get an honest 404 and show a document glyph instead.
-    return new NextResponse("Not found", { status: 404 });
+    return new NextResponse(NOT_FOUND, { status: 404 });
   }
 
   const contentType = wantsThumbnail ? "image/jpeg" : document.type;

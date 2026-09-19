@@ -2,6 +2,7 @@
 
 import { Button } from "@/src/components/ui/button";
 import { DangerPanel, PageTitle, Subtext } from "@/src/components/ui/surfaces";
+import { UI } from "@/src/domain/strings";
 
 /**
  * Recovery screen for an unexpected server or render failure inside the app shell.
@@ -17,9 +18,10 @@ export default function AppError({ reset }: { error: Error; reset: () => void })
       <Subtext className="mb-6 max-w-[60ch]">
         The page could not be loaded. Nothing you had already saved is affected.
       </Subtext>
-      <DangerPanel title="This screen failed to load.">
+      <DangerPanel>
         <p className="mb-4">
-          Try again. If it keeps happening, contact Mantaq with the time this occurred.
+          Try again, and if it keeps failing, contact support at {UI.supportEmail}. Say what time
+          it happened.
         </p>
         <Button variant="secondary" onClick={reset}>
           Try again

@@ -15,6 +15,7 @@ import { costMicroUsd } from "@/src/services/openai/responses";
 import { inspectUpload } from "@/src/services/storage/inspect";
 import { storage } from "@/src/services/storage/driver";
 import { MAX_UPLOAD_BYTES } from "@/src/services/storage/keys";
+import { SESSION_EXPIRED } from "@/src/lib/action-result";
 
 export const runtime = "nodejs";
 
@@ -45,7 +46,7 @@ const MAX_PAGES_READ = 10;
 export async function POST(request: NextRequest) {
   const session = await getSession();
   if (!session) {
-    return NextResponse.json({ ok: false, error: "Not signed in." }, { status: 401 });
+    return NextResponse.json({ ok: false, error: SESSION_EXPIRED }, { status: 401 });
   }
 
   if (!sameOrigin(request)) {

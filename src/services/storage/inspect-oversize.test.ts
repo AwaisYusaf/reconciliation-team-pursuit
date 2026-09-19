@@ -9,7 +9,7 @@ vi.mock("./heic", () => ({ decodeHeic: vi.fn(async () => Promise.reject(new Erro
 
 const { inspectUpload } = await import("./inspect");
 
-const TOO_LARGE = "That image is too large to process. Try a smaller export.";
+const TOO_LARGE = "That image is too large to process. Upload a lower-resolution copy.";
 // Just enough for the sniffer to call it HEIC; the stubbed decoder never reads past it.
 const HEIC_HEADER = Buffer.concat([Buffer.from([0, 0, 0, 24]), Buffer.from("ftypheic"), Buffer.alloc(12)]);
 

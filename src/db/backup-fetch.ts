@@ -31,7 +31,7 @@ async function main(): Promise<void> {
   const dump = await storage().get(key);
 
   if (dump.subarray(0, 5).toString("latin1") !== CUSTOM_FORMAT_MAGIC) {
-    throw new Error(`${key} is not a pg_dump custom-format archive — refusing to pipe it.`);
+    throw new Error(`${key} is not a pg_dump custom-format archive. Refusing to pipe it.`);
   }
 
   console.error(`Fetched ${key} (${(dump.byteLength / 1_048_576).toFixed(2)} MB)`);

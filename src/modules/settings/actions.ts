@@ -68,7 +68,7 @@ export async function saveLabelAction(input: {
   if ("expired" in current) return current.expired;
 
   const label = input.label.trim();
-  if (!label) return fail("Enter a label.");
+  if (!label) return fail("Enter a name.");
   if (input.id && !isUuid(input.id)) return fail("That entry no longer exists.");
 
   const target = table(input.kind);
@@ -78,7 +78,13 @@ export async function saveLabelAction(input: {
     .from(target)
     .where(and(eq(target.orgId, current.orgId), sql`lower(${target.label}) = lower(${label})`))
     .limit(1);
-  if (clash[0] && clash[0].id !== input.id) return fail("That label already exists.");
+  if (clash[0] && clash[0].id !== input.id) {
+    return fail(
+      input.kind === "paymentSource"
+        ? "That payment source already exists."
+        : "That document type already exists.",
+    );
+  }
 
   if (input.id) {
     const updated = await db

@@ -21,7 +21,7 @@ import type { Rect } from "./pdf-links";
 import { formatDateUS, monthLabel } from "@/src/domain/dates";
 import { formatMoney } from "@/src/domain/format";
 import { reimbursableCents } from "@/src/domain/money";
-import { expenseReference } from "@/src/domain/strings";
+import { expenseReference, packetIndexTitle } from "@/src/domain/strings";
 
 import { PACKET_MARGIN_IN, inchesToPoints } from "./layout-constants";
 import type { MonthSnapshot } from "./month-snapshot";
@@ -192,7 +192,7 @@ export async function buildIndexSection(
 
   const startPage = (withTitle: boolean) => {
     if (withTitle) {
-      page.drawText(winAnsiSafe(`${snapshot.docName} — Expense Index — ${label}`), {
+      page.drawText(winAnsiSafe(packetIndexTitle(snapshot.docName, label)), {
         x: MARGIN,
         y: y - TITLE_SIZE,
         size: TITLE_SIZE,
@@ -202,7 +202,7 @@ export async function buildIndexSection(
       y -= TITLE_SIZE + 8;
       page.drawText(
         winAnsiSafe(
-          `${rows.length} expense${rows.length === 1 ? "" : "s"} · every receipt, invoice and proof of payment in this packet is filed under its reference below`,
+          `${rows.length} expense${rows.length === 1 ? "" : "s"}. Every receipt, invoice and proof of payment in this packet is filed under its reference below.`,
         ),
         { x: MARGIN, y: y - SUBTITLE_SIZE, size: SUBTITLE_SIZE, font: fonts.regular, color: BLACK },
       );
@@ -246,7 +246,8 @@ export async function buildIndexSection(
 
   for (const expense of undocumented) {
     const reason = expense.noReceiptReason?.trim();
-    const line = `${expenseReference(snapshot.month, expense.referenceSeq)} — ${expense.name}: no receipt available${reason ? ` — ${reason}` : ""}`;
+    // Worded like the cover sheet heading and its note (D-113), so the two read the same.
+    const line = `${expense.name} (${expenseReference(snapshot.month, expense.referenceSeq)}): no receipt available${reason ? `. Reason: ${reason}` : ""}`;
     const wrapped = wrapToWidth(line, fonts.regular, NOTE_SIZE, INDEX_CONTENT_WIDTH);
 
     // Height of the block plus its heading, so a disclosure is never split from its list.
@@ -260,7 +261,7 @@ export async function buildIndexSection(
     if (expense === undocumented[0]) {
       y -= 16;
       page.drawText(
-        winAnsiSafe("These expenses carry no supporting document, for the reason stated:"),
+        winAnsiSafe("Expenses with no receipt available:"),
         { x: MARGIN, y, size: NOTE_SIZE, font: fonts.bold, color: BLACK },
       );
       y -= 14;

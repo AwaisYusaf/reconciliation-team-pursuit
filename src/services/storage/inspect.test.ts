@@ -110,7 +110,7 @@ describe("PDFs", () => {
     const userLocked = makeEncryptedPdf({ ownerPassword: "ownersecret", userPassword: "opensesame" });
     const result = await inspectUpload({ body: userLocked, declaredMimeType: "application/pdf" });
     expect(result.ok).toBe(false);
-    expect(result.ok === false && result.error).toMatch(/password-protected/i);
+    expect(result.ok === false && result.error).toMatch(/password protected/i);
   });
 });
 
@@ -146,14 +146,14 @@ describe.skipIf(!hasPoppler())("owner-password-only PDFs", () => {
       allowOwnerPasswordPdf: true,
     });
     expect(result.ok).toBe(false);
-    expect(result.ok === false && result.error).toMatch(/password-protected/i);
+    expect(result.ok === false && result.error).toMatch(/password protected/i);
   });
 
   it("still refuses an owner-password-only PDF for an ordinary (non-signed-packet) upload", async () => {
     const ownerOnly = makeEncryptedPdf({ ownerPassword: "ownersecret", userPassword: "" });
     const result = await inspectUpload({ body: ownerOnly, declaredMimeType: "application/pdf" });
     expect(result.ok).toBe(false);
-    expect(result.ok === false && result.error).toMatch(/password-protected/i);
+    expect(result.ok === false && result.error).toMatch(/password protected/i);
   });
 });
 
@@ -174,7 +174,7 @@ describe("refusals", () => {
     // A PNG uploaded while claiming to be a PDF: either a mistake or an attack.
     const result = await inspectUpload({ body: png, declaredMimeType: "application/pdf" });
     expect(result.ok).toBe(false);
-    expect(result.ok === false && result.error).toMatch(/do not match/i);
+    expect(result.ok === false && result.error).toMatch(/don't match/i);
   });
 
   it("rejects an HTML file dressed as an image", async () => {
@@ -186,7 +186,7 @@ describe("refusals", () => {
   it("treats image/heif as the same family as image/heic", async () => {
     // Bytes still have to agree; this only proves the declared alias is accepted.
     const result = await inspectUpload({ body: png, declaredMimeType: "image/heif" });
-    expect(result.ok === false && result.error).toMatch(/do not match/i);
+    expect(result.ok === false && result.error).toMatch(/don't match/i);
   });
 });
 
@@ -226,11 +226,11 @@ describe("HEIC (iPhone photos)", () => {
 
   it("a declared type that is neither undeclared nor matching is still refused", async () => {
     const result = await inspectUpload({ body: heic, declaredMimeType: "image/png" });
-    expect(result.ok === false && result.error).toMatch(/do not match/i);
+    expect(result.ok === false && result.error).toMatch(/don't match/i);
   });
 
   it("a truncated HEIC is refused as unreadable, never thrown", async () => {
     const result = await inspectUpload({ body: heic.subarray(0, 2000), declaredMimeType: "image/heic" });
-    expect(result.ok === false && result.error).toMatch(/could not be read/i);
+    expect(result.ok === false && result.error).toMatch(/couldn't be read/i);
   });
 });

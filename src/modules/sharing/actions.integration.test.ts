@@ -217,7 +217,7 @@ describe.skipIf(!hasDatabase)("sharing actions and public lookup (integration, P
     });
     expect(await share(org, blocked, "packet")).toEqual({
       ok: false,
-      error: "1 record is missing documentation:\n• Blocking expense — A item — missing both",
+      error: "1 expense is missing documentation:\n• Blocking expense · A item · missing both",
     });
 
     const trashedMonth = freshMonth();
@@ -225,7 +225,7 @@ describe.skipIf(!hasDatabase)("sharing actions and public lookup (integration, P
     await db.update(expenses).set({ deletedAt: new Date() }).where(eq(expenses.id, trashed));
     const refused = await share(org, trashedMonth, "summary");
     expect(refused.ok).toBe(false);
-    expect(!refused.ok && refused.error).toMatch(/^1 expense was deleted from this reporting period/);
+    expect(!refused.ok && refused.error).toMatch(/^1 expense was deleted from this month/);
     expect((await share(org, trashedMonth, "summary", null, true)).ok).toBe(true);
   }, 60_000);
 
@@ -373,7 +373,7 @@ describe.skipIf(!hasDatabase)("sharing actions and public lookup (integration, P
 
     await db.update(expenses).set({ deletedAt: new Date() }).where(eq(expenses.id, gone));
     const refused = await actions.updateSharedFileAction({ shareId: row.id, confirmedDeletions: false });
-    expect(!refused.ok && refused.error).toMatch(/^1 expense was deleted from this reporting period/);
+    expect(!refused.ok && refused.error).toMatch(/^1 expense was deleted from this month/);
     expect((await rowFor(org, month, "summary_xlsx")).artifactId).toBe(row.artifactId);
 
     await db.insert(expenses).values({
@@ -383,7 +383,7 @@ describe.skipIf(!hasDatabase)("sharing actions and public lookup (integration, P
     });
     expect(await actions.updateSharedFileAction({ shareId: row.id, confirmedDeletions: true })).toEqual({
       ok: false,
-      error: "1 record is missing documentation:\n• Blocking expense — A item — missing both",
+      error: "1 expense is missing documentation:\n• Blocking expense · A item · missing both",
     });
     expect((await rowFor(org, month, "summary_xlsx")).artifactId).toBe(row.artifactId);
   }, 60_000);

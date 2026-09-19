@@ -40,7 +40,7 @@ describe("APP_NAME", () => {
     expect(offenders).toEqual([]);
   });
 
-  it("builds a page title in the fixed Section — App Name form", () => {
-    expect(pageTitle("Dashboard")).toBe(`Dashboard — ${APP_NAME}`);
+  it("builds a page title in the fixed Section | App Name form", () => {
+    expect(pageTitle("Dashboard")).toBe(`Dashboard | ${APP_NAME}`);
   });
 });

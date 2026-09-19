@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { coverSheetRows } from "@/src/domain/cover-sheet";
 import { isValidMonthKey, monthLabel, type MonthKey } from "@/src/domain/dates";
 import { blockingRecords } from "@/src/domain/gate";
-import { coverSheetFilename, coverSheetTitle } from "@/src/domain/strings";
+import { coverSheetFilename, coverSheetTitle, UI } from "@/src/domain/strings";
 import { resolveArtifact } from "@/src/generation/artifacts";
 import { inputsHash } from "@/src/generation/cache-key";
 import { buildCoverSheetDocx } from "@/src/generation/cover-sheet-docx";
@@ -20,6 +20,7 @@ import { isUuid } from "@/src/lib/ids";
 import { findFundingSource, loadSourceContext } from "@/src/modules/funding-sources/queries";
 import { getSession } from "@/src/services/auth/session";
 import { consume } from "@/src/services/rate-limit";
+import { SESSION_EXPIRED } from "@/src/lib/action-result";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -32,7 +33,7 @@ export const dynamic = "force-dynamic";
  */
 export async function GET(request: Request) {
   const session = await getSession();
-  if (!session) return new NextResponse("Not signed in", { status: 401 });
+  if (!session) return new NextResponse(SESSION_EXPIRED, { status: 401 });
 
   // Generation writes storage and pins a permanent row, so it must not be reachable by a
   // cross-site navigation carrying the SameSite=Lax session cookie.
@@ -73,8 +74,9 @@ export async function GET(request: Request) {
 
   const snapshot = await loadMonthSnapshot(session.orgId, fundingSourceId, month as MonthKey);
   const lineItem = snapshot.lineItems.find((item) => item.id === lineItemId);
-  // Indistinguishable from "belongs to another organisation", so a probe learns nothing.
-  if (!lineItem) return new NextResponse("Not found", { status: 404 });
+  // Indistinguishable from "belongs to another organisation", so a probe learns nothing. Worded
+  // for the real case: the line item was deleted in another tab, and this reaches a toast.
+  if (!lineItem) return new NextResponse("That line item no longer exists. Reload the page.", { status: 404 });
 
   const expenses = expensesForLineItem(snapshot, lineItemId);
   if (expenses.length === 0) {
@@ -89,7 +91,7 @@ export async function GET(request: Request) {
   const blocking = blockingRecords(gateExpenses(expenses));
   if (blocking.length > 0) {
     return new NextResponse(
-      `${blocking.length} ${blocking.length === 1 ? "record is" : "records are"} missing documentation:\n` +
+      `${blocking.length} ${blocking.length === 1 ? "expense is" : "expenses are"} missing documentation:\n` +
         blocking.map((record) => `• ${record.label}`).join("\n"),
       { status: 409, headers: { "Content-Type": "text/plain; charset=utf-8" } },
     );
@@ -138,7 +140,7 @@ export async function GET(request: Request) {
       error,
     });
     return new NextResponse(
-      `The ${lineItem.name} cover sheet could not be generated just now. Please try again — if it keeps failing, contact Mantaq.`,
+      `The ${lineItem.name} cover sheet couldn't be generated. Try again, and if it keeps failing, contact support at ${UI.supportEmail}.`,
       { status: 500, headers: { "Content-Type": "text/plain; charset=utf-8" } },
     );
   }

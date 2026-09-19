@@ -299,7 +299,7 @@ export async function buildPacketPdf(
             async () => appendUpload(pdf, snapshot.orgId, document, quality),
           );
         } catch (error) {
-          throw new PacketError(`${expense.name} — ${document.filename}`, error);
+          throw new PacketError(`${expense.name} (${document.filename})`, error);
         }
       }
     }

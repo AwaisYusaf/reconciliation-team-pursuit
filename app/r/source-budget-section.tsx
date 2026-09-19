@@ -50,7 +50,7 @@ export async function SourceBudgetSection({
             {monthLabel(month)} has changed since it was submitted.
           </div>
           <div className="text-[15px] leading-relaxed">
-            The packet that was sent is unchanged and still downloadable. These categories now
+            The packet that was sent is unchanged and still downloadable. These line items now
             differ from it:
           </div>
           <ul className="mt-2.5 flex flex-col gap-2 text-[15px] tabular-nums">
@@ -60,7 +60,7 @@ export async function SourceBudgetSection({
                 <ul className="ml-4 mt-0.5 flex flex-col gap-0.5">
                   {row.changes.map((change) => (
                     <li key={change.field}>
-                      {DRIFT_LABEL[change.field]} — submitted at{" "}
+                      {DRIFT_LABEL[change.field]}: submitted at{" "}
                       {formatMoney(change.submittedCents)}, now{" "}
                       {formatMoney(change.currentCents)} (
                       {change.differenceCents > 0 ? "+" : ""}
@@ -93,15 +93,15 @@ export async function SourceBudgetSection({
             </div>
           ))}
           <div className="sm:col-span-3 text-[15px] text-sub">
-            The whole grant to date, across every month — {formatPercent(grant.percentComplete)}{" "}
-            of the approved budget committed.
+            These totals cover this funding source to date, across every month:{" "}
+            {formatPercent(grant.percentComplete)} of the approved budget is committed.
           </div>
         </div>
       )}
 
       {lineItems.length === 0 ? (
         <EmptyState>
-          No line items yet — set up your budget in{" "}
+          No line items yet. Set up your budget in{" "}
           <Link href="/r/line-items" className="text-accent underline">
             Line Items
           </Link>

@@ -107,7 +107,7 @@ export function CoverSheetPreview({
 
           {showMissingProofPlaceholders && row.proofs.length === 0 && (
             <div className="mt-2 border border-dashed border-danger text-danger px-3 py-5 text-[11px] text-center">
-              proof of payment missing
+              Proof of payment missing
             </div>
           )}
         </section>

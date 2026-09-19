@@ -9,6 +9,7 @@ import "server-only";
 import { NextResponse, type NextRequest } from "next/server";
 
 import { UI } from "@/src/domain/strings";
+import { SESSION_EXPIRED } from "@/src/lib/action-result";
 import { sameOrigin } from "@/src/lib/same-origin";
 import { getSession } from "@/src/services/auth/session";
 
@@ -73,7 +74,7 @@ export async function readSignedInJson(
   maxBytes: number,
 ): Promise<{ body: unknown } | BodyRefusal> {
   if (!(await getSession())) {
-    return { response: NextResponse.json({ ok: false, error: "Not signed in." }, { status: 401 }) };
+    return { response: NextResponse.json({ ok: false, error: SESSION_EXPIRED }, { status: 401 }) };
   }
   return readJsonBody(request, maxBytes);
 }

@@ -6,8 +6,8 @@ The single merged, ordered, page-numbered PDF the org uploads to DocuSign, gener
 
 | # | Section | Source |
 |---|---|---|
-| 1 | **Contract summary section** | Generated (vector text): title `{docName} — Contract Summary — {Month YYYY}`, one subtitle line with the R7.3 context (`Contract {number} · Contract total: {amount} · Base PO {n} · Performance PO {n} · Invoice period {R2.4}` — empty values omitted; `Contract total` includes every line item's performance total on top of a configured contract value, same as the screen and the Excel), the 7-column table (BASE rows → Totals — no separate subtotal or performance grant section, retired R7.2/D-80) matching summary-excel sheet 1, then the 4 reconciliation lines. A line item with a performance names its own name cell `{name} (includes {amount} performance)`, growing the row to fit rather than a new column. Yellow header fill, black grid — same visual family as the Excel. May paginate when line items overflow one page. |
-| 2 | **Expense index** | One row per expense in reference order: `Ref · Date · Name · Line Item · Reimbursable`, drawn as vector text. A contents page, so a reviewer holding a receipt can find what it belongs to and a reference quoted in an email names something the packet defines (R2.6). Repeats its column header on every page. Prints "This month has no expenses." rather than being skipped, so a section the contents claims always exists. |
+| 1 | **Contract summary section** | Generated (vector text): title `{docName} {Month YYYY} Contract Summary`, one subtitle line with the R7.3 context (`Contract {number} · Contract total: {amount} · Base PO {n} · Performance PO {n} · Invoice period {R2.4}` — empty values omitted; `Contract total` includes every line item's performance total on top of a configured contract value, same as the screen and the Excel), the 7-column table (BASE rows → Totals — no separate subtotal or performance grant section, retired R7.2/D-80) matching summary-excel sheet 1, then the 4 reconciliation lines. A line item with a performance names its own name cell `{name} (includes {amount} performance)`, growing the row to fit rather than a new column. Yellow header fill, black grid — same visual family as the Excel. May paginate when line items overflow one page. |
+| 2 | **Expense index** | Title `{docName} {Month YYYY} Expense Index`. One row per expense in reference order: `Ref · Date · Name · Line Item · Reimbursable`, drawn as vector text. A contents page, so a reviewer holding a receipt can find what it belongs to and a reference quoted in an email names something the packet defines (R2.6). Repeats its column header on every page. Prints "This month has no expenses." rather than being skipped, so a section the contents claims always exists. |
 | 3…n | **One section per line item** (line item sort order, skipping line items with no expenses that month): cover sheet pages first (exact cover-sheet-spec content), then per expense in cover-sheet order: receipt/justification files, then supporting documents — all in upload order (`expense_documents.sort_order`); supporting type labels don't affect ordering. |
 | last | **Month documents** | Each `month_documents` file, category order: bank_statement → combined_hours → timesheet → fiduciary_invoice → other; within category by sort_order. **This ordering is the authority R11.2 references** — UI groups mirror it. Placed last (D-77): month-level backup sits behind the claim it supports, so the packet opens on the summary and the cover letters rather than on a bank statement. |
 
@@ -25,15 +25,15 @@ Proof-of-payment images appear **only** inside cover sheets (R11.3) — never du
 
 ## Page numbering & footer (R10.5)
 
-Every page, including section 1: `{docName} — {Month YYYY} — Page {i} of {N}`, 9 pt gray (#787878), bottom-center, 0.35" from bottom. Stamped after assembly so N is final.
+Every page, including section 1: `{docName} | {Month YYYY} | Page {i} of {N}`, 9 pt gray (#787878), bottom-center, 0.35" from bottom. Stamped after assembly so N is final.
 
 **Pages documenting one expense also carry its reference**, inserted before the page number
 (D-70, funder-approved):
 
 | Page | Footer |
 |---|---|
-| Summary, index, month documents, cover sheet | `{docName} — {Month YYYY} — Page {i} of {N}` |
-| A receipt or supporting document | `{docName} — {Month YYYY} — {reference} — Page {i} of {N}` |
+| Summary, index, month documents, cover sheet | `{docName} \| {Month YYYY} \| Page {i} of {N}` |
+| A receipt or supporting document | `{docName} \| {Month YYYY} \| {reference} \| Page {i} of {N}` |
 
 Same position, size and colour — the reference is added to the existing line, not a new mark on
 the page. Ownership is collected during assembly, because once pages are merged nothing about a
@@ -59,10 +59,10 @@ and the outline in the one load/save it already performs.
 | Source | Target |
 |---|---|
 | Cover-sheet table row (invisible rectangle over the row) | The expense's first evidence page — receipt, else supporting |
-| Cover-sheet heading `{Name} — {reference}:` | Same |
+| Cover-sheet heading `{Name} ({reference}):` | Same |
 | Evidence page footer, the `{reference}` token | Back to that heading (the proof of payment sits under it) |
 | Index `Ref` cell | The heading; for a no-receipt expense, its D-74 disclosure line |
-| Outline (bookmark sidebar) | Summary · Index · each line item · each expense (`{reference} — {name}`) · Month documents |
+| Outline (bookmark sidebar) | Summary · Index · each line item · each expense (`{reference} \| {name}`) · Month documents |
 
 Anchors are located by text, never by position: the reference is the only string unique to an
 expense on a sheet (two salary rows for one person are otherwise identical). Cover-sheet anchors are
@@ -82,7 +82,7 @@ as delivered (R10.6).
 
 ## Failure handling
 
-Uploaded files are validated at attach time (data-model §Upload processing), so packet-time failures are exceptional. If any step fails (soffice non-zero exit, rasterization error, wall-clock timeout), the user gets a red panel — `Packet generation failed at {section/file}` — with a Retry button; the error is logged server-side with the failing artifact id; a partial packet is **never** served. Generation runs under a per-(org, month, type) single-flight lock — a second concurrent request waits and receives the first run's result.
+Uploaded files are validated at attach time (data-model §Upload processing), so packet-time failures are exceptional. If any step fails (soffice non-zero exit, rasterization error, wall-clock timeout), the user gets a red panel — `The packet couldn't be generated. It failed at {section/file}. Try again, and if it keeps failing, contact support at {support address}.` — with a Retry button; the error is logged server-side with the failing artifact id; a partial packet is **never** served. Generation runs under a per-(org, month, type) single-flight lock — a second concurrent request waits and receives the first run's result.
 
 ## Gate
 

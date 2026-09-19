@@ -100,7 +100,7 @@ async function validate(
 
   const advancesReceivedCents = optionalMoney(input.advancesReceived);
   if (advancesReceivedCents === null) return fail("Enter a valid advances received amount.");
-  if (advancesReceivedCents < 0) return fail("This figure cannot be negative.");
+  if (advancesReceivedCents < 0) return fail("Advances received cannot be negative.");
 
   // Server actions are directly invocable, so the rule flags are checked rather than trusted:
   // a missing one reached the NOT NULL column as a 500, or silently kept the old rule on update.
@@ -112,7 +112,7 @@ async function validate(
   const end = input.contractEnd.trim();
   if (start && !isValidIsoDate(start)) return fail("Enter a valid contract start date.");
   if (end && !isValidIsoDate(end)) return fail("Enter a valid contract end date.");
-  if (start && end && end < start) return fail("The contract ends before it starts.");
+  if (start && end && end < start) return fail("The contract end date is before the start date.");
 
   const docName = input.docName.trim();
 

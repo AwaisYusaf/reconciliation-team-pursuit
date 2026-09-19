@@ -10,6 +10,7 @@ import { summariesAccessForOrg } from "@/src/modules/ai/access";
 import { loadSummaryForDownload } from "@/src/modules/monthly-summary/queries";
 import { getSession } from "@/src/services/auth/session";
 import { consume } from "@/src/services/rate-limit";
+import { SESSION_EXPIRED } from "@/src/lib/action-result";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -23,7 +24,7 @@ export const dynamic = "force-dynamic";
  */
 export async function GET(request: Request) {
   const session = await getSession();
-  if (!session) return new NextResponse("Not signed in", { status: 401 });
+  if (!session) return new NextResponse(SESSION_EXPIRED, { status: 401 });
 
   // Same reasoning as the cover sheet download (`app/api/downloads/cover-sheet/route.ts`):
   // generation must not be reachable by a cross-site navigation carrying the session cookie.
@@ -60,7 +61,12 @@ export async function GET(request: Request) {
   if (!source) return new NextResponse("Unknown funding source", { status: 404 });
 
   const loaded = await loadSummaryForDownload(session.orgId, source.id, month as MonthKey);
-  if (!loaded) return new NextResponse("No summary for this month", { status: 404 });
+  if (!loaded) {
+    return new NextResponse(UI.summaryNotFound(monthLabel(month as MonthKey)), {
+      status: 404,
+      headers: { "Content-Type": "text/plain; charset=utf-8" },
+    });
+  }
 
   // Filenames and the title gain the source name only once the organisation has more than one
   // source (R10.3, P13).

@@ -102,7 +102,7 @@ export function packetContents(input: {
     { key: "index", label: "Expense index", pages: input.indexPages },
     ...input.lineItems.map((lineItem) => ({
       key: lineItem.lineItemId,
-      label: `${lineItem.name} — cover sheet + documents`,
+      label: `${lineItem.name} cover sheet and documents`,
       pages: lineItem.estimatedPages,
     })),
     { key: "monthDocuments", label: "Month documents", pages: input.monthDocumentPages },

@@ -25,7 +25,7 @@ import { AccountBadges } from "../../badges";
 /** Named per organization, so two open tabs are tellable apart. */
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
   const account = await loadOrgAccount((await params).id);
-  return { title: account ? `${account.name} — AB Solutions admin` : "Organization — AB Solutions admin" };
+  return { title: account ? `${account.name} | AB Solutions admin` : "Organization | AB Solutions admin" };
 }
 
 /** One usage fact. `caption` is for the rare line that needs explaining, like what a packet
@@ -290,12 +290,12 @@ export default async function OrgPage({
         <ul className="divide-y divide-line">
           {history.map((event) => (
             <li key={event.id} className="py-2.5 text-[15px]">
-              {formatDateTimeShort(event.createdAt)} – {describeAccountEvent(event)}
-              {event.note !== null && ` – ${event.note}`}
+              {formatDateTimeShort(event.createdAt)} · {describeAccountEvent(event)}
+              {event.note !== null && ` · ${event.note}`}
             </li>
           ))}
           <li className="py-2.5 text-[15px]">
-            {formatDateShort(todayIso(account.createdAt))} – {UI.orgSignedUp}
+            {formatDateShort(todayIso(account.createdAt))} · {UI.orgSignedUp}
           </li>
         </ul>
       </Card>

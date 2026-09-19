@@ -48,9 +48,9 @@ type SectionId = (typeof SECTION_IDS)[number];
 
 const SECTION_LABELS: Record<SectionId, string> = {
   organization: "Organization",
-  fundingSources: "Funding Sources",
+  fundingSources: "Funding sources",
   labels: "Lists",
-  vendors: "Vendor Library",
+  vendors: "Vendor library",
   users: "Users",
   account: "Account",
 };
@@ -225,7 +225,7 @@ export function SettingsSections({
     setReadAmountsEnabled(next);
     startTransition(async () => {
       const result = await setReadAmountsEnabledAction(next);
-      if (reportResult(result, "Organization saved")) {
+      if (reportResult(result, "Setting saved.")) {
         router.refresh();
       } else {
         setReadAmountsEnabled(previous);
@@ -292,7 +292,7 @@ export function SettingsSections({
             <div className="flex justify-end mt-6">
               <Button
                 disabled={pending}
-                onClick={() => run(() => updateOrganisationAction(org), "Organization saved")}
+                onClick={() => run(() => updateOrganisationAction(org), "Organization saved.")}
               >
                 Save
               </Button>
@@ -318,7 +318,7 @@ export function SettingsSections({
 
         {active === "fundingSources" && (
           <Card className={CARD_PADDING} data-tour="settings-funding-sources-list">
-            <SectionTitle className="mb-5">Funding Sources</SectionTitle>
+            <SectionTitle className="mb-5">Funding sources</SectionTitle>
             <FundingSourcesSection
               fundingSources={fundingSources}
               orgDocName={org.docName}
@@ -349,12 +349,11 @@ export function SettingsSections({
             </div>
 
             <Helper className="mt-5">
-              Payment sources are only how something was paid &mdash; &ldquo;Paid by
-              us&rdquo;, &ldquo;Paid directly by fiduciary&rdquo;. Tax and fee reimbursement
-              rules now live on each funding source, in
-              the Funding Sources section. Renames apply to menus going forward; saved expenses
-              keep the label they were entered with, which is what keeps their documents
-              reproducible.
+              A payment source only records how something was paid, such as &ldquo;Paid by
+              us&rdquo; or &ldquo;Paid directly by fiduciary&rdquo;. Tax and fee reimbursement
+              rules are set on each funding source, in the Funding sources section. Renamed
+              labels show in menus from now on. Saved expenses keep the label they were saved
+              with, so their documents stay the same.
             </Helper>
           </Card>
         )}
@@ -398,7 +397,7 @@ export function SettingsSections({
               <Helper>
                 The short walkthroughs across the app show once each and then stay out of the
                 way. Bring them all back if you&apos;d like to see them again, or use the (i)
-                button next to Log out to replay just the one for the screen you&apos;re on.
+                button next to Sign out to replay just the one for the screen you&apos;re on.
               </Helper>
               <div className="flex justify-end mt-4">
                 <Button
@@ -407,7 +406,7 @@ export function SettingsSections({
                   onClick={() =>
                     run(
                       () => resetToursAction(),
-                      "App guide will show again",
+                      "The app guide will show again.",
                       // Straight to the Dashboard rather than leaving the user on Settings.
                       // This button brings back *every* walkthrough, and the walkthrough has an
                       // order: the Dashboard tour is `TOUR_SEQUENCE`'s first stop and the one
@@ -446,7 +445,7 @@ function FundingSourceDetails({
   const date = (value: string) => (value ? formatDateUS(value) : null);
   const period =
     source.contractStart || source.contractEnd
-      ? `${date(source.contractStart) ?? "Not set"} – ${date(source.contractEnd) ?? "Not set"}`
+      ? `${date(source.contractStart) ?? "Not set"} to ${date(source.contractEnd) ?? "Not set"}`
       : null;
 
   // The two figures people come here for, then when the money runs — read at a glance.
@@ -500,7 +499,7 @@ function FundingSourceDetails({
         ))}
         <div>
           {/* What prints on this source's documents: its own name if set, else the org's (R6.1). */}
-          <dt className="text-[13px] text-sub">Document name</dt>
+          <dt className="text-[13px] text-sub">Document display name</dt>
           <dd className="text-[15px] text-ink font-medium">
             {source.docName || orgDocName}
             {!source.docName && (
@@ -587,7 +586,7 @@ function FundingSourcesSection({
     // any refusal (duplicate name, end before start), and reopening reset the draft.
     run(
       work,
-      editingId === NEW_FUNDING_SOURCE ? "Funding source added" : "Funding source saved",
+      editingId === NEW_FUNDING_SOURCE ? "Funding source added." : "Funding source saved.",
       () => setEditingId(null),
     );
   }
@@ -667,7 +666,7 @@ function FundingSourcesSection({
                   variant="quiet"
                   disabled={pending}
                   onClick={() =>
-                    run(() => unarchiveFundingSourceAction(source.id), "Funding source unarchived")
+                    run(() => unarchiveFundingSourceAction(source.id), "Funding source unarchived.")
                   }
                 >
                   Unarchive
@@ -677,7 +676,7 @@ function FundingSourcesSection({
                   variant="quiet"
                   disabled={pending || activeCount <= 1}
                   onClick={() =>
-                    run(() => archiveFundingSourceAction(source.id), "Funding source archived")
+                    run(() => archiveFundingSourceAction(source.id), "Funding source archived.")
                   }
                 >
                   Archive
@@ -778,14 +777,14 @@ function FundingSourceForm({
               </Select>
             </div>
             <div>
-              <Label htmlFor="fsDocName">Document name</Label>
+              <Label htmlFor="fsDocName">Document display name</Label>
               <Input
                 id="fsDocName"
                 placeholder={orgDocName}
                 value={draft.docName}
                 onChange={(event) => setDraft({ ...draft, docName: event.target.value })}
               />
-              <Helper>Leave blank to use the organization&apos;s document name.</Helper>
+              <Helper>Leave blank to use the organization&apos;s document display name.</Helper>
             </div>
             <div>
               <Label htmlFor="fsProjectName">Project name</Label>
@@ -836,7 +835,7 @@ function FundingSourceForm({
                 value={draft.contractValue}
                 onChange={(event) => setDraft({ ...draft, contractValue: event.target.value })}
               />
-              <Helper>Leave at 0.00 to use the sum of scheduled values.</Helper>
+              <Helper>Leave at 0.00 to use the total of the line items&apos; scheduled values.</Helper>
             </div>
             <div>
               <Label htmlFor="fsAdvancesReceived">Advances received</Label>
@@ -849,7 +848,7 @@ function FundingSourceForm({
               />
             </div>
             <div>
-              <Label htmlFor="fsContractStart">Contract start</Label>
+              <Label htmlFor="fsContractStart">Contract start date</Label>
               <Input
                 id="fsContractStart"
                 type="date"
@@ -858,7 +857,7 @@ function FundingSourceForm({
               />
             </div>
             <div>
-              <Label htmlFor="fsContractEnd">Contract end</Label>
+              <Label htmlFor="fsContractEnd">Contract end date</Label>
               <Input
                 id="fsContractEnd"
                 type="date"
@@ -876,7 +875,7 @@ function FundingSourceForm({
                 checked={draft.taxReimbursable}
                 onChange={(event) => setDraft({ ...draft, taxReimbursable: event.target.checked })}
               />
-              Does this funder reimburse sales tax?
+              This funder reimburses sales tax
             </label>
             <label className="flex items-center gap-2.5 text-[15px] text-ink cursor-pointer">
               <input
@@ -887,7 +886,7 @@ function FundingSourceForm({
                   setDraft({ ...draft, feesReimbursable: event.target.checked })
                 }
               />
-              Does this funder reimburse fees?
+              This funder reimburses fees
             </label>
           </div>
 
@@ -925,6 +924,8 @@ function LabelList({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   const [adding, setAdding] = useState("");
+  // What one row is called, so a toast names the thing that changed.
+  const noun = kind === "paymentSource" ? "Payment source" : "Document type";
 
   return (
     <div>
@@ -950,7 +951,7 @@ function LabelList({
                 className="min-h-11 px-3 text-[15px]"
                 disabled={pending}
                 onClick={() => {
-                  run(() => saveLabelAction({ kind, id: row.id, label: draft }), "Label saved");
+                  run(() => saveLabelAction({ kind, id: row.id, label: draft }), `${noun} saved.`);
                   setEditingId(null);
                 }}
               >
@@ -972,7 +973,7 @@ function LabelList({
                   onClick={() =>
                     run(
                       () => setLabelActiveAction({ kind, id: row.id, active: !row.active }),
-                      row.active ? "Deactivated" : "Reactivated",
+                      row.active ? `${noun} deactivated.` : `${noun} reactivated.`,
                     )
                   }
                 >
@@ -997,7 +998,7 @@ function LabelList({
       <div className="flex gap-3 mt-4">
         <Input
           value={adding}
-          placeholder="New label"
+          placeholder={`New ${noun.toLowerCase()}`}
           aria-label={`Add to ${title}`}
           onChange={(event) => setAdding(event.target.value)}
         />
@@ -1006,7 +1007,7 @@ function LabelList({
           className="min-h-11 px-4 text-[15px] whitespace-nowrap"
           disabled={pending || adding.trim() === ""}
           onClick={() => {
-            run(() => saveLabelAction({ kind, label: adding }), "Added");
+            run(() => saveLabelAction({ kind, label: adding }), `${noun} added.`);
             setAdding("");
           }}
         >
@@ -1048,7 +1049,7 @@ function VendorLibrary({
         paymentSources={paymentSources}
         pending={pending}
         run={run}
-        emptyMessage="No vendors learned yet — they appear as you save expenses."
+        emptyMessage="No vendors learned yet. They appear as you save expenses."
       />
 
       {vendorCount > vendors.length && (
@@ -1139,7 +1140,7 @@ function AccountSection({
                 newPassword: next,
                 confirmPassword: confirm,
               });
-              if (reportResult(result, "Password changed — other devices signed out")) {
+              if (reportResult(result, "Password changed. Your other devices were signed out.")) {
                 setCurrent("");
                 setNext("");
                 setConfirm("");

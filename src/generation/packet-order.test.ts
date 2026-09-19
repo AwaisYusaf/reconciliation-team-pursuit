@@ -221,8 +221,8 @@ describe("packetContents", () => {
     expect(contents().map((section) => section.label)).toEqual([
       "Contract summary sheet",
       "Expense index",
-      "Salary — cover sheet + documents",
-      "Travel — cover sheet + documents",
+      "Salary cover sheet and documents",
+      "Travel cover sheet and documents",
       "Month documents",
     ]);
     expect(contents().map((section) => section.pages)).toEqual([2, 1, 21, 14, 30]);

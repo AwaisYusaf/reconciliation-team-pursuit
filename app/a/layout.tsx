@@ -26,7 +26,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
         <div className="shrink-0">
           <form action={signOutAction}>
             <Button type="submit" variant="secondary" className="min-h-11 sm:min-h-12 text-[15px]">
-              Log out
+              Sign out
             </Button>
           </form>
         </div>

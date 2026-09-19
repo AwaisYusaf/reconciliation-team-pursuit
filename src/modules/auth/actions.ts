@@ -205,7 +205,7 @@ export async function signUpAction(
   // them onto an empty one and leaves the first orphaned.
   try {
     await requireSession();
-    return fail("You are already signed in. Log out first to create another organization.");
+    return fail("You are already signed in. Sign out first to create another organization.");
   } catch {
     // Not signed in, which is the expected case here.
   }
@@ -215,7 +215,7 @@ export async function signUpAction(
   // through here would replace their staff session with a customer one (`startSession` clears
   // both tables) and leave a junk organization in the directory (Phase 9 §3.3).
   if (await getStaffSession()) {
-    return fail("You are signed in as AB Solutions staff. Log out first to create an organization.");
+    return fail("You are signed in as AB Solutions staff. Sign out first to create an organization.");
   }
 
   // Bounded before argon2 is reached: hashing runs on the same threadpool login's
@@ -297,7 +297,7 @@ export async function saveOnboardingLineItemsAction(
   if ("expired" in session) return session.expired;
   // Server Actions are directly invocable, so the page guard is not enough: a replayed or
   // stale-tab call would otherwise wipe a live organisation's approved budget.
-  if (session.onboarded) return fail("Onboarding is already complete.");
+  if (session.onboarded) return fail("Your organization is already set up.");
 
   const names = formData.getAll("lineItemName").map((value) => String(value).trim());
   const budgets = formData.getAll("lineItemBudget").map((value) => String(value));
@@ -355,7 +355,7 @@ export async function completeOnboardingAction(
 ): Promise<ActionResult> {
   const session = await requireSessionOrExpired();
   if ("expired" in session) return session.expired;
-  if (session.onboarded) return fail("Onboarding is already complete.");
+  if (session.onboarded) return fail("Your organization is already set up.");
   const skip = formData.get("intent") === "skip";
 
   const parsed = contractSchema.safeParse({

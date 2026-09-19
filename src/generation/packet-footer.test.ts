@@ -55,9 +55,9 @@ describe.skipIf(!hasPdftotext())("footer text", () => {
   it("numbers every page against the final total", async () => {
     const stamped = await stampFooters(await makePdf(3), "Team Pursuit", "February 2026");
 
-    expect(await pageText(stamped, 1)).toContain("Team Pursuit — February 2026 — Page 1 of 3");
-    expect(await pageText(stamped, 2)).toContain("Team Pursuit — February 2026 — Page 2 of 3");
-    expect(await pageText(stamped, 3)).toContain("Team Pursuit — February 2026 — Page 3 of 3");
+    expect(await pageText(stamped, 1)).toContain("Team Pursuit | February 2026 | Page 1 of 3");
+    expect(await pageText(stamped, 2)).toContain("Team Pursuit | February 2026 | Page 2 of 3");
+    expect(await pageText(stamped, 3)).toContain("Team Pursuit | February 2026 | Page 3 of 3");
     // Three real `pdftotext` round trips — same headroom reasoning as D-70 below.
   }, 20_000);
 
@@ -76,13 +76,13 @@ describe.skipIf(!hasPdftotext())("footer text", () => {
       null, // a month document, e.g. the bank statement
     ]);
 
-    expect(await pageText(stamped, 1)).toContain("Team Pursuit — February 2026 — Page 1 of 4");
+    expect(await pageText(stamped, 1)).toContain("Team Pursuit | February 2026 | Page 1 of 4");
     expect(await pageText(stamped, 1)).not.toContain("2026-02");
 
     expect(await pageText(stamped, 2)).toContain(
-      "Team Pursuit — February 2026 — 2026-02-014 — Page 2 of 4",
+      "Team Pursuit | February 2026 | 2026-02-014 | Page 2 of 4",
     );
-    expect(await pageText(stamped, 3)).toContain("2026-02-014 — Page 3 of 4");
+    expect(await pageText(stamped, 3)).toContain("2026-02-014 | Page 3 of 4");
 
     // A bank statement documents the month, not one expense; claiming otherwise would be wrong.
     expect(await pageText(stamped, 4)).not.toContain("2026-02-014");
@@ -95,7 +95,7 @@ describe.skipIf(!hasPdftotext())("footer text", () => {
   it("falls back to the footer it always had when no owners are given", async () => {
     // Every existing caller and every already-delivered packet keep the exact same footer.
     const stamped = await stampFooters(await makePdf(2), "Team Pursuit", "February 2026");
-    expect(await pageText(stamped, 1)).toContain("Team Pursuit — February 2026 — Page 1 of 2");
+    expect(await pageText(stamped, 1)).toContain("Team Pursuit | February 2026 | Page 1 of 2");
   });
 
   it("leaves the page's own content intact", async () => {
@@ -136,10 +136,11 @@ describe("size ceiling (packet-pdf-spec §Size)", () => {
    */
   it("survives being put in a response header", () => {
     const warning = oversizeWarning(30 * 1024 * 1024);
-    expect(warning).toMatch(/[^\x00-\xff]/); // it really does contain non-Latin-1 text
 
+    // Why the route encodes at all: a header can't carry text outside Latin-1, which a curly
+    // quote in any future wording would bring.
     expect(
-      () => new Response("x", { headers: { "X-Packet-Warning": warning } }),
+      () => new Response("x", { headers: { "X-Packet-Warning": `${warning} \u201cquoted\u201d` } }),
     ).toThrow();
 
     // Encoded, it is pure ASCII and round-trips back to the original.

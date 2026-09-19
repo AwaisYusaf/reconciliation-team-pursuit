@@ -35,7 +35,7 @@ const decode = require("heic-decode");
   try {
     const image = images[0];
     if (!image) throw new Error("no image in the file");
-    // The size of the image decoded below, from its own handle — never another image's.
+    // The size of the image decoded below, from its own handle, never another image's.
     if (image.width * image.height > workerData.maxPixels) {
       parentPort.postMessage({ tooLarge: true });
       return;

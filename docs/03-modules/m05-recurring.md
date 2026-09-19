@@ -10,9 +10,9 @@ Route `/r/recurring`. Managed list (CRUD) + per-row "Add to {month}" with added-
 Reads/writes `recurring_items`; creates `expenses` (no documents — R4.5). A recurring item belongs to a funding source **through its line item** (spec §4) — it has no `funding_source_id` column of its own. An archived source takes no new expenses (R14.3), so the server refuses both `Add to {Mon}` and saving a template on an archived source's line item ("That funding source is archived."). The template's line item picker leaves archived sources' line items out, and labels each option `{line item} ({source})` once the org has more than one source, since two sources may each have a "Salary". Added detection: an expense exists in the active month with the same name (case-insensitive) + line item.
 
 ## Behavior
-- Table: `Name | Amount | Line Item | [Funding Source] | (action)` — the Funding Source column (resolved via the line item) appears only when the org has more than one source (D-93). Action: secondary `Add to {Mon}` → creates an expense (month = active month, date = today per R2.5, payment source = the template's own source when it is still active, else the org's first active one, **tax/fees = the line item's funding source's rules** (D-93 — no longer the payment source's), description = the template's or the vendor-library default, narrative = the template's). The row flashes green and becomes `Added to {Month}` + quiet `Remove`. The flash waits for the add to succeed — it used to fire first, so a failed add still went green, which is how a live insert failure stayed invisible on this screen.
+- Table: `Name | Amount | Line item | [Funding source] | (action)` — the Funding Source column (resolved via the line item) appears only when the org has more than one source (D-93). Action: secondary `Add to {Mon}` → creates an expense (month = active month, date = today per R2.5, payment source = the template's own source when it is still active, else the org's first active one, **tax/fees = the line item's funding source's rules** (D-93 — no longer the payment source's), description = the template's or the vendor-library default, narrative = the template's). The row flashes green and becomes `Added to {Month}` + quiet `Remove`. The flash waits for the add to succeed — it used to fire first, so a failed add still went green, which is how a live insert failure stayed invisible on this screen.
 - **Remove** deletes the newest expense this item actually created (tracked by `recurring_item_id`); if that expense has ≥ 1 document attached, a confirm dialog is required first (R8.3). An expense that only matches by name and line item — typed in by hand, never created by this item — is shown as `Added` for information but is refused outright by Remove, no confirmation offered; the error names the expense and points to the Expenses list instead (D-79).
-- Subtext: `Vendors and salaries billed every month. Nothing is added automatically — confirm each one you want to add to {Month YYYY}.`
+- Subtext: `Vendors and salaries billed every month. Nothing is added automatically. Confirm each one you want to add to {Month YYYY}.`
 - `+ Add recurring item` inline form: name, amount, line item, optional description. Edit/delete per row (delete = list only, never touches expenses). Recurring items are cascade-deleted with their line item after the R9.3 confirm.
 - **Search, line item filter, pagination.** Search matches name and default description; the
   filter offers only line items that actually have a recurring item, so a chosen filter can never
@@ -42,10 +42,10 @@ Add creates a correct expense; Remove targets the newest match and confirms when
 Design the RECURRING ITEMS screen inside the app chrome (month "March 2026", Recurring tab
 active).
 
-h1 "Recurring Items", subtext "Vendors and salaries billed every month. Nothing is added
-automatically — confirm each one you want to add to March 2026."
+h1 "Recurring items", subtext "Vendors and salaries billed every month. Nothing is added
+automatically. Confirm each one you want to add to March 2026."
 
-Table with uppercase headers: Name | Amount | Line Item | (blank action column). Rows:
+Table with uppercase headers: Name | Amount | Line item | (blank action column). Rows:
 
 Quincy Smith      $9,211.50  Salary                   [Added to March 2026 ✓ + quiet "Remove"]
 Misty Smith       $7,596.16  Salary                   [Added to March 2026 ✓ + quiet "Remove"]

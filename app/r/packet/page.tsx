@@ -166,7 +166,7 @@ export default async function PacketPage() {
 
       {readiness.rows.length === 0 ? (
         <EmptyState>
-          No line items yet — set up your budget in{" "}
+          No line items yet. Set up your budget in{" "}
           <Link href="/r/line-items" className="text-accent underline">
             Line Items
           </Link>
@@ -178,7 +178,7 @@ export default async function PacketPage() {
             <tr>
               <Th sticky>Line Item</Th>
               <Th align="right">Amount This Month</Th>
-              <Th align="right">Records</Th>
+              <Th align="right">Expenses</Th>
               <Th align="right" data-tour="packet-doc-complete">
                 Documentation Complete
               </Th>
@@ -199,12 +199,12 @@ export default async function PacketPage() {
                   align="right"
                   className={row.complete === false ? "font-bold text-danger" : undefined}
                 >
-                  {row.complete === null ? "—" : row.complete ? "Yes" : "No"}
+                  {row.complete === null ? "-" : row.complete ? "Yes" : "No"}
                 </Td>
               </tr>
             ))}
             <tr>
-              <Td bold sticky>Grand Total</Td>
+              <Td bold sticky>Total</Td>
               <Td align="right" numeric bold>
                 {formatMoney(readiness.totalAmountCents)}
               </Td>

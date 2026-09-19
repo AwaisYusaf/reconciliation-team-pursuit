@@ -12,11 +12,11 @@ export const DASHBOARD_TOUR_STEPS: readonly TourStep[] = [
   {
     target: "funding-source-selector",
     title: "The funding source",
-    body: "Each funding source has its own budget, expenses and packet. Pick one, or choose All to see them side by side.",
+    body: "Each funding source has its own budget, expenses and packet. Pick one, or choose All funding sources to see them side by side.",
   },
   {
     target: "dashboard-closing-balance",
-    title: "Closing Balance",
+    title: "Closing balance",
     body: "This turns red when a line item has less than 10% of its budget left, or is overspent.",
   },
   {

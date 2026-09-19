@@ -38,6 +38,9 @@ export type InspectionResult = InspectionSuccess | InspectionFailure;
 const MAX_PIXELS = 80_000_000;
 const THUMBNAIL_WIDTH = 320;
 
+const IMAGE_UNREADABLE =
+  "That image couldn't be read and may be damaged. Take a new photo or scan, and upload that.";
+
 /** Formats the generators can embed directly; everything else is converted. */
 const PASSTHROUGH_IMAGE_TYPES = new Set(["image/jpeg", "image/png"]);
 
@@ -75,7 +78,7 @@ export async function inspectUpload(input: {
 }): Promise<InspectionResult> {
   const { body, declaredMimeType, allowOwnerPasswordPdf = false } = input;
 
-  if (body.length === 0) return { ok: false, error: "That file is empty." };
+  if (body.length === 0) return { ok: false, error: "That file is empty. Check that it opens on your device, then upload it again." };
 
   const actual = sniff(body);
   if (!actual) {
@@ -90,7 +93,7 @@ export async function inspectUpload(input: {
   if (!isUndeclaredMimeType(declaredMimeType) && actual !== declaredFamily) {
     return {
       ok: false,
-      error: "That file's contents do not match its type. Try exporting it again.",
+      error: "That file's contents don't match its file type. Save or export it again, then upload the new copy.",
     };
   }
 
@@ -131,7 +134,7 @@ async function inspectPdf(body: Buffer, allowOwnerPasswordPdf: boolean): Promise
       }
     }
     const pageCount = document.getPageCount();
-    if (pageCount === 0) return { ok: false, error: "That PDF has no pages." };
+    if (pageCount === 0) return { ok: false, error: "That PDF has no pages. Check that it opens on your device, then upload it again." };
 
     const [first] = document.getPages();
     const { width, height } = first.getSize();
@@ -151,10 +154,13 @@ async function inspectPdf(body: Buffer, allowOwnerPasswordPdf: boolean): Promise
     if (/encrypt/i.test(message)) {
       return {
         ok: false,
-        error: "That PDF is password-protected. Save an unprotected copy and upload that.",
+        error: "That PDF is password protected. Save a copy without the password and upload that.",
       };
     }
-    return { ok: false, error: "That PDF could not be read — it may be damaged." };
+    return {
+      ok: false,
+      error: "That PDF couldn't be read and may be damaged. Save a new copy, or scan the document again, and upload that.",
+    };
   }
 }
 
@@ -180,7 +186,7 @@ async function inspectImage(input: Buffer, declaredType: string): Promise<Inspec
     const storedWidth = metadata.width ?? 0;
     const storedHeight = metadata.height ?? 0;
     if (storedWidth === 0 || storedHeight === 0) {
-      return { ok: false, error: "That image could not be read — it may be damaged." };
+      return { ok: false, error: IMAGE_UNREADABLE };
     }
 
     // EXIF orientations 5–8 rotate by a quarter turn, so the stored pixel dimensions are
@@ -216,8 +222,8 @@ async function inspectImage(input: Buffer, declaredType: string): Promise<Inspec
   } catch (error) {
     const message = error instanceof Error ? error.message : "";
     if (/pixel|limit/i.test(message)) {
-      return { ok: false, error: "That image is too large to process. Try a smaller export." };
+      return { ok: false, error: "That image is too large to process. Upload a lower-resolution copy." };
     }
-    return { ok: false, error: "That image could not be read — it may be damaged." };
+    return { ok: false, error: IMAGE_UNREADABLE };
   }
 }

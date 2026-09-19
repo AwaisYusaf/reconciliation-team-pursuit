@@ -91,7 +91,7 @@ export function LineItemsManager({
         router.refresh();
       } else {
         // Kept inline as well: a refusal explains a rule and should stay on screen.
-        setError(result.error ?? "Something went wrong.");
+        setError(result.error ?? "That change couldn't be saved. Try again.");
       }
     });
   }
@@ -132,7 +132,7 @@ export function LineItemsManager({
     run(
       () => saveLineItemPerformanceAction(values),
       () => setEditingPerformance(null),
-      "Performance saved",
+      "Performance saved.",
     );
   }
 
@@ -142,7 +142,7 @@ export function LineItemsManager({
     run(
       () => reorderLineItemsAction(next.map((row) => row.id), fundingSourceId),
       undefined,
-      "Order updated",
+      "Order updated.",
     );
   }
 
@@ -175,12 +175,12 @@ export function LineItemsManager({
           date: newPerformance.date,
         }),
       () => setNewPerformance(emptyPerformanceDraft()),
-      "Performance added",
+      "Performance added.",
     );
   }
 
   function removePerformance(id: string) {
-    run(() => deleteLineItemPerformanceAction(id), undefined, "Performance removed");
+    run(() => deleteLineItemPerformanceAction(id), undefined, "Performance deleted.");
   }
 
   return (
@@ -197,7 +197,7 @@ export function LineItemsManager({
         dismissLabel="Cancel"
         onDismiss={() => setConfirmDelete(null)}
         confirm={{
-          label: "Delete anyway",
+          label: "Delete line item",
           disabled: pending,
           onConfirm: () => {
             const id = confirmDelete!.id;
@@ -208,8 +208,8 @@ export function LineItemsManager({
               // dialog doesn't vanish out from under a failure the general error banner is
               // about to show — the dialog would otherwise hide that banner behind its overlay.
               setConfirmDelete(null);
-              if (reportResult(result, "Line item deleted")) router.refresh();
-              else setError(result.error ?? "Something went wrong.");
+              if (reportResult(result, "Line item deleted.")) router.refresh();
+              else setError(result.error ?? "The line item couldn't be deleted. Try again.");
             });
           },
         }}
@@ -225,7 +225,7 @@ export function LineItemsManager({
         const row = rows.find((r) => r.id === managingId);
         if (!row) return null;
         return (
-          <Modal open title={`Manage — ${row.name}`} onClose={closeManage} size="lg">
+          <Modal open title={`Manage ${row.name}`} onClose={closeManage} size="lg">
             {/* Small uppercase labels, not full SectionTitle headings — matching the compact
                 heading style Settings' own label lists use (settings-sections.tsx) rather
                 than a full card per section, which just made this popup tall for no reason. */}
@@ -325,7 +325,7 @@ export function LineItemsManager({
                         ) : performance.date ? (
                           formatDateUS(performance.date)
                         ) : (
-                          "—"
+                          "-"
                         )}
                       </Td>
                       <Td align="right" numeric className={DENSE_CELL}>
@@ -344,7 +344,7 @@ export function LineItemsManager({
                             {formatMoney(performance.amountCents)}
                             {edit && (
                               <div className="text-[13px] text-sub">
-                                Part of the contract value. Delete and re-add to change.
+                                Part of the contract value. To change it, delete it and add it again.
                               </div>
                             )}
                           </>
@@ -384,7 +384,7 @@ export function LineItemsManager({
                               className={DENSE_BUTTON}
                               disabled={pending}
                               title={`Delete ${label}?`}
-                              body={`${formatMoney(performance.amountCents)} is removed from ${row.name}'s Scheduled Value. This cannot be undone.`}
+                              body={`${formatMoney(performance.amountCents)} will be removed from ${row.name}'s scheduled value. This can't be undone.`}
                               confirmLabel="Delete performance"
                               onConfirm={() => removePerformance(performance.id)}
                             >
@@ -461,7 +461,7 @@ export function LineItemsManager({
                   run(
                     () => saveLineItemAction({ id: row.id, fundingSourceId, ...draft }),
                     undefined,
-                    "Line item saved",
+                    "Line item saved.",
                   )
                 }
               >
@@ -515,7 +515,7 @@ export function LineItemsManager({
                 {formatMoney(row.totalScheduledValueCents)}
               </Td>
               <Td align="right" numeric className="text-sub">
-                {performanceTotal(row) > 0 ? formatMoney(performanceTotal(row)) : "—"}
+                {performanceTotal(row) > 0 ? formatMoney(performanceTotal(row)) : "-"}
               </Td>
               <Td align="right" numeric>
                 {formatMoney(row.openingBilledCents)}
@@ -582,7 +582,7 @@ export function LineItemsManager({
                 }
               />
               <div className="text-sm text-sub mt-1.5 leading-relaxed">
-                Amount already billed before you started using this system.
+                Amount already billed before you started using this app.
               </div>
             </div>
           </div>
@@ -597,7 +597,7 @@ export function LineItemsManager({
                     setShowAdd(false);
                     setAddDraft({ name: "", scheduledValue: "", openingBilled: "" });
                   },
-                  "Line item added",
+                  "Line item added.",
                 )
               }
             >

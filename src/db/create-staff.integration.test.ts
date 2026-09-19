@@ -177,7 +177,7 @@ describe.skipIf(!hasDatabase)("db:create-staff / db:reset-password staff fallbac
       STAFF_PASSWORD: "a-different-password-12",
     });
     expect(second.exitCode).toBe(0);
-    expect(second.stdout).toMatch(/already exists — left unchanged/);
+    expect(second.stdout).toMatch(/already exists\. Left unchanged/);
 
     const rows = await db
       .select({ name: staffUsers.name, passwordHash: staffUsers.passwordHash })
@@ -241,7 +241,7 @@ describe.skipIf(!hasDatabase)("db:create-staff / db:reset-password staff fallbac
       STAFF_PASSWORD: "",
     });
     expect(redeploy.exitCode).toBe(0);
-    expect(redeploy.stdout).toMatch(/already exists — left unchanged/);
+    expect(redeploy.stdout).toMatch(/already exists\. Left unchanged/);
 
     const [row] = await db
       .select({ passwordHash: staffUsers.passwordHash })

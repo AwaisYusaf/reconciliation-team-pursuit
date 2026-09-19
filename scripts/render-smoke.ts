@@ -36,7 +36,7 @@ function check(name: string, condition: boolean, detail = ""): void {
     console.log(`  ok    ${name}`);
   } else {
     failures += 1;
-    console.log(`  FAIL  ${name}${detail ? ` — ${detail}` : ""}`);
+    console.log(`  FAIL  ${name}${detail ? `: ${detail}` : ""}`);
   }
 }
 
@@ -124,13 +124,13 @@ async function main(): Promise<void> {
   const index = await buildIndexSectionPdf(snapshot);
   const indexText = await textOf(index);
   check("every reference is searchable text", ["001", "002", "003"].every((n) => indexText.includes(`2026-02-${n}`)));
-  check("discloses an undocumented expense (D-74)", indexText.includes("no supporting document"));
+  check("discloses an undocumented expense (D-74)", indexText.includes("Expenses with no receipt available:"));
   check("gives its stated reason", indexText.includes("participant stipends"));
 
   console.log("\npage footers");
   const stamped = await stampFooters(index, "Team Pursuit", "February 2026", ["2026-02-014"]);
   const stampedText = await textOf(stamped);
-  check("carries the expense reference (D-70)", stampedText.includes("2026-02-014 — Page 1 of"));
+  check("carries the expense reference (D-70)", stampedText.includes("2026-02-014 | Page 1 of"));
 
   console.log("\ncover sheet");
   // The client saw the yellow total break mid-number in Word while our own PDFs looked fine,
@@ -177,7 +177,7 @@ async function main(): Promise<void> {
   check(
     "the total prints on one line (D-76)",
     coverText.includes("-$12,345,678.90"),
-    "the amount column is too narrow — the number wrapped",
+    "the amount column is too narrow, so the number wrapped",
   );
 
   console.log("\nExcel workbook");

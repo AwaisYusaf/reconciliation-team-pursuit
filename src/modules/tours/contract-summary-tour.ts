@@ -12,6 +12,6 @@ export const CONTRACT_SUMMARY_TOUR_STEPS: readonly TourStep[] = [
   {
     target: "contract-summary-reconciliation",
     title: "Advance reconciliation",
-    body: "A separate figure from the totals above — this tracks advance payments received against what's been reconciled so far.",
+    body: "This is separate from the totals above. It tracks advance payments received against what's been reconciled so far.",
   },
 ];

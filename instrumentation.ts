@@ -48,7 +48,7 @@ export async function register(): Promise<void> {
   const missing = REQUIRED_IN_PRODUCTION.filter(({ name }) => !process.env[name]);
 
   if (missing.length > 0) {
-    const detail = missing.map(({ name, why }) => `  ${name} — ${why}`).join("\n");
+    const detail = missing.map(({ name, why }) => `  ${name}: ${why}`).join("\n");
     throw new Error(
       `Refusing to start: ${missing.length} required setting${missing.length === 1 ? " is" : "s are"} missing.\n${detail}\n` +
         "See .env.example for the full list.",
@@ -57,7 +57,7 @@ export async function register(): Promise<void> {
 
   const appUrl = appUrlProblem(process.env.APP_URL);
   if (appUrl) {
-    throw new Error(`Refusing to start: APP_URL is unusable — ${appUrl}. Set it to the public address, e.g. https://stayfunded360.com.`);
+    throw new Error(`Refusing to start: APP_URL is unusable (${appUrl}). Set it to the public address, e.g. https://stayfunded360.com.`);
   }
 
   // A wrong hop count is worse than none: it makes a forged X-Forwarded-For trustworthy.

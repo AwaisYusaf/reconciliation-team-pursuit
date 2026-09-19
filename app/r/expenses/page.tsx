@@ -145,11 +145,11 @@ export default async function ExpensesPage({
       <TourGuide tour="expenses" steps={EXPENSES_TOUR_STEPS} alreadySeen={seenExpensesTour} />
       <div className="flex flex-wrap items-start justify-between gap-3 mb-6">
         <div>
-          <PageTitle className="mb-1.5">Expenses This Month</PageTitle>
+          <PageTitle className="mb-1.5">Expenses this month</PageTitle>
           <Subtext>{monthLabel(month)}</Subtext>
           {viewingOtherMonth && (
             <DangerPanel tone="notice" className="mt-3 max-w-[560px]">
-              This is where your last save landed — not your active month (
+              This is the month you last saved to, not your active month (
               {monthLabel(session.activeMonth)}).{" "}
               <Link href="/r/expenses" className="underline">
                 Go to your active month

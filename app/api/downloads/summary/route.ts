@@ -11,6 +11,7 @@ import {
 } from "@/src/modules/packet/month-output";
 import { getSession } from "@/src/services/auth/session";
 import { consume } from "@/src/services/rate-limit";
+import { SESSION_EXPIRED } from "@/src/lib/action-result";
 
 export const runtime = "nodejs";
 // Every response depends on the session and on live data, so nothing here may be cached.
@@ -24,7 +25,7 @@ export const dynamic = "force-dynamic";
  */
 export async function GET(request: Request) {
   const session = await getSession();
-  if (!session) return new NextResponse("Not signed in", { status: 401 });
+  if (!session) return new NextResponse(SESSION_EXPIRED, { status: 401 });
 
   // Generating an artifact writes to storage and records a permanent, pinned row, so it
   // must not be reachable by a cross-site navigation. The session cookie is SameSite=Lax,

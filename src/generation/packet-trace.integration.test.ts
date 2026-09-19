@@ -183,7 +183,7 @@ describe.skipIf(!canRun)("packet traceability (integration)", async () => {
 
   function pagesCarrying(reference: string): number[] {
     return pageText
-      .map((text, index) => (text.includes(`— ${reference} — Page`) ? index + 1 : 0))
+      .map((text, index) => (text.includes(`| ${reference} | Page`) ? index + 1 : 0))
       .filter(Boolean);
   }
 
@@ -210,7 +210,7 @@ describe.skipIf(!canRun)("packet traceability (integration)", async () => {
   it("pages belonging to no single expense carry no reference", () => {
     // The summary, the index and the cover sheet cover the month or the whole category;
     // stamping one expense's number on them would assert something untrue.
-    const referenceOnPage = /— \d{4}-\d{2}-\d{3} — Page/;
+    const referenceOnPage = /\| \d{4}-\d{2}-\d{3} \| Page/;
     expect(referenceOnPage.test(pageText[0])).toBe(false);
     expect(referenceOnPage.test(pageText[1])).toBe(false);
   });
@@ -222,7 +222,7 @@ describe.skipIf(!canRun)("packet traceability (integration)", async () => {
   });
 
   it("keeps the organisation and month on every page", () => {
-    for (const text of pageText) expect(text).toContain("Trace — February 2099");
+    for (const text of pageText) expect(text).toContain("Trace | February 2099");
   });
 
   it("puts the month documents after every expense's evidence (D-77)", () => {
@@ -230,13 +230,13 @@ describe.skipIf(!canRun)("packet traceability (integration)", async () => {
     // carries no expense reference (D-70) and every receipt page does, so the position is
     // readable from the footers alone.
     const referenced = pageText
-      .map((text, index) => (/— \d{4}-\d{2}-\d{3} — Page/.test(text) ? index + 1 : 0))
+      .map((text, index) => (/\| \d{4}-\d{2}-\d{3} \| Page/.test(text) ? index + 1 : 0))
       .filter(Boolean);
 
     expect(referenced.length).toBeGreaterThan(0);
     // The single month document is the last page, so the last referenced page is the one before.
     expect(Math.max(...referenced)).toBe(pageCount - 1);
-    expect(/— \d{4}-\d{2}-\d{3} — Page/.test(pageText[pageCount - 1])).toBe(false);
+    expect(/\| \d{4}-\d{2}-\d{3} \| Page/.test(pageText[pageCount - 1])).toBe(false);
   });
 
   it("still opens on the summary and the index", () => {
@@ -326,7 +326,8 @@ describe.skipIf(!canRun)("packet traceability (integration)", async () => {
       const links = await readLinks(delivered);
       const words = wordsOf(delivered);
       for (const seq of [1, 2, 3, 4]) {
-        const token = words.find((w) => w.text === `${MONTH}-00${seq}:`)!;
+        // On the cover sheet: the index's no-receipt line prints the same `(reference):` form.
+        const token = words.find((w) => w.text === `(${MONTH}-00${seq}):` && isCover(w.page))!;
         expect(token).toBeDefined();
         const box = toPdfRect(token, token.pageHeight);
         const over = links.filter(
@@ -340,7 +341,7 @@ describe.skipIf(!canRun)("packet traceability (integration)", async () => {
     it("sends the no-receipt expense to its heading, and its index row to the D-74 line", async () => {
       const links = await readLinks(delivered);
       const words = wordsOf(delivered);
-      const heading = words.find((w) => w.text === `${MONTH}-004:`)!;
+      const heading = words.find((w) => w.text === `(${MONTH}-004):` && isCover(w.page))!;
       const toHeading = links.filter((l) => l.toPage === heading.page && l.top !== null && isCover(l.fromPage));
       // Row and heading both land on the heading, scrolled to the top.
       expect(toHeading.length).toBeGreaterThanOrEqual(2);
@@ -358,10 +359,10 @@ describe.skipIf(!canRun)("packet traceability (integration)", async () => {
         "Contract summary",
         "Expense index",
         "Transportation",
-        `${MONTH}-001 — Rideshare 1`,
-        `${MONTH}-002 — Rideshare 2`,
-        `${MONTH}-003 — Rideshare 3`,
-        `${MONTH}-004 — Cash fare`,
+        `${MONTH}-001 | Rideshare 1`,
+        `${MONTH}-002 | Rideshare 2`,
+        `${MONTH}-003 | Rideshare 3`,
+        `${MONTH}-004 | Cash fare`,
         "Month documents",
       ]);
       expect(outline.filter((o) => o.depth === 1)).toHaveLength(4);

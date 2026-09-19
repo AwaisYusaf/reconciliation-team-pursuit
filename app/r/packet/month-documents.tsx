@@ -73,7 +73,7 @@ export function MonthDocuments({
       const result = (await response.json()) as { ok: boolean; error?: string };
 
       if (!result.ok) {
-        toast.error(result.error ?? "That file could not be uploaded.");
+        toast.error(result.error ?? "That file couldn't be uploaded. Try again.");
         return;
       }
       toast.success("Document added.");
@@ -84,7 +84,7 @@ export function MonthDocuments({
       setFileName(null);
       router.refresh();
     } catch {
-      toast.error("Upload failed — check your connection and try again.");
+      toast.error("Upload failed. Check your connection and try again.");
     } finally {
       setUploading(false);
     }
@@ -131,10 +131,12 @@ export function MonthDocuments({
                     className="flex flex-wrap items-center justify-between gap-3 px-3 py-2"
                   >
                     <span className="text-[15px] text-ink">
-                      {document.title ? `${document.title} — ` : ""}
+                      {document.title ? `${document.title} · ` : ""}
                       {document.filename}
                       {document.pageCount ? (
-                        <span className="text-muted"> · {document.pageCount} page(s)</span>
+                        <span className="text-muted">
+                          {` · ${document.pageCount} ${document.pageCount === 1 ? "page" : "pages"}`}
+                        </span>
                       ) : null}
                     </span>
                     {readOnly ? null : (
@@ -145,9 +147,9 @@ export function MonthDocuments({
                         confirmLabel="Remove document"
                         body={
                           <>
-                            <strong>{document.title || document.filename}</strong> is deleted
-                            from {monthLabel} and will no longer appear in the packet. You would
-                            have to upload it again.
+                            <strong>{document.title || document.filename}</strong> will be
+                            deleted from {monthLabel} and won&apos;t appear in the packet. To get it
+                            back, you&apos;d have to upload it again.
                           </>
                         }
                         onConfirm={() => remove(document.id)}
@@ -166,7 +168,7 @@ export function MonthDocuments({
       {readOnly ? (
         <p className="text-sm text-muted border-t border-line pt-4">
           {lockedMessage ??
-            "This funding source is archived. Its documents stay available to open and download, but nothing can be added or removed."}
+            "This funding source is archived. Its documents stay available to open and download, but nothing can be added or removed. Unarchive it in Settings to change them."}
         </p>
       ) : (
       <form

@@ -93,14 +93,14 @@ export function VendorLibraryFull({
         emptyMessage={
           query
             ? `No vendors match "${query}".`
-            : "No vendors learned yet — they appear as you save expenses."
+            : "No vendors learned yet. They appear as you save expenses."
         }
       />
 
       {total > 0 && (
         <div className="flex flex-wrap items-center justify-between gap-3 mt-4">
           <div className="text-sm text-sub">
-            {firstRow}–{lastRow} of {total}
+            {firstRow} to {lastRow} of {total}
           </div>
           <div className="flex gap-3">
             <Button

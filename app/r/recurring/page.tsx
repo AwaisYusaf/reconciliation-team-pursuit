@@ -150,9 +150,9 @@ export default async function RecurringPage() {
   return (
     <div>
       <TourGuide tour="recurring" steps={RECURRING_TOUR_STEPS} alreadySeen={seenRecurringTour} />
-      <PageTitle className="mb-2">Recurring Items</PageTitle>
+      <PageTitle className="mb-2">Recurring items</PageTitle>
       <Subtext className="mb-[26px] max-w-[70ch]">
-        Vendors and salaries billed every month. Nothing is added automatically — confirm each
+        Vendors and salaries billed every month. Nothing is added automatically. Confirm each
         one you want to add to {monthLabel(month)}.
       </Subtext>
 

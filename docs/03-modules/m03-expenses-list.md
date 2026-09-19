@@ -12,7 +12,7 @@ Reads `expenses` + `expense_documents` (status), `funding_sources` (names, for t
 ## Behavior
 - With one source selected: one summary card per active payment source (R5.2), label = the org's source label, value = Σ reimbursable for the month (retired labels present in the month get their own card) — unchanged from before D-93.
 - With **All** selected: one card per **funding source** instead (D-93) — never per payment source across funders, and never a single combined figure, since different funders' money is not one budget.
-- With more than one funding source in the org, the table gains a **Funding Source** column, and an additional filter appears when All is selected: "Filter by funding source" (All funding sources + each active source, plus any archived source with an expense in the current month) — server-validated via `findFundingSource`; an unrecognised id is just treated as All.
+- With more than one funding source in the org, the table gains a **Funding source** column, and an additional filter appears when All is selected: "Filter by funding source" (All funding sources + each active source, plus any archived source with an expense in the current month) — server-validated via `findFundingSource`; an unrecognised id is just treated as All.
 - Filters: line item (All + each), payment source (All + each), and **documentation** — `All
   records | Missing documentation | Missing proof of payment | Missing receipt/justification |
   Missing narrative`; all combinable, and combinable with the search box and the funding-source filter above.
@@ -25,7 +25,7 @@ Reads `expenses` + `expense_documents` (status), `funding_sources` (names, for t
     most likely to be used to find them.
   - The incomplete strip's count runs through the same predicate as the filter, so the number
     shown and the rows the filter returns cannot disagree.
-- Table: `Ref / Date | Name | Line Item | [Funding Source] | Source | Amount | Proof | Receipt | Support | Narrative |
+- Table: `Ref / Date | Name | Line item | [Funding source] | Payment source | Amount | Proof | Receipt | Supporting | Narrative |
   (actions)` — the Funding Source column only appears when the org has more than one source.
   Headers are kept short and the reference shares its column with the date so the
   whole table fits the 1220px content width (widened from 1100px for the Narrative column)
@@ -39,7 +39,7 @@ Reads `expenses` + `expense_documents` (status), `funding_sources` (names, for t
   - Narrative column: `Provided`, or bold red `MISSING` (R4.7) — same visual treatment as Proof/Receipt, though narrative is a field rather than an uploaded file.
   - Actions: Edit · Delete. For a row whose (source, month) is locked (R10.7, D-96), Delete is disabled and shows the locked-month message; Edit still opens the expense, read-only. Trash's Restore and Delete permanently behave the same for a trashed row in a locked month.
 - Row order: the per-month insertion counter (`sort_order`, data-model). Empty state: `No expenses recorded for {Month YYYY} yet.`
-- A thin status strip above the table when the month has incomplete records: `{n} records are missing documents — view Month-End Packet` (link) — keeps the gate visible early.
+- A thin status strip above the table when the month has incomplete records: `{n} expenses are missing documentation. Show only those or go to the Month-End Packet.` (links) — keeps the gate visible early.
 
 ## Acceptance
 Card totals + table agree with dashboard/summary; filters compose; deleting prompts, then removes S3 objects best-effort inline with the nightly sweep as backstop (data-model §Cleanup); incomplete strip counts match the packet blocking list.
@@ -51,17 +51,17 @@ Card totals + table agree with dashboard/summary; filters compose; deleting prom
 ```
 Design the EXPENSES screen inside the app chrome (month "March 2026", Expenses tab active).
 
-h1 "Expenses This Month", subtext "March 2026".
+h1 "Expenses this month", subtext "March 2026".
 
 Row of three summary cards (bordered, white): labels in 13px #5B5147 / values 20px bold —
 "Paid by us, reimbursement requested — $85,522.29", "Invoiced to fiduciary in advance —
 $6,083.33", "Paid directly by fiduciary — $2,676.00".
 
-Below, a warning strip (thin, #F6E7E4 background, #8A2A22 text): "3 records are missing
-documents — show only those / show all records or view Month-End Packet", the last two underlined. "show only those" applies the Missing documentation filter, and flips to "show all records" while it is on.
+Below, a warning strip (thin, #F6E7E4 background, #8A2A22 text): "3 expenses are missing
+documentation. Show only those or go to the Month-End Packet.", the last two underlined. "Show only those" applies the Missing documentation filter, and flips to "Show all expenses" while it is on.
 
 Filter row: "Filter by line item" select (All line items) + "Filter by documentation" select
-(All records) + "Filter by payment source" select (All payment sources).
+(All expenses) + "Filter by payment source" select (All payment sources).
 
 Table with uppercase headers: Date | Name | Line Item | Payment Source | Reimbursable Amount
 | Proof | Receipt | Supporting | (blank). 8 rows of realistic data:

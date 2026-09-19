@@ -73,7 +73,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             <TourReplayButton />
             <form action={signOutAction}>
               <Button type="submit" variant="secondary" className="min-h-11 sm:min-h-12 text-[15px]">
-                Log out
+                Sign out
               </Button>
             </form>
           </div>

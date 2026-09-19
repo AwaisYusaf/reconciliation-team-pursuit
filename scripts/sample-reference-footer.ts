@@ -109,11 +109,11 @@ async function main(): Promise<void> {
 
   const a = await placed(out, shots[0].jpeg, shots[0].w, shots[0].h);
   caption(a, "TODAY  -  the footer every packet page already carries");
-  footer(a, "Team Pursuit Global — February 2026 — Page 84 of 132");
+  footer(a, "Team Pursuit Global | February 2026 | Page 84 of 132");
 
   const b = await placed(out, shots[0].jpeg, shots[0].w, shots[0].h);
   caption(b, "PROPOSED  -  the same footer, with the expense reference added");
-  footer(b, "Team Pursuit Global — February 2026 — 2026-02-014 — Page 84 of 132");
+  footer(b, "Team Pursuit Global | February 2026 | 2026-02-014 | Page 84 of 132");
 
   writeFileSync(OUT, await out.save());
   console.log(`wrote ${OUT} (source ${shots[0].w}x${shots[0].h}px)`);

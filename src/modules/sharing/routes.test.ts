@@ -26,12 +26,15 @@ const ROUTES = [
     name: "create",
     post: createPost,
     action: vi.mocked(createSharedLinkAction),
+    unexpected: UI.shareUnexpected,
     body: { fundingSourceId: "s", month: "2081-03", kind: "packet", password: null, confirmedDeletions: false },
   },
   {
     name: "update",
     post: updatePost,
     action: vi.mocked(updateSharedFileAction),
+    // A failed update must not say the file couldn't be shared: the City's link still works.
+    unexpected: UI.shareUpdateUnexpected,
     body: { shareId: "id", confirmedDeletions: true },
   },
 ] as const;
@@ -53,7 +56,7 @@ beforeEach(() => {
   }
 });
 
-describe.each(ROUTES)("$name route", ({ post, action, body }) => {
+describe.each(ROUTES)("$name route", ({ post, action, body, unexpected }) => {
   it("401 before the body is read when signed out", async () => {
     getSessionMock.mockResolvedValue(null);
     const response = await post(request({ rawBody: "{not json", contentLength: "999999999" }));
@@ -84,7 +87,7 @@ describe.each(ROUTES)("$name route", ({ post, action, body }) => {
     const response = await post(request({ body }));
     expect(response.status).toBe(500);
     expect(response.headers.get("content-type")).toMatch(/application\/json/);
-    expect(await response.json()).toEqual({ ok: false, error: UI.shareUnexpected });
+    expect(await response.json()).toEqual({ ok: false, error: unexpected });
   });
 
   it("passes a valid body to the action and returns its result untouched", async () => {

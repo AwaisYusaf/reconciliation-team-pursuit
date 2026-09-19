@@ -12,5 +12,5 @@ import { fail } from "@/src/lib/action-result";
  */
 export function unexpectedShareFailure(what: "create" | "update", error: unknown): NextResponse {
   console.error(`shared link ${what} failed`, { error });
-  return NextResponse.json(fail(UI.shareUnexpected), { status: 500 });
+  return NextResponse.json(fail(what === "create" ? UI.shareUnexpected : UI.shareUpdateUnexpected), { status: 500 });
 }

@@ -18,15 +18,15 @@ describe("Phase 10 UI copy — verbatim against Appendix A", () => {
     expect(UI.readAmountsSwitchHelp).toBe(
       "Receipts and proofs of payment are sent to OpenAI to suggest amounts. OpenAI doesn't use them for training. Nothing is saved until you confirm.",
     );
-    expect(UI.receiptDoesNotAddUp).toBe("The amounts on this receipt don't add up. Please check them.");
+    expect(UI.receiptDoesNotAddUp).toBe("The amounts on this receipt don't add up. Check them before saving.");
     expect(UI.proofOfPaymentTag).toBe("(proof of payment)");
     expect(UI.proofMatches).toBe("✓ matches");
     expect(UI.cancel).toBe("Cancel");
     expect(UI.tourAmountsBody).toBe(
-      "Enter the amounts from the receipt. If there's tax or fees, you'll be asked whether the funder pays for them.",
+      "Enter the amounts from the receipt. If it includes tax or fees, you'll be asked whether the funder pays for them.",
     );
     expect(UI.tourAmountsBodyWithReading).toBe(
-      "Enter the amounts from the receipt, or use the amounts we find in the receipt you added above. If there's tax or fees, you'll be asked whether the funder pays for them.",
+      "Enter the amounts from the receipt, or use the ones AI finds in the receipt you added above. If it includes tax or fees, you'll be asked whether the funder pays for them.",
     );
   });
 

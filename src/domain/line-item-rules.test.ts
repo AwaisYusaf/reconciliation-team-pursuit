@@ -96,7 +96,7 @@ describe("cascadeConfirmation", () => {
     // The empty list is the case that used to skip the dialog entirely, so a line item with
     // no recurring items was deleted on the first click.
     expect(cascadeConfirmation([])).toBe(
-      "Its name and budget figures are deleted. This cannot be undone.",
+      "Its name and budget figures will be deleted. This can't be undone.",
     );
   });
 

@@ -77,7 +77,7 @@ export async function saveLineItemAction(input: {
     if (updated.length === 0) return fail("That line item no longer exists.");
   } else {
     // Archived sources still hold history, but no new line item may be added to one.
-    if (source.archivedAt) return fail("That funding source is archived.");
+    if (source.archivedAt) return fail("That funding source is archived. Unarchive it in Settings to add line items.");
 
     const [{ value: maxSort }] = await db
       .select({ value: sql<number>`coalesce(max(${lineItems.sortOrder}), -1)` })
@@ -187,7 +187,7 @@ export async function reorderLineItemsAction(
   if ("denied" in source) return source.denied;
 
   if (orderedIds.length === 0 || !orderedIds.every(isUuid)) {
-    return fail("That list is out of date — reload the page.");
+    return fail("This list is out of date. Reload the page and try again.");
   }
 
   const owned = await db
@@ -197,7 +197,7 @@ export async function reorderLineItemsAction(
 
   // Reject the whole reorder if the client sent an id from another source (or organisation)
   // or a stale list, rather than silently applying a partial order across sources.
-  if (owned.length !== orderedIds.length) return fail("That list is out of date — reload the page.");
+  if (owned.length !== orderedIds.length) return fail("This list is out of date. Reload the page and try again.");
 
   await db.transaction(async (tx) => {
     for (const [index, id] of orderedIds.entries()) {

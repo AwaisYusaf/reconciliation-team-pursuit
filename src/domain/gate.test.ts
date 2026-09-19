@@ -147,14 +147,14 @@ describe("blocking list wording (R4.4)", () => {
 
   it("renders the lines the approved packet screen shows", () => {
     expect(blockingLabel(expense(), ["proof"])).toBe(
-      "Stock Media — Promotional & Marketing — missing proof of payment",
+      "Stock Media · Promotional & Marketing · missing proof of payment",
     );
     expect(
       blockingLabel(expense({ name: "JDS Silkscreen & Embroidery" }), ["proof", "receipt"]),
-    ).toBe("JDS Silkscreen & Embroidery — Promotional & Marketing — missing both");
+    ).toBe("JDS Silkscreen & Embroidery · Promotional & Marketing · missing both");
     expect(
       blockingLabel(expense({ name: "Cornelius Webb", lineItemName: "Salary" }), ["proof"]),
-    ).toBe("Cornelius Webb — Salary — missing proof of payment");
+    ).toBe("Cornelius Webb · Salary · missing proof of payment");
   });
 
   it("lists only incomplete records, preserving order", () => {
@@ -168,12 +168,12 @@ describe("blocking list wording (R4.4)", () => {
       {
         expenseId: "b",
         missing: ["proof"],
-        label: "Stock Media — Promotional & Marketing — missing proof of payment",
+        label: "Stock Media · Promotional & Marketing · missing proof of payment",
       },
       {
         expenseId: "c",
         missing: ["proof", "receipt"],
-        label: "JDS Silkscreen & Embroidery — Promotional & Marketing — missing both",
+        label: "JDS Silkscreen & Embroidery · Promotional & Marketing · missing both",
       },
     ]);
   });
@@ -240,7 +240,7 @@ describe("matchesDocumentationFilter", () => {
 
   it("keeps everything under the default", () => {
     for (const row of [complete, noProof, noReceipt, noNarrative, neither, allThree]) {
-      expect(matchesDocumentationFilter(row, "All records")).toBe(true);
+      expect(matchesDocumentationFilter(row, "All expenses")).toBe(true);
     }
   });
 
@@ -273,7 +273,7 @@ describe("matchesDocumentationFilter", () => {
   });
 
   it("never shows a complete record under any missing filter", () => {
-    for (const filter of DOCUMENTATION_FILTERS.filter((f) => f !== "All records")) {
+    for (const filter of DOCUMENTATION_FILTERS.filter((f) => f !== "All expenses")) {
       expect(matchesDocumentationFilter(complete, filter)).toBe(false);
     }
   });

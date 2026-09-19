@@ -17,7 +17,7 @@ import { loadSourceContext } from "@/src/modules/funding-sources/queries";
 import { loadLockedMonths } from "@/src/modules/packet/queries";
 import { getSession } from "@/src/services/auth/session";
 
-export const metadata = { title: pageTitle("Edit Expense") };
+export const metadata = { title: pageTitle("Edit expense") };
 
 export default async function EditExpensePage({
   params,
@@ -103,7 +103,7 @@ export default async function EditExpensePage({
 
   return (
     <div>
-      <PageTitle className="mb-2">Edit Expense</PageTitle>
+      <PageTitle className="mb-2">Edit expense</PageTitle>
       <Subtext className="mb-[30px] max-w-[60ch]">{expense.name}</Subtext>
 
       <ExpenseForm

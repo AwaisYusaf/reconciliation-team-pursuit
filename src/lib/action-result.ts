@@ -30,4 +30,4 @@ export const IDLE: ActionResult<undefined> = { ok: true, data: undefined };
  * user's typed state and shows a sign-in prompt rather than discarding their work
  * (review finding A13).
  */
-export const SESSION_EXPIRED = "Signed out — sign in and resubmit.";
+export const SESSION_EXPIRED = "You've been signed out. Sign in and try again.";

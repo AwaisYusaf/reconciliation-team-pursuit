@@ -11,8 +11,8 @@ Reads that source's expenses + documents per (month, line item); calls the cover
 
 ## Behavior
 - Preview renders the document 1:1: title, yellow-header Name/Role/Amount table (all cells centered), yellow total cell, canonical see-below line, bold `{Name}:` headings with yellow inline notes (custom + tax note per R6.5), narrative paragraphs, proof images (real thumbnails from S3, contained, full column width). Preview images re-presign automatically on load error (expired URLs) — or are served via the authenticated thumbnail proxy.
-- Selector `All Line Items` stacks every sheet as separate "pages" (bordered white blocks); the global download buttons are hidden and **each stacked sheet carries its own Word/PDF buttons**.
-- Gate: if the line item has incomplete expenses, its download buttons are disabled with the R12 `blocked-title-line-item` panel and R4.4 list above the preview; the preview still renders, with dashed placeholder boxes labeled "proof of payment missing" where proofs are absent (screen only — never in a downloaded file).
+- Selector `All line items` stacks every sheet as separate "pages" (bordered white blocks); the global download buttons are hidden and **each stacked sheet carries its own Word/PDF buttons**.
+- Gate: if the line item has incomplete expenses, its download buttons are disabled with the R12 `blocked-title-line-item` panel and R4.4 list above the preview; the preview still renders, with dashed placeholder boxes labeled "Proof of payment missing" where proofs are absent (screen only — never in a downloaded file).
 - Empty line item: dashed empty state, downloads disabled.
 
 ## Server surface
@@ -30,7 +30,7 @@ Design the COVER SHEETS screen inside the app chrome (month "February 2026", Cov
 active).
 
 Controls row: h1 "Cover Sheets", then "Line item" select (value "Analytical Support"; options
-include All Line Items) + two secondary buttons "Download Word" and "Download PDF".
+include All line items) + two secondary buttons "Download Word" and "Download PDF".
 
 Below, a document preview: a white "page" card (max-width 800px, 40px padding, 1px border)
 that mimics a printed US Letter document — inside it use document styling, not app styling:
@@ -66,8 +66,8 @@ a clean sans-serif document font (Aptos/Calibri-style), black text.
   mockup stays short.
 
 Also design the BLOCKED variant as a second smaller demo above or beside: a red panel (2px
-#8A2A22 border on #F6E7E4): bold title "Downloads unavailable for this line item." + line
-"Emerald Sims — Analytical Support — missing proof of payment" with an underlined "Open
+#8A2A22 border on #F6E7E4): bold title "This cover sheet cannot be downloaded yet." + line
+"Emerald Sims · Analytical Support · missing proof of payment" with an underlined "Open
 expense" link; the two download buttons rendered disabled (gray #C9C2B4 background,
 #7A7364 text).
 ```

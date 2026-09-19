@@ -42,6 +42,25 @@ describe("toPdfRect", () => {
   });
 });
 
+describe.skipIf(!canRun)("coverSheetAnchors when a name quotes another expense's reference", () => {
+  // Found in the PHASE-13 review: matching a bare reference counted the one inside this name as
+  // a second heading for 2026-02-002, and the AnchorError failed the whole packet.
+  const rows = [
+    row("2026-02-001", "Office Depot invoice 2026-02-002 paper", 12_345, "Supplies for 2026-02-002"),
+    row("2026-02-002", "Staples", 6_789, "Supplies"),
+  ];
+
+  it("anchors each heading on its own bracketed token", async () => {
+    const pdf = await sheet(rows);
+    const anchors = coverSheetAnchors(pdf, rows);
+    const words = wordsOf(pdf);
+    for (const [index, anchor] of anchors.entries()) {
+      const token = words.find((w) => w.text === `(${rows[index].reference}):`)!;
+      expect(contains(anchor.heading.rect, toPdfRect(token, token.pageHeight))).toBe(true);
+    }
+  }, 180_000);
+});
+
 describe.skipIf(!canRun)("coverSheetAnchors on a converted sheet", () => {
   // Two expenses for the same person: identical rows and identical names, the case a name-based
   // anchor gets wrong. Only the reference tells them apart.
@@ -69,7 +88,7 @@ describe.skipIf(!canRun)("coverSheetAnchors on a converted sheet", () => {
     const anchors = coverSheetAnchors(pdf, rows);
     const words = wordsOf(pdf);
     anchors.forEach((anchor, index) => {
-      const token = words.find((w) => w.text === `${rows[index].reference}:`)!;
+      const token = words.find((w) => w.text === `(${rows[index].reference}):`)!;
       expect(anchor.heading.page).toBe(token.page);
       expect(contains(anchor.heading.rect, toPdfRect(token, token.pageHeight))).toBe(true);
       // Scrolling to `top` shows the heading at the top of the viewport, not just below it.
@@ -117,7 +136,7 @@ describe.skipIf(!canRun)("coverSheetAnchors on a sheet that spans pages", () => 
     expect(Math.max(...anchors.map((a) => a.heading.page))).toBeGreaterThanOrEqual(1);
     const words = wordsOf(pdf);
     for (const [index, anchor] of anchors.entries()) {
-      const token = words.find((w) => w.text === `${many[index].reference}:`)!;
+      const token = words.find((w) => w.text === `(${many[index].reference}):`)!;
       expect(anchor.heading.page).toBe(token.page);
     }
   }, 180_000);

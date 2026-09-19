@@ -66,7 +66,7 @@ const SUPPORTING_DOC_TYPES = [
 function defaultSeedPassword(): string {
   if (process.env.NODE_ENV === "production") {
     throw new Error(
-      "SEED_PASSWORD must be set when seeding in production — the development default is " +
+      "SEED_PASSWORD must be set when seeding in production. The development default is " +
         "committed to this repository.",
     );
   }
@@ -91,7 +91,7 @@ async function main() {
 
     if (existing.length > 0) {
       orgId = existing[0].orgId;
-      console.log(`Organisation already seeded (${orgId}) — refreshing configuration.`);
+      console.log(`Organisation already seeded (${orgId}). Refreshing configuration.`);
     } else {
       orgId = uuidv7();
       await db.insert(schema.organizations).values({

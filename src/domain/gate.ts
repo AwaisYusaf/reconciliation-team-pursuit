@@ -86,9 +86,9 @@ export function missingPhrase(missing: MissingKind): string {
   return `missing ${joined}`;
 }
 
-/** One blocking-list line: `{name} — {line item} — missing …` (R4.4). */
+/** One blocking-list line: `{name} · {line item} · missing …` (R4.4). */
 export function blockingLabel(expense: GateExpense, missing: MissingKind): string {
-  return `${expense.name} — ${expense.lineItemName} — ${missingPhrase(missing)}`;
+  return `${expense.name} · ${expense.lineItemName} · ${missingPhrase(missing)}`;
 }
 
 export type BlockingRecord = {
@@ -157,7 +157,7 @@ export function lineItemReadiness(
  * would agree today and diverge the day R4.1/R4.2 change — silently, with no test failing.
  */
 export const DOCUMENTATION_FILTERS = [
-  "All records",
+  "All expenses",
   "Missing documentation",
   "Missing proof of payment",
   "Missing receipt/justification",
@@ -167,7 +167,7 @@ export const DOCUMENTATION_FILTERS = [
 export type DocumentationFilter = (typeof DOCUMENTATION_FILTERS)[number];
 
 /** The default, and the value that filters nothing out. */
-export const ALL_DOCUMENTATION: DocumentationFilter = "All records";
+export const ALL_DOCUMENTATION: DocumentationFilter = "All expenses";
 
 /**
  * Does a row survive the documentation filter?
@@ -185,7 +185,7 @@ export function matchesDocumentationFilter(
   filter: DocumentationFilter,
 ): boolean {
   switch (filter) {
-    case "All records":
+    case "All expenses":
       return true;
     case "Missing documentation":
       return row.missing !== null;

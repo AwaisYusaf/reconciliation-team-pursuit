@@ -71,15 +71,15 @@ const MAX_MB = Math.round(MAX_UPLOAD_BYTES / (1024 * 1024));
 /** Why this file cannot be attached, or null if it can. */
 function rejectionReason(file: File): string | null {
   if (file.size > MAX_UPLOAD_BYTES) {
-    return `${file.name} is ${(file.size / (1024 * 1024)).toFixed(1)} MB — the limit is ${MAX_MB} MB.`;
+    return `${file.name} is ${(file.size / (1024 * 1024)).toFixed(1)} MB, over the ${MAX_MB} MB limit. Use a smaller copy, for example a lower-resolution scan.`;
   }
   if (file.size === 0) {
-    return `${file.name} is empty.`;
+    return `${file.name} is empty. Check that it opens on your device, then add it again.`;
   }
   // A browser leaves the type blank for some files; the server inspects the actual bytes,
   // so an unknown type is passed through rather than guessed at here.
   if (file.type && !isAllowedMimeType(file.type)) {
-    return `${file.name} is not a PNG, JPG, HEIC or PDF.`;
+    return `${file.name} can't be attached. Use a PNG, JPG, HEIC or PDF.`;
   }
   return null;
 }
@@ -178,7 +178,7 @@ export function UploadField({
     // upload, so there is nothing this browser can decode until then.
     unavailable: item.previewUrl
       ? undefined
-      : "This format cannot be shown by the browser. Save the expense and it will preview here — images are converted when they upload.",
+      : "Your browser can't show this file. Save the expense and it will preview here, because images are converted when they upload.",
   }));
 
   if (hidden) return null;
@@ -319,8 +319,8 @@ export function UploadField({
                 confirmLabel="Remove file"
                 body={
                   <>
-                    <strong>{document.filename}</strong> is deleted from this expense straight
-                    away, and Cancel will not bring it back. You would have to upload it again.
+                    <strong>{document.filename}</strong> is deleted from this expense right away.
+                    Cancel won&apos;t bring it back, so you would have to upload it again.
                   </>
                 }
                 onConfirm={() => onRemoveAttached(document.id)}

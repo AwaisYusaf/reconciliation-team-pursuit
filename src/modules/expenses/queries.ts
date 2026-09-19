@@ -446,9 +446,9 @@ export function deletedItemsRefusal(trashed: readonly TrashedExpense[]): string 
   const plural = trashed.length !== 1;
   return (
     `${trashed.length} expense${plural ? "s" : ""} ${plural ? "were" : "was"} deleted from ` +
-    `this reporting period and ${plural ? "have" : "has"} not been confirmed:\n` +
+    `this month and ${plural ? "haven't" : "hasn't"} been confirmed:\n` +
     trashed
-      .map((expense) => `• ${expense.name} — ${expense.lineItemName} — ${formatMoney(expense.amountCents)}`)
+      .map((expense) => `• ${expense.name} · ${expense.lineItemName} · ${formatMoney(expense.amountCents)}`)
       .join("\n")
   );
 }

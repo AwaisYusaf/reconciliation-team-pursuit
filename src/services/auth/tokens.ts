@@ -59,7 +59,7 @@ function authSecret(): string {
 
   if (process.env.NODE_ENV === "production") {
     throw new Error(
-      "AUTH_SECRET must be set in production — it keys session tokens, and rotating it is " +
+      "AUTH_SECRET must be set in production. It keys session tokens, and rotating it is " +
         "the only way to revoke every session at once.",
     );
   }

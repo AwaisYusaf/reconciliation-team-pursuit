@@ -7,7 +7,7 @@ export const COVER_SHEETS_TOUR_STEPS: readonly TourStep[] = [
   {
     target: "cover-sheet-line-item-picker",
     title: "Choose a line item",
-    body: "See one line item's cover sheet, or All line items to view every one stacked together.",
+    body: "See one line item's cover sheet, or choose All line items to see them all on one page.",
   },
   {
     target: "cover-sheet-blocked",
@@ -17,6 +17,6 @@ export const COVER_SHEETS_TOUR_STEPS: readonly TourStep[] = [
   {
     target: "cover-sheet-preview",
     title: "The preview",
-    body: "This is exactly what downloads — the same figures, in the same order, as the Word and PDF versions.",
+    body: "This is exactly what downloads: the same figures, in the same order, as the Word and PDF files.",
   },
 ];

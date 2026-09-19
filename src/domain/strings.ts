@@ -13,9 +13,9 @@ import { SHARE_PASSWORD_MAX, SHARE_PASSWORD_MIN } from "@/src/domain/shared-link
 /** The product name, everywhere it appears in UI copy, page titles and generated-document fallbacks. */
 export const APP_NAME = "Stay Funded 360";
 
-/** A page's `<title>`, in the app's fixed "Section — App Name" form. */
+/** A page's `<title>`, in the app's fixed "Section | App Name" form (D-113). */
 export function pageTitle(section: string): string {
-  return `${section} — ${APP_NAME}`;
+  return `${section} | ${APP_NAME}`;
 }
 
 /** Printed on a cover sheet heading whenever tax > 0 (R6.5). Exact text — singular "Statement". */
@@ -69,15 +69,16 @@ export function expenseReference(month: string, seq: number): string {
  *
  * The reference is here, and only here on the sheet: it is the one string unique to the
  * expense — two pay periods for one person print identical table rows — and the packet's links
- * anchor on it. The colon stays attached so `pdftotext` reports `2026-02-014:` as one token.
+ * anchor on it. The colon stays attached so `pdftotext` reports `(2026-02-014):` as one token,
+ * which `pdf-anchors.ts` matches.
  */
 export function coverSheetHeading(name: string, reference: string): string {
-  return `${name} — ${reference}:`;
+  return `${name} (${reference}):`;
 }
 
 /** Disclosure appended to a heading when the expense has no receipt (R6.7). */
 export function noReceiptNote(reason: string): string {
-  return `(Note: No receipt available — ${reason.trim()})`;
+  return `(Note: No receipt available. Reason: ${reason.trim()})`;
 }
 
 /* ------------------------------------------------------------------- UI copy */
@@ -113,29 +114,33 @@ function amountsLine(amounts: ReadAmounts, totalLabel: string): string {
   return lead + total;
 }
 
+/** Where "contact support" points, everywhere the app says it (D-24). Its own constant so a
+ *  message inside `UI` can name it before `UI.supportEmail` exists. */
+const SUPPORT_EMAIL = "tech@teampursuit.org";
+
 export const UI = {
   /** Add Expense reimbursable box (R1.3). */
   reimburseHint: "Sales tax is excluded. The funder does not reimburse it.",
   /** Month-End Packet blocking panel title (R4.3). */
   blockedTitle: "This packet cannot be downloaded yet.",
-  /** Cover Sheets blocking panel title (R4.3). */
-  blockedTitleLineItem: "Downloads unavailable for this line item.",
+  /** Cover Sheets blocking panel title (R4.3), worded like the packet's own. */
+  blockedTitleLineItem: "This cover sheet cannot be downloaded yet.",
   /** Line that introduces the blocking list (R4.4). */
   blockedIntro:
     "The following records are missing a receipt/justification, proof of payment, or narrative:",
   /** Login page — there is no self-serve reset (D-24); email is the escalation path. */
   forgotPassword: "Forgot your password? Email",
   /** The mailbox the login page's "forgot password" link points to (D-24). */
-  supportEmail: "tech@teampursuit.org",
-  uploadFailed: "Upload failed — try again.",
+  supportEmail: SUPPORT_EMAIL,
+  uploadFailed: "Upload failed. Try again.",
   noReceiptReasonRequired: "Enter the reason no receipt is available.",
-  duplicateEmail: "An organization with that email already exists — sign in instead.",
-  signInMissingFields: "Enter your organization email and password.",
-  signInUnknownEmail:
-    "We couldn't find an organization with that email. Create an account to get started.",
-  signInWrongPassword: "That password doesn't match this organization email.",
+  duplicateEmail: "An organization with that email already exists. Sign in instead.",
+  signInMissingFields: "Enter your email and password.",
+  /** Each user signs in with their own email, and sign-ups are usually closed (PHASE-13 §11 Q2). */
+  signInUnknownEmail: "We couldn't find an account with that email. Check the address and try again.",
+  signInWrongPassword: "That password doesn't match this email.",
   expenseMissingFields:
-    "Please enter a name, choose a line item, and choose a payment source.",
+    "Enter a name, choose a line item, and choose a payment source.",
   /** m02 — narrative is required at save time (R4.7), unlike receipt/proof which gate only
    *  the download. */
   expenseMissingNarrative: "Enter a narrative for this expense.",
@@ -143,13 +148,13 @@ export const UI = {
   lineItemDuplicate: "A line item with that name already exists.",
   signupsClosed: "Sign-ups are closed.",
   /** m02 — saved, but the documentation gate will still hold this record. */
-  savedMissingProof: "Saved — still missing proof of payment.",
+  savedMissingProof: "Expense saved. It's still missing proof of payment.",
   /** Add Expense caution (non-blocking) — tax excluded from reimbursable (R1.3), so a large
    *  tax relative to the subtotal isn't a domain-rule violation, just worth a second look. */
-  taxExceedsSubtotalWarning: "Tax is more than the subtotal — double-check this entry.",
+  taxExceedsSubtotalWarning: "Tax is more than the subtotal. Double-check this entry.",
   /** Add Expense caution (non-blocking) — a $0.00 subtotal is allowed, but unusual enough to
    *  flag rather than save silently. */
-  subtotalIsZeroWarning: "Subtotal is $0.00 — double-check this entry.",
+  subtotalIsZeroWarning: "Subtotal is $0.00. Double-check this entry.",
   /** Refusal on every §2 write to a locked month (R10.7, D-96). */
   monthLocked: (monthLabel: string) =>
     `${monthLabel} is locked. Unlock it on the Month-End Packet tab to make changes.`,
@@ -170,7 +175,7 @@ export const UI = {
   /** Event-history lines: "Unlocked {date} by {name}", with the reason quoted when there is one
    *  (Appendix A §3, §4). */
   unlockEventLine: (date: string, name: string, reason: string | null) =>
-    `Unlocked ${date} by ${name}${reason ? ` — "${reason}"` : ""}`,
+    `Unlocked ${date} by ${name}${reason ? `: "${reason}"` : ""}`,
   /** Heading over the Packet page's event history (Appendix A §3). */
   lockHistoryTitle: "Lock history",
   /** Link text beside a lock event, opening `/api/files/{eventId}` (Appendix A §1, §3, §4). */
@@ -208,8 +213,9 @@ export const UI = {
    * input, so the suspend dialog says out loud that it is shown here — otherwise an internal
    * note ("chasing Misty about the invoice") ends up in front of the customer.
    */
+  /** Staff type the reason, so a closing period of theirs is dropped rather than doubled. */
   orgAccessPausedWithReason: (reason: string) =>
-    `Your organization's access is paused: ${reason}. Please contact support.`,
+    `Your organization's access is paused: ${reason.trim().replace(/\.+$/, "")}. Please contact support.`,
   /** Under the directory's search box while the query is in flight (Phase 9). */
   searching: "Searching…",
   /** Under the search box while the debounce is still counting down, so a two-second wait
@@ -353,22 +359,22 @@ export const UI = {
    *  reads as the AI having failed (PR #18 review). */
   readAmountsTooLongLine: "Too long to read (over 10 pages). Enter the amounts yourself.",
   readAmountsTooManyPages: (pages: number, limit: number) =>
-    `That document has ${pages} pages — only the first ${limit} would be read. Enter the amounts yourself.`,
+    `That document has ${pages} pages. Amounts can only be read from documents of up to ${limit} pages. Enter the amounts yourself.`,
   /** Amounts panel, when some files were read and others were not (Phase 10 §3.5 table — not in
    *  Appendix A, added so an incomplete total is never used unnoticed). */
   amountsLeftOut: "Documents marked No amount found are left out of these totals.",
   /** Receipt line whose total doesn't match its own subtotal + tax + fees (Appendix A §1). */
-  receiptDoesNotAddUp: "The amounts on this receipt don't add up. Please check them.",
+  receiptDoesNotAddUp: "The amounts on this receipt don't add up. Check them before saving.",
   /** Receipts vs. proofs disagree (Appendix A §1, verbatim with the two figures substituted). */
   proofsDifferWarning: (receipts: string, proofs: string) =>
     `Receipts add up to ${receipts} but proofs of payment show ${proofs}. Check the amounts before saving.`,
   /** Add Expense tour's amounts step, unchanged text — kept when reading is unavailable
    *  (Appendix A §6). */
   tourAmountsBody:
-    "Enter the amounts from the receipt. If there's tax or fees, you'll be asked whether the funder pays for them.",
+    "Enter the amounts from the receipt. If it includes tax or fees, you'll be asked whether the funder pays for them.",
   /** Add Expense tour's amounts step, once reading is available (Appendix A §6). */
   tourAmountsBodyWithReading:
-    "Enter the amounts from the receipt, or use the amounts we find in the receipt you added above. If there's tax or fees, you'll be asked whether the funder pays for them.",
+    "Enter the amounts from the receipt, or use the ones AI finds in the receipt you added above. If it includes tax or fees, you'll be asked whether the funder pays for them.",
   /** Plus upload section note on Add — reading starts on its own (Appendix A §2). */
   aiUploadNoteAdd: "AI reads the amounts when you add a file.",
   /** Plus upload section note on Edit — reading only on request (Appendix A §3). */
@@ -388,16 +394,16 @@ export const UI = {
     "Always required. Add a bank transaction or payment screenshot. Without it, the month's packet can't be downloaded. With Plus, AI reads the amount paid and checks it against your receipts.",
   /** Add Expense tour's receipt step, unchanged — kept when reading is unavailable. */
   tourReceiptBody:
-    "Add the receipt, invoice or timesheet. If there isn't one, tick No receipt available and give a reason. The reason prints on the cover sheet.",
+    "Add the receipt, invoice or timesheet. If there isn't one, check No receipt available and give a reason. The reason prints on the cover sheet.",
   /** Add Expense tour's receipt step on Plus: where the amounts appear and that nothing fills
    *  itself — carries the same "reason prints on the cover sheet" sentence as the base
    *  `tourReceiptBody` (PR #18 review #14: the Plus variant had dropped it). */
   tourReceiptBodyWithReading:
-    "Add the receipt, invoice or timesheet. With Plus, AI reads its amounts and shows them under Subtotal, Tax and Fees. Nothing is filled in until you press Use these amounts. If there isn't a receipt, tick No receipt available and give a reason. The reason prints on the cover sheet.",
+    "Add the receipt, invoice or timesheet. With Plus, AI reads its amounts and shows them under Subtotal, Tax and Fees. Nothing is filled in until you press Use these amounts. If there isn't a receipt, check No receipt available and give a reason. The reason prints on the cover sheet.",
   /** Settings tour step for the Plus reading switch (only shown where the switch exists). */
   tourReadAmountsSwitchTitle: "Read amounts with AI",
   tourReadAmountsSwitchBody:
-    "Included with Plus. When it's on, receipts and proofs of payment added to an expense are read by AI to suggest the amounts. Nothing is filled in until someone chooses to use them. Only an admin can change this.",
+    "Included with Plus. When it's on, AI reads the receipts and proofs of payment added to an expense and suggests the amounts. Nothing is filled in until someone chooses to use them. Only an admin can change this.",
   /** Generic dialog dismiss label — no existing `UI.cancel` before Phase 10; reused here for the
    *  "Replace the amounts you typed?" dialog rather than adding a feature-specific word for it. */
   cancel: "Cancel",
@@ -406,7 +412,7 @@ export const UI = {
   done: "Done",
   /** A route's own guards refused the request (origin, size, malformed body) — never expected
    *  from the app's own screens, so it says only what to do. */
-  requestRefused: "That request couldn't be completed. Reload the page and try again.",
+  requestRefused: "That couldn't be completed. Reload the page and try again.",
 
   /* --------------------------------------------------------- Phase 11: monthly summaries */
 
@@ -416,15 +422,16 @@ export const UI = {
   summaryNoExpenses: "Add expenses to this month first.",
   /** Write/Write again refusal — another run for this org/source/month is already in flight
    *  (P11). Wording to review. */
-  summaryAlreadyWriting: (monthLabel: string) => `A summary for ${monthLabel} is already being written.`,
+  summaryAlreadyWriting: (monthLabel: string) =>
+    `A summary for ${monthLabel} is already being written. Wait for it to finish, then reload the page.`,
   /** Write/Write again refusal — the model failed, timed out, refused, or was rejected twice
    *  (Appendix A §3, verbatim). */
-  summaryWriteFailed: "The summary couldn't be written right now. Please try again.",
+  summaryWriteFailed: "The summary couldn't be written right now. Try again.",
   /** Save/write conflict — someone else's version won (P10, Appendix A §5 wording). */
   summaryConflict:
     "This summary was changed by someone else. Copy your text, then reload to see their version.",
   /** Write refusal — the per-org rate limit (P11). Wording to review. */
-  summaryRateLimited: "Too many summaries at once. Try again shortly.",
+  summaryRateLimited: "Too many summaries were written in the past hour. Try again later.",
   /** Save refusal — over `SUMMARY_MAX_CHARS` (P6, I-26). Wording to review. */
   summaryTooLong: "This summary is longer than 60,000 characters. Shorten it to save.",
   /** `saveSummaryAction` — no row for this org/source/month at all. Wording to review. */
@@ -435,7 +442,7 @@ export const UI = {
   /** Screen and packet-card title (§7.5). Wording to review. */
   summaryTitle: "Monthly summary",
   /** Header on "All" (Appendix A §2, verbatim). */
-  summaryPickSource: "Pick a funding source to write its monthly summary.",
+  summaryPickSource: "Choose a funding source to write its monthly summary.",
   /** Before any summary exists (Appendix A §3, verbatim). */
   summaryIntro: (monthLabel: string) =>
     `Write a draft summary of ${monthLabel} from this month's expenses, descriptions and narratives. You can edit everything before using it.`,
@@ -444,7 +451,7 @@ export const UI = {
   /** The one generation button once a summary exists (Appendix A §5, verbatim). */
   summaryWriteAgainButton: "Write again",
   /** While writing (Appendix A §3, verbatim). */
-  summaryWriting: "Writing your summary… this can take up to a minute.",
+  summaryWriting: "Writing your summary… This can take up to a minute.",
   /** Meta line, first part (Appendix A §5, verbatim form). */
   summaryMetaWritten: (date: string) => `Draft written ${date}`,
   /** Meta line, second part — omitted (not appended) until the first save; the editor's name
@@ -485,7 +492,7 @@ export const UI = {
   summaryBold: "Bold",
   summaryBulletList: "Bullet list",
   /** Download route, when building the file itself fails (Phase 11 §6). */
-  summaryPrepareFailed: "The summary couldn't be prepared right now. Please try again.",
+  summaryPrepareFailed: "The summary couldn't be prepared right now. Try again.",
 
   /* ----------------------------------------------- /a AI usage card (Phase 11) */
 
@@ -496,7 +503,7 @@ export const UI = {
   aiUsageUnsavedNote: "Nothing was saved. Some of these still used tokens.",
   /** Appended to the cost caption while some runs produced tokens but no cost, which only
    *  happens when the price settings were unset on the server at the time. */
-  aiUsageCostIncomplete: "at least: some runs ran before prices were set on the server",
+  aiUsageCostIncomplete: "a minimum: some runs happened before prices were set",
 
   /* ------------------------------------------------ Phase 11 build phase 4: Word and PDF */
 
@@ -536,7 +543,7 @@ export const UI = {
   /** Wording to review: the ticket only names the packet's busy label. */
   shareCreatingSummary: "Preparing…",
   shareCopy: "Copy link",
-  shareCopied: "Link copied",
+  shareCopied: "Link copied.",
   /** Wording to review. */
   shareCopyRefused: "Couldn't copy the link. Select it and copy it yourself.",
   sharePasswordNote: "Password protected. Send the password separately, for example by text.",
@@ -568,9 +575,9 @@ export const UI = {
   sharePasswordChanged: "Password changed.",
   sharePasswordRemoved: "Password removed.",
   /** Wording to review: a second tab or person shared the same file first. */
-  shareAlreadyExists: "That file is already shared.",
+  shareAlreadyExists: "That file is already shared. Reload the page to see its link.",
   /** Wording to review (P13). */
-  shareInProgress: "This file is already being prepared.",
+  shareInProgress: "This file is already being prepared. Wait for it to finish, then reload the page.",
   /** Wording to review: the row was stopped, or never belonged to this organization. */
   shareNoLongerShared: "That link is no longer shared.",
   /** Wording to review (C4): cancelled blocks nothing else, so a cancelled org still sees its rows. */
@@ -578,9 +585,11 @@ export const UI = {
   /** Wording to review (C4): sharing is refused outright rather than making a link that can't open. */
   shareCancelledRefused: "Files can't be shared while your organization's plan is cancelled.",
   /** Wording to review: the request never reached the server. */
-  shareNetworkFailed: "Couldn't reach the server — check your connection and try again.",
+  shareNetworkFailed: "Couldn't connect. Check your connection and try again.",
   /** Wording to review: the server failed in a way it didn't word itself. */
-  shareUnexpected: "Something went wrong. Please try again — if it keeps failing, contact Mantaq.",
+  shareUnexpected: `The file couldn't be shared. Try again, and if it keeps failing, contact support at ${SUPPORT_EMAIL}.`,
+  /** The same, for Update shared file: the link itself still works and still gives the older file. */
+  shareUpdateUnexpected: `The shared file couldn't be updated. The link still gives the older file. Try again, and if it keeps failing, contact support at ${SUPPORT_EMAIL}.`,
 
   // The public pages at /s/… (Appendix A §5).
   sharePasswordProtected: "This file is password protected.",
@@ -594,7 +603,7 @@ export const UI = {
   /** Wording to review: the saved file could not be read from storage (never rebuilt, P10). */
   shareOpenFailed: "This file can't be opened right now. Please try again in a few minutes.",
   /** Wording to review: past the per-address open limit (`shareOpen`). */
-  shareTooManyOpens: "Too many requests. Please wait a few minutes and try again.",
+  shareTooManyOpens: "Too many files opened in a short time. Please wait a few minutes and try again.",
 } as const;
 
 /**
@@ -639,7 +648,7 @@ export const STATUS_LABELS: Record<"trial" | "active" | "past_due" | "cancelled"
 
 /** Inline explanation beside a disabled download button (m07, R4.3). */
 export function downloadBlockedReason(count: number): string {
-  return `Blocked — ${count} ${count === 1 ? "record is" : "records are"} missing documents. See Month-End Packet.`;
+  return `Blocked: ${count} ${count === 1 ? "expense is" : "expenses are"} missing documentation. See the Month-End Packet tab.`;
 }
 
 /** Refusal message when a line item still has expenses (R9.3). */
@@ -677,12 +686,17 @@ export function packetFooter(
   const parts = [docName, monthLabel];
   if (reference) parts.push(reference);
   parts.push(`Page ${page} of ${total}`);
-  return parts.join(" — ");
+  return parts.join(" | ");
 }
 
-/** Packet summary page title (packet-pdf-spec §1). */
+/** Packet summary page title (packet-pdf-spec "Canonical section order"), worded like the packet's own title. */
 export function packetSummaryTitle(docName: string, monthLabel: string): string {
-  return `${docName} — Contract Summary — ${monthLabel}`;
+  return `${docName} ${monthLabel} Contract Summary`;
+}
+
+/** Expense index page title (packet-pdf-spec "Canonical section order"), worded like the packet's own title. */
+export function packetIndexTitle(docName: string, monthLabel: string): string {
+  return `${docName} ${monthLabel} Expense Index`;
 }
 
 /**

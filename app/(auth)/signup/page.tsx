@@ -22,7 +22,11 @@ export default async function SignupPage() {
       <div className="w-full max-w-[440px] bg-surface border border-line rounded-[4px] px-8 pt-9 pb-8 text-center">
         <PageTitle className="mb-4">{UI.signupsClosed}</PageTitle>
         <p className="text-[15px] text-sub leading-relaxed mb-6">
-          This system is set up for a single organization. Contact Mantaq if you need access.
+          This app is set up for a single organization. If you need access, contact support at{" "}
+          <a href={`mailto:${UI.supportEmail}`} className="text-accent underline hover:text-accent-dark">
+            {UI.supportEmail}
+          </a>
+          .
         </p>
         <Link href="/login" className="text-accent underline hover:text-accent-dark text-[15px]">
           Back to sign in

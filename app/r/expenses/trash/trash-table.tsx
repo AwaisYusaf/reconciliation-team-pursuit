@@ -132,8 +132,8 @@ export function TrashTable({
       <thead>
         <tr>
           <Th>Name</Th>
-          <Th>Line Item</Th>
-          {multiSource && <Th>Funding Source</Th>}
+          <Th>Line item</Th>
+          {multiSource && <Th>Funding source</Th>}
           <Th>Month</Th>
           <Th align="right">Amount</Th>
           <Th>Files</Th>
@@ -160,7 +160,7 @@ export function TrashTable({
                 <button
                   type="button"
                   onClick={() => openDocuments(row.documents, 0)}
-                  title={`Open the ${row.documents.length} document(s) attached to ${row.name}`}
+                  title={`Open the ${row.documents.length} document${row.documents.length === 1 ? "" : "s"} attached to ${row.name}`}
                   className="flex items-center gap-2 whitespace-nowrap text-left rounded-[2px] hover:opacity-80 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
                 >
                   <DocumentThumbnail
@@ -181,7 +181,7 @@ export function TrashTable({
                   <Button
                     variant="quiet"
                     disabled={pending || rowLocked}
-                    onClick={() => run(() => restoreExpenseAction(row.id), `${row.name} restored`)}
+                    onClick={() => run(() => restoreExpenseAction(row.id), `${row.name} restored.`)}
                   >
                     Restore
                   </Button>
@@ -192,14 +192,15 @@ export function TrashTable({
                     confirmLabel="Delete permanently"
                     body={
                       <>
-                        <strong>{row.name}</strong> — {formatMoney(row.amountCents)}. Its attached
-                        files are removed too. This cannot be undone.
+                        <strong>{row.name}</strong> ({formatMoney(row.amountCents)})
+                        {row.documents.length > 0 ? " and its attached files" : ""} will be deleted.
+                        This can&apos;t be undone.
                       </>
                     }
                     onConfirm={() =>
                       run(
                         () => permanentlyDeleteExpenseAction(row.id),
-                        `${row.name} deleted permanently`,
+                        `${row.name} deleted permanently.`,
                       )
                     }
                   >

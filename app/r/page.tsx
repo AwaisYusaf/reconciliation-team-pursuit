@@ -56,7 +56,7 @@ export default async function DashboardPage() {
 
       {shown.length === 0 ? (
         <EmptyState>
-          No active funding sources — add one in{" "}
+          No active funding sources. Add one in{" "}
           <Link href="/r/settings" className="text-accent underline">
             Settings
           </Link>
