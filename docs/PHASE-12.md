@@ -432,8 +432,8 @@ Five reviewers read the branch against the ticket, the docs and the repo's revie
 - architecture, database and migration;
 - docs, contract and UI fidelity.
 
-Every finding was fixed, or kept with a reason recorded below. The full suite afterwards: 1870
-tests in 143 files pass, and typecheck and lint are clean.
+Every finding was fixed, or kept with a reason recorded below. The full suite afterwards: 1874
+tests in 144 files pass, and typecheck and lint are clean.
 
 **Security and production failures — fixed:**
 - **Chunked bodies skipped the size cap.** The public unlock route and the signed-in JSON routes
@@ -467,6 +467,19 @@ tests in 143 files pass, and typecheck and lint are clean.
 - **Refusals from the file route are now shown on the link's own card.** Too many opens sends
   the visitor to `?e=busy`, and an unreadable object to `?e=unreadable`. Both show a message and
   an Open file link, with no redirect loop. HEAD still gets the bare status.
+- **An abandoned download threw an uncaught exception (found in the browser pass).** A visitor
+  who closed the tab or lost the connection partway through a shared file made the server throw
+  "Invalid state: Controller is already closed" (`ERR_INVALID_STATE`) as an `uncaughtException`,
+  once per abandoned download.
+  - The cause was `Readable.toWeb` under Next's abort-signalled pipe. The S3 driver was affected
+    too: the SDK's `transformToWebStream` is `Readable.toWeb` underneath.
+  - Both drivers now use `webStreamFrom` (`src/services/storage/web-stream.ts`). It reads one
+    chunk per pull and only destroys the source on cancel.
+  - `web-stream.test.ts` covers it: full output, backpressure, a mid-file storage failure, and
+    five piped downloads aborted partway with no uncaught error. Swapping in `Readable.toWeb`,
+    or dropping the destroy on cancel, fails the test.
+  - Against the dev server, five aborted downloads now log nothing, where each used to log the
+    exception.
 - **The form still works if the script hasn't loaded yet.** The unlock form is a real
   `<form method="post">`, so a slow phone can still post it. The route answers the urlencoded
   post with 303s (the file plus the cookie, or `?e=wrong`/`wait`/`refused`). The password never
@@ -621,8 +634,17 @@ tests in 143 files pass, and typecheck and lint are clean.
   - The dialog (both views) and the box at 500 px and at 375 px, in a same-origin iframe. The
     password card at 375 px.
   - No horizontal overflow; the link field truncates, and the buttons wrap.
-- **Not verified:** Edge and Safari, and the 70 MB packet (B-7, Phase 5). No file was downloaded
-  in the browser.
+- **Large file through the link.** A synthetic 78 MB, 44-page PDF of noise images (no real data)
+  was put behind the packet link in place of the stored object, then restored:
+  - Streamed over curl, the bytes were identical, and the server's memory rose 8 MB.
+  - A slow visitor at 1 MB/s received 21 MB in 20 s while memory rose 5 MB; the server doesn't
+    read ahead.
+  - Chrome opened it inline through the password card as "Large Share Test Packet", with all 44
+    pages.
+- **Not verified:**
+  - A generated 70 MB packet (the build side of B-7, Phase 5).
+  - Edge and Safari.
+  - No file was downloaded in the browser.
 
 ### Phase 5 — Finish
 - Docs (m06, data-model, architecture, README, deploy) and the adversarial review: done in the

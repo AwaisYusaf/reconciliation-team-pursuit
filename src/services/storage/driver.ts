@@ -19,6 +19,8 @@ import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { Readable } from "node:stream";
 
+import { webStreamFrom } from "./web-stream";
+
 export type PutOptions = {
   key: string;
   body: Buffer;
@@ -83,7 +85,7 @@ export class LocalStorageDriver implements StorageDriver {
   async stream(key: string): Promise<StoredStream> {
     const target = this.absolute(key);
     const { size } = await stat(target);
-    return { body: Readable.toWeb(createReadStream(target)) as ReadableStream<Uint8Array>, size };
+    return { body: webStreamFrom(createReadStream(target)), size };
   }
 
   async stat(key: string): Promise<{ size: number } | null> {
@@ -154,13 +156,12 @@ export class S3StorageDriver implements StorageDriver {
     const { GetObjectCommand } = await import("@aws-sdk/client-s3");
     const client = await this.client();
     const response = await client.send(new GetObjectCommand({ Bucket: this.bucket, Key: key }));
-    if (!response.Body || response.ContentLength === undefined) {
-      throw new Error("Storage returned no body or length");
+    // On Node the SDK's body is the HTTP response itself, a Readable (`web-stream.ts` for why it
+    // isn't converted with `transformToWebStream`).
+    if (!(response.Body instanceof Readable) || response.ContentLength === undefined) {
+      throw new Error("Storage returned no readable body or no length");
     }
-    return {
-      body: response.Body.transformToWebStream() as ReadableStream<Uint8Array>,
-      size: response.ContentLength,
-    };
+    return { body: webStreamFrom(response.Body), size: response.ContentLength };
   }
 
   async stat(key: string): Promise<{ size: number } | null> {
