@@ -27,7 +27,9 @@
 // is `{Name} ({reference}):`, and the outline reads `{reference} | {Name}`. The copy review
 // (PHASE-13 §9) also reworded the index's subtitle and its no-receipt heading, and the summary
 // page's contract line now separates its parts with bars too.
-export const PACKET_GENERATOR_VERSION = "packet-13";
+// Bumped "packet-14": the contract summary and the expense index are hidden for now, so the
+// packet starts at the first cover sheet (D-114). Bump again when they are uncommented.
+export const PACKET_GENERATOR_VERSION = "packet-14";
 
 // Bumped "summary-3": the detail sheet gained a Receipt Total column (R1.3a). Without this, pinned and cached
 // artifacts would keep serving output built before the change.

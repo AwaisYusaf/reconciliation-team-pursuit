@@ -98,8 +98,10 @@ export function packetContents(input: {
   lineItems: readonly { lineItemId: string; name: string; estimatedPages: number }[];
 }): PacketSection[] {
   return [
-    { key: "summary", label: "Contract summary sheet", pages: input.summaryPages },
-    { key: "index", label: "Expense index", pages: input.indexPages },
+    // TEMPORARILY HIDDEN (D-114): the packet starts at the first cover sheet. Uncomment when the
+    // summary and expense index are wanted back; packet-pdf.ts lists every place to restore.
+    // { key: "summary", label: "Contract summary sheet", pages: input.summaryPages },
+    // { key: "index", label: "Expense index", pages: input.indexPages },
     ...input.lineItems.map((lineItem) => ({
       key: lineItem.lineItemId,
       label: `${lineItem.name} cover sheet and documents`,

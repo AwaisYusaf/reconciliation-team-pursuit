@@ -158,8 +158,12 @@ export async function finishPacket(
     addInternalLink(pdf, pages[cell.page], cell.rect, target);
   }
 
-  // The outline: what a reader sees in the sidebar.
-  const items: OutlineItem[] = [{ title: "Contract summary", target: { page: pages[0] } }];
+  // The outline: what a reader sees in the sidebar. Every section entry is looked up in the page
+  // map rather than assumed, so a hidden section (D-114) gets no bookmark instead of lending its
+  // name to whatever page happens to come first.
+  const items: OutlineItem[] = [];
+  const firstSummary = firstOf("summary");
+  if (firstSummary >= 0) items.push({ title: "Contract summary", target: { page: pages[firstSummary] } });
   const firstIndex = firstOf("index");
   if (firstIndex >= 0) items.push({ title: "Expense index", target: { page: pages[firstIndex] } });
   for (const lineItem of navigation.lineItems) {

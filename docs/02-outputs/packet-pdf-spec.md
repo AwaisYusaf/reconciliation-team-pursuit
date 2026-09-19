@@ -4,6 +4,13 @@ The single merged, ordered, page-numbered PDF the org uploads to DocuSign, gener
 
 ## Canonical section order
 
+> **Temporarily hidden (D-114, 2026-09-19):** sections 1 and 2 are left out for now, so the packet
+> starts at section 3, the first cover sheet. Their code is commented out, not deleted. The
+> Month-End Packet screen's contents list and page total leave them out too, and the outline gets
+> no "Contract summary" or "Expense index" entry. To bring them back, follow the note in
+> `buildPacketPdf` (`src/generation/packet-pdf.ts`). The table below is the full order they
+> return to.
+
 | # | Section | Source |
 |---|---|---|
 | 1 | **Contract summary section** | Generated (vector text): title `{docName} {Month YYYY} Contract Summary`, one subtitle line with the R7.3 context (`Contract {number} · Contract total: {amount} · Base PO {n} · Performance PO {n} · Invoice period {R2.4}` — empty values omitted; `Contract total` includes every line item's performance total on top of a configured contract value, same as the screen and the Excel), the 7-column table (BASE rows → Totals — no separate subtotal or performance grant section, retired R7.2/D-80) matching summary-excel sheet 1, then the 4 reconciliation lines. A line item with a performance names its own name cell `{name} (includes {amount} performance)`, growing the row to fit rather than a new column. Yellow header fill, black grid — same visual family as the Excel. May paginate when line items overflow one page. |
