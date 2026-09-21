@@ -360,6 +360,77 @@ export const UI = {
   readAmountsTooLongLine: "Too long to read (over 10 pages). Enter the amounts yourself.",
   readAmountsTooManyPages: (pages: number, limit: number) =>
     `That document has ${pages} pages. Amounts can only be read from documents of up to ${limit} pages. Enter the amounts yourself.`,
+  /** An invoice with more pages than `MAX_PAGES_READ` (Phase 14 §2, mirrors `readAmountsTooManyPages`). */
+  readInvoiceTooManyPages: (pages: number, limit: number) =>
+    `That file has ${pages} pages. Invoices of up to ${limit} pages can be read. For a longer document, add the expenses by hand.`,
+  /** The invoice read found no usable charge lines (Phase 14 §2). */
+  readInvoiceNothingFound: "We could not find any charges on that invoice. Please add the expenses by hand.",
+  /** More than `MAX_INVOICE_LINES` lines were read; only the first 50 came through (Phase 14 §2). */
+  readInvoiceTooManyLines: "This invoice has more than 50 lines. The first 50 were read. Add the rest by hand.",
+  /* ---------------- Adding expenses from one invoice (Phase 14, D-115) ---------------- */
+  /** The upload screen's title and its one line of explanation, both from the ticket §1. */
+  invoiceUploadTitle: "Add expenses from an invoice",
+  invoiceUploadIntro:
+    "Upload one invoice that covers several charges. We read its lines and create a draft expense for each one, for you to check before approving.",
+  /** The upload screen's two buttons, and what the first says while the model is working. */
+  invoiceReadButton: "Read invoice",
+  invoiceReadingButton: "Reading the invoice…",
+  /** The entry point on the Add Expense screen, shown only to organizations allowed AI reading. */
+  invoiceAddFromInvoice: "Add from invoice",
+  /** Refused before reading: this route takes one PDF only (ticket, "Not part of this ticket"). */
+  invoicePdfOnly: "Invoices must be uploaded as a PDF.",
+  /** The check screen's button, and the refusal when every row has been unticked. */
+  invoiceCreateDrafts: "Create drafts",
+  invoiceNoRowsTicked: "Tick at least one charge to create a draft for.",
+  /**
+   * The same invoice file was already imported into this month (ticket §4).
+   *
+   * A warning, never a refusal: a vendor really can bill the same lines twice, and the person
+   * looking at the paperwork knows better than the app. `by` is already resolved through
+   * `userDisplay`, and is left out entirely when the uploading account has since been removed,
+   * rather than printing "by Unknown".
+   */
+  invoiceAlreadyAdded: (date: string, by: string | null) =>
+    by
+      ? `This invoice was already added on ${date} by ${by}. Adding it again will create these expenses a second time.`
+      : `This invoice was already added on ${date}. Adding it again will create these expenses a second time.`,
+  /**
+   * A tax or fee charged on the whole bill rather than on one line (ticket §2).
+   *
+   * Said, never split across the lines: dividing one figure between twelve charges would invent
+   * a number nobody printed, and the ticket puts splitting out of scope.
+   */
+  invoiceWholeBillCharge: (amount: string) =>
+    `This invoice charges ${amount} on the whole bill, not on any one line. It is not included in the drafts below. Add it as its own expense if it belongs in this month.`,
+  /* ---------------- Drafts waiting for review (Phase 14) ---------------- */
+  /** The section above the month's expenses, and the mark on each of its rows. */
+  draftsWaitingHeading: (count: number) => `Waiting for review (${count})`,
+  draftMark: "Draft",
+  /** What a draft still needs before it can be approved, in plain words (ticket §5). */
+  draftNeedsLineItem: "Needs a line item",
+  draftNeedsNarrative: "Needs a narrative",
+  /** The three row actions and the section's bulk action. */
+  draftApprove: "Approve",
+  draftEdit: "Edit",
+  draftDiscard: "Discard",
+  draftApproveAllReady: (count: number) => `Approve all ready (${count})`,
+  /**
+   * The result of "Approve all ready" (ticket §5).
+   *
+   * Always says how many were left, including when none were, so the person never has to work
+   * out whether the rest were silently approved too.
+   */
+  draftsApproved: (approved: number, remaining: number) =>
+    remaining === 0
+      ? `${approved} ${approved === 1 ? "expense" : "expenses"} approved.`
+      : `${approved} ${approved === 1 ? "expense" : "expenses"} approved. ${remaining} still ${remaining === 1 ? "needs" : "need"} your attention.`,
+  /** Discard, with the undo offered in the toast itself rather than a trip to Trash (ticket §5). */
+  draftDiscarded: "Draft discarded.",
+  draftUndo: "Undo",
+  /** Refusal when Approve is somehow reached on a draft that is still missing something. */
+  draftNotReady: "This draft is still missing something. Open it and fill in what it needs.",
+  /** The draft, or the invoice that made it, is gone: someone else discarded or approved it. */
+  draftGone: "That draft no longer exists.",
   /** Amounts panel, when some files were read and others were not (Phase 10 §3.5 table — not in
    *  Appendix A, added so an incomplete total is never used unnoticed). */
   amountsLeftOut: "Documents marked No amount found are left out of these totals.",

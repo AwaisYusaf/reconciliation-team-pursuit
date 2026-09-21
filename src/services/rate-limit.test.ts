@@ -75,6 +75,50 @@ describe("login rate limits", () => {
   });
 });
 
+/**
+ * `readInvoice` (Phase 14) must stay strictly tighter than `readAmounts` — a single invoice read
+ * bills far more (up to 10 pages, 4000 output tokens) than a single amount read, and the two
+ * budgets drifting together would silently remove the intended headroom.
+ */
+describe("readInvoice budget", () => {
+  it("is tighter than readAmounts", () => {
+    expect(LIMITS.readInvoice.limit).toBeLessThan(LIMITS.readAmounts.limit);
+  });
+
+  it("allows 20 reads then refuses the 21st within the hour", () => {
+    const org = "org-invoice-1";
+    const now = 1_000_000;
+    for (let attempt = 1; attempt <= LIMITS.readInvoice.limit; attempt += 1) {
+      const result = consume("readInvoice", org, now);
+      expect(result.allowed).toBe(true);
+    }
+
+    const blocked = consume("readInvoice", org, now);
+    expect(blocked.allowed).toBe(false);
+    expect(blocked.remaining).toBe(0);
+    expect(blocked.retryAfterSeconds).toBeGreaterThan(0);
+  });
+
+  it("budgets each org separately", () => {
+    const now = 2_000_000;
+    for (let attempt = 0; attempt < LIMITS.readInvoice.limit; attempt += 1) {
+      consume("readInvoice", "org-invoice-noisy", now);
+    }
+    expect(consume("readInvoice", "org-invoice-noisy", now).allowed).toBe(false);
+    expect(consume("readInvoice", "org-invoice-quiet", now).allowed).toBe(true);
+  });
+
+  it("reopens the window once it elapses", () => {
+    const start = 3_000_000;
+    const org = "org-invoice-2";
+    for (let attempt = 0; attempt < LIMITS.readInvoice.limit; attempt += 1) consume("readInvoice", org, start);
+    expect(consume("readInvoice", org, start).allowed).toBe(false);
+
+    const afterWindow = start + LIMITS.readInvoice.windowMs + 1;
+    expect(consume("readInvoice", org, afterWindow).allowed).toBe(true);
+  });
+});
+
 describe("housekeeping", () => {
   it("drops expired buckets so the map cannot grow without bound", () => {
     const start = 1_000_000;

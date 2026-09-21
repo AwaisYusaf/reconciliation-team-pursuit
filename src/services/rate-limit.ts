@@ -91,6 +91,14 @@ export const LIMITS = {
    */
   readAmounts: { limit: 200, windowMs: 60 * 60 * 1000 },
   /**
+   * Reading a multi-line invoice (Phase 14), per organisation.
+   *
+   * Tighter than `readAmounts`: one call sends up to 10 billed PDF pages (`MAX_PAGES_READ`) and
+   * allows 4000 output tokens for up to 50 lines, so it costs roughly an order of magnitude more
+   * than a single receipt read. A person adding invoices does a handful an hour, not hundreds.
+   */
+  readInvoice: { limit: 20, windowMs: 60 * 60 * 1000 },
+  /**
    * Writing a monthly summary (Phase 11), per organisation.
    *
    * Same reasoning as `readAmounts`: each call reaches OpenAI and is billed. 30/hour is far

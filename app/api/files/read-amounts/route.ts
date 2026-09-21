@@ -8,6 +8,7 @@ import { isUuid } from "@/src/lib/ids";
 import { sameOrigin } from "@/src/lib/same-origin";
 import { readAmountsAllowedForOrg } from "@/src/modules/ai/access";
 import { beginRead, endRead } from "@/src/modules/amount-reading/in-flight";
+import { MAX_PAGES_READ } from "@/src/modules/amount-reading/page-cap";
 import { consume } from "@/src/services/rate-limit";
 import { getSession } from "@/src/services/auth/session";
 import { readAmounts } from "@/src/services/openai/read-amounts";
@@ -20,18 +21,6 @@ import { SESSION_EXPIRED } from "@/src/lib/action-result";
 export const runtime = "nodejs";
 
 const READABLE_KINDS: AiUsageDocumentKind[] = ["receipt", "proof"];
-
-/**
- * Pages sent to OpenAI in one read.
- *
- * OpenAI bills a PDF per page — it sends each page as text *and* as an image — so a 25 MB PDF of
- * near-empty pages costs orders of magnitude more than the receipt this feature is for, and the
- * hourly limit is a limit on requests, not on pages. A receipt, invoice or timesheet is a handful
- * of pages; anything longer is a bank statement or a scan dump, which the feature refuses to read
- * anyway (Phase 10 §1). `inspectUpload` already counted the pages, and attached documents carry
- * the count from ingestion.
- */
-const MAX_PAGES_READ = 10;
 
 /**
  * Read Subtotal/Tax/Fees/Total from one receipt or proof of payment (Phase 10, D-105, §3.4).

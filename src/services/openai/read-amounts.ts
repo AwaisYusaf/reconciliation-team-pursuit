@@ -34,7 +34,10 @@ import { parseMoneyToCents } from "@/src/domain/money";
  */
 const STRICT_DECIMAL = /^-?(?:\d+|\d{1,3}(?:,\d{3})+)(?:\.\d{1,2})?$/;
 
-function modelAmountToCents(value: string): number | null {
+// Exported for read-invoice.ts (Phase 14 §2): the same "never trust a model's amount to
+// parseMoneyToCents directly" rule applies to every invoice line, not just the four amount-read
+// fields this file was written for.
+export function modelAmountToCents(value: string): number | null {
   if (!STRICT_DECIMAL.test(value)) return null;
   return parseMoneyToCents(value);
 }
