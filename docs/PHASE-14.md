@@ -180,6 +180,14 @@ summary outcome on an invoice read is refused.
 check made exactly four of the eight tests fail, and re-adding them made all eight pass again.
 The restored definitions were read back from `pg_get_constraintdef` and match the migration.
 
+**Proved from scratch as well**, which is what a fresh deploy does: all 33 migrations were applied
+to an empty database in one run and succeeded. That is the strongest form of the enum test in
+§3.1, because a fresh database has every migration pending at once, so `0032`'s new enum value and
+the constraint naming it are created inside the same transaction and the `feature::text`
+comparison is the only reason it works. The resulting schema was checked column by column: both
+tables present, the enum carrying all three values, the constraint present, and `expenses`
+`reference_seq` and `line_item_id` still `NOT NULL`. The scratch database was then dropped.
+
 ---
 
 ## 8. Tests and verification
