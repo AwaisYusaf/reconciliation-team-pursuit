@@ -1034,6 +1034,133 @@ export const recurringItems = pgTable(
   (t) => [index("recurring_items_org_sort_idx").on(t.orgId, t.sortOrder)],
 );
 
+/* --------------------------------------------- expense imports and drafts */
+
+/**
+ * One uploaded invoice that covers several charges (Phase 14, D-115).
+ *
+ * The file is stored once and owned by this row. It becomes a real `expense_documents` receipt
+ * only when a draft is approved, so an import that is never approved leaves nothing behind but
+ * its own object, which the discard path deletes.
+ *
+ * `sha256` is the "this invoice was already added" check. Deliberately **not** unique: adding
+ * the same invoice twice is allowed after a warning, because a vendor really can bill the same
+ * lines again, and refusing it would be the app overruling the person who can see the paperwork.
+ */
+export const expenseImports = pgTable(
+  "expense_imports",
+  {
+    id: id(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    fundingSourceId: uuid("funding_source_id").notNull(),
+    month: char({ length: 7 }).notNull(),
+    /** Null when the uploading account has since been removed; the warning then names no one. */
+    uploadedBy: uuid("uploaded_by").references(() => users.id, { onDelete: "set null" }),
+    s3Key: text("s3_key").notNull(),
+    /** Original upload name — lives here, never in the S3 key (PII-free keys). */
+    filename: text().notNull(),
+    mimeType: text("mime_type").notNull(),
+    sizeBytes: bigint("size_bytes", { mode: "number" }).notNull().default(0),
+    pageCount: integer("page_count"),
+    /** sha256 hex of the uploaded bytes. */
+    sha256: char({ length: 64 }).notNull(),
+    /** What the model read off the invoice as a whole. Null means it found none of them. */
+    vendorName: text("vendor_name"),
+    invoiceDate: date("invoice_date"),
+    /**
+     * A tax or fee charged on the whole bill rather than on one line.
+     *
+     * Recorded so the check screen can say it is there, and never split across the lines
+     * (out of scope for Phase 14). Null means never read, which is a different fact from zero.
+     */
+    billTaxCents: nullableCents("bill_tax_cents"),
+    billFeesCents: nullableCents("bill_fees_cents"),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    // The duplicate-invoice warning's lookup, and the list of a month's imports.
+    index("expense_imports_org_source_month_idx").on(t.orgId, t.fundingSourceId, t.month, t.sha256),
+    // Same pattern as every other source-scoped table (D-93 2.3): NO ACTION, because funding
+    // sources are archived, never deleted.
+    foreignKey({
+      columns: [t.fundingSourceId, t.orgId],
+      foreignColumns: [fundingSources.id, fundingSources.orgId],
+    }),
+    check("expense_imports_month_ck", sql`${t.month} ~ '^\\d{4}-(0[1-9]|1[0-2])$'`),
+  ],
+);
+
+/**
+ * One line read off an invoice, waiting for a person to check it (Phase 14, D-115).
+ *
+ * **A draft is deliberately not an `expenses` row with a flag on it.** Its own table is what
+ * makes "a draft counts in nothing" a property of the schema rather than of every reader
+ * remembering to filter: no query for a month total, a line item's spend, the dashboard, the
+ * packet gate, a generator or the AI monthly summary can see one, because none of them names
+ * this table. It also means `expenses.reference_seq` keeps its not-null with no default — the
+ * guarantee that forgetting to claim a reference number is a type error rather than two rows
+ * colliding — since a draft simply has no such column to leave empty.
+ *
+ * Approving builds an ordinary `ExpenseInput` from this row and runs the normal create path, so
+ * an approved expense is indistinguishable from one typed by hand, and the row here is deleted.
+ */
+export const expenseDrafts = pgTable(
+  "expense_drafts",
+  {
+    id: id(),
+    importId: uuid("import_id")
+      .notNull()
+      .references(() => expenseImports.id, { onDelete: "cascade" }),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    fundingSourceId: uuid("funding_source_id").notNull(),
+    month: char({ length: 7 }).notNull(),
+    date: date().notNull(),
+    name: text().notNull(),
+    description: text().notNull().default(""),
+    /**
+     * Null when nothing matched the line's name, which is the "Needs a line item" state.
+     *
+     * Set null rather than restricted when the line item is deleted (unlike `expenses`, R9.3):
+     * a suggestion is not a record, so deleting a line item should blank the suggestion, not
+     * refuse the delete. The composite key below still pins a suggestion that *is* set to this
+     * draft's own source; a null one is simply not checked (MATCH SIMPLE).
+     */
+    lineItemId: uuid("line_item_id").references(() => lineItems.id, { onDelete: "set null" }),
+    /** Label snapshot, as on `expenses` (R5.1); the org's usual one when nothing matched. */
+    paymentSource: text("payment_source").notNull(),
+    subtotalCents: cents("subtotal_cents"),
+    taxCents: cents("tax_cents"),
+    feesCents: cents("fees_cents"),
+    note: text(),
+    /** Empty until someone writes one, which is the "Needs a narrative" state. */
+    narrative: text(),
+    /** The order the lines appeared on the invoice, so the review list reads like the bill. */
+    sortOrder: integer("sort_order").notNull().default(0),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    index("expense_drafts_org_source_month_idx").on(t.orgId, t.fundingSourceId, t.month, t.sortOrder),
+    index("expense_drafts_import_idx").on(t.importId, t.sortOrder),
+    index("expense_drafts_line_item_idx").on(t.lineItemId),
+    foreignKey({
+      columns: [t.fundingSourceId, t.orgId],
+      foreignColumns: [fundingSources.id, fundingSources.orgId],
+    }),
+    // A set suggestion must belong to this draft's own source, exactly as on `expenses`
+    // (D-93 2.2). Unchecked while null, which is what lets an unmatched line exist at all.
+    foreignKey({
+      columns: [t.lineItemId, t.fundingSourceId],
+      foreignColumns: [lineItems.id, lineItems.fundingSourceId],
+    }),
+    check("expense_drafts_month_ck", sql`${t.month} ~ '^\\d{4}-(0[1-9]|1[0-2])$'`),
+  ],
+);
+
 /* ------------------------------------------------------ generated artifacts */
 
 /**
@@ -1234,8 +1361,17 @@ export const userTourProgress = pgTable(
  * `monthly_summary` is declared now, before Phase 11 uses it: Postgres cannot add an enum value
  * and use it in the same migration transaction, and Phase 11's migration needs to reference it in
  * a check constraint.
+ *
+ * `invoice_read` (Phase 14) is one row per multi-line invoice read. It reuses the amount-read
+ * document columns — an invoice is always a freshly-picked file read as a receipt — so its check
+ * constraint below is the amount-read one over again rather than a new shape. Adding the value
+ * and the constraint that names it needs two migration files, for the same Postgres reason.
  */
-export const aiUsageFeature = pgEnum("ai_usage_feature", ["amount_read", "monthly_summary"]);
+export const aiUsageFeature = pgEnum("ai_usage_feature", [
+  "amount_read",
+  "monthly_summary",
+  "invoice_read",
+]);
 
 /**
  * ai_usage_events.outcome. `found`/`none`/`failed` are amount reads (Phase 10); `success` and
@@ -1314,6 +1450,19 @@ export const aiUsageEvents = pgTable(
     check(
       "ai_usage_events_amount_read_ck",
       sql`${t.feature} <> 'amount_read' OR (${t.documentSource} IS NOT NULL AND ${t.documentKind} IS NOT NULL AND ${t.outcome} IN ('found', 'none', 'failed'))`,
+    ),
+    // An invoice read records the same document columns as an amount read, and only has
+    // amount-read outcomes (Phase 14, D-115).
+    //
+    // `feature::text` rather than the bare column, unlike the two checks around it. Postgres
+    // refuses to *use* an enum value in the transaction that added it, and drizzle applies every
+    // pending migration in one transaction (`pg-core/dialect.js`, `session.transaction` around
+    // the whole loop) — so splitting this into a second migration file does not help, as D-106
+    // assumed it would. Comparing the column as text never evaluates the new enum literal, so
+    // the value and the constraint that names it can land together.
+    check(
+      "ai_usage_events_invoice_read_ck",
+      sql`${t.feature}::text <> 'invoice_read' OR (${t.documentSource} IS NOT NULL AND ${t.documentKind} IS NOT NULL AND ${t.outcome} IN ('found', 'none', 'failed'))`,
     ),
     // A monthly summary run always records the source, month and trigger it ran for, and only
     // has summary outcomes (Phase 11, D-107).
@@ -1399,6 +1548,8 @@ export type MonthDocument = typeof monthDocuments.$inferSelect;
 export type MonthStatus = typeof monthStatuses.$inferSelect;
 export type MonthLockEvent = typeof monthLockEvents.$inferSelect;
 export type VendorDefault = typeof vendorDefaults.$inferSelect;
+export type ExpenseImport = typeof expenseImports.$inferSelect;
+export type ExpenseDraft = typeof expenseDrafts.$inferSelect;
 export type RecurringItem = typeof recurringItems.$inferSelect;
 export type GeneratedArtifact = typeof generatedArtifacts.$inferSelect;
 export type UserTourProgress = typeof userTourProgress.$inferSelect;
