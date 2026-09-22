@@ -509,6 +509,20 @@ function sampleUiTexts(): string[] {
         case "complimentaryUntil":
         case "complimentaryEnded":
           return [(value as (date: string) => string)("1 Jan 2027")];
+        // The two entries that take a list rather than a string: called with a real one, or
+        // the generic "x" below would sample a sentence about a file named undefined.
+        case "draftSavedNotApproved":
+          return [(value as (needs: string[]) => string)(["Needs a line item", "Needs a narrative"])];
+        case "invoiceFilesNotAttached":
+          return [
+            [{ filename: "timesheet.png", reason: "Choose a document type first." }],
+            [
+              { filename: "timesheet.png", reason: "Choose a document type first." },
+              { filename: "receipt.png", reason: "That file could not be uploaded." },
+            ],
+          ].map((sample) =>
+            (value as (files: Array<{ filename: string; reason: string }>) => string)(sample),
+          );
         case "usageFundingSources":
           return [(value as (a: number, b: number) => string)(2, 1)];
         case "usageExpenses":

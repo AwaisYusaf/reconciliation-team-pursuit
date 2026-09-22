@@ -483,6 +483,10 @@ export const UI = {
   draftUndo: "Undo",
   /** Refusal when Approve is somehow reached on a draft that is still missing something. */
   draftNotReady: "This draft is still missing something. Open it and fill in what it needs.",
+  /** The same refusal, said on the edit screen itself, where "open it" would be nonsense: the
+   *  draft IS open. Names the fields, in the same words the drafts list's "Still needs" uses. */
+  draftSavedNotApproved: (needs: string[]) =>
+    `Saved, but not approved: ${needs.join(" · ")}.`,
   /** The draft, or the invoice that made it, is gone: someone else discarded or approved it. */
   draftGone: "That draft no longer exists.",
   /** Amounts panel, when some files were read and others were not (Phase 10 §3.5 table — not in

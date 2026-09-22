@@ -9,7 +9,6 @@ import {
   updateDraftAction,
 } from "@/src/modules/expense-imports/draft-actions";
 import { loadDraftById, loadDraftDocuments } from "@/src/modules/expense-imports/queries";
-import { draftIsReady } from "@/src/domain/draft-rules";
 import { ExpenseForm } from "@/src/modules/expenses/expense-form";
 import { moneyField } from "@/src/modules/expenses/vendor-fill";
 import { loadExpenseFormOptions } from "@/src/modules/expenses/queries";
@@ -124,10 +123,11 @@ export default async function EditDraftPage({
           },
         }}
         saveAction={updateDraftAction}
-        // Offered only on a draft that is already complete. Approval re-checks everything
-        // server side regardless, so this decides whether the button is worth showing, not
-        // whether the approval is allowed.
-        approveAction={draftIsReady(draft) ? approveDraftAction : undefined}
+        // Passed always. Whether the button SHOWS is decided in the form, off the fields as
+        // they stand on screen: this page renders on the server, so gating here hid it from
+        // every draft still missing its narrative — which is what someone opens this screen to
+        // write. Approval re-checks everything server side either way.
+        approveAction={approveDraftAction}
         removeDocumentAction={removeDraftDocumentAction}
       />
     </div>

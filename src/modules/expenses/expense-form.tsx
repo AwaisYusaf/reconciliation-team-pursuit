@@ -20,6 +20,7 @@ import { reportResult } from "@/src/components/ui/toast";
 import { setActiveFundingSourceAction } from "@/src/modules/auth/actions";
 import { projectedRemainingCents } from "@/src/domain/budget-math";
 import { compareMonthKeys, monthLabel } from "@/src/domain/dates";
+import { draftNeeds } from "@/src/domain/draft-rules";
 import { formatMoney } from "@/src/domain/format";
 import {
   parseMoneyToCents,
@@ -713,6 +714,22 @@ export function ExpenseForm({
   const fieldId = useCallback((field: string) => `${field}-${uid}`, [uid]);
 
   /**
+   * What this charge would still be refused for, by the same rule the drafts list shows in its
+   * "Still needs" column — read off the live fields, not the stored row, so it answers for
+   * what the person has just typed rather than for the draft as it arrived.
+   *
+   * Used only to explain a refusal, never to hide the button: the server decides.
+   */
+  const stillNeeds = () =>
+    draftNeeds({
+      lineItemId: values.lineItemId || null,
+      narrative: values.narrative,
+      name: values.name,
+      paymentSource: values.paymentSource,
+      date: values.date,
+    });
+
+  /**
    * Save this draft and approve it in one press.
    *
    * Two actions rather than one, deliberately: the save has to land first, or approval would
@@ -743,7 +760,13 @@ export function ExpenseForm({
       const approved = await approveAction!(existing!.id);
       if (!approved.ok) {
         // Saved, but not approved: say so rather than leaving it looking like nothing worked.
-        setError(approved.error);
+        // And name the fields when they are what is wrong. The server's own refusal says "Open
+        // it and fill in what it needs", which is the drafts LIST speaking — read on this
+        // screen, where the draft is already open, it tells the person to do what they are
+        // doing. Every other refusal (locked month, archived source, draft gone) is passed
+        // through untouched, because only this one knows less than the screen does.
+        const needs = stillNeeds();
+        setError(needs.length > 0 ? UI.draftSavedNotApproved(needs) : approved.error);
         router.refresh();
         return;
       }
@@ -1458,6 +1481,11 @@ export function ExpenseForm({
                 {embedded.draft.label}
               </Button>
             )}
+            {/* Always beside Save, never conditional on readiness. It used to be gated on the
+                stored row, on the server, at render — so the button was missing from exactly
+                the drafts someone opens this screen to finish, and appeared only after saving,
+                leaving and coming back. Two buttons that are always both there is one less
+                thing to work out: press either, and a refusal says what is still needed. */}
             {approveAction && (
               <Button
                 type="button"

@@ -127,6 +127,42 @@ describe("a charge card carries its supporting document's type", () => {
  * whichever card's label was clicked, and point every `aria-labelledby` at the first card's
  * label, so a screen reader announces the wrong field name on all but one.
  */
+/**
+ * "Save and approve" on the draft edit screen was gated on the STORED row, on the server, when
+ * the page rendered. A draft is short of something — usually its narrative — which is exactly
+ * why someone opens this screen, so the button was hidden from every draft anyone came here to
+ * finish, and appeared only after saving, leaving and re-entering.
+ *
+ * Structural, like the rest of this file: `vitest.config.mts` runs `environment: "node"`, so
+ * there is no render harness to click the button in.
+ */
+describe("the draft edit screen offers Save changes and Save and approve, always both", () => {
+  const repoRoot = fileURLToPath(new URL("../../../", import.meta.url));
+  const form = readFileSync(`${repoRoot}src/modules/expenses/expense-form.tsx`, "utf8");
+  const page = readFileSync(`${repoRoot}app/r/expenses/drafts/[id]/edit/page.tsx`, "utf8");
+
+  it("the page hands the action over unconditionally", () => {
+    expect(page).toContain("approveAction={approveDraftAction}");
+    // The server-rendered gate specifically: it hid the button from the drafts someone opens
+    // this screen to finish, since a draft still missing its narrative is the normal case.
+    expect(page).not.toContain("draftIsReady(draft) ? approveDraftAction");
+  });
+
+  it("renders the button whenever the action is there, with no readiness condition on it", () => {
+    expect(form).toContain("{approveAction && (");
+    expect(form).not.toMatch(/\{approveAction && \w+ && \(/);
+  });
+
+  it("explains a refusal in field names, since 'open it' makes no sense with it open", () => {
+    // Computed from the live values, not the row the page rendered from.
+    expect(form).toMatch(/const stillNeeds = \(\) =>\s*\n?\s*draftNeeds\(\{/);
+    expect(form).toContain("lineItemId: values.lineItemId || null");
+    expect(form).toContain("UI.draftSavedNotApproved(needs)");
+    // Anything the screen cannot know better than the server still comes from the server.
+    expect(form).toContain("needs.length > 0 ? UI.draftSavedNotApproved(needs) : approved.error");
+  });
+});
+
 describe("field ids are unique per mounted form", () => {
   const repoRoot = fileURLToPath(new URL("../../../", import.meta.url));
   const form = readFileSync(`${repoRoot}src/modules/expenses/expense-form.tsx`, "utf8");
