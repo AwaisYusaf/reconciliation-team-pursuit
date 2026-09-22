@@ -41,6 +41,9 @@ describe.skipIf(!hasDatabase)("create drafts from an invoice (integration, Phase
     expenseDrafts,
     expenseImports,
     fundingSources,
+    expenseAuditEvents,
+    expenseDocuments,
+    expenses,
     lineItems,
     monthLockEvents,
     monthStatuses,
@@ -51,6 +54,7 @@ describe.skipIf(!hasDatabase)("create drafts from an invoice (integration, Phase
     vendorDefaults,
   } = await import("@/src/db/schema");
   const { createTestOrg } = await import("@/src/db/test-org");
+  const { ORIGINAL_RULES } = await import("@/src/modules/expenses/reimbursement");
   const { getSession, requireSession } = await import("@/src/services/auth/session");
   const { hashPassword } = await import("@/src/services/auth/passwords");
   const { storage } = await import("@/src/services/storage/driver");
@@ -139,6 +143,8 @@ describe.skipIf(!hasDatabase)("create drafts from an invoice (integration, Phase
     tax: string;
     fees: string;
     date: string;
+    note: string;
+    kind: "expense" | "draft";
   }>;
 
   function row(overrides: RowOverrides = {}) {
@@ -148,6 +154,11 @@ describe.skipIf(!hasDatabase)("create drafts from an invoice (integration, Phase
       paymentSource: "Operating account",
       description: "One widget",
       narrative: "",
+      note: "",
+      // These tests are about the import path itself, so every row defaults to a draft: the
+      // relaxed rules, which is what "create drafts from an invoice" originally meant. The
+      // expense path has its own cases.
+      kind: "draft" as const,
       subtotal: "100.00",
       tax: "0.00",
       fees: "0.00",
@@ -169,6 +180,15 @@ describe.skipIf(!hasDatabase)("create drafts from an invoice (integration, Phase
     form.set("rows", JSON.stringify(input.rows));
     if (input.vendorName !== undefined) form.set("vendorName", input.vendorName);
     if (input.invoiceDate !== undefined) form.set("invoiceDate", input.invoiceDate);
+    return form;
+  }
+
+  /** Post rows exactly as given, including shapes the screen could never produce. */
+  function postFormWithRawRows(file: File, fsId: string, rows: unknown[]): FormData {
+    const form = new FormData();
+    form.set("file", file);
+    form.set("fundingSourceId", fsId);
+    form.set("rows", JSON.stringify(rows));
     return form;
   }
 
@@ -732,6 +752,199 @@ describe.skipIf(!hasDatabase)("create drafts from an invoice (integration, Phase
       expect(recurring?.defaultNarrative).toBe("Every month");
       const vendor = context.vendors.find((v) => v.name === "Acme Vendor");
       expect(vendor?.defaultLineItemId).toBe(lineItemId);
+    });
+  });
+
+  describe("saving a charge as a real expense, not a draft (Phase 14)", () => {
+    it("writes a real expense with its own reference number, its receipt and its history", async () => {
+      const file = await pdfFile();
+      const response = await POST(
+        postRequest(
+          buildForm({
+            file,
+            fundingSourceId,
+            rows: [
+              row({ name: "Straight to the books", kind: "expense", narrative: "Checked on the day." }),
+              row({ name: "Still to check", kind: "draft", narrative: "" }),
+            ],
+          }),
+        ),
+      );
+      expect(response.status).toBe(200);
+
+      // The expense is real: it counts, so it has a number, and the number came from the
+      // month counter rather than anywhere else.
+      const made = await db
+        .select()
+        .from(expenses)
+        .where(and(eq(expenses.orgId, orgId), eq(expenses.name, "Straight to the books")));
+      expect(made).toHaveLength(1);
+      expect(made[0].referenceSeq).toBeGreaterThanOrEqual(1);
+      expect(made[0].narrative).toBe("Checked on the day.");
+      // Never defaulted: these have no column default precisely so they cannot be forgotten.
+      expect(typeof made[0].taxReimbursable).toBe("boolean");
+      expect(typeof made[0].feesReimbursable).toBe("boolean");
+
+      // The other row is still only a draft, so the two kinds really were split. Checked by
+      // containment: earlier tests in this file leave their own drafts on the org.
+      const { drafts } = await countRows(orgId);
+      expect(drafts.map((d) => d.name)).toContain("Still to check");
+      expect(drafts.map((d) => d.name)).not.toContain("Straight to the books");
+
+      // The invoice became its receipt, and the history says where it came from (ticket §7).
+      const docs = await db
+        .select()
+        .from(expenseDocuments)
+        .where(eq(expenseDocuments.expenseId, made[0].id));
+      expect(docs).toHaveLength(1);
+      expect(docs[0].kind).toBe("receipt");
+      expect(docs[0].status).toBe("attached");
+
+      const events = await db
+        .select()
+        .from(expenseAuditEvents)
+        .where(eq(expenseAuditEvents.expenseId, made[0].id));
+      expect(events).toHaveLength(1);
+      expect(events[0].action).toBe("created");
+      expect((events[0].afterData as Record<string, unknown>).fromInvoice).toBe(true);
+    });
+
+    it("refuses a charge saved as an expense while it is still missing a narrative, and writes nothing", async () => {
+      const before = await countRows(orgId);
+      const beforeExpenses = await db.select().from(expenses).where(eq(expenses.orgId, orgId));
+
+      const response = await POST(
+        postRequest(
+          buildForm({
+            file: await pdfFile(),
+            fundingSourceId,
+            rows: [row({ name: "Unfinished", kind: "expense", narrative: "" })],
+          }),
+        ),
+      );
+      expect(response.status).toBe(400);
+      const body = await response.json();
+      // Named, because the person is looking at a list of charges.
+      expect(body.error).toContain("Unfinished");
+
+      const after = await countRows(orgId);
+      expect(after.imports).toHaveLength(before.imports.length);
+      expect(after.drafts).toHaveLength(before.drafts.length);
+      const afterExpenses = await db.select().from(expenses).where(eq(expenses.orgId, orgId));
+      expect(afterExpenses).toHaveLength(beforeExpenses.length);
+    });
+
+    it("refuses a charge saved as an expense with no line item", async () => {
+      const response = await POST(
+        postRequest(
+          buildForm({
+            file: await pdfFile(),
+            fundingSourceId,
+            rows: [row({ name: "No line item", kind: "expense", lineItemId: "", narrative: "Written." })],
+          }),
+        ),
+      );
+      expect(response.status).toBe(400);
+      expect((await response.json()).error).toContain("No line item");
+    });
+  });
+
+  describe("the server is the only authority (nothing trusts the screen)", () => {
+    // Every one of these is something the check screen also refuses. The screen refusing it is
+    // a courtesy; these posts go straight at the route with no screen involved, which is what
+    // a bypassed, scripted or stale client actually looks like.
+
+    it("refuses a charge marked as an expense that is missing its narrative, however it was posted", async () => {
+      const response = await POST(
+        postRequest(
+          buildForm({
+            file: await pdfFile(),
+            fundingSourceId,
+            rows: [row({ name: "Bypassed", kind: "expense", narrative: "" })],
+          }),
+        ),
+      );
+      expect(response.status).toBe(400);
+      expect((await response.json()).error).toContain("Bypassed");
+    });
+
+    it("refuses an unknown payment source, which the screen only ever offers from a list", async () => {
+      const response = await POST(
+        postRequest(
+          buildForm({
+            file: await pdfFile(),
+            fundingSourceId,
+            rows: [row({ paymentSource: "Cash under the table" })],
+          }),
+        ),
+      );
+      expect(response.status).toBe(400);
+    });
+
+    it("refuses a line item from another funding source, which the screen never lists", async () => {
+      const [otherSource] = await db
+        .insert(fundingSources)
+        .values({ orgId, name: `Other ${Date.now()}`, type: "grant", sortOrder: 9, ...ORIGINAL_RULES })
+        .returning({ id: fundingSources.id });
+      const [foreign] = await db
+        .insert(lineItems)
+        .values({
+          orgId,
+          fundingSourceId: otherSource.id,
+          name: "Elsewhere",
+          scheduledValueCents: 1000,
+          sortOrder: 0,
+        })
+        .returning({ id: lineItems.id });
+
+      const response = await POST(
+        postRequest(
+          buildForm({
+            file: await pdfFile(),
+            fundingSourceId,
+            rows: [row({ lineItemId: foreign.id })],
+          }),
+        ),
+      );
+      expect(response.status).toBe(400);
+    });
+
+    it("refuses an empty row set and a malformed one", async () => {
+      for (const rows of [[], [{ nonsense: true }]]) {
+        const response = await POST(
+          postRequest(buildForm({ file: await pdfFile(), fundingSourceId, rows })),
+        );
+        expect(response.status).toBe(400);
+      }
+    });
+
+    it("refuses a kind it does not recognise, rather than defaulting it to something", async () => {
+      // A row claiming some third kind must not quietly become an expense.
+      const response = await POST(
+        postRequest(
+          postFormWithRawRows(await pdfFile(), fundingSourceId, [
+            { ...row(), kind: "approved" },
+          ]),
+        ),
+      );
+      expect(response.status).toBe(400);
+    });
+
+    it("ignores a month sent by the client and uses the session's own", async () => {
+      // `month` is never read from the form: a posted month could put records in a month the
+      // person does not have open, or in a locked one.
+      const form = buildForm({
+        file: await pdfFile(),
+        fundingSourceId,
+        rows: [row({ name: "Month from the session" })],
+      });
+      form.set("month", "2090-01");
+      const response = await POST(postRequest(form));
+      expect(response.status).toBe(200);
+
+      const { drafts } = await countRows(orgId);
+      const made = drafts.find((d) => d.name === "Month from the session");
+      expect(made?.month).not.toBe("2090-01");
     });
   });
 });

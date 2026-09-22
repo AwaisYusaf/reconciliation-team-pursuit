@@ -376,12 +376,34 @@ export const UI = {
   invoiceReadButton: "Read invoice",
   invoiceReadingButton: "Reading the invoice…",
   /** The entry point on the Add Expense screen, shown only to organizations allowed AI reading. */
-  invoiceAddFromInvoice: "Add from invoice",
+  /** The one control that starts the whole thing, on the Add Expense screen. It says what it
+   *  does rather than where it goes: pressing it opens the file picker and the charges it
+   *  finds replace the form. */
+  invoiceExtractFromInvoice: "Extract from invoice",
   /** Refused before reading: this route takes one PDF only (ticket, "Not part of this ticket"). */
-  invoicePdfOnly: "Invoices must be uploaded as a PDF.",
+  /** An invoice may be the bill itself or a photo of it. iPhone photos are converted before
+   *  they reach the server (D-111), so HEIC is accepted without being named here. */
+  invoiceFileType: "Upload the invoice as a PDF or a photo.",
   /** The check screen's button, and the refusal when every row has been unticked. */
-  invoiceCreateDrafts: "Create drafts",
+  /** The one button at the end of the check screen. It writes both kinds at once: the charges
+   *  marked as expenses become real expenses, the rest become drafts. */
+  invoiceDone: "Done",
+  /** What Done just did, said in the plain terms the person chose it in. */
+  invoiceDoneResult: (expenses: number, drafts: number) => {
+    const parts: string[] = [];
+    if (expenses > 0) parts.push(`${expenses} ${expenses === 1 ? "expense" : "expenses"} added`);
+    if (drafts > 0) parts.push(`${drafts} ${drafts === 1 ? "draft" : "drafts"} waiting for review`);
+    return parts.length > 0 ? `${parts.join(", and ")}.` : "Nothing was added.";
+  },
+  /** A charge the person chose to save as a real expense, but which is not finished. Named,
+   *  because the screen is a list of charges and the bare rule would not say which one. */
+  invoiceExpenseIncomplete: (label: string, reason: string) => `${label}: ${reason}`,
   invoiceNoRowsTicked: "Tick at least one charge to create a draft for.",
+  /** The hint after `draftNeeds`' own missing parts, on a card the person is trying to save as
+   *  a real expense straight from the invoice (Phase 14 §3). */
+  invoiceOrMarkAsDraft: "You can fill these in now, or mark this charge as a draft and finish it later.",
+  /** Next to the draft button when files are queued on the card (PHASE-14.md §2.1 C5). */
+  invoiceDraftKeepsNoFiles: "Files added here are not kept on a draft. Add them after the draft is approved.",
   /**
    * The same invoice file was already imported into this month (ticket §4).
    *

@@ -1,11 +1,11 @@
 import { createHash } from "crypto";
 
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { NextResponse, type NextRequest } from "next/server";
 import { v7 as uuidv7 } from "uuid";
 
 import { db } from "@/src/db";
-import { expenseDrafts, expenseImports, lineItems } from "@/src/db/schema";
+import { expenseAuditEvents, expenseDrafts, expenseImports, expenses, lineItems, type ExpenseAuditSnapshot } from "@/src/db/schema";
 import { isValidIsoDate, monthLabel } from "@/src/domain/dates";
 import { UI } from "@/src/domain/strings";
 import { parseMoneyToCents } from "@/src/domain/money";
@@ -18,16 +18,21 @@ import { findFundingSource } from "@/src/modules/funding-sources/queries";
 import { monthLocked } from "@/src/modules/packet/month-guard";
 import { isKnownPaymentSource } from "@/src/modules/settings/labels";
 import { validate, type ValidateOptions } from "@/src/modules/expenses/validation";
+import { claimReferenceSeq } from "@/src/modules/expenses/references";
+import { rulesForFundingSource } from "@/src/modules/expenses/reimbursement";
 import type { ExpenseInput } from "@/src/modules/expenses/actions";
 import { MAX_INVOICE_LINES } from "@/src/services/openai/read-invoice";
 import { consume } from "@/src/services/rate-limit";
 import { getSession } from "@/src/services/auth/session";
 import { storage } from "@/src/services/storage/driver";
-import { deleteStoredObjects, orgStorageError, precheck } from "@/src/services/storage/documents";
+import { deleteStoredObjects, ingestExpenseDocument, orgStorageError, precheck } from "@/src/services/storage/documents";
 import { inspectUpload } from "@/src/services/storage/inspect";
 import { expenseImportKey, MAX_UPLOAD_BYTES } from "@/src/services/storage/keys";
 
 export const runtime = "nodejs";
+
+/** Kept in step with the read route's own list: a file that could be read must also be storable. */
+const READABLE_INVOICE_TYPES = ["application/pdf", "image/jpeg", "image/png", "image/webp"];
 
 /** One ticked row as posted from the check screen — money still the on-screen strings, the
  *  amounts and the line item/payment source ownership are all re-verified below, never trusted
@@ -38,6 +43,9 @@ type PostedRow = {
   paymentSource: string;
   description: string;
   narrative: string;
+  note: string;
+  /** What this charge becomes: a real expense now, or a draft waiting for review. */
+  kind: "expense" | "draft";
   subtotal: string;
   tax: string;
   fees: string;
@@ -53,6 +61,8 @@ function isPostedRow(value: unknown): value is PostedRow {
     typeof row.paymentSource === "string" &&
     typeof row.description === "string" &&
     typeof row.narrative === "string" &&
+    typeof row.note === "string" &&
+    (row.kind === "expense" || row.kind === "draft") &&
     typeof row.subtotal === "string" &&
     typeof row.tax === "string" &&
     typeof row.fees === "string" &&
@@ -155,7 +165,7 @@ export async function POST(request: NextRequest) {
     subtotal: row.subtotal,
     tax: row.tax,
     fees: row.fees,
-    note: "",
+    note: row.note,
     narrative: row.narrative,
     noReceipt: false,
     noReceiptReason: "",
@@ -175,9 +185,18 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    for (const input of inputs) {
-      const invalid = validate(input, DRAFT_VALIDATE);
-      if (invalid) return NextResponse.json({ ok: false, error: invalid }, { status: 400 });
+    for (const [index, input] of inputs.entries()) {
+      // A charge saved as a real expense has to clear the full rule set, line item and
+      // narrative included: it is about to appear in a month total and on a cover sheet, and
+      // nothing downstream would ever ask again. A draft clears the relaxed set, because
+      // being unfinished is the whole point of one. The refusal names the charge, since the
+      // person is looking at a list of them and "enter a narrative" alone would not say which.
+      const kind = postedRows[index].kind;
+      const invalid = validate(input, kind === "expense" ? {} : DRAFT_VALIDATE);
+      if (invalid) {
+        const label = input.name.trim() || `Charge ${index + 1}`;
+        return NextResponse.json({ ok: false, error: `${label}: ${invalid}` }, { status: 400 });
+      }
 
       if (input.lineItemId) {
         // Shape-checked before it reaches the `id` uuid column, same reasoning as `isUuid`'s
@@ -211,8 +230,8 @@ export async function POST(request: NextRequest) {
       declaredMimeType: file.type,
     });
     if (!inspection.ok) return NextResponse.json({ ok: false, error: inspection.error }, { status: 400 });
-    if (inspection.mimeType !== "application/pdf") {
-      return NextResponse.json({ ok: false, error: UI.invoicePdfOnly }, { status: 400 });
+    if (!READABLE_INVOICE_TYPES.includes(inspection.mimeType)) {
+      return NextResponse.json({ ok: false, error: UI.invoiceFileType }, { status: 400 });
     }
     if (inspection.pageCount > MAX_PAGES_READ) {
       return NextResponse.json(
@@ -237,13 +256,28 @@ export async function POST(request: NextRequest) {
     }
 
     const importId = uuidv7();
-    const key = expenseImportKey({ orgId: session.orgId, month, importId });
+    const key = expenseImportKey({
+      orgId: session.orgId,
+      month,
+      importId,
+      mimeType: inspection.mimeType,
+    });
     await storage().put({ key, body: inspection.body, contentType: inspection.mimeType });
 
     const vendorName = optionalString(form.get("vendorName"));
     const invoiceDate = optionalIsoDate(form.get("invoiceDate"));
     const billTaxCents = optionalCents(form.get("billTaxCents"));
     const billFeesCents = optionalCents(form.get("billFeesCents"));
+
+    // Filled inside the transaction, read after it commits: the invoice becomes each real
+    // expense's receipt through `ingestExpenseDocument`, which opens its own transaction and
+    // therefore cannot run inside this one.
+    const createdExpenseIds: Array<{ expenseId: string; rowIndex: number }> = [];
+
+    // Resolved before the transaction: it reads the funding source itself, and the flags it
+    // returns are the only supplier for `taxReimbursable`/`feesReimbursable`, which have no
+    // column default precisely so that forgetting them is a type error (schema.ts).
+    const rules = await rulesForFundingSource(session.orgId, fundingSourceId);
 
     const result = await db.transaction(async (tx) => {
       // First thing inside the transaction, before any write (R10.7, D-96) — must still hold
@@ -281,8 +315,99 @@ export async function POST(request: NextRequest) {
         billFeesCents,
       });
 
+      // Split by what the person chose on each card. Both kinds are written inside this one
+      // transaction, after `monthLocked` above, so a month that locks mid-import writes
+      // neither and the invoice is not half imported.
+      const draftInputs = inputs.filter((_, index) => postedRows[index].kind === "draft");
+      // Index kept, not dropped: each created expense has to be matched back to the card it
+      // came from so that card's own proof and supporting files attach to it.
+      const expenseInputs = inputs
+        .map((input, index) => ({ input, index }))
+        .filter(({ index }) => postedRows[index].kind === "expense");
+
+      if (expenseInputs.length > 0) {
+        // Same counter every other create path reads, and deliberately not filtered on
+        // `deletedAt`: a trashed row keeps its sortOrder (expenses/actions.ts).
+        const [{ next: firstSort }] = await tx
+          .select({ next: sql<number>`coalesce(max(${expenses.sortOrder}), -1) + 1` })
+          .from(expenses)
+          .where(and(eq(expenses.orgId, session.orgId), eq(expenses.month, month)));
+
+        for (const [offset, { input, index: rowIndex }] of expenseInputs.entries()) {
+          // One reference number each, claimed inside this transaction like every other
+          // insert path — never precomputed outside it, or two imports would collide.
+          const referenceSeq = await claimReferenceSeq(session.orgId, fundingSourceId, month, tx);
+          const [inserted] = await tx
+            .insert(expenses)
+            .values({
+              orgId: session.orgId,
+              fundingSourceId,
+              lineItemId: input.lineItemId,
+              month,
+              date: input.date,
+              name: input.name.trim(),
+              description: input.description.trim(),
+              paymentSource: input.paymentSource,
+              subtotalCents: parseMoneyToCents(input.subtotal) ?? 0,
+              taxCents: parseMoneyToCents(input.tax) ?? 0,
+              feesCents: parseMoneyToCents(input.fees) ?? 0,
+              taxReimbursable: rules.taxReimbursable,
+              feesReimbursable: rules.feesReimbursable,
+              note: input.note.trim() || null,
+              narrative: input.narrative.trim() || null,
+              noReceipt: false,
+              noReceiptReason: null,
+              sortOrder: Number(firstSort) + offset,
+              referenceSeq,
+            })
+            .returning({ id: expenses.id });
+          createdExpenseIds.push({ expenseId: inserted.id, rowIndex });
+
+          const [item] = await tx
+            .select({ name: lineItems.name })
+            .from(lineItems)
+            .where(eq(lineItems.id, input.lineItemId))
+            .limit(1);
+
+          // Typed into a const first: `fromInvoice` is an extra key on the jsonb snapshot, and
+          // an object literal passed straight to `.values()` trips the excess-property check.
+          // `draft-actions.ts` does the same thing for the same reason, so the history reads
+          // identically whichever way the expense was created (ticket §7).
+          const snapshot: ExpenseAuditSnapshot & { fromInvoice: true } = {
+              name: input.name.trim(),
+              lineItemId: input.lineItemId,
+              lineItemName: item?.name ?? "",
+              fundingSourceName: current.name,
+              paymentSource: input.paymentSource,
+              month,
+              date: input.date,
+              description: input.description.trim(),
+              subtotalCents: parseMoneyToCents(input.subtotal) ?? 0,
+              taxCents: parseMoneyToCents(input.tax) ?? 0,
+              feesCents: parseMoneyToCents(input.fees) ?? 0,
+              taxReimbursable: rules.taxReimbursable,
+              feesReimbursable: rules.feesReimbursable,
+              note: input.note.trim() || null,
+              narrative: input.narrative.trim() || null,
+              noReceipt: false,
+              noReceiptReason: null,
+              fromInvoice: true,
+          };
+
+          await tx.insert(expenseAuditEvents).values({
+            orgId: session.orgId,
+            expenseId: inserted.id,
+            actorUserId: session.userId,
+            action: "created",
+            beforeData: null,
+            afterData: snapshot,
+          });
+        }
+      }
+
+      if (draftInputs.length > 0)
       await tx.insert(expenseDrafts).values(
-        inputs.map((input, index) => ({
+        draftInputs.map((input, index) => ({
           importId,
           orgId: session.orgId,
           fundingSourceId,
@@ -296,6 +421,7 @@ export async function POST(request: NextRequest) {
           taxCents: parseMoneyToCents(input.tax) ?? 0,
           feesCents: parseMoneyToCents(input.fees) ?? 0,
           narrative: input.narrative.trim() || null,
+          note: input.note.trim() || null,
           sortOrder: index,
         })),
       );
@@ -308,6 +434,40 @@ export async function POST(request: NextRequest) {
       // rows (already rolled back) nor the object just stored.
       await deleteStoredObjects(key);
       return NextResponse.json({ ok: false, error: result.error }, { status: 400 });
+    }
+
+    // Same treatment approval gives it: a failed attach never undoes an expense that already
+    // exists, it just leaves it without a receipt, which the missing-documents column already
+    // shows. The stored object is the import's, so it is not deleted here on failure.
+    for (const { expenseId, rowIndex } of createdExpenseIds) {
+      try {
+        await ingestExpenseDocument({
+          orgId: session.orgId,
+          expenseId,
+          scope: "receipt",
+          file: new File([new Uint8Array(inspection.body)], file.name, { type: inspection.mimeType }),
+        });
+      } catch {
+        // Deliberately swallowed, per the comment above.
+      }
+
+      // Whatever the person queued on that card. They could not be uploaded earlier: there was
+      // no expense to attach them to until the transaction above created one. A failure here
+      // leaves the expense without that file, which the missing-documents column already says.
+      // The scope is in the field name, never guessed from the file: a proof filed as a
+      // supporting document would leave the expense failing the documentation gate for a
+      // reason nobody could see. Only the three real scopes are read, so a made-up one is
+      // simply ignored rather than stored.
+      for (const scope of ["proof", "receipt", "supporting"] as const) {
+        for (const queued of form.getAll(`rowFiles-${rowIndex}-${scope}`)) {
+          if (!(queued instanceof File)) continue;
+          try {
+            await ingestExpenseDocument({ orgId: session.orgId, expenseId, scope, file: queued });
+          } catch {
+            // Same reasoning as the receipt above.
+          }
+        }
+      }
     }
 
     return NextResponse.json({ ok: true });
