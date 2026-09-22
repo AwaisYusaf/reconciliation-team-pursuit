@@ -21,9 +21,21 @@ function invalidMoneyField(raw: string): boolean {
   return raw.trim() !== "" && parseMoneyToCents(raw) === null;
 }
 
+/**
+ * How much of the rule set applies.
+ *
+ * `draft` relaxes exactly two requirements, the two an invoice import can legitimately leave
+ * blank: the line item and the narrative (Phase 14, D-115). Nothing else moves, and approving a
+ * draft runs the full set again through the normal create path, so a draft can never become a
+ * real expense on rules weaker than a hand-typed one's.
+ */
+export type ValidateOptions = { draft?: boolean };
+
 /** Validation shared by create and update, so both paths enforce the same rules. */
-export function validate(input: ExpenseInput): string | null {
-  if (!input.name.trim() || !input.lineItemId || !input.paymentSource) {
+export function validate(input: ExpenseInput, options: ValidateOptions = {}): string | null {
+  const draft = options.draft === true;
+
+  if (!input.name.trim() || (!draft && !input.lineItemId) || !input.paymentSource) {
     return UI.expenseMissingFields;
   }
   if (!isUuid(input.fundingSourceId)) return "Choose a funding source.";
@@ -33,6 +45,6 @@ export function validate(input: ExpenseInput): string | null {
   if (invalidMoneyField(input.tax)) return "Enter a valid tax amount, like 12.34.";
   if (invalidMoneyField(input.fees)) return "Enter a valid fees amount, like 12.34.";
   if (input.noReceipt && !input.noReceiptReason.trim()) return UI.noReceiptReasonRequired;
-  if (!input.narrative.trim()) return UI.expenseMissingNarrative;
+  if (!draft && !input.narrative.trim()) return UI.expenseMissingNarrative;
   return null;
 }

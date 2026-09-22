@@ -178,7 +178,14 @@ class MonthLockedRefusal extends Error {
  * tax is a fact worth remembering, and is distinct from the null that means nothing has been
  * learned yet.
  */
-async function learnVendor(orgId: string, row: ReturnType<typeof toRow>): Promise<void> {
+/**
+ * Exported (not just used internally) so `approveDraftAction`
+ * (src/modules/expense-imports/draft-actions.ts) can learn from an approved draft exactly as
+ * every other create path does — this file is `"use server"`, where every export becomes a
+ * callable Server Action, but `learnVendor` is already async and its args/return are plain
+ * serialisable values, so exporting it costs nothing extra here.
+ */
+export async function learnVendor(orgId: string, row: ReturnType<typeof toRow>): Promise<void> {
   // Uniqueness is a lower(name) expression index, which Drizzle's typed onConflict cannot
   // target, so the upsert is explicit. Latest write wins (R8.2).
   const existing = await db
