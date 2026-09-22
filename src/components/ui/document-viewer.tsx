@@ -42,13 +42,22 @@ export function DocumentThumbnail({
   size?: "sm" | "md";
 }) {
   const box = size === "sm" ? "w-7 h-7" : "w-10 h-10";
+  // A thumbnail the store does not hold answers 404, and an `<img>` on a 404 draws the
+  // browser's broken-image icon. The type says whether to ask for one, so it cannot say
+  // whether one is there: an import made before invoices kept a thumbnail is a photo with
+  // nothing behind its URL. Falling back to the same glyph a PDF gets keeps that a missing
+  // preview rather than a page that looks broken.
+  // The URL that failed, not a flag: a row removed from the list hands this same component a
+  // different document, and a flag would carry the last one's failure onto it.
+  const [failedSrc, setFailedSrc] = useState<string | null>(null);
 
-  if (src) {
+  if (src && failedSrc !== src) {
     return (
       // eslint-disable-next-line @next/next/no-img-element
       <img
         src={src}
         alt=""
+        onError={() => setFailedSrc(src)}
         className={`${box} flex-none object-cover border border-line rounded-[2px] bg-section`}
       />
     );

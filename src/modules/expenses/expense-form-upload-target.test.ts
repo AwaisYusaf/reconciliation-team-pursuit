@@ -74,3 +74,72 @@ describe("ExpenseForm save(): the draft/expense upload-target fix", () => {
     expect(editingBranch).not.toContain('uploadQueued(existing!.id, "draft")');
   });
 });
+
+/**
+ * The client half of the supporting-document fix, pinned the way this repo pins client wiring
+ * (source text — `vitest.config` runs `environment: "node"`, so there is no render harness).
+ *
+ * The integration test in `from-invoice.integration.test.ts` proves the SERVER reads the type
+ * and refuses to drop the file silently. It cannot prove the client sends it, because it builds
+ * the FormData itself — so these two assertions cover the hop the integration test skips.
+ */
+describe("a charge card carries its supporting document's type", () => {
+  const repoRoot = fileURLToPath(new URL("../../../", import.meta.url));
+
+  it("the form mirrors supportingType up to the card, not just scope and file", () => {
+    const form = readFileSync(`${repoRoot}src/modules/expenses/expense-form.tsx`, "utf8");
+    expect(form).toMatch(/supportingType: item\.supportingType \?\? null/);
+  });
+
+  it("the invoice screen posts that type alongside the file", () => {
+    const screen = readFileSync(
+      `${repoRoot}app/r/expenses/new/from-invoice/invoice-upload-screen.tsx`,
+      "utf8",
+    );
+    expect(screen).toMatch(/rowFileTypes-\$\{index\}-supporting/);
+  });
+
+  /**
+   * The other half of the same loss. The server now names the files it could not attach, but
+   * the screen used to read only `{ ok, error }` off the answer and show a clean success — so
+   * a dropped document was still dropped in silence, one hop later. The file is gone from the
+   * browser once this screen navigates, which is what makes it unrecoverable.
+   */
+  it("the invoice screen reports the files the server could not attach", () => {
+    const screen = readFileSync(
+      `${repoRoot}app/r/expenses/new/from-invoice/invoice-upload-screen.tsx`,
+      "utf8",
+    );
+    expect(screen).toContain("attachmentErrors");
+    expect(screen).toMatch(/toast\.error\(UI\.invoiceFilesNotAttached\(/);
+
+    // And it is said BEFORE the success toast, not instead of it: both are true.
+    const failure = screen.indexOf("UI.invoiceFilesNotAttached(");
+    const success = screen.indexOf("UI.invoiceDoneResult(");
+    expect(failure).toBeGreaterThan(-1);
+    expect(success).toBeGreaterThan(failure);
+  });
+});
+
+/**
+ * The invoice check screen mounts one ExpenseForm per charge, so any fixed element id appears
+ * once per card on the same page. Duplicate ids make `htmlFor` focus the FIRST card's input
+ * whichever card's label was clicked, and point every `aria-labelledby` at the first card's
+ * label, so a screen reader announces the wrong field name on all but one.
+ */
+describe("field ids are unique per mounted form", () => {
+  const repoRoot = fileURLToPath(new URL("../../../", import.meta.url));
+  const form = readFileSync(`${repoRoot}src/modules/expenses/expense-form.tsx`, "utf8");
+  const withoutComments = form.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
+
+  it("uses no literal id or htmlFor anywhere in the markup", () => {
+    expect(withoutComments).not.toMatch(/\sid="[a-zA-Z]/);
+    expect(withoutComments).not.toMatch(/htmlFor="[a-zA-Z]/);
+  });
+
+  it("builds them from useId, so two cards cannot collide", () => {
+    expect(withoutComments).toMatch(/const uid = useId\(\)/);
+    expect(withoutComments).toMatch(/htmlFor=\{fieldId\("narrative"\)\}/);
+    expect(withoutComments).toMatch(/aria-labelledby=\{fieldId\("lineItem-label"\)\}/);
+  });
+});

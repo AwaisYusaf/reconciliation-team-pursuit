@@ -20,6 +20,8 @@ describe.skipIf(!hasDatabase)("approveDraftAction (integration)", async () => {
   const { db } = await import("@/src/db");
   const {
     expenseAuditEvents,
+    expenseDocuments,
+    expenseDraftDocuments,
     expenseDrafts,
     expenseImports,
     expenses,
@@ -191,6 +193,76 @@ describe.skipIf(!hasDatabase)("approveDraftAction (integration)", async () => {
     expect(events).toHaveLength(1);
     expect(events[0].action).toBe("created");
     expect((events[0].afterData as Record<string, unknown>).fromInvoice).toBe(true);
+  });
+
+  it("makes the invoice the receipt by re-pointing it, without storing a second copy", async () => {
+    // Two things at once, both previously unproven. The receipt attach was never exercised
+    // because the import's object was never written, so `storage().get()` threw into the
+    // action's own `catch {}` and the test passed with no receipt at all. And the approval now
+    // re-points the import's key instead of downloading and re-uploading the whole invoice,
+    // which is what stops a 25-line bill being stored 26 times.
+    const [imported] = await db
+      .select({ key: expenseImports.s3Key, size: expenseImports.sizeBytes })
+      .from(expenseImports)
+      .where(eq(expenseImports.id, importId));
+
+    const id = await insertDraft({ orgId, fundingSourceId, lineItemId, importId, name: "Gets the invoice" });
+    const result = await approveDraftAction(id);
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error("unreachable");
+
+    const docs = await db
+      .select()
+      .from(expenseDocuments)
+      .where(eq(expenseDocuments.expenseId, result.data.id));
+
+    expect(docs).toHaveLength(1);
+    expect(docs[0].kind).toBe("receipt");
+    expect(docs[0].status).toBe("attached");
+    // The SAME object, not a copy of it: this is the whole point.
+    expect(docs[0].s3Key).toBe(imported.key);
+    expect(docs[0].sizeBytes).toBe(imported.size);
+  });
+
+  it("carries a draft's own files onto the expense, keeping their key and order", async () => {
+    const id = await insertDraft({ orgId, fundingSourceId, lineItemId, importId, name: "Has its own files" });
+    const key = `test/draft-doc-${Date.now()}`;
+    await db.insert(expenseDraftDocuments).values({
+      orgId,
+      draftId: id,
+      kind: "proof",
+      status: "attached",
+      s3Key: key,
+      filename: "bank.pdf",
+      mimeType: "application/pdf",
+      sizeBytes: 321,
+      thumbnailBytes: 0,
+      pageCount: 1,
+      sortOrder: 0,
+    });
+
+    const result = await approveDraftAction(id);
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error("unreachable");
+
+    const proofs = await db
+      .select()
+      .from(expenseDocuments)
+      .where(eq(expenseDocuments.expenseId, result.data.id));
+
+    const proof = proofs.find((doc) => doc.kind === "proof");
+    expect(proof).toBeDefined();
+    // Re-pointed, not re-uploaded, and the status the documentation gate reads is preserved.
+    expect(proof!.s3Key).toBe(key);
+    expect(proof!.sizeBytes).toBe(321);
+    expect(proof!.status).toBe("attached");
+
+    // And the draft's own row went with the draft.
+    const left = await db
+      .select({ id: expenseDraftDocuments.id })
+      .from(expenseDraftDocuments)
+      .where(eq(expenseDraftDocuments.draftId, id));
+    expect(left).toHaveLength(0);
   });
 
   it("a locked month refuses with the exact UI.monthLocked message and writes no expense", async () => {

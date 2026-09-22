@@ -30,7 +30,7 @@ export type ReadInvoice = {
 };
 
 export type ReadInvoiceOutcome =
-  | { outcome: "found"; invoice: ReadInvoice; truncated: boolean }
+  | { outcome: "found"; invoice: ReadInvoice; truncated: boolean; unreadableLines: number }
   | { outcome: "none" }
   | { outcome: "failed" };
 
@@ -91,7 +91,11 @@ const INSTRUCTION =
   "to read. For each line, report its name, a short description, and its amount, tax and fees. " +
   "Every amount must be a plain decimal string like \"120.00\", with a leading minus for a " +
   "refund or credit, or null when that field does not apply. Report the vendor name and invoice " +
-  "date when shown, and a whole-bill tax or fee only when it is not already broken out per line.";
+  "date when shown, and a whole-bill tax or fee only when it is not already broken out per line. " +
+  // The prompt and the parser are two paths that must agree (invariants H): whatever shape is
+  // asked for here has to be one `toIsoDate` accepts, or the date is dropped and every charge
+  // silently takes today's date instead of the bill's.
+  "Write the invoice date as YYYY-MM-DD, whatever format the invoice itself prints it in.";
 
 type Deps = {
   fetch: typeof globalThis.fetch;
@@ -215,6 +219,9 @@ export function parseReadInvoiceResponse(json: unknown): ReadInvoiceResult {
     // are both real charges and are kept.
     if (line) lines.push(line);
   }
+  // Counted, not just dropped: a bill of twelve charges that reads as ten used to say nothing
+  // at all, and the two missing ones were only found by someone adding up the invoice by hand.
+  const unreadableLines = capped.length - lines.length;
 
   // `found: true` with nothing left after filtering is indistinguishable from "nothing to read" —
   // resolve to "none" rather than a technically-true empty invoice (Phase 14 §2).
@@ -233,6 +240,7 @@ export function parseReadInvoiceResponse(json: unknown): ReadInvoiceResult {
     outcome: "found",
     invoice: { vendor, invoiceDate, billTaxCents, billFeesCents, lines },
     truncated,
+    unreadableLines,
     ...usage,
   };
 }
@@ -268,8 +276,42 @@ function toIsoDate(value: string | null): string | null {
     return isRealDate(year, month, day) ? padded : null;
   }
 
+  // "March 18, 2026", "18 March 2026", "Mar 18 2026". The backstop, not the expectation: the
+  // prompt asks for YYYY-MM-DD, but a model that answers in the invoice's own words used to
+  // have its date thrown away, and every charge then took today's date — a wrong date on a
+  // document the funder reads, arrived at silently. Month name first or day first, since both
+  // are written; the year is always four digits, which is what keeps the two apart.
+  const named =
+    /^(?:([A-Za-z]{3,9})\.?\s+(\d{1,2})|(\d{1,2})\s+([A-Za-z]{3,9})\.?)\,?\s+(\d{4})$/.exec(text);
+  if (named) {
+    const monthWord = (named[1] ?? named[4]).toLowerCase();
+    const day = named[2] ?? named[3];
+    const year = named[5];
+    const index = MONTH_NAMES.findIndex((name) => name.startsWith(monthWord.slice(0, 3)));
+    if (index === -1) return null;
+    const month = String(index + 1);
+    const padded = `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+    return isRealDate(year, month, day) ? padded : null;
+  }
+
   return null;
 }
+
+/** Lower case, first three letters matched, so "Sept", "Sep" and "September" all land. */
+const MONTH_NAMES = [
+  "january",
+  "february",
+  "march",
+  "april",
+  "may",
+  "june",
+  "july",
+  "august",
+  "september",
+  "october",
+  "november",
+  "december",
+] as const;
 
 /** A real day in a real month, so 2026-02-30 and 2026-13-01 are refused, not merely reshaped. */
 function isRealDate(year: string, month: string, day: string): boolean {

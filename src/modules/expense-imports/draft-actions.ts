@@ -8,17 +8,15 @@
  * org-scoped: nothing here trusts an id, a funding source or a line item the client sent
  * without re-checking it against this session's own organisation.
  */
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
 import { db } from "@/src/db";
 import {
-  expenseAuditEvents,
   expenseDocuments,
   expenseDraftDocuments,
   expenseDrafts,
   expenseImports,
-  expenses,
   fundingSources,
   lineItems,
 } from "@/src/db/schema";
@@ -30,14 +28,12 @@ import { fail, ok, type ActionResult } from "@/src/lib/action-result";
 import { actionSession } from "@/src/lib/action-session";
 import { isUuid } from "@/src/lib/ids";
 import { type ExpenseInput } from "@/src/modules/expenses/actions";
-import { learnVendor, snapshotOf, type ExpenseRow } from "@/src/modules/expenses/expense-row";
-import { claimReferenceSeq } from "@/src/modules/expenses/references";
+import { insertExpenseWithAudit, learnVendor, type ExpenseRow } from "@/src/modules/expenses/expense-row";
 import { validate } from "@/src/modules/expenses/validation";
 import { requireOwnedFundingSource } from "@/src/modules/funding-sources/queries";
 import { monthLocked } from "@/src/modules/packet/month-guard";
 import { isKnownPaymentSource } from "@/src/modules/settings/labels";
-import { deleteStoredObjects, ingestExpenseDocument } from "@/src/services/storage/documents";
-import { storage } from "@/src/services/storage/driver";
+import { attachImportAsReceipt, deleteStoredObjects } from "@/src/services/storage/documents";
 
 import { loadMonthDrafts } from "./queries";
 
@@ -160,44 +156,36 @@ export async function approveDraftAction(id: string): Promise<ActionResult<{ id:
       noReceiptReason: null,
     };
 
-    const [{ next }] = await tx
-      .select({ next: sql<number>`coalesce(max(${expenses.sortOrder}), -1) + 1` })
-      .from(expenses)
-      .where(and(eq(expenses.orgId, current.orgId), eq(expenses.month, row.month)));
-
-    const [inserted] = await tx
-      .insert(expenses)
-      .values({
-        orgId: current.orgId,
-        ...row,
-        sortOrder: Number(next),
-        referenceSeq: await claimReferenceSeq(current.orgId, draft.fundingSourceId, row.month, tx),
-      })
-      .returning({ id: expenses.id });
-
-    // PROVENANCE (ticket §7): the approver is already this event's actor, so half of "who
-    // approved it" is free. `fromInvoice` records the other half — no migration, no schema
-    // change: the extra key rides in the jsonb column, every existing reader ignores keys it
-    // doesn't name, and `AuditDiffContent` renders it as "Created from an invoice".
-    const snapshot = snapshotOf(row, item.name, source.name, { fromInvoice: true });
-
-    await tx.insert(expenseAuditEvents).values({
+    // The same supplier `createExpenseAction` and the from-invoice route use, so an approved
+    // expense is written exactly as a hand-typed one is (D-115) rather than by a third copy of
+    // the same block. `fromInvoice` is the provenance the ticket asks history to show (§7).
+    const inserted = await insertExpenseWithAudit(tx, {
       orgId: current.orgId,
-      expenseId: inserted.id,
       actorUserId: current.userId,
-      action: "created",
-      beforeData: null,
-      afterData: snapshot,
+      row,
+      lineItemName: item.name,
+      fundingSourceName: source.name,
+      fromInvoice: true,
     });
 
     // Files added while this was a draft become the expense's own, carrying the SAME s3 key:
     // the object was stored once and is re-pointed, never uploaded again. Done inside this
     // transaction so an approval can never half move them, and before the draft row is
     // deleted, which would cascade them away.
+    //
+    // `FOR UPDATE` on these rows, not only on the draft: `removeDraftDocumentAction` deletes
+    // one of them by its own id and then deletes the stored object, and it never touches the
+    // draft row, so the draft's own lock does not hold it off. Without this lock a remove
+    // landing between this read and the commit would delete bytes that the `expense_documents`
+    // row written just below already points at, leaving an `attached` document with nothing
+    // behind it — the exact state the documentation gate (R4.6) trusts and the packet build is
+    // left to discover. Locked here, that remove waits, then finds its row cascaded away and
+    // answers "already gone" without touching storage.
     const draftDocs = await tx
       .select()
       .from(expenseDraftDocuments)
-      .where(eq(expenseDraftDocuments.draftId, id));
+      .where(eq(expenseDraftDocuments.draftId, id))
+      .for("update");
     if (draftDocs.length > 0) {
       await tx.insert(expenseDocuments).values(
         draftDocs.map((doc) => ({
@@ -240,27 +228,26 @@ export async function approveDraftAction(id: string): Promise<ActionResult<{ id:
       s3Key: expenseImports.s3Key,
       filename: expenseImports.filename,
       mimeType: expenseImports.mimeType,
+      sizeBytes: expenseImports.sizeBytes,
+      thumbnailBytes: expenseImports.thumbnailBytes,
+      pageCount: expenseImports.pageCount,
     })
     .from(expenseImports)
     .where(and(eq(expenseImports.id, result.importId), eq(expenseImports.orgId, current.orgId)))
     .limit(1);
   if (imported) {
     try {
-      const bytes = await storage().get(imported.s3Key);
-      // `new Uint8Array(bytes)`, not the Buffer itself: a Node Buffer is not a `BlobPart`, and
-      // the view shares the same memory rather than copying the invoice a second time.
-      const file = new File([new Uint8Array(bytes)], imported.filename, {
-        type: imported.mimeType,
-      });
-      await ingestExpenseDocument({
+      // Re-pointed, never re-uploaded: this used to download the whole invoice and store a
+      // second copy of it per approval, so "Approve all ready" on a 25-line bill did 25
+      // downloads and 25 uploads in one request and charged the org for 26 copies of one file.
+      await attachImportAsReceipt(db, {
         orgId: current.orgId,
         expenseId: result.expenseId,
-        scope: "receipt",
-        file,
+        imported,
       });
     } catch {
-      // See the comment above: a missing or unreadable stored object must not undo the
-      // approval that already committed.
+      // A failed attach must not undo the approval that already committed: the expense is real
+      // either way, and the missing-documents column already shows it has no receipt.
     }
   }
 
@@ -289,10 +276,14 @@ function approvalFailureMessage(failure: ApprovalFailure): string {
  * land under is locked or archived — rather than approving some and leaving the rest for a
  * reason the person never asked about.
  */
-export async function approveReadyDraftsAction(
-  month: string,
-  fundingSourceId: string | null,
-): Promise<ActionResult<{ message: string }>> {
+export async function approveReadyDraftsAction({
+  month,
+  fundingSourceId,
+}: {
+  month: string;
+  /** `null` is "All funding sources", which approves across every grant in the month. */
+  fundingSourceId: string | null;
+}): Promise<ActionResult<{ message: string }>> {
   const current = await actionSession();
   if ("expired" in current) return current.expired;
   if (!isValidMonthKey(month)) return fail(UI.draftGone);
@@ -438,6 +429,7 @@ export async function discardDraftAction(id: string): Promise<ActionResult<Disca
 
   // The rows are already gone (cascaded above); only the stored objects are left, removed
   // best-effort after the delete committed, exactly as the expense delete path does.
+  // `deleteStoredObjects` skips anything another row still points at.
   for (const doc of attached) {
     await deleteStoredObjects(doc.key);
   }
@@ -445,6 +437,7 @@ export async function discardDraftAction(id: string): Promise<ActionResult<Disca
   revalidatePath("/", "layout");
   return ok({ ...row, removedFileCount: attached.length });
 }
+
 
 /**
  * Undo a discard: re-insert the same draft, reusing its id.
@@ -470,6 +463,17 @@ export async function undoDiscardAction(draft: DiscardedDraft): Promise<ActionRe
   ) {
     return fail(UI.draftGone);
   }
+  // The rest of the payload, which was trusted because only the money looked dangerous. It is
+  // all equally client-supplied: `sortOrder` decides where the row sits in the review list,
+  // and `name`/`description` print on the expense this becomes. A non-integer sortOrder or a
+  // non-string name reaches its column as a Postgres error thrown past the `ActionResult`
+  // contract, which is the same class of bug the line-item guard above closes.
+  if (!Number.isSafeInteger(draft.sortOrder) || draft.sortOrder < 0) return fail(UI.draftGone);
+  if (typeof draft.name !== "string" || !draft.name.trim()) return fail(UI.draftGone);
+  if (typeof draft.description !== "string") return fail(UI.draftGone);
+  if (typeof draft.paymentSource !== "string") return fail(UI.draftGone);
+  if (draft.note !== null && typeof draft.note !== "string") return fail(UI.draftGone);
+  if (draft.narrative !== null && typeof draft.narrative !== "string") return fail(UI.draftGone);
 
   const [importRow] = await db
     .select({ id: expenseImports.id })

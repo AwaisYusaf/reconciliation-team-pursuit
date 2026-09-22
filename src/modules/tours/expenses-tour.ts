@@ -23,7 +23,7 @@ export const EXPENSES_TOUR_STEPS: readonly TourStep[] = [
     // no drafts, which is most of them, so the tour is unchanged for everyone else.
     target: "expenses-drafts-toggle",
     title: "Waiting for review",
-    body: "Charges read from an invoice wait here until you check them. Turn this on to see them, fill in whatever each one still needs, then approve. Nothing counts towards the month until it is approved.",
+    body: "Charges read from an invoice wait here until you check them. Press Waiting for review to open the list, fill in whatever each one still needs, then approve. Nothing counts toward the month until it is approved.",
   },
   {
     target: "expenses-row-menu-panel",

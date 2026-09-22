@@ -20,8 +20,15 @@ const hasDatabase = Boolean(process.env.DATABASE_URL);
 
 describe.skipIf(!hasDatabase)("expense drafts schema (integration)", async () => {
   const { db } = await import("@/src/db");
-  const { aiUsageEvents, expenseDrafts, expenseImports, fundingSources, lineItems, organizations } =
-    await import("@/src/db/schema");
+  const {
+    aiUsageEvents,
+    expenseDraftDocuments,
+    expenseDrafts,
+    expenseImports,
+    fundingSources,
+    lineItems,
+    organizations,
+  } = await import("@/src/db/schema");
   const { createTestOrg } = await import("@/src/db/test-org");
   const { ORIGINAL_RULES } = await import("@/src/modules/expenses/reimbursement");
 
@@ -126,6 +133,37 @@ describe.skipIf(!hasDatabase)("expense drafts schema (integration)", async () =>
     await expect(
       db.insert(expenseDrafts).values(draft({ lineItemId: otherSourceLineItemId })),
     ).rejects.toThrow();
+  });
+
+  it("refuses a draft document whose org disagrees with its draft's (0034)", async () => {
+    // Two independent foreign keys let this row exist: org_id pointed at a real organisation
+    // and draft_id at a real draft, with nothing saying they had to be the SAME organisation.
+    // `/api/files/[id]` scopes by this table's own org_id, so the row would have been served
+    // to the wrong tenant. The composite key is what makes it unstorable.
+    const [mine] = await db
+      .insert(expenseDrafts)
+      .values(draft({ name: "Owned by this org" }))
+      .returning({ id: expenseDrafts.id });
+
+    const stranger = await createTestOrg({ name: "Other Org For FK", docName: "OtherFk" });
+    try {
+      await expect(
+        db.insert(expenseDraftDocuments).values({
+          orgId: stranger.orgId,
+          draftId: mine.id,
+          kind: "receipt",
+          status: "attached",
+          s3Key: `test/cross-org-${Date.now()}`,
+          filename: "receipt.pdf",
+          mimeType: "application/pdf",
+          sizeBytes: 10,
+          thumbnailBytes: 0,
+          sortOrder: 0,
+        }),
+      ).rejects.toThrow();
+    } finally {
+      await db.delete(organizations).where(eq(organizations.id, stranger.orgId));
+    }
   });
 
   it("refuses a month that is not YYYY-MM", async () => {

@@ -29,7 +29,7 @@ import { deleteStoredObjects } from "@/src/services/storage/documents";
 import { isUuid } from "@/src/lib/ids";
 import { isKnownPaymentSource } from "@/src/modules/settings/labels";
 
-import { learnVendor, snapshotOf, toRow } from "./expense-row";
+import { insertExpenseWithAudit, learnVendor, snapshotOf, toRow } from "./expense-row";
 import { validate } from "./validation";
 
 export type ExpenseInput = {
@@ -182,25 +182,15 @@ export async function createExpenseAction(
     ]);
     if (locked) return { ok: false as const, locked };
 
-    const [row_] = await tx
-      .insert(expenses)
-      .values({
-        orgId: current.orgId,
-        ...row,
-        sortOrder: Number(next),
-        // `tx`, not the pooled handle: this runs inside the transaction above, and a second
-        // pool checkout from in here deadlocks under concurrency (see claimReferenceSeq).
-        referenceSeq: await claimReferenceSeq(current.orgId, input.fundingSourceId, row.month, tx),
-      })
-      .returning({ id: expenses.id });
-
-    await tx.insert(expenseAuditEvents).values({
+    // The one supplier for row + reference + audit event, shared with `approveDraftAction` and
+    // the from-invoice route so the three cannot drift (see its own doc comment).
+    const row_ = await insertExpenseWithAudit(tx, {
       orgId: current.orgId,
-      expenseId: row_.id,
       actorUserId: current.userId,
-      action: "created",
-      beforeData: null,
-      afterData: snapshotOf(row, owned[0].name, source.name),
+      row,
+      lineItemName: owned[0].name,
+      fundingSourceName: source.name,
+      sortOrder: Number(next),
     });
 
     return { ok: true as const, row: row_ };

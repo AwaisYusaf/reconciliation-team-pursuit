@@ -379,6 +379,25 @@ export const UI = {
   invoiceFileType: "Upload the invoice as a PDF or a photo.",
   /** The one button at the end of the check screen. It writes both kinds at once: the charges
    *  marked as expenses become real expenses, the rest become drafts. */
+  /** The org-wide active month changed while these charges were being reviewed. Names the
+   *  month they would otherwise have landed in, since that is the surprising part. */
+  invoiceMonthChanged: (month: string) =>
+    `The month changed to ${month} while you were checking these charges. Nothing was saved. Read the invoice again to add them to ${month}.`,
+  /** Files queued on a charge that the save could not attach. The charges themselves are
+   *  written either way, so this names what to add again rather than claiming nothing saved —
+   *  and it has to be said, because the file is gone from the browser once the screen moves. */
+  invoiceFilesNotAttached: (files: Array<{ filename: string; reason: string }>) =>
+    files.length === 1
+      ? `The charges were saved, but ${files[0].filename} could not be attached. ${files[0].reason} Add it again from the expense.`
+      : `The charges were saved, but ${files.length} files could not be attached: ${files
+          .map((file) => file.filename)
+          .join(", ")}. Add them again from the expense.`,
+  /** Charges that were on the bill but whose amount could not be read. Silently dropping them
+   *  left a twelve-line invoice arriving as ten charges with nothing said. */
+  invoiceUnreadableLines: (count: number) =>
+    count === 1
+      ? "One charge on this invoice could not be read and is not shown. Add it by hand."
+      : `${count} charges on this invoice could not be read and are not shown. Add them by hand.`,
   invoiceDone: "Done",
   /** Done can post a dozen charges and their files in one request; on a slow line that is
    *  several seconds, and a greyed button with no words reads as a page that has stopped. */
@@ -451,6 +470,15 @@ export const UI = {
   /** The same button, once it is showing the drafts: it says the way back, not the way in. */
   draftsBackToExpenses: "Back to expenses",
   draftsNoneReady: "No draft has everything it needs yet.",
+  /** Asked before a discard, because the files attached to the draft go with it for good and
+   *  Undo brings the row back without them. */
+  /** Draft edit: finish the row and make it a real expense in one press. */
+  draftSaveAndApprove: "Save and approve",
+  draftApprovedOne: "Approved. It counts in the month now.",
+  draftDiscardTitle: "Discard this draft?",
+  draftDiscardBody: (name: string) =>
+    `${name} will be removed. It does not go to Trash, and any files attached to it are deleted. Undo brings the charge back, but not its files.`,
+  draftDiscardKeep: "Keep it",
   draftDiscarded: "Draft discarded.",
   draftUndo: "Undo",
   /** Refusal when Approve is somehow reached on a draft that is still missing something. */

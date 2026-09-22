@@ -1063,6 +1063,17 @@ export const expenseImports = pgTable(
     filename: text().notNull(),
     mimeType: text("mime_type").notNull(),
     sizeBytes: bigint("size_bytes", { mode: "number" }).notNull().default(0),
+    /**
+     * The preview square's bytes, zero for a PDF (which has none) and for any import stored
+     * before this column existed.
+     *
+     * The invoice is the receipt on every expense it produces, re-pointed rather than copied,
+     * and the expenses table decides whether to show a thumbnail from the MIME type alone
+     * (`preview.ts`). A photo invoice therefore had an `<img>` pointed at a thumbnail nobody
+     * had stored, which renders as a broken image — so the import stores one, and the receipt
+     * row it becomes carries its size, or the bytes would be spend the 5 GB cap cannot see.
+     */
+    thumbnailBytes: integer("thumbnail_bytes").notNull().default(0),
     pageCount: integer("page_count"),
     /** sha256 hex of the uploaded bytes. */
     sha256: char({ length: 64 }).notNull(),
@@ -1157,6 +1168,10 @@ export const expenseDrafts = pgTable(
       columns: [t.lineItemId, t.fundingSourceId],
       foreignColumns: [lineItems.id, lineItems.fundingSourceId],
     }),
+    // What `expense_draft_documents` points at as a pair. `id` alone is already unique, so
+    // this adds no new guarantee here — it exists so the child's composite FK is legal, the
+    // same shape `funding_sources(id, org_id)` carries for every grant-scoped table (D-93).
+    uniqueIndex("expense_drafts_id_org_uq").on(t.id, t.orgId), // target of the composite FK below
     check("expense_drafts_month_ck", sql`${t.month} ~ '^\\d{4}-(0[1-9]|1[0-2])$'`),
   ],
 );
@@ -1180,9 +1195,7 @@ export const expenseDraftDocuments = pgTable(
     orgId: uuid("org_id")
       .notNull()
       .references(() => organizations.id, { onDelete: "cascade" }),
-    draftId: uuid("draft_id")
-      .notNull()
-      .references(() => expenseDrafts.id, { onDelete: "cascade" }),
+    draftId: uuid("draft_id").notNull(),
     kind: documentKind().notNull(),
     supportingType: text("supporting_type"),
     status: documentStatus().notNull().default("pending"),
@@ -1201,6 +1214,14 @@ export const expenseDraftDocuments = pgTable(
   (t) => [
     index("expense_draft_documents_draft_idx").on(t.draftId, t.kind, t.sortOrder),
     index("expense_draft_documents_org_idx").on(t.orgId),
+    // Composite, not two independent FKs: with `org_id` and `draft_id` pointing at different
+    // places on their own, a row whose two parents disagreed was storable, and
+    // `/api/files/[id]` scopes by this table's own `org_id` — so such a row would be served to
+    // the wrong tenant. Every other grant-scoped table carries the pair for this reason (D-93).
+    foreignKey({
+      columns: [t.draftId, t.orgId],
+      foreignColumns: [expenseDrafts.id, expenseDrafts.orgId],
+    }).onDelete("cascade"),
     check(
       "expense_draft_documents_supporting_type_ck",
       sql`(${t.kind} = 'supporting') = (${t.supportingType} is not null)`,

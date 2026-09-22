@@ -3,8 +3,13 @@ import { notFound, redirect } from "next/navigation";
 import { PageTitle, Subtext } from "@/src/components/ui/surfaces";
 import { todayIso } from "@/src/domain/dates";
 import { pageTitle } from "@/src/domain/strings";
-import { removeDraftDocumentAction, updateDraftAction } from "@/src/modules/expense-imports/draft-actions";
+import {
+  approveDraftAction,
+  removeDraftDocumentAction,
+  updateDraftAction,
+} from "@/src/modules/expense-imports/draft-actions";
 import { loadDraftById, loadDraftDocuments } from "@/src/modules/expense-imports/queries";
+import { draftIsReady } from "@/src/domain/draft-rules";
 import { ExpenseForm } from "@/src/modules/expenses/expense-form";
 import { moneyField } from "@/src/modules/expenses/vendor-fill";
 import { loadExpenseFormOptions } from "@/src/modules/expenses/queries";
@@ -119,6 +124,10 @@ export default async function EditDraftPage({
           },
         }}
         saveAction={updateDraftAction}
+        // Offered only on a draft that is already complete. Approval re-checks everything
+        // server side regardless, so this decides whether the button is worth showing, not
+        // whether the approval is allowed.
+        approveAction={draftIsReady(draft) ? approveDraftAction : undefined}
         removeDocumentAction={removeDraftDocumentAction}
       />
     </div>

@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useRef, useState, useTransition } from "react";
+import { useCallback, useEffect, useId, useRef, useState, useTransition } from "react";
 
 import { Button } from "@/src/components/ui/button";
 import { Dialog } from "@/src/components/ui/dialog";
@@ -111,6 +111,9 @@ export type ExpenseFormProps = {
   /** Present only for a draft edit: saves through `updateDraftAction` instead of
    *  `updateExpenseAction`, and switches the form into draft mode (no delete). */
   saveAction?: (input: ExpenseInput) => Promise<ActionResult>;
+  /** Draft edit only: saves, then approves in one press. Absent when the draft is not ready,
+   *  so the button is simply not offered rather than offered and refused. */
+  approveAction?: (id: string) => Promise<ActionResult<{ id: string }>>;
   /** Which table an already-attached file is removed from. A draft's files live in
    *  `expense_draft_documents` until approval, so the draft edit page passes its own action;
    *  everywhere else the default reaches `expense_documents`. */
@@ -148,7 +151,9 @@ export type ExpenseFormProps = {
      * here: there is no expense yet to attach them to. The card holds them and they travel
      * with the one request that creates everything.
      */
-    onQueuedChange?: (files: Array<{ scope: DocumentScope; file: File }>) => void;
+    onQueuedChange?: (
+      files: Array<{ scope: DocumentScope; file: File; supportingType: string | null }>,
+    ) => void;
 
   };
 };
@@ -232,6 +237,7 @@ export function ExpenseForm({
   readAmounts,
   existing,
   saveAction,
+  approveAction,
   removeDocumentAction,
   invoiceReceipt,
   embedded,
@@ -309,7 +315,15 @@ export function ExpenseForm({
     onQueuedChangeRef.current = embedded?.onQueuedChange;
   });
   useEffect(() => {
-    onQueuedChangeRef.current?.(queued.map((item) => ({ scope: item.scope, file: item.file })));
+    // `supportingType` travels with the file. Without it the server refuses a supporting
+    // document ("Choose a document type first.") and the file is lost in silence.
+    onQueuedChangeRef.current?.(
+      queued.map((item) => ({
+        scope: item.scope,
+        file: item.file,
+        supportingType: item.supportingType ?? null,
+      })),
+    );
   }, [queued]);
   // A picked HEIC is still becoming a JPEG in the browser (PR #18 round 2, #6).
   const converting = queued.some((item) => item.converting);
@@ -683,6 +697,63 @@ export function ExpenseForm({
    *  controls cannot drift apart. */
   const removeDocument = removeDocumentAction ?? removeExpenseDocumentAction;
 
+  /** Where a draft edit returns to: the month's drafts list, which is the one containing the
+   *  row that was just saved. Built once so Save and Cancel cannot drift apart. */
+  const draftListHref = `/r/expenses?month=${values.month}&view=drafts`;
+
+  /**
+   * Field ids, unique per mounted form.
+   *
+   * The invoice check screen mounts one of these per charge, so a fixed `id="narrative"`
+   * appeared a dozen times on one page: clicking the fourth card's Narrative label moved the
+   * cursor into the FIRST card's box, and every `aria-labelledby` pointed at the first card's
+   * label too, so a screen reader read the wrong field name on all but one.
+   */
+  const uid = useId();
+  const fieldId = useCallback((field: string) => `${field}-${uid}`, [uid]);
+
+  /**
+   * Save this draft and approve it in one press.
+   *
+   * Two actions rather than one, deliberately: the save has to land first, or approval would
+   * check readiness against the row as it was before the edit and refuse a draft the person
+   * has just finished. `approveDraftAction` re-checks everything server side anyway, so a
+   * draft that is still short of something is refused there and the message says what.
+   */
+  function saveAndApprove() {
+    setError(null);
+    setStatus(null);
+    if (selectedMonthLocked) {
+      setError(UI.monthLocked(monthLabel(values.month)));
+      return;
+    }
+    startTransition(async () => {
+      const saved = await saveAction!({ ...values, id: existing!.id });
+      if (!saved.ok) {
+        setError(saved.error);
+        return;
+      }
+      const uploadError = await uploadQueued(existing!.id, "draft");
+      if (uploadError) {
+        setStatus(null);
+        setError(uploadError);
+        router.refresh();
+        return;
+      }
+      const approved = await approveAction!(existing!.id);
+      if (!approved.ok) {
+        // Saved, but not approved: say so rather than leaving it looking like nothing worked.
+        setError(approved.error);
+        router.refresh();
+        return;
+      }
+      toast.success(UI.draftApprovedOne);
+      await switchHeaderSourceIfNeeded();
+      router.push(`/r/expenses?month=${values.month}`);
+      router.refresh();
+    });
+  }
+
   function save() {
     setError(null);
     setStatus(null);
@@ -716,7 +787,10 @@ export function ExpenseForm({
         // approved. No `UI.draft*` string covers this line, so it reads plainly here.
         toast.success("Draft saved.");
         await switchHeaderSourceIfNeeded();
-        router.push(`/r/expenses?month=${values.month}`);
+        // Back to the DRAFTS list, not the expenses table: the row just saved is a draft, and
+        // landing on the list that does not contain it reads as a save that failed (invariant
+        // F). On a twelve-line invoice that is twelve wrong landings and twelve trips back.
+        router.push(draftListHref);
         router.refresh();
         return;
       }
@@ -909,12 +983,12 @@ export function ExpenseForm({
 
         {values.noReceipt && (
           <div className="mt-2">
-            <Label htmlFor="noReceiptReason">
+            <Label htmlFor={fieldId("noReceiptReason")}>
               Reason (prints on the cover sheet){" "}
               <span className="text-danger">Required</span>
             </Label>
             <Textarea
-              id="noReceiptReason"
+              id={fieldId("noReceiptReason")}
               disabled={ownSavedLocked}
               rows={2}
               value={values.noReceiptReason}
@@ -968,9 +1042,9 @@ export function ExpenseForm({
               textarea and button inside it (plan §3.11). */}
           <fieldset disabled={ownSavedLocked} className="contents">
           <div className="relative" data-tour="add-expense-name">
-            <Label htmlFor="name">Name</Label>
+            <Label htmlFor={fieldId("name")}>Name</Label>
             <Input
-              id="name"
+              id={fieldId("name")}
               value={values.name}
               autoComplete="off"
               onChange={(event) => set("name", event.target.value)}
@@ -1025,15 +1099,15 @@ export function ExpenseForm({
 
           {!embedded && (
           <div>
-            <Label htmlFor="fundingSource">Funding source</Label>
+            <Label htmlFor={fieldId("fundingSource")}>Funding source</Label>
             {options.fundingSources.length === 1 ? (
               // One source: pre-filled and not editable, no extra clicks (spec §2/§4).
-              <div id="fundingSource" className="text-base py-1.5">
+              <div id={fieldId("fundingSource")} className="text-base py-1.5">
                 {options.fundingSources[0].name}
               </div>
             ) : (
               <Select
-                id="fundingSource"
+                id={fieldId("fundingSource")}
                 value={values.fundingSourceId}
                 onValueChange={(value) => {
                   const nextSource = options.fundingSources.find((s) => s.id === value);
@@ -1064,12 +1138,12 @@ export function ExpenseForm({
           )}
 
           <div>
-            <Label id="lineItem-label" htmlFor="lineItem">
+            <Label id={fieldId("lineItem-label")} htmlFor={fieldId("lineItem")}>
               Line item
             </Label>
             <Select
-              id="lineItem"
-              aria-labelledby="lineItem-label"
+              id={fieldId("lineItem")}
+              aria-labelledby={fieldId("lineItem-label")}
               value={values.lineItemId}
               className={highlight}
               onValueChange={(value) => set("lineItemId", value)}
@@ -1087,12 +1161,12 @@ export function ExpenseForm({
           </div>
 
           <div>
-            <Label id="paymentSource-label" htmlFor="paymentSource">
+            <Label id={fieldId("paymentSource-label")} htmlFor={fieldId("paymentSource")}>
               Payment source
             </Label>
             <Select
-              id="paymentSource"
-              aria-labelledby="paymentSource-label"
+              id={fieldId("paymentSource")}
+              aria-labelledby={fieldId("paymentSource-label")}
               value={values.paymentSource}
               onValueChange={(value) => set("paymentSource", value)}
             >
@@ -1115,12 +1189,12 @@ export function ExpenseForm({
           <div className="flex flex-wrap gap-[18px]">
             {!embedded && (
             <div className="flex-1 min-w-[220px]">
-              <Label id="month-label" htmlFor="month">
+              <Label id={fieldId("month-label")} htmlFor={fieldId("month")}>
                 Month
               </Label>
               <Select
-                id="month"
-                aria-labelledby="month-label"
+                id={fieldId("month")}
+                aria-labelledby={fieldId("month-label")}
                 value={values.month}
                 onValueChange={(value) => {
                   set("month", value);
@@ -1137,9 +1211,9 @@ export function ExpenseForm({
             </div>
             )}
             <div className="flex-1 min-w-[220px]">
-              <Label htmlFor="date">Date</Label>
+              <Label htmlFor={fieldId("date")}>Date</Label>
               <Input
-                id="date"
+                id={fieldId("date")}
                 type="date"
                 value={values.date}
                 onChange={(event) => set("date", event.target.value)}
@@ -1148,11 +1222,11 @@ export function ExpenseForm({
           </div>
 
           <div data-tour="add-expense-description">
-            <Label htmlFor="description">
+            <Label htmlFor={fieldId("description")}>
               Description / role (prints on the cover sheet exactly as typed)
             </Label>
             <Textarea
-              id="description"
+              id={fieldId("description")}
               rows={2}
               className={highlight}
               value={values.description}
@@ -1178,7 +1252,7 @@ export function ExpenseForm({
           >
             {(["subtotal", "tax", "fees"] as const).map((field) => (
               <div key={field} className="flex-1 min-w-[150px]">
-                <Label htmlFor={field} className="capitalize">
+                <Label htmlFor={fieldId(field)} className="capitalize">
                   {field}
                 </Label>
                 <MoneyInput
@@ -1330,11 +1404,11 @@ export function ExpenseForm({
 
           <fieldset disabled={ownSavedLocked} className="contents">
           <div className="border-t border-line pt-[22px]">
-            <Label htmlFor="note">
+            <Label htmlFor={fieldId("note")}>
               Note <span className="font-normal text-sub">(optional)</span>
             </Label>
             <Input
-              id="note"
+              id={fieldId("note")}
               value={values.note}
               onChange={(event) => set("note", event.target.value)}
             />
@@ -1348,9 +1422,9 @@ export function ExpenseForm({
           </div>
 
           <div>
-            <Label htmlFor="narrative">Narrative</Label>
+            <Label htmlFor={fieldId("narrative")}>Narrative</Label>
             <Textarea
-              id="narrative"
+              id={fieldId("narrative")}
               rows={3}
               value={values.narrative}
               onChange={(event) => set("narrative", event.target.value)}
@@ -1384,10 +1458,23 @@ export function ExpenseForm({
                 {embedded.draft.label}
               </Button>
             )}
+            {approveAction && (
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={pending}
+                onClick={saveAndApprove}
+              >
+                {UI.draftSaveAndApprove}
+              </Button>
+            )}
             {!embedded && (
               <Button
                 variant="quiet"
-                onClick={() => router.push("/r/expenses")}
+                // Same destination as a save, and it keeps the month: a bare "/r/expenses"
+                // dropped the month too, so cancelling out of a draft in a month other than
+                // the active one landed on a different month's list entirely.
+                onClick={() => router.push(saveAction ? draftListHref : `/r/expenses?month=${values.month}`)}
                 disabled={pending}
               >
                 Cancel

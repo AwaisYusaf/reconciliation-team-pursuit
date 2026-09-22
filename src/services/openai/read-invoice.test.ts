@@ -449,11 +449,28 @@ describe("the invoice date is normalised to ISO", () => {
     expect(dateFrom("02/29/2026")).toBeNull();
   });
 
+  it("reads a date written in words, however the invoice spells the month", () => {
+    // The prompt now asks for YYYY-MM-DD, but a live model answered "March 18, 2026" and the
+    // parser dropped it, so every charge silently took TODAY's date onto a document the funder
+    // reads. Words are the backstop for exactly that.
+    expect(dateFrom("March 18, 2026")).toBe("2026-03-18");
+    expect(dateFrom("March 18 2026")).toBe("2026-03-18");
+    expect(dateFrom("Mar 18, 2026")).toBe("2026-03-18");
+    expect(dateFrom("Sept 1, 2026")).toBe("2026-09-01");
+    expect(dateFrom("18 March 2026")).toBe("2026-03-18");
+    expect(dateFrom("  march 18, 2026 ")).toBe("2026-03-18");
+  });
+
+  it("still refuses a written date that is not a real day", () => {
+    expect(dateFrom("February 30, 2026")).toBeNull();
+    expect(dateFrom("Smarch 4, 2026")).toBeNull();
+  });
+
   it("gives null for a date it cannot read, rather than a guess", () => {
     expect(dateFrom(null)).toBeNull();
     expect(dateFrom("")).toBeNull();
-    expect(dateFrom("July 14, 2026")).toBeNull();
     expect(dateFrom("14/07/2026")).toBeNull(); // day-first is refused, not silently swapped
     expect(dateFrom(12345)).toBeNull();
+    expect(dateFrom("last Tuesday")).toBeNull();
   });
 });

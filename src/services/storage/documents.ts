@@ -166,15 +166,38 @@ export async function orgStorageBytes(tx: Queryable, orgId: string): Promise<num
   const rows = await tx
     .select({
       // Every table that owns a stored object has to be named here, or its bytes are real
-      // spend the cap can never see. `expense_draft_documents` and `expense_imports` (Phase
-      // 14) are the two newest: an invoice and the files hung off a draft are stored the
-      // moment they are uploaded, long before anything is approved.
+      // spend the cap can never see.
+      //
+      // Counted PER OBJECT, not per row, which is why this is a union grouped by key rather
+      // than five sums added together. One stored file is now pointed at by several rows on
+      // purpose: the invoice an import owns becomes the receipt on every expense that invoice
+      // produced, and a draft's own files are re-pointed onto the expense at approval, both
+      // keeping the same `s3_key` instead of storing the bytes again. Adding the rows up would
+      // charge a 25-line invoice 26 times for one 1.3 MB file — the very cost that re-pointing
+      // exists to avoid — and the admin usage figure, which reads this same function, would
+      // report storage the bucket does not hold.
       used: sql<number>`
-        coalesce((select sum(size_bytes + thumbnail_bytes) from expense_documents where org_id = ${orgId}), 0)
-        + coalesce((select sum(size_bytes + thumbnail_bytes) from month_documents where org_id = ${orgId}), 0)
-        + coalesce((select sum(size_bytes) from month_lock_events where org_id = ${orgId}), 0)
-        + coalesce((select sum(size_bytes + thumbnail_bytes) from expense_draft_documents where org_id = ${orgId}), 0)
-        + coalesce((select sum(size_bytes) from expense_imports where org_id = ${orgId}), 0)
+        coalesce((
+          select sum(bytes) from (
+            select s3_key, max(bytes) as bytes from (
+              select s3_key, size_bytes + thumbnail_bytes as bytes
+                from expense_documents where org_id = ${orgId}
+              union all
+              select s3_key, size_bytes + thumbnail_bytes
+                from expense_draft_documents where org_id = ${orgId}
+              union all
+              select s3_key, size_bytes + thumbnail_bytes
+                from month_documents where org_id = ${orgId}
+              union all
+              select s3_key, size_bytes + thumbnail_bytes
+                from expense_imports where org_id = ${orgId}
+              union all
+              select s3_key, coalesce(size_bytes, 0)
+                from month_lock_events where org_id = ${orgId} and s3_key is not null
+            ) every_row
+            group by s3_key
+          ) per_object
+        ), 0)
       `,
     })
     .from(organizations)
@@ -377,6 +400,11 @@ export async function ingestExpenseDocument(input: {
           files: sql<number>`count(*)::int`,
           bytes: sql<number>`coalesce(sum(size_bytes + thumbnail_bytes), 0)::bigint`,
           pages: sql<number>`coalesce(sum(coalesce(page_count, 1)), 0)::int`,
+          // The next POSITION, which is not the same as the count: removing a file leaves a
+          // gap, so a count would hand the new row a position another row still holds, and
+          // packet document order is defined by this column (R10.1 determinism). Read off the
+          // same locked select as the budget, so the two cannot disagree.
+          nextSortOrder: sql<number>`coalesce(max(sort_order), -1) + 1`,
         })
         .from(expenseDocuments)
         .where(eq(expenseDocuments.expenseId, input.expenseId));
@@ -408,7 +436,7 @@ export async function ingestExpenseDocument(input: {
         pageCount: inspection.pageCount,
         widthPx: inspection.widthPx,
         heightPx: inspection.heightPx,
-        sortOrder: Number(held.files),
+        sortOrder: Number(held.nextSortOrder),
       });
       return null;
     }),
@@ -566,8 +594,101 @@ export async function ingestMonthDocument(input: {
  * never loses the bytes.
  */
 export async function deleteStoredObjects(key: string): Promise<void> {
+  // One object can now be pointed at by more than one row: the invoice an import owns becomes
+  // the receipt on every expense the invoice produced, re-pointed rather than copied, and a
+  // draft's own files are re-pointed onto the expense at approval the same way. Deleting the
+  // object because ONE of those rows went would take the file out from under the others,
+  // leaving rows the documentation gate (R4.6) trusts with nothing behind them.
+  //
+  // Checked here, in the one place every delete path already routes through, rather than in
+  // each caller — `removeExpenseDocumentAction`, `permanentlyDeleteExpenseAction`,
+  // `updateExpenseAction`'s no-receipt sweep, `discardDraftAction` and `removeDraftDocumentAction`
+  // all reach this function, and a guard in one of them would leave the rest wrong.
+  if (await objectStillReferenced(key)) return;
+
   const store = storage();
   await Promise.allSettled([store.delete(key), store.delete(thumbnailKey(key))]);
+}
+
+/**
+ * Whether any row still points at this stored object.
+ *
+ * Deliberately not org-scoped: a key is unique across the bucket, and the question being asked
+ * is "would deleting this file break something", which does not depend on whose file it is.
+ */
+async function objectStillReferenced(key: string): Promise<boolean> {
+  const [row] = await db
+    .select({
+      referenced: sql<boolean>`
+        exists (select 1 from expense_documents where s3_key = ${key})
+        or exists (select 1 from expense_draft_documents where s3_key = ${key})
+        or exists (select 1 from expense_imports where s3_key = ${key})
+        or exists (select 1 from month_documents where s3_key = ${key})
+      `,
+    })
+    .from(organizations)
+    .limit(1);
+  return Boolean(row?.referenced);
+}
+
+/**
+ * Make an already-stored invoice the receipt on an expense, WITHOUT storing it again.
+ *
+ * The invoice is stored once, owned by `expense_imports`, and one bill can produce fifty
+ * expenses. Re-uploading it per expense stored fifty-one copies of the same file and charged
+ * every one of them against the organisation's 5 GB cap — on a real 1.3 MB invoice of 25 lines
+ * that is ~34 MB for one bill, and "Approve all ready" did 25 downloads and 25 uploads inside
+ * one request. Pointing the row at the key the import already holds is what `approveDraftAction`
+ * already does for a draft's own files (D-116), applied to the invoice itself.
+ *
+ * The object therefore outlives any single row that points at it, which `deleteStoredObjects`
+ * accounts for: it refuses to remove an object another row still references.
+ *
+ * Takes the executor so it can run inside the approving transaction, where the expense it is
+ * attaching to does not exist outside yet.
+ */
+export async function attachImportAsReceipt(
+  tx: Pick<typeof db, "select" | "insert">,
+  input: {
+    orgId: string;
+    expenseId: string;
+    imported: {
+      s3Key: string;
+      filename: string;
+      mimeType: string;
+      sizeBytes: number;
+      /** Zero for a PDF, and for an import stored before imports kept one. */
+      thumbnailBytes: number;
+      pageCount: number | null;
+    };
+  },
+): Promise<void> {
+  const [held] = await tx
+    .select({ next: sql<number>`coalesce(max(sort_order), -1) + 1` })
+    .from(expenseDocuments)
+    .where(eq(expenseDocuments.expenseId, input.expenseId));
+
+  await tx.insert(expenseDocuments).values({
+    orgId: input.orgId,
+    expenseId: input.expenseId,
+    kind: "receipt",
+    supportingType: null,
+    // The bytes are already stored and already proven, by the import that wrote them.
+    status: "attached",
+    s3Key: input.imported.s3Key,
+    filename: input.imported.filename,
+    mimeType: input.imported.mimeType,
+    sizeBytes: input.imported.sizeBytes,
+    // The import's own thumbnail, not a new one: it was made and stored once, when the invoice
+    // was. Zero for a PDF, which has none — the table shows it a glyph rather than asking for
+    // one. Carried here because the quota counts an object by the rows that point at it, and a
+    // row claiming zero while the object beside it holds bytes is spend the cap cannot see.
+    thumbnailBytes: input.imported.thumbnailBytes,
+    pageCount: input.imported.pageCount,
+    widthPx: null,
+    heightPx: null,
+    sortOrder: Number(held?.next ?? 0),
+  });
 }
 
 /**
@@ -662,6 +783,10 @@ export async function ingestDraftDocument(input: {
           files: sql<number>`count(*)::int`,
           bytes: sql<number>`coalesce(sum(size_bytes + thumbnail_bytes), 0)::bigint`,
           pages: sql<number>`coalesce(sum(coalesce(page_count, 1)), 0)::int`,
+          // See the same field on the expense path: a position, not a count. It matters here
+          // too because `approveDraftAction` carries this value straight into
+          // `expense_documents`, where the packet's order reads it.
+          nextSortOrder: sql<number>`coalesce(max(sort_order), -1) + 1`,
         })
         .from(expenseDraftDocuments)
         .where(eq(expenseDraftDocuments.draftId, input.draftId));
@@ -696,7 +821,7 @@ export async function ingestDraftDocument(input: {
         pageCount: inspection.pageCount,
         widthPx: inspection.widthPx,
         heightPx: inspection.heightPx,
-        sortOrder: Number(held.files),
+        sortOrder: Number(held.nextSortOrder),
       });
       return null;
     }),

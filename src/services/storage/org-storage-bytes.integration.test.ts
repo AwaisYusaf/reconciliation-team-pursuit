@@ -22,7 +22,7 @@ const hasDatabase = Boolean(process.env.DATABASE_URL);
 
 describe.skipIf(!hasDatabase)("orgStorageBytes counts every stored-object table (integration)", async () => {
   const { db } = await import("@/src/db");
-  const { expenseDraftDocuments, expenseDrafts, expenseImports, lineItems, organizations } =
+  const { expenseDocuments, expenseDraftDocuments, expenseDrafts, expenseImports, expenses, lineItems, organizations } =
     await import("@/src/db/schema");
   const { createTestOrg } = await import("@/src/db/test-org");
   const { orgStorageBytes, orgStorageError, MAX_ORG_BYTES, ingestDraftDocument } = await import(
@@ -33,6 +33,7 @@ describe.skipIf(!hasDatabase)("orgStorageBytes counts every stored-object table 
   let fundingSourceId: string;
   let importId: string;
   let draftId: string;
+  let lineItemId: string;
 
   beforeAll(async () => {
     const org = await createTestOrg({ name: "Storage Bytes Org", docName: "StorageBytes", activeMonth: "2099-04" });
@@ -43,6 +44,7 @@ describe.skipIf(!hasDatabase)("orgStorageBytes counts every stored-object table 
       .insert(lineItems)
       .values({ orgId, fundingSourceId, name: "Supplies", scheduledValueCents: 500_000, sortOrder: 0 })
       .returning({ id: lineItems.id });
+    lineItemId = item.id;
 
     const [imported] = await db
       .insert(expenseImports)
@@ -103,6 +105,85 @@ describe.skipIf(!hasDatabase)("orgStorageBytes counts every stored-object table 
     const used = await orgStorageBytes(db, orgId);
     // 1,000,000 (import) + 500,000 + 1,000 (draft doc + its thumbnail) = 1,501,000.
     expect(used).toBe(1_501_000);
+  });
+
+  it("counts a photographed invoice's preview square, which is stored beside it", async () => {
+    // An imported photo stores a thumbnail as well as the file, and the receipt rows that
+    // re-point at it carry its size. Summing only `size_bytes` here left those bytes real
+    // spend the 5 GB cap could not see — the same hole the draft and import rows had.
+    const before = await orgStorageBytes(db, orgId);
+    if (before === null) throw new Error("the fixture organisation should have a total");
+
+    await db
+      .update(expenseImports)
+      .set({ thumbnailBytes: 12_000 })
+      .where(eq(expenseImports.id, importId));
+    try {
+      expect(await orgStorageBytes(db, orgId)).toBe(before + 12_000);
+    } finally {
+      await db.update(expenseImports).set({ thumbnailBytes: 0 }).where(eq(expenseImports.id, importId));
+    }
+  });
+
+  it("charges one stored object once, however many rows point at it", async () => {
+    /**
+     * The invoice is stored ONCE and re-pointed: approving a draft, and saving a charge
+     * straight as an expense, both write an `expense_documents` receipt row carrying the
+     * import's own `s3_key` rather than a second copy of the file. Summing the rows would
+     * charge a 25-line invoice 26 times for one file, which is exactly the cost re-pointing
+     * exists to avoid — and the admin usage figure reads this same function, so it would
+     * report storage the bucket does not hold.
+     */
+    const before = await orgStorageBytes(db, orgId);
+
+    const [imported] = await db
+      .select({ key: expenseImports.s3Key, size: expenseImports.sizeBytes })
+      .from(expenseImports)
+      .where(eq(expenseImports.id, importId));
+
+    // Three expenses, all of them the receipt on the SAME object.
+    const [expense] = await db
+      .insert(expenses)
+      .values({
+        orgId,
+        fundingSourceId,
+        lineItemId,
+        month: "2099-04",
+        date: "2099-04-09",
+        name: "Shares the invoice",
+        description: "",
+        paymentSource: "Operating account",
+        subtotalCents: 1_000,
+        taxCents: 0,
+        feesCents: 0,
+        taxReimbursable: false,
+        feesReimbursable: true,
+        noReceipt: false,
+        noReceiptReason: null,
+        sortOrder: 0,
+        referenceSeq: 900,
+      })
+      .returning({ id: expenses.id });
+
+    for (let copy = 0; copy < 3; copy += 1) {
+      await db.insert(expenseDocuments).values({
+        orgId,
+        expenseId: expense.id,
+        kind: "receipt",
+        status: "attached",
+        s3Key: imported.key,
+        filename: "invoice.pdf",
+        mimeType: "application/pdf",
+        sizeBytes: imported.size,
+        thumbnailBytes: 0,
+        sortOrder: 10 + copy,
+      });
+    }
+
+    // Not one byte more: the object was already counted, as the import's.
+    expect(await orgStorageBytes(db, orgId)).toBe(before);
+
+    await db.delete(expenses).where(eq(expenses.id, expense.id));
   });
 
   it("orgStorageError refuses at the cap once these two tables alone fill it", async () => {

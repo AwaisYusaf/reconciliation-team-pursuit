@@ -3,10 +3,6 @@ import type { ComponentProps } from "react";
 import { cn } from "@/src/lib/cn";
 
 /**
- * Data tables, matching the design: a bordered white card that scrolls horizontally on
- * small screens, uppercase column headers over a 2px ink rule, hairline row dividers.
- */
-/**
  * Tighter cells, for a table with enough columns that the roomy default cannot fit the
  * 1220px content cap.
  *
@@ -15,8 +11,22 @@ import { cn } from "@/src/lib/cn";
  * it buys it from every column at once rather than squeezing one. Applied to descendants so a
  * table opts in at one place instead of threading a prop through every `Th` and `Td`.
  */
-const DENSE = "[&_th]:px-2.5 [&_th]:py-2.5 [&_td]:px-2.5 [&_td]:py-2.5 [&_td]:text-[15px] sm:[&_td]:text-[15px]";
+const DENSE = [
+  "[&_th]:px-2.5 [&_th]:py-2.5 [&_td]:px-2.5 [&_td]:py-2.5 [&_td]:text-[15px]",
+  // The headers too, and this is not cosmetic: the document columns hold only a dash or a
+  // digit, so their uppercase header word IS the column's minimum width. "SUPPORTING" at
+  // 13px with 0.06em tracking is wider than anything that ever appears beneath it.
+  "[&_th]:text-[11px] [&_th]:tracking-[0.02em]",
+].join(" ");
 
+/**
+ * Data tables, matching the design: a bordered white card that scrolls horizontally on
+ * small screens, uppercase column headers over a 2px ink rule, hairline row dividers.
+ *
+ * `minWidth` is a FLOOR, not a cap: it can only force a scroll, never prevent one. Lowering
+ * it does nothing for a table whose content is already wider, so a table that overflows is
+ * fixed by making its content narrower (`dense`, and shorter cells), not by this number.
+ */
 export function TableCard({
   minWidth,
   dense = false,

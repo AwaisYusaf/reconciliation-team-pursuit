@@ -323,4 +323,44 @@ describe.skipIf(!hasDatabase)("draft discard / undo (integration)", async () => 
       expect(await loadDraftById(orgId, id)).not.toBeUndefined();
     });
   });
+
+  describe("invoices nothing came of are swept, but never before Undo can run", () => {
+    it("keeps an emptied import while its draft could still be undone", async () => {
+      const importId = await insertImport(orgId, fundingSourceId);
+      const id = await insertDraft({ orgId, fundingSourceId, lineItemId, importId });
+      const discarded = await discardDraftAction(id);
+      expect(discarded.ok).toBe(true);
+
+      // Still there: `undoDiscardAction` re-inserts the draft against this very row, so
+      // deleting it at the discard would make Undo fail on a foreign key.
+      const [still] = await db
+        .select({ id: expenseImports.id })
+        .from(expenseImports)
+        .where(eq(expenseImports.id, importId));
+      expect(still).toBeDefined();
+
+      if (discarded.ok) {
+        expect((await undoDiscardAction(discarded.data)).ok).toBe(true);
+      }
+    });
+
+    it("removes an import once its last draft is gone for good", async () => {
+      const { sweepOrphanImports } = await import("./orphan-imports");
+
+      const importId = await insertImport(orgId, fundingSourceId);
+      const id = await insertDraft({ orgId, fundingSourceId, lineItemId, importId });
+      const discarded = await discardDraftAction(id);
+      expect(discarded.ok).toBe(true);
+
+      // Nothing left that came from it, and no expense using its file.
+      const swept = await sweepOrphanImports(orgId);
+      expect(swept).toBeGreaterThan(0);
+
+      const rows = await db
+        .select({ id: expenseImports.id })
+        .from(expenseImports)
+        .where(eq(expenseImports.id, importId));
+      expect(rows).toHaveLength(0);
+    });
+  });
 });

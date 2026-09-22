@@ -43,6 +43,7 @@ describe.skipIf(!hasDatabase)("create drafts from an invoice (integration, Phase
     fundingSources,
     expenseAuditEvents,
     expenseDocuments,
+    supportingDocTypes,
     expenses,
     lineItems,
     monthLockEvents,
@@ -122,6 +123,16 @@ describe.skipIf(!hasDatabase)("create drafts from an invoice (integration, Phase
 
   function garbagePdfFile(name = "garbage.pdf"): File {
     return new File([new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8])], name, { type: "application/pdf" });
+  }
+
+  /** A real, honestly declared PNG — for the files a person queues on a charge card. */
+  async function pngFile(name: string): Promise<File> {
+    const buf = await sharp({
+      create: { width: 40, height: 40, channels: 3, background: { r: 9, g: 9, b: 9 } },
+    })
+      .png()
+      .toBuffer();
+    return new File([new Uint8Array(buf)], name, { type: "image/png" });
   }
 
   async function pngDeclaredAsPdf(name = "sneaky.pdf"): Promise<File> {
@@ -674,7 +685,9 @@ describe.skipIf(!hasDatabase)("create drafts from an invoice (integration, Phase
         ),
       );
       expect(real.status).toBe(200);
-      expect(await real.json()).toEqual({ ok: true });
+      // `attachmentErrors` is empty when every queued file attached. It is part of the
+      // contract now, not incidental: the screen reads it to say which files did not make it.
+      expect(await real.json()).toEqual({ ok: true, attachmentErrors: [] });
 
       // Looked up by the server-recomputed hash itself, not by filename — an earlier test in
       // this file also posts a file named "invoice.pdf", and filename is not unique.
@@ -882,6 +895,160 @@ describe.skipIf(!hasDatabase)("create drafts from an invoice (integration, Phase
       expect((events[0].afterData as Record<string, unknown>).fromInvoice).toBe(true);
     });
 
+    /**
+     * The regression this pins: files queued on a charge card travel as `rowFiles-<i>-<scope>`
+     * parts, and the supporting ones used to travel WITHOUT their document type, because the
+     * card mirror dropped it. Both ingest paths refuse a supporting document with no type
+     * ("Choose a document type first."), and the route discarded that refusal, so the file was
+     * lost while the screen said the charge had saved.
+     *
+     * Asserts the whole path end to end: the type reaches the column, the proof beside it is
+     * unaffected, and `attachmentErrors` is empty rather than quietly swallowing a failure.
+     */
+    it("attaches a card's queued files, carrying the supporting document's type with it", async () => {
+      const [docType] = await db
+        .insert(supportingDocTypes)
+        .values({ orgId, label: "Timesheet", sortOrder: 0 })
+        .returning({ label: supportingDocTypes.label });
+
+      const form = buildForm({
+        file: await pdfFile(),
+        fundingSourceId,
+        rows: [
+          row({
+            name: "Card with files",
+            kind: "expense",
+            narrative: "Checked, with its paperwork.",
+          }),
+        ],
+      });
+      form.append("rowFiles-0-proof", await pngFile("proof.png"));
+      form.append("rowFiles-0-supporting", await pngFile("timesheet.png"));
+      form.append("rowFileTypes-0-supporting", docType.label);
+
+      const response = await POST(postRequest(form));
+      expect(response.status).toBe(200);
+      // Nothing was dropped on the way in.
+      expect(await response.json()).toEqual({ ok: true, attachmentErrors: [] });
+
+      const [made] = await db
+        .select({ id: expenses.id })
+        .from(expenses)
+        .where(and(eq(expenses.orgId, orgId), eq(expenses.name, "Card with files")));
+
+      const docs = await db
+        .select()
+        .from(expenseDocuments)
+        .where(eq(expenseDocuments.expenseId, made.id));
+
+      const supporting = docs.filter((doc) => doc.kind === "supporting");
+      expect(supporting).toHaveLength(1);
+      // The point of the whole fix: the type arrived, so the row was accepted.
+      expect(supporting[0].supportingType).toBe("Timesheet");
+      expect(supporting[0].status).toBe("attached");
+
+      // The proof beside it is untouched, and the invoice is still the receipt.
+      expect(docs.filter((doc) => doc.kind === "proof")).toHaveLength(1);
+      expect(docs.filter((doc) => doc.kind === "receipt")).toHaveLength(1);
+
+      // Positions are distinct per kind, never a reused count (documents.ts `nextSortOrder`).
+      const receiptOrders = docs.filter((d) => d.kind === "receipt").map((d) => d.sortOrder);
+      expect(new Set(receiptOrders).size).toBe(receiptOrders.length);
+    });
+
+    /**
+     * The re-pointing itself, which nothing asserted: the receipt on an expense made from an
+     * invoice must BE the import's object, not a second copy of it. A 25-line bill used to
+     * write 26 copies of the same file, every one of them charged against the 5 GB cap.
+     *
+     * And its preview square. The expenses table asks for a thumbnail on anything that is not
+     * a PDF (`preview.ts`), so a photographed invoice whose import stored no thumbnail left an
+     * `<img>` pointed at a 404 on every expense the bill produced.
+     */
+    it("points the receipt at the invoice's own object, preview square and all", async () => {
+      // Pinned rather than inherited from whichever sibling ran last, so this case can be run
+      // on its own — and so the month it writes into is one no other test locks.
+      asSession(orgId, userId, "2095-11");
+      const { thumbnailKey } = await import("@/src/services/storage/keys");
+
+      const form = buildForm({
+        file: await pngFile("photographed-bill.png"),
+        fundingSourceId,
+        rows: [row({ name: "Shot on a phone", kind: "expense", narrative: "Checked." })],
+      });
+      const response = await POST(postRequest(form));
+      expect(response.status).toBe(200);
+
+      const [imported] = await db
+        .select()
+        .from(expenseImports)
+        .where(and(eq(expenseImports.orgId, orgId), eq(expenseImports.filename, "photographed-bill.png")));
+
+      const [made] = await db
+        .select({ id: expenses.id })
+        .from(expenses)
+        .where(and(eq(expenses.orgId, orgId), eq(expenses.name, "Shot on a phone")));
+      const [receipt] = await db
+        .select()
+        .from(expenseDocuments)
+        .where(and(eq(expenseDocuments.expenseId, made.id), eq(expenseDocuments.kind, "receipt")));
+
+      // The same object, not a copy: one key, one file, counted once.
+      expect(receipt.s3Key).toBe(imported.s3Key);
+      expect(receipt.sizeBytes).toBe(imported.sizeBytes);
+
+      // A photo's thumbnail is stored with the import and claimed by the row that points at
+      // it. Without both halves the table renders a broken image on this expense.
+      expect(imported.thumbnailBytes).toBeGreaterThan(0);
+      expect(receipt.thumbnailBytes).toBe(imported.thumbnailBytes);
+      const thumb = await storage().get(thumbnailKey(imported.s3Key));
+      expect(thumb.length).toBe(imported.thumbnailBytes);
+    });
+
+    /**
+     * A queued file the server could not attach is NAMED in the answer, not dropped. The file
+     * is gone from the browser once the screen moves, so a clean success over a lost document
+     * is unrecoverable — the screen reads this list and says so.
+     *
+     * The refusal used here is the real one: a supporting document with no type. Both ingest
+     * paths refuse it, and the route used to swallow that refusal whole.
+     */
+    it("names a queued file it could not attach instead of dropping it in silence", async () => {
+      asSession(orgId, userId, "2095-11");
+      const form = buildForm({
+        file: await pdfFile(),
+        fundingSourceId,
+        rows: [row({ name: "Card with a doomed file", kind: "expense", narrative: "Checked." })],
+      });
+      form.append("rowFiles-0-supporting", await pngFile("untyped.png"));
+      // No `rowFileTypes-0-supporting` at all, which is what the screen used to send.
+
+      const response = await POST(postRequest(form));
+      expect(response.status).toBe(200);
+      const body = (await response.json()) as {
+        ok: boolean;
+        attachmentErrors: Array<{ filename: string; reason: string }>;
+      };
+
+      // The charge is real — a failed attach never undoes it — but the loss is reported.
+      expect(body.ok).toBe(true);
+      expect(body.attachmentErrors).toHaveLength(1);
+      expect(body.attachmentErrors[0].filename).toBe("untyped.png");
+      expect(body.attachmentErrors[0].reason).toBeTruthy();
+
+      const [made] = await db
+        .select({ id: expenses.id })
+        .from(expenses)
+        .where(and(eq(expenses.orgId, orgId), eq(expenses.name, "Card with a doomed file")));
+      const docs = await db
+        .select()
+        .from(expenseDocuments)
+        .where(eq(expenseDocuments.expenseId, made.id));
+      // Nothing half-written: the supporting row was refused, the receipt is still there.
+      expect(docs.filter((doc) => doc.kind === "supporting")).toHaveLength(0);
+      expect(docs.filter((doc) => doc.kind === "receipt")).toHaveLength(1);
+    });
+
     it("refuses a charge saved as an expense while it is still missing a narrative, and writes nothing", async () => {
       const before = await countRows(orgId);
       const beforeExpenses = await db.select().from(expenses).where(eq(expenses.orgId, orgId));
@@ -1003,9 +1170,12 @@ describe.skipIf(!hasDatabase)("create drafts from an invoice (integration, Phase
       expect(response.status).toBe(400);
     });
 
-    it("ignores a month sent by the client and uses the session's own", async () => {
-      // `month` is never read from the form: a posted month could put records in a month the
-      // person does not have open, or in a locked one.
+    it("refuses when the posted month is not the one the organisation is on, and writes nothing", async () => {
+      // `month` is still never READ from the form — the row's month is always the session's.
+      // The posted value is only compared, so that a colleague switching the org-wide active
+      // month mid-review cannot land this whole invoice in a month nobody here saw, spending
+      // that month's reference numbers on it. Refused rather than silently redirected.
+      const before = await countRows(orgId);
       const form = buildForm({
         file: await pdfFile(),
         fundingSourceId,
@@ -1013,11 +1183,32 @@ describe.skipIf(!hasDatabase)("create drafts from an invoice (integration, Phase
       });
       form.set("month", "2090-01");
       const response = await POST(postRequest(form));
+      expect(response.status).toBe(409);
+      expect((await response.json()).error).toContain("month changed");
+
+      // Nothing at all, in either month: not a draft, not an import.
+      const after = await countRows(orgId);
+      expect(after.drafts).toHaveLength(before.drafts.length);
+      expect(after.drafts.find((d) => d.name === "Month from the session")).toBeUndefined();
+    });
+
+    it("accepts a request with no month at all, for a tab that predates the check", async () => {
+      // The comparison is skipped when the field is absent, so a page loaded before this
+      // shipped still works rather than being refused with a message about a month it never
+      // sent. The row still takes the session's month, never a client value.
+      // Set explicitly rather than inherited from whichever sibling ran last, so this asserts
+      // against a month it actually knows.
+      asSession(orgId, userId, "2095-07");
+      const form = buildForm({
+        file: await pdfFile(),
+        fundingSourceId,
+        rows: [row({ name: "No month posted" })],
+      });
+      const response = await POST(postRequest(form));
       expect(response.status).toBe(200);
 
       const { drafts } = await countRows(orgId);
-      const made = drafts.find((d) => d.name === "Month from the session");
-      expect(made?.month).not.toBe("2090-01");
+      expect(drafts.find((d) => d.name === "No month posted")?.month).toBe("2095-07");
     });
   });
 });

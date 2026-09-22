@@ -17,8 +17,10 @@ import "server-only";
 import { and, eq, sql } from "drizzle-orm";
 
 import { db } from "@/src/db";
-import { vendorDefaults, type ExpenseAuditSnapshot } from "@/src/db/schema";
+import { expenseAuditEvents, expenses, vendorDefaults, type ExpenseAuditSnapshot } from "@/src/db/schema";
 import { parseMoneyToCentsOrZero } from "@/src/domain/money";
+
+import { claimReferenceSeq, type Executor } from "./references";
 
 import type { ExpenseInput } from "./actions";
 
@@ -158,4 +160,72 @@ export async function learnVendor(orgId: string, row: ExpenseRow): Promise<void>
       defaultFeesCents: row.feesCents,
     })
     .onConflictDoNothing();
+}
+
+/**
+ * Write one expense: the row, its reference number and its `created` audit event.
+ *
+ * The three belong together and must not drift. There were three hand-maintained copies of
+ * this block — `createExpenseAction`, `approveDraftAction` and the from-invoice route — each
+ * having to remember the same four things: claim the reference INSIDE the transaction, pass
+ * `tx` to `claimReferenceSeq` (a second pool checkout from inside a transaction deadlocks
+ * under concurrency), take the sort order from the month's own counter unfiltered by
+ * `deletedAt`, and write the audit event in the same transaction so an expense can never exist
+ * with no record of who made it.
+ *
+ * Takes `tx`, never the pooled handle: every caller already holds a transaction open, with the
+ * month-lock check (R10.7, D-96) done before anything here writes.
+ */
+export async function insertExpenseWithAudit(
+  tx: Executor,
+  input: {
+    orgId: string;
+    actorUserId: string;
+    row: ExpenseRow;
+    lineItemName: string;
+    fundingSourceName: string;
+    /** Marks the history "Created from an invoice" (ticket §7). */
+    fromInvoice?: boolean;
+    /** Given when the caller is inserting several in a row and has already read the counter. */
+    sortOrder?: number;
+  },
+): Promise<{ id: string }> {
+  const sortOrder =
+    input.sortOrder ??
+    Number(
+      (
+        await tx
+          .select({ next: sql<number>`coalesce(max(${expenses.sortOrder}), -1) + 1` })
+          .from(expenses)
+          .where(and(eq(expenses.orgId, input.orgId), eq(expenses.month, input.row.month)))
+      )[0].next,
+    );
+
+  const [inserted] = await tx
+    .insert(expenses)
+    .values({
+      orgId: input.orgId,
+      ...input.row,
+      sortOrder,
+      referenceSeq: await claimReferenceSeq(
+        input.orgId,
+        input.row.fundingSourceId,
+        input.row.month,
+        tx,
+      ),
+    })
+    .returning({ id: expenses.id });
+
+  await tx.insert(expenseAuditEvents).values({
+    orgId: input.orgId,
+    expenseId: inserted.id,
+    actorUserId: input.actorUserId,
+    action: "created",
+    beforeData: null,
+    afterData: snapshotOf(input.row, input.lineItemName, input.fundingSourceName, {
+      fromInvoice: input.fromInvoice,
+    }),
+  });
+
+  return inserted;
 }

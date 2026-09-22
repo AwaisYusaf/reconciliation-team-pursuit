@@ -48,12 +48,17 @@ describe("DraftsSection wiring", () => {
     expect(source).toContain("rows.filter(draftIsReady).length");
   });
 
-  it("disables 'Approve all ready' when there is nothing ready (readyCount === 0)", () => {
-    expect(source).toMatch(/disabled=\{pending \|\| readyCount === 0\}/);
+  it("says why, in visible text, when nothing is ready rather than disabling the button", () => {
+    // A disabled button fires no pointer events and takes no focus, so a `title` on one is a
+    // reason nobody can read. When nothing is ready the button is replaced by the sentence.
+    expect(source).toMatch(/readyCount === 0 \? \(\s*<Subtext>\{UI\.draftsNoneReady\}<\/Subtext>/);
+    expect(source).not.toMatch(/title=\{readyCount === 0/);
   });
 
   it("discard flow: discardDraftAction, then a toastWithAction whose action is undoDiscardAction", () => {
-    const discardCallIdx = source.indexOf("await discardDraftAction(row.id)");
+    // Discard runs from the confirmation dialog now, so it acts on the row the dialog is
+    // asking about rather than reading `row` from the menu item's own closure.
+    const discardCallIdx = source.indexOf("await discardDraftAction(target.id)");
     const toastIdx = source.indexOf("toastWithAction(", discardCallIdx);
     const undoCallIdx = source.indexOf("await undoDiscardAction(discarded)", toastIdx);
     expect(discardCallIdx).toBeGreaterThan(-1);
@@ -62,7 +67,9 @@ describe("DraftsSection wiring", () => {
   });
 
   it("bails out of the discard flow on failure without ever showing the undo toast", () => {
-    const discardCallIdx = source.indexOf("await discardDraftAction(row.id)");
+    // Discard runs from the confirmation dialog now, so it acts on the row the dialog is
+    // asking about rather than reading `row` from the menu item's own closure.
+    const discardCallIdx = source.indexOf("await discardDraftAction(target.id)");
     const guardIdx = source.indexOf("if (!result.ok)", discardCallIdx);
     const returnIdx = source.indexOf("return;", guardIdx);
     const toastIdx = source.indexOf("toastWithAction(", discardCallIdx);

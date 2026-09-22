@@ -136,7 +136,7 @@ describe.skipIf(!hasDatabase)("approveReadyDraftsAction (integration)", async ()
     for (let i = 0; i < 3; i++) await insertDraft({ ready: true, name: `Ready ${i}` });
     for (let i = 0; i < 2; i++) await insertDraft({ ready: false, name: `Unready ${i}` });
 
-    const result = await approveReadyDraftsAction(MONTH, fundingSourceId);
+    const result = await approveReadyDraftsAction({ month: MONTH, fundingSourceId });
     expect(result.ok).toBe(true);
     if (!result.ok) throw new Error("unreachable");
     expect(result.data.message).toBe(UI.draftsApproved(3, 2));
@@ -169,7 +169,7 @@ describe.skipIf(!hasDatabase)("approveReadyDraftsAction (integration)", async ()
 
     await db.update(fundingSources).set({ archivedAt: new Date() }).where(eq(fundingSources.id, fundingSourceId));
     try {
-      const result = await approveReadyDraftsAction(MONTH, fundingSourceId);
+      const result = await approveReadyDraftsAction({ month: MONTH, fundingSourceId });
       expect(result.ok).toBe(false);
 
       // Zero drafts consumed: both still present, unchanged, and no expense was created for

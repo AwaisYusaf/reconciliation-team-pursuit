@@ -98,7 +98,7 @@ export async function POST(request: NextRequest) {
     // been decoded to JPEG by `inspectUpload` (D-111), so it passes as an image here.
     if (!READABLE_INVOICE_TYPES.includes(inspection.mimeType)) {
       await logFailure(session.orgId, session.userId);
-      return NextResponse.json({ ok: false, error: "Invoices must be uploaded as a PDF." }, { status: 400 });
+      return NextResponse.json({ ok: false, error: UI.invoiceFileType }, { status: 400 });
     }
     if (inspection.pageCount > MAX_PAGES_READ) {
       await logFailure(session.orgId, session.userId);
@@ -140,6 +140,10 @@ export async function POST(request: NextRequest) {
         invoice: result.invoice,
         truncated: result.truncated,
         ...(result.truncated ? { truncatedMessage: UI.readInvoiceTooManyLines } : {}),
+        // How many charges were on the bill but could not be read. Sent even when zero would
+        // be omitted, so the screen can say so rather than leave the person to notice that the
+        // twelve-line invoice came back with ten charges.
+        unreadableLines: result.unreadableLines,
       },
     });
   } catch (error) {

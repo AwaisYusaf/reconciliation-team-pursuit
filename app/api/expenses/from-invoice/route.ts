@@ -5,7 +5,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { v7 as uuidv7 } from "uuid";
 
 import { db } from "@/src/db";
-import { expenseAuditEvents, expenseDrafts, expenseImports, expenses, lineItems } from "@/src/db/schema";
+import { expenseDrafts, expenseImports, expenses, lineItems } from "@/src/db/schema";
 import { isValidIsoDate, monthLabel } from "@/src/domain/dates";
 import { UI } from "@/src/domain/strings";
 import { parseMoneyToCentsOrZero } from "@/src/domain/money";
@@ -18,17 +18,24 @@ import { findFundingSource } from "@/src/modules/funding-sources/queries";
 import { monthLocked } from "@/src/modules/packet/month-guard";
 import { isKnownPaymentSource } from "@/src/modules/settings/labels";
 import { validate, type ValidateOptions } from "@/src/modules/expenses/validation";
-import { claimReferenceSeq } from "@/src/modules/expenses/references";
 import { rulesForFundingSource } from "@/src/modules/expenses/reimbursement";
 import type { ExpenseInput } from "@/src/modules/expenses/actions";
-import { learnVendor, snapshotOf, toRow, type ExpenseRow } from "@/src/modules/expenses/expense-row";
+import { insertExpenseWithAudit, learnVendor, toRow, type ExpenseRow } from "@/src/modules/expenses/expense-row";
 import { MAX_INVOICE_LINES } from "@/src/services/openai/read-invoice";
+import { sweepOrphanImports } from "@/src/modules/expense-imports/orphan-imports";
 import { consume } from "@/src/services/rate-limit";
 import { getSession } from "@/src/services/auth/session";
 import { storage } from "@/src/services/storage/driver";
-import { deleteStoredObjects, ingestDraftDocument, ingestExpenseDocument, orgStorageError, precheck } from "@/src/services/storage/documents";
+import {
+  attachImportAsReceipt,
+  deleteStoredObjects,
+  ingestDraftDocument,
+  ingestExpenseDocument,
+  orgStorageError,
+  precheck,
+} from "@/src/services/storage/documents";
 import { inspectUpload } from "@/src/services/storage/inspect";
-import { expenseImportKey, MAX_UPLOAD_BYTES } from "@/src/services/storage/keys";
+import { expenseImportKey, MAX_UPLOAD_BYTES, thumbnailKey } from "@/src/services/storage/keys";
 
 export const runtime = "nodejs";
 
@@ -125,9 +132,17 @@ export async function POST(request: NextRequest) {
 
   const fundingSourceId = String(form.get("fundingSourceId") ?? "");
 
-  // Never taken from the client: the active month, so a stale tab can't post drafts into a
-  // month it no longer has open.
+  // The month is the organisation's own, never a value the client chose — but the screen posts
+  // the month it RENDERED for, and the two must still agree. `organizations.active_month` is
+  // shared by everyone in the org, so a colleague switching it while these charges were being
+  // reviewed used to send the whole invoice into a month this person never saw, spending that
+  // month's reference numbers on it. Refused rather than silently redirected: the charges are
+  // all still on screen, and re-reading the month is the only honest way to continue.
   const month = session.activeMonth;
+  const postedMonth = String(form.get("month") ?? "");
+  if (postedMonth && postedMonth !== month) {
+    return NextResponse.json({ ok: false, error: UI.invoiceMonthChanged(monthLabel(month)) }, { status: 409 });
+  }
 
   let rawRows: unknown;
   try {
@@ -264,6 +279,18 @@ export async function POST(request: NextRequest) {
       mimeType: inspection.mimeType,
     });
     await storage().put({ key, body: inspection.body, contentType: inspection.mimeType });
+    // The preview square, for a photographed invoice. `inspectUpload` has already made it, and
+    // it is stored here rather than regenerated later because this same object becomes the
+    // receipt on every expense the bill produces (`attachImportAsReceipt`), and the expenses
+    // table asks for a thumbnail on anything that is not a PDF. Without this the table showed
+    // a broken image on every one of them. A PDF has none, exactly as a PDF receipt has none.
+    if (inspection.thumbnail) {
+      await storage().put({
+        key: thumbnailKey(key),
+        body: inspection.thumbnail,
+        contentType: "image/jpeg",
+      });
+    }
 
     const vendorName = optionalString(form.get("vendorName"));
     const invoiceDate = optionalIsoDate(form.get("invoiceDate"));
@@ -311,6 +338,7 @@ export async function POST(request: NextRequest) {
         filename: file.name,
         mimeType: inspection.mimeType,
         sizeBytes: inspection.body.byteLength,
+        thumbnailBytes: inspection.thumbnail?.byteLength ?? 0,
         pageCount: inspection.pageCount,
         sha256,
         vendorName,
@@ -353,37 +381,25 @@ export async function POST(request: NextRequest) {
             feesReimbursable: rules.feesReimbursable,
           };
 
-          // One reference number each, claimed inside this transaction like every other
-          // insert path — never precomputed outside it, or two imports would collide.
-          const referenceSeq = await claimReferenceSeq(session.orgId, fundingSourceId, month, tx);
-          const [inserted] = await tx
-            .insert(expenses)
-            .values({
-              orgId: session.orgId,
-              ...row,
-              sortOrder: Number(firstSort) + offset,
-              referenceSeq,
-            })
-            .returning({ id: expenses.id });
-          createdExpenseIds.push({ expenseId: inserted.id, rowIndex, row });
-
           const [item] = await tx
             .select({ name: lineItems.name })
             .from(lineItems)
             .where(eq(lineItems.id, input.lineItemId))
             .limit(1);
 
-          await tx.insert(expenseAuditEvents).values({
+          // The one supplier for row + reference + audit event, shared with
+          // `createExpenseAction` and `approveDraftAction`. The sort order is passed because
+          // this loop already read the month's counter once for the whole batch.
+          const inserted = await insertExpenseWithAudit(tx, {
             orgId: session.orgId,
-            expenseId: inserted.id,
             actorUserId: session.userId,
-            action: "created",
-            beforeData: null,
-            // `fromInvoice` marks the provenance the ticket asks history to show (§7), the
-            // same key `approveDraftAction` writes, so an expense reads identically whichever
-            // way the invoice produced it.
-            afterData: snapshotOf(row, item?.name ?? "", current.name, { fromInvoice: true }),
+            row,
+            lineItemName: item?.name ?? "",
+            fundingSourceName: current.name,
+            fromInvoice: true,
+            sortOrder: Number(firstSort) + offset,
           });
+          createdExpenseIds.push({ expenseId: inserted.id, rowIndex, row });
         }
       }
 
@@ -428,16 +444,69 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ ok: false, error: result.error }, { status: 400 });
     }
 
+    // What did not attach, so the answer can name it. A failure here never undoes the row that
+    // already exists — the expense or draft is real either way — but it must not be silent:
+    // the file is gone from the browser once this request returns, and a success toast over a
+    // dropped receipt is the one outcome nobody can recover from.
+    const attachmentErrors: Array<{ filename: string; reason: string }> = [];
+
+    /**
+     * The files queued on one card, attached to whatever that card became.
+     *
+     * The scope comes from the field name and is never guessed from the file: a proof filed as
+     * a supporting document would leave the expense failing the documentation gate for a
+     * reason nobody could see. Only the three real scopes are read, so a made-up one is
+     * ignored rather than stored.
+     *
+     * `supportingType` rides in a parallel field appended in lockstep by the screen, so the
+     * nth type belongs to the nth file of that scope. Without it every supporting document was
+     * refused with "Choose a document type first." and then dropped without a word.
+     */
+    async function attachQueued(
+      rowIndex: number,
+      ingest: (
+        scope: "proof" | "receipt" | "supporting",
+        file: File,
+        supportingType: string | null,
+      ) => Promise<{ ok: boolean; error?: string }>,
+    ): Promise<void> {
+      for (const scope of ["proof", "receipt", "supporting"] as const) {
+        const queuedFiles = form.getAll(`rowFiles-${rowIndex}-${scope}`);
+        const types = scope === "supporting" ? form.getAll(`rowFileTypes-${rowIndex}-supporting`) : [];
+        for (const [position, queued] of queuedFiles.entries()) {
+          if (!(queued instanceof File)) continue;
+          const declared = typeof types[position] === "string" ? String(types[position]) : "";
+          try {
+            const result = await ingest(scope, queued, declared || null);
+            if (!result.ok) {
+              attachmentErrors.push({ filename: queued.name, reason: result.error ?? UI.uploadFailed });
+            }
+          } catch {
+            attachmentErrors.push({ filename: queued.name, reason: UI.uploadFailed });
+          }
+        }
+      }
+    }
+
     // Same treatment approval gives it: a failed attach never undoes an expense that already
     // exists, it just leaves it without a receipt, which the missing-documents column already
     // shows. The stored object is the import's, so it is not deleted here on failure.
     for (const { expenseId, rowIndex } of createdExpenseIds) {
       try {
-        await ingestExpenseDocument({
+        // Re-pointed at the object the import already stored, never stored again: a 25-line
+        // invoice saved straight as expenses used to write 26 copies of the same file, all of
+        // them counted against the organisation's 5 GB cap.
+        await attachImportAsReceipt(db, {
           orgId: session.orgId,
           expenseId,
-          scope: "receipt",
-          file: new File([new Uint8Array(inspection.body)], file.name, { type: inspection.mimeType }),
+          imported: {
+            s3Key: key,
+            filename: file.name,
+            mimeType: inspection.mimeType,
+            sizeBytes: inspection.body.byteLength,
+            thumbnailBytes: inspection.thumbnail?.byteLength ?? 0,
+            pageCount: inspection.pageCount,
+          },
         });
       } catch {
         // Deliberately swallowed, per the comment above.
@@ -450,32 +519,28 @@ export async function POST(request: NextRequest) {
       // supporting document would leave the expense failing the documentation gate for a
       // reason nobody could see. Only the three real scopes are read, so a made-up one is
       // simply ignored rather than stored.
-      for (const scope of ["proof", "receipt", "supporting"] as const) {
-        for (const queued of form.getAll(`rowFiles-${rowIndex}-${scope}`)) {
-          if (!(queued instanceof File)) continue;
-          try {
-            await ingestExpenseDocument({ orgId: session.orgId, expenseId, scope, file: queued });
-          } catch {
-            // Same reasoning as the receipt above.
-          }
-        }
-      }
+      await attachQueued(rowIndex, (scope, file, supportingType) =>
+        ingestExpenseDocument({ orgId: session.orgId, expenseId, scope, supportingType, file }),
+      );
     }
 
     // A draft's own queued files, attached the same way and with the same swallow: a failed
     // attach must not undo a draft that already exists, and the review row already says what
     // the draft is still missing.
     for (const { draftId, rowIndex } of createdDraftIds) {
-      for (const scope of ["proof", "receipt", "supporting"] as const) {
-        for (const queued of form.getAll(`rowFiles-${rowIndex}-${scope}`)) {
-          if (!(queued instanceof File)) continue;
-          try {
-            await ingestDraftDocument({ orgId: session.orgId, draftId, scope, file: queued });
-          } catch {
-            // Same reasoning as the expense attach above.
-          }
-        }
-      }
+      await attachQueued(rowIndex, (scope, file, supportingType) =>
+        ingestDraftDocument({ orgId: session.orgId, draftId, scope, supportingType, file }),
+      );
+    }
+
+    // Invoices nothing came of: every draft discarded and no expense using the file. Swept
+    // here rather than at the discard that emptied them, because `undoDiscardAction` restores
+    // a draft against its original import and deleting it there breaks Undo. Best effort — a
+    // failed sweep must not fail an import that has already been written.
+    try {
+      await sweepOrphanImports(session.orgId);
+    } catch {
+      // Left for the next read to pick up.
     }
 
     // The library learns from every save (R8.2), exactly as `createExpenseAction` and
@@ -486,7 +551,9 @@ export async function POST(request: NextRequest) {
       await learnVendor(session.orgId, row);
     }
 
-    return NextResponse.json({ ok: true });
+    // `ok` either way: everything the person chose was written. `attachmentErrors` names the
+    // files that did not make it, so the screen can say so rather than claim a clean save.
+    return NextResponse.json({ ok: true, attachmentErrors });
   } catch (error) {
     console.error("from-invoice failed", { orgId: session.orgId });
     void error;
@@ -523,7 +590,11 @@ function optionalIsoDate(value: FormDataEntryValue | null): string | null {
  */
 function optionalCents(value: FormDataEntryValue | null): number | null {
   if (typeof value !== "string" || value === "") return null;
+  // The exact shape, not `Number()`: this is a public endpoint writing a cents column, and
+  // `Number` also accepts "1e3" (1000), "0x10" (16), surrounding whitespace and negatives.
+  // A leading minus is allowed deliberately, because a credit note really can carry negative
+  // tax (R1.4); everything else is refused as "never read", which is not the same as zero.
+  if (!/^-?\d{1,12}$/.test(value)) return null;
   const cents = Number(value);
-  if (!Number.isSafeInteger(cents)) return null;
-  return cents;
+  return Number.isSafeInteger(cents) ? cents : null;
 }

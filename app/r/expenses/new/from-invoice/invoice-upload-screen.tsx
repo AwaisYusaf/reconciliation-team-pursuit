@@ -9,7 +9,7 @@
  * `src/modules/expenses/expense-form.tsx` (the form this screen embeds one of per charge).
  */
 import { useRouter } from "next/navigation";
-import { useRef, useState, useTransition, type ReactNode } from "react";
+import { type ReactNode, useEffect, useRef, useState, useTransition } from "react";
 import toast from "react-hot-toast";
 
 import { Button, buttonClassName } from "@/src/components/ui/button";
@@ -18,6 +18,7 @@ import { Label } from "@/src/components/ui/field";
 import { Select } from "@/src/components/ui/select";
 import { DangerPanel, Subtext } from "@/src/components/ui/surfaces";
 import { formatDateUS, monthLabel } from "@/src/domain/dates";
+import { clearCheck, loadCheck, saveCheck } from "@/src/modules/expense-imports/check-draft-store";
 import { draftNeeds } from "@/src/domain/draft-rules";
 import { formatMoney } from "@/src/domain/format";
 import { matchInvoiceLine, type MatchContext, type RecurringMatch, type VendorMatch } from "@/src/domain/invoice-match";
@@ -103,7 +104,7 @@ type ChargeCard = {
   /** Proof and supporting files the person queued on this card, each with the scope it was
    *  picked under. They cannot be uploaded until the expense exists, so they travel with the
    *  Done request and the server attaches them under that same scope. */
-  files: Array<{ scope: string; file: File }>;
+  files: Array<{ scope: string; file: File; supportingType: string | null }>;
   initial: ChargePrefill;
 };
 
@@ -114,6 +115,8 @@ type CheckState = {
   billTaxCents: number | null;
   billFeesCents: number | null;
   truncated: boolean;
+  /** Charges the bill listed that the amount guard could not read. */
+  unreadableLines: number;
   duplicate: { date: string; by: string | null } | null;
   rows: ChargeCard[];
 };
@@ -196,6 +199,9 @@ export function InvoiceExtract({
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [reading, setReading] = useState(false);
   const [check, setCheck] = useState<CheckState | null>(null);
+  /** False until the kept read has been looked for, so the first render cannot save `null`
+   *  over a read that is still being loaded. */
+  const [restored, setRestored] = useState(false);
   const [confirmRemove, setConfirmRemove] = useState<ChargeCard | null>(null);
   const [confirmLeaveUnsaved, setConfirmLeaveUnsaved] = useState(false);
   const [pending, startTransition] = useTransition();
@@ -206,6 +212,29 @@ export function InvoiceExtract({
 
   const lockedMonthKeys = new Set(lockedMonths);
   const monthLockedForSelected = lockedMonthKeys.has(`${fundingSourceId}:${activeMonth}`);
+
+  // A read survives a reload. It costs a model call and then several minutes of choosing line
+  // items and writing narratives, and all of it used to disappear on a refresh. Scoped to this
+  // month and funding source, so a read left in another month cannot surface here.
+  useEffect(() => {
+    let cancelled = false;
+    void loadCheck<CheckState>({ month: activeMonth, fundingSourceId }).then((kept) => {
+      if (cancelled) return;
+      if (kept) setCheck(kept);
+      setRestored(true);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeMonth, fundingSourceId]);
+
+  useEffect(() => {
+    // Only once the load has finished, or the empty first render would erase what it is about
+    // to restore.
+    if (!restored) return;
+    if (check) void saveCheck({ month: activeMonth, fundingSourceId }, check);
+    else void clearCheck();
+  }, [check, restored, activeMonth, fundingSourceId]);
 
   /** Takes the file it was given rather than reading state: `setFile` would not have applied
    *  yet on the same tick the picker fires, and the read must start immediately. */
@@ -232,6 +261,7 @@ export function InvoiceExtract({
           error?: string;
           invoice?: ReadInvoiceData;
           truncated?: boolean;
+          unreadableLines?: number;
         };
       };
 
@@ -271,6 +301,7 @@ export function InvoiceExtract({
         billTaxCents: invoice.billTaxCents,
         billFeesCents: invoice.billFeesCents,
         truncated: Boolean(data.truncated),
+        unreadableLines: Number(data.unreadableLines ?? 0),
         duplicate,
         rows: invoice.lines.map((line) => cardFromLine(line, ctx)),
       });
@@ -303,7 +334,10 @@ export function InvoiceExtract({
   }
 
   /** Mirrors a card's queued proof and supporting files up here, so Done can send them. */
-  function setCardFiles(cardId: string, files: Array<{ scope: string; file: File }>) {
+  function setCardFiles(
+    cardId: string,
+    files: Array<{ scope: string; file: File; supportingType: string | null }>,
+  ) {
     setCheck((current) =>
       current
         ? { ...current, rows: current.rows.map((row) => (row.id === cardId ? { ...row, files } : row)) }
@@ -400,6 +434,11 @@ export function InvoiceExtract({
       const form = new FormData();
       form.set("file", check.file);
       form.set("fundingSourceId", fundingSourceId);
+      // The month this screen was rendered for, which the server compares against the one the
+      // organisation is on now. It is org-wide shared state: a colleague switching it while
+      // these charges were being reviewed would otherwise land them in a month nobody here
+      // ever saw, with that month's reference numbers spent.
+      form.set("month", activeMonth);
       if (check.vendor) form.set("vendorName", check.vendor);
       if (check.invoiceDate) form.set("invoiceDate", check.invoiceDate);
       if (check.billTaxCents !== null) form.set("billTaxCents", String(check.billTaxCents));
@@ -432,18 +471,41 @@ export function InvoiceExtract({
       // Keyed by row index, so the server can attach each card's files to the record that
       // card became.
       cards.forEach((card, index) => {
-        for (const { scope, file } of card.files) form.append(`rowFiles-${index}-${scope}`, file);
+        for (const { scope, file, supportingType } of card.files) {
+          form.append(`rowFiles-${index}-${scope}`, file);
+          // A parallel list, appended in lockstep: `getAll` preserves insertion order, so the
+          // nth type belongs to the nth file of that scope. Only `supporting` needs one.
+          if (scope === "supporting") {
+            form.append(`rowFileTypes-${index}-supporting`, supportingType ?? "");
+          }
+        }
       });
 
       try {
         const response = await fetch("/api/expenses/from-invoice", { method: "POST", body: form });
-        const json = (await response.json()) as { ok: boolean; error?: string };
+        const json = (await response.json()) as {
+          ok: boolean;
+          error?: string;
+          /** Files queued on a card that the server could not attach to what the card became. */
+          attachmentErrors?: Array<{ filename: string; reason: string }>;
+        };
         if (!json.ok) {
           submittingRef.current = false;
           toast.error(json.error ?? "Those charges could not be saved.");
           return;
         }
         const expenseCount = cards.filter((card) => card.saved === "expense").length;
+        // What did NOT make it, said before the success and never instead of it: the charges
+        // really were written, but the queued file is gone from this browser the moment the
+        // screen moves, so a clean "12 charges saved" over a dropped receipt is the one
+        // outcome nobody can recover from. The error toast lasts longer than the success one.
+        const notAttached = json.attachmentErrors ?? [];
+        if (notAttached.length > 0) toast.error(UI.invoiceFilesNotAttached(notAttached));
+        // Written now, so the kept copy must go before the navigation: leaving it would offer
+        // the same charges back on the next visit and invite a second import of one invoice.
+        // Cleared explicitly rather than relying on `setCheck(null)`, because this navigates
+        // away and the effect that mirrors state to the store may not run first.
+        await clearCheck();
         toast.success(UI.invoiceDoneResult(expenseCount, cards.length - expenseCount));
         router.push("/r/expenses");
         router.refresh();
@@ -542,6 +604,12 @@ export function InvoiceExtract({
       {check.truncated && (
         <DangerPanel tone="notice" className="mb-4">
           {UI.readInvoiceTooManyLines}
+        </DangerPanel>
+      )}
+
+      {check.unreadableLines > 0 && (
+        <DangerPanel tone="notice" className="mb-4">
+          {UI.invoiceUnreadableLines(check.unreadableLines)}
         </DangerPanel>
       )}
 

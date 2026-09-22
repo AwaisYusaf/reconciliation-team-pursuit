@@ -116,7 +116,9 @@ export default async function ExpensesPage({
   const listHref = (view: "expenses" | "drafts") => {
     const params = new URLSearchParams();
     if (viewingRequestedMonth) params.set("month", requestedMonth!);
-    if (requestedSource) params.set("source", requestedSource);
+    // Only while it is actually in effect: once the header holds a source, `requestedSource`
+    // is ignored, and carrying it forward put a dead grant id into every link and bookmark.
+    if (selectedId === null && requestedSource) params.set("source", requestedSource);
     if (view === "drafts") params.set("view", "drafts");
     const query = params.toString();
     return query ? `/r/expenses?${query}` : "/r/expenses";
@@ -210,12 +212,14 @@ export default async function ExpensesPage({
         {draftRows.length > 0 && (
           <Link
             href={listHref(showingDrafts ? "expenses" : "drafts")}
-            aria-current={showingDrafts ? "page" : undefined}
+            // No `aria-current`: this link always points at the view you are NOT on, so
+            // marking it as the current page announced the opposite of the truth ("Back to
+            // expenses, current page") and sent people away from the list they were reading.
+            // The label already carries the state.
             data-tour="expenses-drafts-toggle"
-            className={buttonClassName(
-              showingDrafts ? "primary" : "secondary",
-              "min-h-11 px-4 text-[15px]",
-            )}
+            // Quiet in both states: the label already says which view is on, and the loud
+            // button on the drafts screen should be "Approve all ready", not the way out.
+            className={buttonClassName("secondary", "min-h-11 px-4 text-[15px]")}
           >
             {showingDrafts ? UI.draftsBackToExpenses : UI.draftsWaitingHeading(draftRows.length)}
           </Link>
