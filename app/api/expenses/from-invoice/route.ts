@@ -5,10 +5,10 @@ import { NextResponse, type NextRequest } from "next/server";
 import { v7 as uuidv7 } from "uuid";
 
 import { db } from "@/src/db";
-import { expenseAuditEvents, expenseDrafts, expenseImports, expenses, lineItems, type ExpenseAuditSnapshot } from "@/src/db/schema";
+import { expenseAuditEvents, expenseDrafts, expenseImports, expenses, lineItems } from "@/src/db/schema";
 import { isValidIsoDate, monthLabel } from "@/src/domain/dates";
 import { UI } from "@/src/domain/strings";
-import { parseMoneyToCents } from "@/src/domain/money";
+import { parseMoneyToCentsOrZero } from "@/src/domain/money";
 import { SESSION_EXPIRED } from "@/src/lib/action-result";
 import { sameOrigin } from "@/src/lib/same-origin";
 import { isUuid } from "@/src/lib/ids";
@@ -21,11 +21,12 @@ import { validate, type ValidateOptions } from "@/src/modules/expenses/validatio
 import { claimReferenceSeq } from "@/src/modules/expenses/references";
 import { rulesForFundingSource } from "@/src/modules/expenses/reimbursement";
 import type { ExpenseInput } from "@/src/modules/expenses/actions";
+import { learnVendor, snapshotOf, toRow, type ExpenseRow } from "@/src/modules/expenses/expense-row";
 import { MAX_INVOICE_LINES } from "@/src/services/openai/read-invoice";
 import { consume } from "@/src/services/rate-limit";
 import { getSession } from "@/src/services/auth/session";
 import { storage } from "@/src/services/storage/driver";
-import { deleteStoredObjects, ingestExpenseDocument, orgStorageError, precheck } from "@/src/services/storage/documents";
+import { deleteStoredObjects, ingestDraftDocument, ingestExpenseDocument, orgStorageError, precheck } from "@/src/services/storage/documents";
 import { inspectUpload } from "@/src/services/storage/inspect";
 import { expenseImportKey, MAX_UPLOAD_BYTES } from "@/src/services/storage/keys";
 
@@ -138,7 +139,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: false, error: "That upload was malformed." }, { status: 400 });
   }
   if (rawRows.length === 0) {
-    return NextResponse.json({ ok: false, error: UI.invoiceNoRowsTicked }, { status: 400 });
+    return NextResponse.json({ ok: false, error: UI.invoiceNoCharges }, { status: 400 });
   }
   // The reader's own line cap (MAX_INVOICE_LINES) — a posted array can never legitimately hold
   // more than what the reader could ever have produced.
@@ -272,7 +273,10 @@ export async function POST(request: NextRequest) {
     // Filled inside the transaction, read after it commits: the invoice becomes each real
     // expense's receipt through `ingestExpenseDocument`, which opens its own transaction and
     // therefore cannot run inside this one.
-    const createdExpenseIds: Array<{ expenseId: string; rowIndex: number }> = [];
+    const createdExpenseIds: Array<{ expenseId: string; rowIndex: number; row: ExpenseRow }> = [];
+    // The same for drafts: a card marked "draft" can carry proof and supporting files too, and
+    // they hang off `expense_draft_documents` until approval re-points them at the expense.
+    const createdDraftIds: Array<{ draftId: string; rowIndex: number }> = [];
 
     // Resolved before the transaction: it reads the funding source itself, and the flags it
     // returns are the only supplier for `taxReimbursable`/`feesReimbursable`, which have no
@@ -318,7 +322,11 @@ export async function POST(request: NextRequest) {
       // Split by what the person chose on each card. Both kinds are written inside this one
       // transaction, after `monthLocked` above, so a month that locks mid-import writes
       // neither and the invoice is not half imported.
-      const draftInputs = inputs.filter((_, index) => postedRows[index].kind === "draft");
+      // Index kept for the same reason the expense list keeps it: a draft's own queued files
+      // have to find their way back to the draft that card became.
+      const draftInputs = inputs
+        .map((input, index) => ({ input, index }))
+        .filter(({ index }) => postedRows[index].kind === "draft");
       // Index kept, not dropped: each created expense has to be matched back to the card it
       // came from so that card's own proof and supporting files attach to it.
       const expenseInputs = inputs
@@ -334,6 +342,17 @@ export async function POST(request: NextRequest) {
           .where(and(eq(expenses.orgId, session.orgId), eq(expenses.month, month)));
 
         for (const [offset, { input, index: rowIndex }] of expenseInputs.entries()) {
+          // The same `toRow` every other create path uses, so the amounts reach the column
+          // through one parser and the audit snapshot below is built from the same object as
+          // the insert rather than a second hand-written field list. The two reimbursement
+          // flags are the exception: `inputs` carries placeholders (they are not a draft
+          // column), and the funding source is their only supplier.
+          const row: ExpenseRow = {
+            ...toRow(input),
+            taxReimbursable: rules.taxReimbursable,
+            feesReimbursable: rules.feesReimbursable,
+          };
+
           // One reference number each, claimed inside this transaction like every other
           // insert path — never precomputed outside it, or two imports would collide.
           const referenceSeq = await claimReferenceSeq(session.orgId, fundingSourceId, month, tx);
@@ -341,27 +360,12 @@ export async function POST(request: NextRequest) {
             .insert(expenses)
             .values({
               orgId: session.orgId,
-              fundingSourceId,
-              lineItemId: input.lineItemId,
-              month,
-              date: input.date,
-              name: input.name.trim(),
-              description: input.description.trim(),
-              paymentSource: input.paymentSource,
-              subtotalCents: parseMoneyToCents(input.subtotal) ?? 0,
-              taxCents: parseMoneyToCents(input.tax) ?? 0,
-              feesCents: parseMoneyToCents(input.fees) ?? 0,
-              taxReimbursable: rules.taxReimbursable,
-              feesReimbursable: rules.feesReimbursable,
-              note: input.note.trim() || null,
-              narrative: input.narrative.trim() || null,
-              noReceipt: false,
-              noReceiptReason: null,
+              ...row,
               sortOrder: Number(firstSort) + offset,
               referenceSeq,
             })
             .returning({ id: expenses.id });
-          createdExpenseIds.push({ expenseId: inserted.id, rowIndex });
+          createdExpenseIds.push({ expenseId: inserted.id, rowIndex, row });
 
           const [item] = await tx
             .select({ name: lineItems.name })
@@ -369,62 +373,50 @@ export async function POST(request: NextRequest) {
             .where(eq(lineItems.id, input.lineItemId))
             .limit(1);
 
-          // Typed into a const first: `fromInvoice` is an extra key on the jsonb snapshot, and
-          // an object literal passed straight to `.values()` trips the excess-property check.
-          // `draft-actions.ts` does the same thing for the same reason, so the history reads
-          // identically whichever way the expense was created (ticket §7).
-          const snapshot: ExpenseAuditSnapshot & { fromInvoice: true } = {
-              name: input.name.trim(),
-              lineItemId: input.lineItemId,
-              lineItemName: item?.name ?? "",
-              fundingSourceName: current.name,
-              paymentSource: input.paymentSource,
-              month,
-              date: input.date,
-              description: input.description.trim(),
-              subtotalCents: parseMoneyToCents(input.subtotal) ?? 0,
-              taxCents: parseMoneyToCents(input.tax) ?? 0,
-              feesCents: parseMoneyToCents(input.fees) ?? 0,
-              taxReimbursable: rules.taxReimbursable,
-              feesReimbursable: rules.feesReimbursable,
-              note: input.note.trim() || null,
-              narrative: input.narrative.trim() || null,
-              noReceipt: false,
-              noReceiptReason: null,
-              fromInvoice: true,
-          };
-
           await tx.insert(expenseAuditEvents).values({
             orgId: session.orgId,
             expenseId: inserted.id,
             actorUserId: session.userId,
             action: "created",
             beforeData: null,
-            afterData: snapshot,
+            // `fromInvoice` marks the provenance the ticket asks history to show (§7), the
+            // same key `approveDraftAction` writes, so an expense reads identically whichever
+            // way the invoice produced it.
+            afterData: snapshotOf(row, item?.name ?? "", current.name, { fromInvoice: true }),
           });
         }
       }
 
-      if (draftInputs.length > 0)
-      await tx.insert(expenseDrafts).values(
-        draftInputs.map((input, index) => ({
-          importId,
-          orgId: session.orgId,
-          fundingSourceId,
-          month,
-          date: input.date,
-          name: input.name.trim(),
-          description: input.description.trim(),
-          lineItemId: input.lineItemId || null,
-          paymentSource: input.paymentSource,
-          subtotalCents: parseMoneyToCents(input.subtotal) ?? 0,
-          taxCents: parseMoneyToCents(input.tax) ?? 0,
-          feesCents: parseMoneyToCents(input.fees) ?? 0,
-          narrative: input.narrative.trim() || null,
-          note: input.note.trim() || null,
-          sortOrder: index,
-        })),
-      );
+      if (draftInputs.length > 0) {
+        const insertedDrafts = await tx
+          .insert(expenseDrafts)
+          .values(
+            draftInputs.map(({ input }, index) => ({
+              importId,
+              orgId: session.orgId,
+              fundingSourceId,
+              month,
+              date: input.date,
+              name: input.name.trim(),
+              description: input.description.trim(),
+              lineItemId: input.lineItemId || null,
+              paymentSource: input.paymentSource,
+              subtotalCents: parseMoneyToCentsOrZero(input.subtotal),
+              taxCents: parseMoneyToCentsOrZero(input.tax),
+              feesCents: parseMoneyToCentsOrZero(input.fees),
+              narrative: input.narrative.trim() || null,
+              note: input.note.trim() || null,
+              sortOrder: index,
+            })),
+          )
+          .returning({ id: expenseDrafts.id });
+
+        // RETURNING comes back in the order the values were given, which is the order
+        // `draftInputs` is in — so position `i` here is `draftInputs[i]`'s card.
+        insertedDrafts.forEach((inserted, i) => {
+          createdDraftIds.push({ draftId: inserted.id, rowIndex: draftInputs[i].index });
+        });
+      }
 
       return { ok: true as const };
     });
@@ -470,6 +462,30 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // A draft's own queued files, attached the same way and with the same swallow: a failed
+    // attach must not undo a draft that already exists, and the review row already says what
+    // the draft is still missing.
+    for (const { draftId, rowIndex } of createdDraftIds) {
+      for (const scope of ["proof", "receipt", "supporting"] as const) {
+        for (const queued of form.getAll(`rowFiles-${rowIndex}-${scope}`)) {
+          if (!(queued instanceof File)) continue;
+          try {
+            await ingestDraftDocument({ orgId: session.orgId, draftId, scope, file: queued });
+          } catch {
+            // Same reasoning as the expense attach above.
+          }
+        }
+      }
+    }
+
+    // The library learns from every save (R8.2), exactly as `createExpenseAction` and
+    // `approveDraftAction` do — without this, an expense saved straight off an invoice taught
+    // the vendor library nothing, so the same vendor's next invoice would not match itself
+    // (the feature's own rule 2, PHASE-14.md §5). After commit, like the other two paths.
+    for (const { row } of createdExpenseIds) {
+      await learnVendor(session.orgId, row);
+    }
+
     return NextResponse.json({ ok: true });
   } catch (error) {
     console.error("from-invoice failed", { orgId: session.orgId });
@@ -494,7 +510,20 @@ function optionalIsoDate(value: FormDataEntryValue | null): string | null {
   return isValidIsoDate(value) ? value : null;
 }
 
+/**
+ * The whole-bill tax or fee, which arrives from the check screen ALREADY IN CENTS —
+ * `readInvoice` returns `billTaxCents`/`billFeesCents` as integers and the client posts them
+ * with `String(...)`.
+ *
+ * Read as an integer, deliberately not through `parseMoneyToCents`: that parser reads its
+ * input as DOLLARS, so a $12.50 bill tax posted as "1250" came back as 125000 and was stored
+ * as $1,250.00 — the format-then-parse round trip domain-rules R1.1 forbids, on an amount the
+ * model supplied. Anything that is not a plain integer is treated as "never read" (null),
+ * which is a different fact from zero (data-model).
+ */
 function optionalCents(value: FormDataEntryValue | null): number | null {
   if (typeof value !== "string" || value === "") return null;
-  return parseMoneyToCents(value);
+  const cents = Number(value);
+  if (!Number.isSafeInteger(cents)) return null;
+  return cents;
 }

@@ -3,9 +3,10 @@ import { notFound, redirect } from "next/navigation";
 import { PageTitle, Subtext } from "@/src/components/ui/surfaces";
 import { todayIso } from "@/src/domain/dates";
 import { pageTitle } from "@/src/domain/strings";
-import { updateDraftAction } from "@/src/modules/expense-imports/draft-actions";
-import { loadDraftById } from "@/src/modules/expense-imports/queries";
+import { removeDraftDocumentAction, updateDraftAction } from "@/src/modules/expense-imports/draft-actions";
+import { loadDraftById, loadDraftDocuments } from "@/src/modules/expense-imports/queries";
 import { ExpenseForm } from "@/src/modules/expenses/expense-form";
+import { moneyField } from "@/src/modules/expenses/vendor-fill";
 import { loadExpenseFormOptions } from "@/src/modules/expenses/queries";
 import { loadExpenseAmounts, loadLineItemBudgets } from "@/src/db/queries";
 import { allLineItemStats } from "@/src/domain/budget-math";
@@ -46,10 +47,14 @@ export default async function EditDraftPage({
     .where(and(eq(expenseImports.id, draft.importId), eq(expenseImports.orgId, session.orgId)))
     .limit(1);
 
-  const [readAmounts, lineItemBudgets, amounts] = await Promise.all([
+  const [readAmounts, lineItemBudgets, amounts, documents] = await Promise.all([
     readAmountsAllowedForOrg(session.orgId),
     loadLineItemBudgets(session.orgId, draft.fundingSourceId),
     loadExpenseAmounts(session.orgId, draft.fundingSourceId, draft.month),
+    // The draft's own files, which approval re-points at the expense. Shown here for the same
+    // reason an expense's are: without them, someone who already attached a proof sees an
+    // empty field and attaches it a second time.
+    loadDraftDocuments(session.orgId, draft.id),
   ]);
   const remaining: Record<string, number> = {};
   for (const row of allLineItemStats(lineItemBudgets, amounts, draft.month)) {
@@ -64,8 +69,6 @@ export default async function EditDraftPage({
     (source) => source.id === draft.fundingSourceId,
   );
   const source = fundingSources[0];
-
-  const toMoney = (cents: number) => (cents / 100).toFixed(2);
 
   return (
     <div>
@@ -90,7 +93,7 @@ export default async function EditDraftPage({
         }
         existing={{
           id: draft.id,
-          documents: [],
+          documents,
           savedReimbursableCents: 0,
           monthSubmittedOn: null,
           values: {
@@ -106,9 +109,9 @@ export default async function EditDraftPage({
             // source, so the form reads them from there too.
             taxReimbursable: source?.taxReimbursable ?? false,
             feesReimbursable: source?.feesReimbursable ?? false,
-            subtotal: toMoney(draft.subtotalCents),
-            tax: toMoney(draft.taxCents),
-            fees: toMoney(draft.feesCents),
+            subtotal: moneyField(draft.subtotalCents),
+            tax: moneyField(draft.taxCents),
+            fees: moneyField(draft.feesCents),
             note: draft.note ?? "",
             narrative: draft.narrative ?? "",
             noReceipt: false,
@@ -116,6 +119,7 @@ export default async function EditDraftPage({
           },
         }}
         saveAction={updateDraftAction}
+        removeDocumentAction={removeDraftDocumentAction}
       />
     </div>
   );

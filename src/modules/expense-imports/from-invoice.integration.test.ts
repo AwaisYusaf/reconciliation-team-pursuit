@@ -402,12 +402,12 @@ describe.skipIf(!hasDatabase)("create drafts from an invoice (integration, Phase
     }
   });
 
-  it("zero posted rows: refused with UI.invoiceNoRowsTicked, nothing written", async () => {
+  it("zero posted rows: refused with UI.invoiceNoCharges, nothing written", async () => {
     asSession(orgId, userId);
     const before = await countRows(orgId);
     const response = await POST(postRequest(buildForm({ file: await pdfFile(), fundingSourceId, rows: [] })));
     expect(response.status).toBe(400);
-    expect((await response.json()).error).toBe(UI.invoiceNoRowsTicked);
+    expect((await response.json()).error).toBe(UI.invoiceNoCharges);
     expect(await countRows(orgId)).toEqual(before);
   });
 
@@ -581,6 +581,79 @@ describe.skipIf(!hasDatabase)("create drafts from an invoice (integration, Phase
     );
     expect(response.status).toBe(400);
     expect(await countRows(orgId)).toEqual(before);
+  });
+
+  describe("optionalCents: billTaxCents/billFeesCents arrive from the client already in cents", () => {
+    it("posting billTaxCents \"1250\" stores 1250, not 125000 (regression: was parsed as dollars)", async () => {
+      asSession(orgId, userId, "2095-08");
+      const form = buildForm({
+        file: await pdfFile(),
+        fundingSourceId,
+        rows: [row({ name: "Cents not dollars" })],
+      });
+      form.set("billTaxCents", "1250");
+      form.set("billFeesCents", "0");
+
+      const response = await POST(postRequest(form));
+      expect(response.status).toBe(200);
+
+      const [imported] = await db
+        .select()
+        .from(expenseImports)
+        .where(and(eq(expenseImports.orgId, orgId), eq(expenseImports.month, "2095-08")))
+        .orderBy(expenseImports.createdAt);
+      expect(imported.billTaxCents).toBe(1250);
+      expect(imported.billFeesCents).toBe(0);
+    });
+
+    it("a non-integer billTaxCents is stored as null (never read), not coerced to zero or garbage", async () => {
+      asSession(orgId, userId, "2095-09");
+      const form = buildForm({
+        file: await pdfFile(),
+        fundingSourceId,
+        rows: [row({ name: "Garbage bill tax" })],
+      });
+      form.set("billTaxCents", "not a number");
+
+      const response = await POST(postRequest(form));
+      expect(response.status).toBe(200);
+
+      const [imported] = await db
+        .select()
+        .from(expenseImports)
+        .where(and(eq(expenseImports.orgId, orgId), eq(expenseImports.month, "2095-09")))
+        .orderBy(expenseImports.createdAt);
+      expect(imported.billTaxCents).toBeNull();
+    });
+  });
+
+  describe("regression: the route learns the vendor for rows saved as real expenses", () => {
+    it("a kind: expense row teaches vendor_defaults for that org/name (it did not before)", async () => {
+      asSession(orgId, userId, "2095-10");
+      const response = await POST(
+        postRequest(
+          buildForm({
+            file: await pdfFile(),
+            fundingSourceId,
+            rows: [
+              row({
+                name: "Detroit Sound Supply",
+                kind: "expense",
+                narrative: "Learned from an invoice.",
+              }),
+            ],
+          }),
+        ),
+      );
+      expect(response.status).toBe(200);
+
+      const [vendor] = await db
+        .select()
+        .from(vendorDefaults)
+        .where(and(eq(vendorDefaults.orgId, orgId), eq(vendorDefaults.name, "Detroit Sound Supply")));
+      expect(vendor).toBeDefined();
+      expect(vendor.defaultLineItemId).toBe(lineItemId);
+    });
   });
 
   describe("happy path", () => {

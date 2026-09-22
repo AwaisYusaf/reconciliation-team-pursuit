@@ -21,7 +21,6 @@ import {
   expenses,
   fundingSources,
   lineItems,
-  type ExpenseAuditSnapshot,
 } from "@/src/db/schema";
 import { isValidIsoDate, isValidMonthKey, monthLabel } from "@/src/domain/dates";
 import { draftIsReady } from "@/src/domain/draft-rules";
@@ -30,60 +29,21 @@ import { UI } from "@/src/domain/strings";
 import { fail, ok, type ActionResult } from "@/src/lib/action-result";
 import { actionSession } from "@/src/lib/action-session";
 import { isUuid } from "@/src/lib/ids";
-import { learnVendor, type ExpenseInput } from "@/src/modules/expenses/actions";
+import { type ExpenseInput } from "@/src/modules/expenses/actions";
+import { learnVendor, snapshotOf, type ExpenseRow } from "@/src/modules/expenses/expense-row";
 import { claimReferenceSeq } from "@/src/modules/expenses/references";
 import { validate } from "@/src/modules/expenses/validation";
 import { requireOwnedFundingSource } from "@/src/modules/funding-sources/queries";
 import { monthLocked } from "@/src/modules/packet/month-guard";
 import { isKnownPaymentSource } from "@/src/modules/settings/labels";
-import { ingestExpenseDocument } from "@/src/services/storage/documents";
+import { deleteStoredObjects, ingestExpenseDocument } from "@/src/services/storage/documents";
 import { storage } from "@/src/services/storage/driver";
 
 import { loadMonthDrafts } from "./queries";
 
-/** The same 15-field snapshot `snapshotOf` builds in expenses/actions.ts, duplicated here for
- *  the same import-boundary reason `invoice-match.ts` duplicates its own helpers: that
- *  function is private to a `"use server"` module and this one needs its own row shape anyway
- *  (a draft has no `noReceipt`/`noReceiptReason` of its own). Keep the two in sync. */
-function snapshotFor(
-  row: {
-    name: string;
-    lineItemId: string;
-    paymentSource: string;
-    month: string;
-    date: string;
-    description: string;
-    subtotalCents: number;
-    taxCents: number;
-    feesCents: number;
-    taxReimbursable: boolean;
-    feesReimbursable: boolean;
-    note: string | null;
-    narrative: string | null;
-  },
-  lineItemName: string,
-  fundingSourceName: string,
-): ExpenseAuditSnapshot {
-  return {
-    name: row.name,
-    lineItemId: row.lineItemId,
-    lineItemName,
-    fundingSourceName,
-    paymentSource: row.paymentSource,
-    month: row.month,
-    date: row.date,
-    description: row.description,
-    subtotalCents: row.subtotalCents,
-    taxCents: row.taxCents,
-    feesCents: row.feesCents,
-    taxReimbursable: row.taxReimbursable,
-    feesReimbursable: row.feesReimbursable,
-    note: row.note,
-    narrative: row.narrative,
-    noReceipt: false,
-    noReceiptReason: null,
-  };
-}
+/** The same wording `removeExpenseDocumentAction` answers with, so removing a file reads the
+ *  same whether it hung off a draft or an expense. */
+const FILE_GONE_ERROR = "That file is already gone.";
 
 const ARCHIVED_SOURCE_ERROR =
   "That funding source is archived. Unarchive it in Settings to add expenses to it.";
@@ -170,8 +130,12 @@ export async function approveDraftAction(id: string): Promise<ActionResult<{ id:
       .limit(1);
     if (!item) return { ok: false as const, failure: { reason: "not-ready" as const } };
 
-    const row = {
+    // An `ExpenseRow`, the same shape `createExpenseAction` builds through `toRow` — so the
+    // insert and the audit snapshot below are fed by one object rather than two hand-written
+    // field lists that have to agree.
+    const row: ExpenseRow = {
       name: draft.name,
+      fundingSourceId: draft.fundingSourceId,
       lineItemId: draft.lineItemId!,
       paymentSource: draft.paymentSource,
       month: draft.month,
@@ -182,10 +146,18 @@ export async function approveDraftAction(id: string): Promise<ActionResult<{ id:
       feesCents: draft.feesCents,
       // No default on these columns on purpose (schema.ts) — resolved fresh from the funding
       // source, exactly as `createExpenseAction` would for a hand-typed expense today.
+      //
+      // Read off the row already fetched above rather than through `rulesForFundingSource`,
+      // which is the named supplier elsewhere: that helper takes the pooled handle and no
+      // `tx`, and a second pool checkout from inside this transaction deadlocks under
+      // concurrency (invariants §C). Reading it here also means the flags are read under the
+      // same row lock as the archived check, which the helper could not give.
       taxReimbursable: source.taxReimbursable,
       feesReimbursable: source.feesReimbursable,
       note: draft.note,
       narrative: draft.narrative,
+      noReceipt: false,
+      noReceiptReason: null,
     };
 
     const [{ next }] = await tx
@@ -197,10 +169,7 @@ export async function approveDraftAction(id: string): Promise<ActionResult<{ id:
       .insert(expenses)
       .values({
         orgId: current.orgId,
-        fundingSourceId: draft.fundingSourceId,
         ...row,
-        noReceipt: false,
-        noReceiptReason: null,
         sortOrder: Number(next),
         referenceSeq: await claimReferenceSeq(current.orgId, draft.fundingSourceId, row.month, tx),
       })
@@ -208,13 +177,9 @@ export async function approveDraftAction(id: string): Promise<ActionResult<{ id:
 
     // PROVENANCE (ticket §7): the approver is already this event's actor, so half of "who
     // approved it" is free. `fromInvoice` records the other half — no migration, no schema
-    // change (both off limits): the extra key rides in the jsonb column, and every existing
-    // reader (`AuditDiffContent`'s fixed `FIELDS` list) ignores keys it doesn't name. Not
-    // rendered yet — see this module's report for what a display row would still need.
-    const snapshot: ExpenseAuditSnapshot & { fromInvoice: true } = {
-      ...snapshotFor(row, item.name, source.name),
-      fromInvoice: true,
-    };
+    // change: the extra key rides in the jsonb column, every existing reader ignores keys it
+    // doesn't name, and `AuditDiffContent` renders it as "Created from an invoice".
+    const snapshot = snapshotOf(row, item.name, source.name, { fromInvoice: true });
 
     await tx.insert(expenseAuditEvents).values({
       orgId: current.orgId,
@@ -260,7 +225,7 @@ export async function approveDraftAction(id: string): Promise<ActionResult<{ id:
       ok: true as const,
       expenseId: inserted.id,
       importId: draft.importId,
-      row: { ...row, fundingSourceId: draft.fundingSourceId },
+      row,
     };
   });
 
@@ -299,11 +264,7 @@ export async function approveDraftAction(id: string): Promise<ActionResult<{ id:
     }
   }
 
-  await learnVendor(current.orgId, {
-    ...result.row,
-    noReceipt: false,
-    noReceiptReason: null,
-  });
+  await learnVendor(current.orgId, result.row);
 
   revalidatePath("/", "layout");
   return ok({ id: result.expenseId });
@@ -367,6 +328,42 @@ export async function approveReadyDraftsAction(
   return ok({ message: UI.draftsApproved(approved, rows.length - approved) });
 }
 
+/**
+ * Remove one file attached to a draft — the draft-table twin of
+ * `removeExpenseDocumentAction`, which only ever reaches `expense_documents`.
+ *
+ * Not gated on `monthLocked`, same reasoning as `discardDraftAction`: a draft is in no month
+ * total and in no packet, so nothing a lock protects can change here. The stored object is
+ * deleted only after the row is gone, never before, so a refused delete cannot destroy a file.
+ */
+export async function removeDraftDocumentAction(documentId: string): Promise<ActionResult> {
+  const current = await actionSession();
+  if ("expired" in current) return current.expired;
+  if (!isUuid(documentId)) return fail(FILE_GONE_ERROR);
+
+  // Scoped through the draft, not through the document's own `org_id`: the parent is what
+  // ownership actually follows from, and the two are separate FKs today.
+  const [owned] = await db
+    .select({ id: expenseDraftDocuments.id })
+    .from(expenseDraftDocuments)
+    .innerJoin(expenseDrafts, eq(expenseDrafts.id, expenseDraftDocuments.draftId))
+    .where(and(eq(expenseDraftDocuments.id, documentId), eq(expenseDrafts.orgId, current.orgId)))
+    .limit(1);
+  if (!owned) return fail(FILE_GONE_ERROR);
+
+  const [row] = await db
+    .delete(expenseDraftDocuments)
+    .where(eq(expenseDraftDocuments.id, documentId))
+    .returning({ key: expenseDraftDocuments.s3Key });
+  if (!row) return fail(FILE_GONE_ERROR);
+
+  // Deletes the thumbnail alongside it; see its own definition.
+  await deleteStoredObjects(row.key);
+
+  revalidatePath("/", "layout");
+  return ok();
+}
+
 /** Enough of a discarded draft's row to restore it (Undo). */
 export type DiscardedDraft = {
   id: string;
@@ -384,6 +381,9 @@ export type DiscardedDraft = {
   note: string | null;
   narrative: string | null;
   sortOrder: number;
+  /** How many attached files went with it. Undo restores the draft, not these, so the toast
+   *  has to say so rather than promise a whole restore. */
+  removedFileCount: number;
 };
 
 /**
@@ -391,12 +391,28 @@ export type DiscardedDraft = {
  * action's own return value is the undo.
  *
  * Deliberately not gated on `monthLocked`: a draft is in no month total (§6), so removing one
- * changes nothing a lock protects, unlike deleting a real expense.
+ * changes nothing a lock protects.
+ *
+ * ponytail: Undo restores the draft's own fields, not the files that were attached to it —
+ * those rows cascade away here and their objects are deleted, because leaving them would
+ * strand bytes in the bucket that nothing could ever reach or count. If Undo must become
+ * whole, the upgrade is a soft delete on `expense_draft_documents` plus a sweep, not keeping
+ * the objects around on the chance someone presses it.
  */
 export async function discardDraftAction(id: string): Promise<ActionResult<DiscardedDraft>> {
   const current = await actionSession();
   if ("expired" in current) return current.expired;
   if (!isUuid(id)) return fail(UI.draftGone);
+
+  // Read BEFORE the delete: `expense_draft_documents` cascades away with the draft row
+  // (migration 0033), so a lookup afterwards would find nothing and the stored objects would
+  // be stranded in the bucket with no row left to find them by — the same reasoning, and the
+  // same ordering, as `permanentlyDeleteExpenseAction`.
+  const attached = await db
+    .select({ key: expenseDraftDocuments.s3Key })
+    .from(expenseDraftDocuments)
+    .innerJoin(expenseDrafts, eq(expenseDrafts.id, expenseDraftDocuments.draftId))
+    .where(and(eq(expenseDraftDocuments.draftId, id), eq(expenseDrafts.orgId, current.orgId)));
 
   const [row] = await db
     .delete(expenseDrafts)
@@ -420,8 +436,14 @@ export async function discardDraftAction(id: string): Promise<ActionResult<Disca
     });
   if (!row) return fail(UI.draftGone);
 
+  // The rows are already gone (cascaded above); only the stored objects are left, removed
+  // best-effort after the delete committed, exactly as the expense delete path does.
+  for (const doc of attached) {
+    await deleteStoredObjects(doc.key);
+  }
+
   revalidatePath("/", "layout");
-  return ok(row);
+  return ok({ ...row, removedFileCount: attached.length });
 }
 
 /**
@@ -521,6 +543,11 @@ export async function updateDraftAction(input: ExpenseInput): Promise<ActionResu
 
   const invalid = validate(input, { draft: true });
   if (invalid) return fail(invalid);
+  // `validate` shape-checks the funding source but not the line item, and a draft's may be
+  // blank. Guarded here the same way `undoDiscardAction` and the from-invoice route guard it:
+  // a malformed id must read as a refusal, not raise a Postgres 22P02 that escapes the
+  // `ActionResult` contract and reaches the client as a thrown error.
+  if (input.lineItemId && !isUuid(input.lineItemId)) return fail("Choose a line item.");
 
   const [existing] = await db
     .select({ fundingSourceId: expenseDrafts.fundingSourceId })

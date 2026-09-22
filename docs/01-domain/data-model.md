@@ -334,6 +334,36 @@ deletes the draft.
 | sort_order | int | the order the lines appeared on the bill |
 | — | | **No `reference_seq`.** A draft cannot hold a reference number because there is nowhere to put one; it is claimed at approval like any other new expense |
 
+### expense_draft_documents (Phase 14, migration 0033, D-116)
+Files attached to a draft before it is an expense. A mirror of `expense_documents` — same
+columns, same `document_kind`/`document_status` enums, same supporting-type check — against
+`expense_drafts` instead, because `expense_documents.expense_id` is `NOT NULL` and a draft has
+nothing to point at yet.
+
+Approving **re-points** these rows: `approveDraftAction` copies each one into `expense_documents`
+keeping the same `s3_key`, inside the approval transaction and before the draft row is deleted,
+so the object is stored once and never uploaded again.
+
+| Field | Type | Notes |
+|---|---|---|
+| id | uuid PK | |
+| org_id | uuid FK | cascade |
+| draft_id | uuid FK | **cascade delete** with the draft |
+| kind, supporting_type, status | enum | `expense_draft_documents_supporting_type_ck`, the twin of the expense one |
+| s3_key, filename, mime_type, size_bytes, thumbnail_bytes, page_count, width_px, height_px | | carried across unchanged at approval |
+| sort_order | int | |
+
+**Quota and cleanup**, the two things D-116 records as the price of this table:
+- `orgStorageBytes` sums this table **and** `expense_imports` alongside the other three, so these
+  bytes count against the 5 GB cap and show in the admin usage figure. Leaving them out meant the
+  quota could never see its own writes.
+- `ingestDraftDocument` enforces the same per-expense file/byte/page budget as the expense path,
+  under the same org upload lock, and stores the object **before** the row so a refusal leaves
+  neither behind. Anything relaxed here is relaxed on the expense that approval creates.
+- `discardDraftAction` reads these rows' `s3_key`s **before** deleting the draft (the cascade
+  would otherwise strand them) and deletes the objects after the delete commits.
+  **Undo restores the draft, not its files** — see D-116.
+
 ### generated_artifacts (R10.4 cache + R10.6 pinning)
 | Field | Type | Notes |
 |---|---|---|

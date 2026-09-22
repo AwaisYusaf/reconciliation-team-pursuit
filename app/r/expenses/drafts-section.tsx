@@ -79,10 +79,11 @@ export function DraftsSection({
             {multiSource && <Th>Funding source</Th>}
             <Th>Payment source</Th>
             <Th align="right">Amount</Th>
-            {/* Proof/Receipt/Supporting/Narrative are left out on purpose: a draft owns no
-                `expense_documents` rows at all (the invoice becomes a real receipt at approval,
-                PHASE-14.md §2.1 C4), so those cells could only ever show the red MISSING the
-                gate means for a real expense — and "Still needs" already says what's missing. */}
+            {/* Proof/Receipt/Supporting/Narrative are left out on purpose. A draft can hold
+                files of its own (`expense_draft_documents`), but it is in no packet and no
+                gate until it is approved, so the red MISSING those cells show for a real
+                expense would name a blocker that does not exist yet — and "Still needs"
+                already says what does. */}
             <Th>Still needs</Th>
             <Th align="right" stickyEnd />
           </tr>
@@ -140,7 +141,13 @@ export function DraftsSection({
                             }
                             router.refresh();
                             const discarded = result.data;
-                            toastWithAction(UI.draftDiscarded, {
+                            // Named separately because Undo cannot bring the files back:
+                            // they were deleted with the draft (see `discardDraftAction`).
+                            toastWithAction(
+                              discarded.removedFileCount > 0
+                                ? UI.draftDiscardedWithFiles
+                                : UI.draftDiscarded,
+                              {
                               label: UI.draftUndo,
                               onAction: () =>
                                 startTransition(async () => {
@@ -148,7 +155,8 @@ export function DraftsSection({
                                     router.refresh();
                                   }
                                 }),
-                            });
+                              },
+                            );
                           })
                         }
                       >

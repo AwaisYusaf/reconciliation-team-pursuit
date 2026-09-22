@@ -54,7 +54,7 @@ describe("DraftsSection wiring", () => {
 
   it("discard flow: discardDraftAction, then a toastWithAction whose action is undoDiscardAction", () => {
     const discardCallIdx = source.indexOf("await discardDraftAction(row.id)");
-    const toastIdx = source.indexOf("toastWithAction(UI.draftDiscarded", discardCallIdx);
+    const toastIdx = source.indexOf("toastWithAction(", discardCallIdx);
     const undoCallIdx = source.indexOf("await undoDiscardAction(discarded)", toastIdx);
     expect(discardCallIdx).toBeGreaterThan(-1);
     expect(toastIdx).toBeGreaterThan(discardCallIdx);
@@ -65,7 +65,7 @@ describe("DraftsSection wiring", () => {
     const discardCallIdx = source.indexOf("await discardDraftAction(row.id)");
     const guardIdx = source.indexOf("if (!result.ok)", discardCallIdx);
     const returnIdx = source.indexOf("return;", guardIdx);
-    const toastIdx = source.indexOf("toastWithAction(UI.draftDiscarded", discardCallIdx);
+    const toastIdx = source.indexOf("toastWithAction(", discardCallIdx);
     expect(guardIdx).toBeGreaterThan(discardCallIdx);
     expect(returnIdx).toBeGreaterThan(guardIdx);
     expect(returnIdx).toBeLessThan(toastIdx);

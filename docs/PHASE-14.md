@@ -1,7 +1,7 @@
 # Phase 14 — Add expenses from one invoice
 
-Status: **Phase 1 (schema) built and proven** (2026-09-21). Phases 2 and 3 in progress; Phases 4
-to 6 not started. The product spec is the ticket, `docs/tickets/upload-invoices.md`, stored word
+Status: **all six phases built** (2026-09-22), and reviewed — see §9 for what that review found
+and changed. The product spec is the ticket, `docs/tickets/upload-invoices.md`, stored word
 for word as written; this file does not restate it. §2 records where this plan departs from it
 and why. Every build phase in §7 names its sources and its own checks, so each can run in a
 fresh chat.
@@ -38,7 +38,11 @@ switch and the server's OpenAI configuration must all be on for the entry point 
 | C2 | Silent on which funding source the drafts land on | When the header holds one source, that one, silently. When the header is on **All sources**, the upload screen asks before reading. Archived sources are never offered, as with any new expense. | User, 2026-09-21 |
 | C3 | Silent on overspending a line item at approval | Approval behaves exactly as a hand-added expense does today. No new rule and no new message: the ticket says an approved expense behaves exactly like one added by hand, and a warning only at approval would be a rule drafts alone had to obey. | User, 2026-09-21 |
 | C4 | "The invoice PDF becomes the **receipt** on every draft it created, so it is already attached when the team opens one." | The invoice is stored once, owned by the import, and shown on every draft it created. It becomes a real `expense_documents` receipt on each expense **at approval**. What the person sees is what the ticket asks for; the difference is structural, and it is what keeps one invoice from being charged once per line against the organization's 5 GB storage (D-115). | Plan |
-| C5 | "Proof of payment is still missing and the team adds it, as they do today." | Added **after approving**, on the expense, exactly as today. The draft edit screen has no file pickers. A draft is not an expense yet, so there is nowhere to hang an uploaded file until approval, and inventing one would mean a third table with its own quota accounting and orphan cleanup. Reversible later without touching the two tables. | User, 2026-09-21 |
+| C5 | "Proof of payment is still missing and the team adds it, as they do today." | ~~Added **after approving**, on the expense. The draft edit screen has no file pickers, because a draft is not an expense yet and inventing somewhere to hang a file would mean a third table with its own quota accounting and orphan cleanup.~~ **Superseded by C6.** | User, 2026-09-21 |
+| C6 | — | **A draft holds its own files after all**, in `expense_draft_documents` (migration `0033`, D-116). The upload fields are shown on the draft edit screen and on each charge card, and approval re-points the rows at the new expense keeping the same `s3_key`, so the object is stored once. C5 named the price of this exactly right and it is now paid rather than avoided: the quota counts the new tables, the per-expense budget and the upload lock apply, and discard deletes the objects. The one thing C5 bought that is not recovered: **Undo after a discard restores the draft, not the files that were on it.** | User, 2026-09-22 |
+| C7 | "Unticking a row leaves it out. **Create drafts** makes one draft expense per ticked row." | The check screen is a list of **charge cards**, each one a real expense form, with **Save as expense** / **Mark as draft** per card, **Remove** instead of unticking, and one **Done** that writes everything at once. So the invoice path can create real expenses directly, not only drafts. Nothing is written until Done, so an abandoned screen leaves nothing behind. | User, 2026-09-22 |
+| C8 | "A file picker for **one PDF**", and "Not part of this ticket: photos or scans of invoices. PDF only for now." | **Photos are accepted too** (JPEG, PNG, WebP, and HEIC converted in the browser per D-111), because an invoice photographed on a phone is the same document and the reader already handles images. Still one file at a time, still 25 MB, still 10 pages. | User, 2026-09-22 |
+| C9 | The ticket's §1 upload step: a screen or dialog with a title, an explanation, **Read invoice** and **Cancel**. | **Not built.** The entry point on the Add Expense screen opens the file picker directly and the read starts on pick. One fewer step; the cost is that the limits and the explanation of what a draft is are never stated before the read. | User, 2026-09-22 |
 
 ### 2.2 Assumptions
 
@@ -55,9 +59,11 @@ switch and the server's OpenAI configuration must all be on for the entry point 
 
 ---
 
-## 3. Data model (one migration, `0032`)
+## 3. Data model (migrations `0032` and `0033`)
 
-Two new tables. **`expenses` is not altered at all**, which is the whole point.
+Three new tables across two migrations. **`expenses` is not altered at all**, which is the
+whole point. `0032` adds `expense_imports` and `expense_drafts`; `0033` adds
+`expense_draft_documents`, which C5 below originally ruled out and C6 reverses.
 
 `expense_imports` — one uploaded invoice, and the owner of the stored file:
 
@@ -158,10 +164,10 @@ which no query for a total, a gate, a generator or the summary names.
 | 1 | Schema and migration `0032`: both tables, the enum value and its constraint, and the tests that prove each guard bites | **Built and proven**, 2026-09-21 |
 | 2 | The invoice reader, its route, the shared page cap, the usage log rows and the strings | In progress |
 | 3 | `invoice-match.ts` and its unit tests | In progress |
-| 4 | Screens: the Add Expense button, `/r/expenses/from-invoice` upload and check, the create route | Not started |
+| 4 | Screens: the Add Expense entry point, `/r/expenses/new/from-invoice` check screen (charge cards, C7), the create route | **Built** |
 | — | **Seam to settle in Phase 4:** `read-invoice.ts` and `invoice-match.ts` each export a type called `InvoiceLine`, and they are not the same shape. The reader's line always carries real cents (a line whose amount the strict guard refuses is dropped, never kept as zero) and a non-null description; the matcher accepts nulls, because a person editing a row on the check screen can clear a field. Phase 4 must convert between them deliberately at one place rather than letting the names imply they are interchangeable. | |
-| 5 | Review: the Waiting for review section, approve, approve all ready, discard and undo | Not started |
-| 6 | Docs: this file, D-115, the data model, m02 and m03, TASKS, README | D-115 and this file done |
+| 5 | Review: the Waiting for review section, approve, approve all ready, discard and undo | **Built** |
+| 6 | Docs: this file, D-115, D-116, the data model, m02 and m03, TASKS, README | **Done** |
 
 ### Phase 1 result (2026-09-21)
 
@@ -237,3 +243,70 @@ password-protected PDF; the storage quota full at approval.
 **Not provable by any of the above:** how reliably the model finds line-level tax and fees on real
 vendor invoices. The read is capped, logged and refusable, but match quality is empirical and
 needs a real invoice run against the live model before this goes in front of the client.
+
+---
+
+## 9. Review, 2026-09-22
+
+The branch was reviewed against the ticket before merge. What it found, and what changed.
+
+### Fixed
+
+1. **Attaching a file to any existing expense failed.** `expense-form.tsx` passed the owner
+   `"draft"` in the ordinary edit branch, so an expense id reached `ingestDraftDocument`, which
+   looked it up in `expense_drafts` and answered "That draft no longer exists." The draft branch
+   had the opposite fault: it returned before uploading anything at all, so files attached while
+   fixing a draft were dropped in silence. The two branches were swapped. This was a regression on
+   a shared screen, not on anything the invoice feature added.
+2. **`learnVendor` was a public endpoint.** It was exported from `actions.ts`, which is
+   `"use server"`, where every export is callable; it takes an `orgId` and writes to
+   `vendor_defaults` with no session check. It, `toRow` and `snapshotOf` moved to
+   `expense-row.ts`, a plain module. That also collapsed the three hand-maintained copies of the
+   15-field audit snapshot into one.
+3. **The 5 GB quota could not see this feature's bytes.** `orgStorageBytes` named three tables and
+   neither new one, so the checks on the import and draft paths were measuring a total their own
+   writes never entered. Both are counted now, which is also what the admin usage figure reads.
+4. **The whole-bill tax and fee were stored 100x too large.** `readInvoice` returns
+   `billTaxCents` in cents, the check screen posts `String(1250)`, and the route parsed it as
+   dollars — the format-then-parse round trip R1.1 forbids, on an amount the model supplied. It is
+   read as an integer now. Nothing read the column back, so no figure was ever shown wrong.
+5. **An expense saved straight off an invoice taught the vendor library nothing** (R8.2), which
+   quietly broke this feature's own §5 rule 2: the same vendor's next invoice would not match
+   itself. The route calls `learnVendor` like the other two create paths.
+6. **Discarding a draft stranded its files in the bucket**, and nothing ever deleted an import's
+   object either. Discard now reads the keys before the cascade and deletes the objects after the
+   delete commits, and reports how many went, so the toast can say so.
+7. **`ingestDraftDocument` was the only ingest path** without the org upload lock, without the
+   per-expense budget, and with the row committed before the object — which trades an orphan
+   object for an orphan row, and approval copies that row into `expense_documents` where the
+   documentation gate trusts it. It matches its siblings now, and guards a malformed `draftId`.
+8. **Files queued on a card marked as a draft were uploaded and thrown away.** They attach to the
+   draft now, which is what `0033` exists for.
+9. Dead code removed: four unused `UI.invoice*` strings, an unreachable "Leave without saving"
+   dialog (now wired to Back, which discards a whole read without asking), an identity function,
+   and four orphaned doc comments. `invoiceNoRowsTicked` named a tickbox the screen does not have.
+
+### Found and deliberately not changed
+
+- **Approval does not re-check `isKnownPaymentSource`.** A label retired between import and
+  approval reaches the expense. That matches R5.1/R5.2 — an expense keeps the label it was saved
+  with — and the draft's label was valid when the draft was made. `updateExpenseAction` makes the
+  same choice for the same reason.
+- **Approval reads the reimbursement flags off the funding-source row it already has**, rather
+  than through `rulesForFundingSource`. That helper takes the pooled handle and no `tx`, and a
+  second pool checkout inside the approval transaction deadlocks under concurrency. Reading them
+  inline also means they are read under the same row lock as the archived check.
+
+### Still open
+
+- **The invoice is stored once per approved expense.** Approval and the direct-expense path both
+  re-upload the invoice bytes as each expense's receipt, so a twelve-line invoice ends up stored
+  twelve times — the outcome D-115 cites as a reason for the two-table design. Fixing it means
+  pointing each `expense_documents` row at the import's existing `s3_key` and teaching deletion
+  that a key can be shared. Not done here because it changes a delete path every month depends on.
+- **The month comes from org-wide shared state.** `session.activeMonth` can be changed by another
+  user while someone is reviewing, and the check screen has no month field, so Done would write
+  into a month the reviewer never saw. Needs the screen to post the month it was rendered for and
+  refuse a mismatch.
+- **No rollback SQL for `0032`/`0033`**, unlike `rollback-0023-funding-sources.sql`.
+- **Match quality against real vendor invoices is still unmeasured**, as §8 already says.

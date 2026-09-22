@@ -368,26 +368,21 @@ export const UI = {
   /** More than `MAX_INVOICE_LINES` lines were read; only the first 50 came through (Phase 14 §2). */
   readInvoiceTooManyLines: "This invoice has more than 50 lines. The first 50 were read. Add the rest by hand.",
   /* ---------------- Adding expenses from one invoice (Phase 14, D-115) ---------------- */
-  /** The upload screen's title and its one line of explanation, both from the ticket §1. */
-  invoiceUploadTitle: "Add expenses from an invoice",
-  invoiceUploadIntro:
-    "Upload one invoice that covers several charges. We read its lines and create a draft expense for each one, for you to check before approving.",
-  /** The upload screen's two buttons, and what the first says while the model is working. */
-  invoiceReadButton: "Read invoice",
+  /** What the entry point says while the model is working. */
   invoiceReadingButton: "Reading the invoice…",
-  /** The entry point on the Add Expense screen, shown only to organizations allowed AI reading. */
   /** The one control that starts the whole thing, on the Add Expense screen. It says what it
    *  does rather than where it goes: pressing it opens the file picker and the charges it
    *  finds replace the form. */
   invoiceExtractFromInvoice: "Extract from invoice",
-  /** Refused before reading: this route takes one PDF only (ticket, "Not part of this ticket"). */
   /** An invoice may be the bill itself or a photo of it. iPhone photos are converted before
    *  they reach the server (D-111), so HEIC is accepted without being named here. */
   invoiceFileType: "Upload the invoice as a PDF or a photo.",
-  /** The check screen's button, and the refusal when every row has been unticked. */
   /** The one button at the end of the check screen. It writes both kinds at once: the charges
    *  marked as expenses become real expenses, the rest become drafts. */
   invoiceDone: "Done",
+  /** Done can post a dozen charges and their files in one request; on a slow line that is
+   *  several seconds, and a greyed button with no words reads as a page that has stopped. */
+  invoiceDoneSaving: "Saving the charges…",
   /** What Done just did, said in the plain terms the person chose it in. */
   invoiceDoneResult: (expenses: number, drafts: number) => {
     const parts: string[] = [];
@@ -395,15 +390,19 @@ export const UI = {
     if (drafts > 0) parts.push(`${drafts} ${drafts === 1 ? "draft" : "drafts"} waiting for review`);
     return parts.length > 0 ? `${parts.join(", and ")}.` : "Nothing was added.";
   },
-  /** A charge the person chose to save as a real expense, but which is not finished. Named,
-   *  because the screen is a list of charges and the bare rule would not say which one. */
-  invoiceExpenseIncomplete: (label: string, reason: string) => `${label}: ${reason}`,
-  invoiceNoRowsTicked: "Tick at least one charge to create a draft for.",
+  /** Done pressed with nothing left to write. The check screen has no tickboxes — charges are
+   *  taken off it with Remove — so the wording names the control that actually exists. */
+  invoiceNoCharges: "Keep at least one charge, or go back and read another invoice.",
   /** The hint after `draftNeeds`' own missing parts, on a card the person is trying to save as
    *  a real expense straight from the invoice (Phase 14 §3). */
   invoiceOrMarkAsDraft: "You can fill these in now, or mark this charge as a draft and finish it later.",
-  /** Next to the draft button when files are queued on the card (PHASE-14.md §2.1 C5). */
-  invoiceDraftKeepsNoFiles: "Files added here are not kept on a draft. Add them after the draft is approved.",
+  /** Next to the draft button when files are queued on the card. A draft holds its own files
+   *  (`expense_draft_documents`, migration 0033) and approval moves them onto the expense, so
+   *  this says where they go rather than warning they are lost. */
+  invoiceDraftKeepsFiles: "These files stay with the draft and move onto the expense when it is approved.",
+  /** Discarding a draft removes the files attached to it; Undo brings the draft back without
+   *  them, so the toast has to say so rather than promise a whole restore. */
+  draftDiscardedWithFiles: "Draft discarded. Its attached files were removed too.",
   /**
    * The same invoice file was already imported into this month (ticket §4).
    *

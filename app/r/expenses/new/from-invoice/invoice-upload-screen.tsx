@@ -84,11 +84,6 @@ type ChargePrefill = {
   date: string;
 };
 
-/** A card nobody opened still has to be sent: these are the reader's own values, unchanged. */
-function valuesFromPrefill(prefill: ChargePrefill): ChargePrefill {
-  return prefill;
-}
-
 type ChargeCard = {
   /** Stable across removes, unlike an array index — the double-save guard and the saved-state
    *  map are both keyed on this. */
@@ -378,7 +373,7 @@ export function InvoiceExtract({
 
     const cards = check.rows;
     if (cards.length === 0) {
-      toast.error(UI.invoiceNoRowsTicked);
+      toast.error(UI.invoiceNoCharges);
       return;
     }
 
@@ -386,7 +381,7 @@ export function InvoiceExtract({
     // marked cannot slip through. The server refuses the same case; this only points at which.
     for (const card of cards) {
       if (card.saved !== "expense") continue;
-      const values = card.marked ?? valuesFromPrefill(card.initial);
+      const values = card.marked ?? card.initial;
       const needs = draftNeeds({
         name: values.name,
         lineItemId: values.lineItemId || null,
@@ -414,7 +409,7 @@ export function InvoiceExtract({
         "rows",
         JSON.stringify(
           cards.map((card) => {
-            const values = card.marked ?? valuesFromPrefill(card.initial);
+            const values = card.marked ?? card.initial;
             return {
               name: values.name,
               lineItemId: values.lineItemId,
@@ -660,8 +655,17 @@ export function InvoiceExtract({
       </div>
 
       <div className="flex flex-wrap items-center gap-5">
-        <Button onClick={handleDone} disabled={pending}>{UI.invoiceDone}</Button>
-        <Button variant="quiet" onClick={() => setCheck(null)}>
+        <Button onClick={handleDone} disabled={pending}>
+          {pending ? UI.invoiceDoneSaving : UI.invoiceDone}
+        </Button>
+        <Button
+          variant="quiet"
+          disabled={pending}
+          // Back throws away the whole read — every card, every narrative typed and every file
+          // queued — so it asks first whenever there is anything to lose. Nothing has been
+          // written at this point: the charges only reach the database when Done is pressed.
+          onClick={() => (unsavedCount > 0 ? setConfirmLeaveUnsaved(true) : setCheck(null))}
+        >
           Back
         </Button>
       </div>
@@ -689,15 +693,14 @@ export function InvoiceExtract({
         dismissLabel="Keep editing"
         onDismiss={() => setConfirmLeaveUnsaved(false)}
         confirm={{
-          label: "Leave them",
+          label: "Discard them",
           onConfirm: () => {
             setConfirmLeaveUnsaved(false);
-            router.push("/r/expenses");
-            router.refresh();
+            setCheck(null);
           },
         }}
       >
-        {`${unsavedCount} ${unsavedCount === 1 ? "charge has" : "charges have"} not been saved yet. Nothing on them is written until their own Save or Mark as draft button is pressed.`}
+        {`${unsavedCount} ${unsavedCount === 1 ? "charge has" : "charges have"} not been marked yet. Going back reads nothing into the month, and the invoice would have to be read again.`}
       </Dialog>
     </div>
   );

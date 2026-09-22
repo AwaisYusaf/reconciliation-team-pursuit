@@ -23,7 +23,7 @@ const hasDatabase = Boolean(process.env.DATABASE_URL);
 
 describe.skipIf(!hasDatabase)("draft discard / undo (integration)", async () => {
   const { db } = await import("@/src/db");
-  const { expenseDrafts, expenseImports, lineItems, organizations, paymentSources, users } =
+  const { expenseDraftDocuments, expenseDrafts, expenseImports, lineItems, organizations, paymentSources, users } =
     await import("@/src/db/schema");
   const { createTestOrg } = await import("@/src/db/test-org");
   const { hashPassword } = await import("@/src/services/auth/passwords");
@@ -262,6 +262,51 @@ describe.skipIf(!hasDatabase)("draft discard / undo (integration)", async () => 
       const result = await undoDiscardAction(discardResult.data);
       expect(result.ok).toBe(false);
       expect(await draftById(id)).toBeNull();
+    });
+  });
+
+  describe("regression: discardDraftAction reports and cleans up attached files", () => {
+    it("returns removedFileCount and deletes the expense_draft_documents row", async () => {
+      asOrg(orgId);
+      const importId = await insertImport(orgId, fundingSourceId);
+      const id = await insertDraft({ orgId, fundingSourceId, lineItemId, importId, name: "Has a file" });
+
+      const [doc] = await db
+        .insert(expenseDraftDocuments)
+        .values({
+          orgId,
+          draftId: id,
+          kind: "receipt",
+          status: "attached",
+          s3Key: `test/discard-doc-${uuidv7()}`,
+          filename: "receipt.png",
+          mimeType: "image/png",
+          sizeBytes: 100,
+          sortOrder: 0,
+        })
+        .returning({ id: expenseDraftDocuments.id });
+
+      const result = await discardDraftAction(id);
+      expect(result.ok).toBe(true);
+      if (!result.ok) throw new Error("unreachable");
+      expect(result.data.removedFileCount).toBe(1);
+
+      const remaining = await db
+        .select()
+        .from(expenseDraftDocuments)
+        .where(eq(expenseDraftDocuments.id, doc.id));
+      expect(remaining).toHaveLength(0);
+    });
+
+    it("returns removedFileCount 0 for a draft with no attached files", async () => {
+      asOrg(orgId);
+      const importId = await insertImport(orgId, fundingSourceId);
+      const id = await insertDraft({ orgId, fundingSourceId, lineItemId, importId, name: "No files" });
+
+      const result = await discardDraftAction(id);
+      expect(result.ok).toBe(true);
+      if (!result.ok) throw new Error("unreachable");
+      expect(result.data.removedFileCount).toBe(0);
     });
   });
 

@@ -7,9 +7,10 @@ import "server-only";
 import { and, asc, eq } from "drizzle-orm";
 
 import { db } from "@/src/db";
-import { expenseDrafts, fundingSources, lineItems } from "@/src/db/schema";
+import { expenseDraftDocuments, expenseDrafts, fundingSources, lineItems } from "@/src/db/schema";
 import { reimbursableCents } from "@/src/domain/money";
 import { isUuid } from "@/src/lib/ids";
+import type { AttachedDocument } from "@/src/modules/expenses/queries";
 
 export type DraftRow = {
   id: string;
@@ -106,6 +107,33 @@ export async function loadMonthDrafts(
       feesReimbursable: row.feesReimbursable,
     }),
   }));
+}
+
+/**
+ * The files already attached to one draft, in the shape the expense form renders for a real
+ * expense's own documents. Org-scoped through the draft, never by the document's `org_id`
+ * alone, so a row whose two parents disagree can never be served for the wrong draft.
+ */
+export async function loadDraftDocuments(
+  orgId: string,
+  draftId: string,
+): Promise<AttachedDocument[]> {
+  if (!isUuid(draftId)) return [];
+
+  return db
+    .select({
+      id: expenseDraftDocuments.id,
+      kind: expenseDraftDocuments.kind,
+      supportingType: expenseDraftDocuments.supportingType,
+      filename: expenseDraftDocuments.filename,
+      mimeType: expenseDraftDocuments.mimeType,
+      pageCount: expenseDraftDocuments.pageCount,
+      status: expenseDraftDocuments.status,
+    })
+    .from(expenseDraftDocuments)
+    .innerJoin(expenseDrafts, eq(expenseDrafts.id, expenseDraftDocuments.draftId))
+    .where(and(eq(expenseDraftDocuments.draftId, draftId), eq(expenseDrafts.orgId, orgId)))
+    .orderBy(asc(expenseDraftDocuments.kind), asc(expenseDraftDocuments.sortOrder));
 }
 
 /** One draft's own columns, org-scoped, for the edit page. `undefined` when it's gone. */

@@ -17,7 +17,6 @@ import {
   type ExpenseAuditSnapshot,
 } from "@/src/db/schema";
 import { monthLabel } from "@/src/domain/dates";
-import { parseMoneyToCentsOrZero } from "@/src/domain/money";
 import { UI } from "@/src/domain/strings";
 import { fail, ok, type ActionResult } from "@/src/lib/action-result";
 import { actionSession, requireAdmin } from "@/src/lib/action-session";
@@ -30,6 +29,7 @@ import { deleteStoredObjects } from "@/src/services/storage/documents";
 import { isUuid } from "@/src/lib/ids";
 import { isKnownPaymentSource } from "@/src/modules/settings/labels";
 
+import { learnVendor, snapshotOf, toRow } from "./expense-row";
 import { validate } from "./validation";
 
 export type ExpenseInput = {
@@ -52,56 +52,6 @@ export type ExpenseInput = {
   noReceipt: boolean;
   noReceiptReason: string;
 };
-
-function toRow(input: ExpenseInput) {
-  return {
-    name: input.name.trim(),
-    fundingSourceId: input.fundingSourceId,
-    lineItemId: input.lineItemId,
-    paymentSource: input.paymentSource,
-    month: input.month,
-    date: input.date,
-    description: input.description.trim(),
-    subtotalCents: parseMoneyToCentsOrZero(input.subtotal),
-    taxCents: parseMoneyToCentsOrZero(input.tax),
-    feesCents: parseMoneyToCentsOrZero(input.fees),
-    taxReimbursable: input.taxReimbursable,
-    feesReimbursable: input.feesReimbursable,
-    note: input.note.trim() || null,
-    narrative: input.narrative.trim() || null,
-    noReceipt: input.noReceipt,
-    noReceiptReason: input.noReceipt ? input.noReceiptReason.trim() : null,
-  };
-}
-
-function snapshotOf(
-  row: ReturnType<typeof toRow>,
-  lineItemName: string,
-  fundingSourceName: string,
-): ExpenseAuditSnapshot {
-  // `fundingSourceId` itself is not part of the snapshot's field set (only its resolved
-  // name is, like `lineItemName`) — read off explicitly rather than spread, so it can never
-  // reappear in `ExpenseAuditSnapshot` by accident.
-  return {
-    name: row.name,
-    lineItemId: row.lineItemId,
-    lineItemName,
-    fundingSourceName,
-    paymentSource: row.paymentSource,
-    month: row.month,
-    date: row.date,
-    description: row.description,
-    subtotalCents: row.subtotalCents,
-    taxCents: row.taxCents,
-    feesCents: row.feesCents,
-    taxReimbursable: row.taxReimbursable,
-    feesReimbursable: row.feesReimbursable,
-    note: row.note,
-    narrative: row.narrative,
-    noReceipt: row.noReceipt,
-    noReceiptReason: row.noReceiptReason,
-  };
-}
 
 /** Reads just the snapshot's own fields off a superset object — used where the caller
  *  already fetched extra, unrelated columns alongside them (see `updateExpenseAction`). */
@@ -168,66 +118,6 @@ class MonthLockedRefusal extends Error {
   constructor(readonly locked: MonthRef) {
     super();
   }
-}
-
-/**
- * The library learns from every save (R8.2): next time this payee is typed, its line item,
- * description and last amounts are offered automatically.
- *
- * Amounts are stored as they were saved, including zero — a vendor that genuinely charges no
- * tax is a fact worth remembering, and is distinct from the null that means nothing has been
- * learned yet.
- */
-/**
- * Exported (not just used internally) so `approveDraftAction`
- * (src/modules/expense-imports/draft-actions.ts) can learn from an approved draft exactly as
- * every other create path does — this file is `"use server"`, where every export becomes a
- * callable Server Action, but `learnVendor` is already async and its args/return are plain
- * serialisable values, so exporting it costs nothing extra here.
- */
-export async function learnVendor(orgId: string, row: ReturnType<typeof toRow>): Promise<void> {
-  // Uniqueness is a lower(name) expression index, which Drizzle's typed onConflict cannot
-  // target, so the upsert is explicit. Latest write wins (R8.2).
-  const existing = await db
-    .select({ id: vendorDefaults.id })
-    .from(vendorDefaults)
-    .where(
-      and(
-        eq(vendorDefaults.orgId, orgId),
-        sql`lower(${vendorDefaults.name}) = lower(${row.name})`,
-      ),
-    )
-    .limit(1);
-
-  if (existing[0]) {
-    await db
-      .update(vendorDefaults)
-      .set({
-        name: row.name,
-        defaultLineItemId: row.lineItemId,
-        defaultDescription: row.description,
-        defaultPaymentSource: row.paymentSource,
-        defaultSubtotalCents: row.subtotalCents,
-        defaultTaxCents: row.taxCents,
-        defaultFeesCents: row.feesCents,
-      })
-      .where(eq(vendorDefaults.id, existing[0].id));
-    return;
-  }
-
-  await db
-    .insert(vendorDefaults)
-    .values({
-      orgId,
-      name: row.name,
-      defaultLineItemId: row.lineItemId,
-      defaultDescription: row.description,
-      defaultPaymentSource: row.paymentSource,
-      defaultSubtotalCents: row.subtotalCents,
-      defaultTaxCents: row.taxCents,
-      defaultFeesCents: row.feesCents,
-    })
-    .onConflictDoNothing();
 }
 
 export async function createExpenseAction(

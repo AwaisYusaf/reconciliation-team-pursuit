@@ -109,8 +109,12 @@ export type ExpenseFormProps = {
     monthSubmittedOn: string | null;
   };
   /** Present only for a draft edit: saves through `updateDraftAction` instead of
-   *  `updateExpenseAction`, and switches the form into draft mode (no uploads, no delete). */
+   *  `updateExpenseAction`, and switches the form into draft mode (no delete). */
   saveAction?: (input: ExpenseInput) => Promise<ActionResult>;
+  /** Which table an already-attached file is removed from. A draft's files live in
+   *  `expense_draft_documents` until approval, so the draft edit page passes its own action;
+   *  everywhere else the default reaches `expense_documents`. */
+  removeDocumentAction?: (documentId: string) => Promise<ActionResult>;
   /**
    * The invoice this expense or draft came from, shown in the receipt field as something that
    * can be opened.
@@ -131,8 +135,9 @@ export type ExpenseFormProps = {
     /** Full rules. On success the form runs the EXISTING `uploadQueued(id)` so proof and
      *  supporting files attach exactly as on a normal new expense. */
     save: { label: string; action: (input: ExpenseInput) => Promise<ActionResult<{ id: string }>> };
-    /** Relaxed rules (the card posts kind "draft"). No uploads run: a draft has no
-     *  `expense_documents` row to attach to (PHASE-14.md 2.1 C5). */
+    /** Relaxed rules (the card posts kind "draft"). No uploads run here: there is no draft
+     *  row of its own yet; the card holds them and the one Done request attaches them to
+     *  whichever row it creates. */
     draft: { label: string; action: (input: ExpenseInput) => Promise<ActionResult> };
     /** Called after either succeeds, so the card can collapse and show its saved state. */
     onSaved: (kind: "expense" | "draft") => void;
@@ -227,6 +232,7 @@ export function ExpenseForm({
   readAmounts,
   existing,
   saveAction,
+  removeDocumentAction,
   invoiceReceipt,
   embedded,
 }: ExpenseFormProps) {
@@ -672,6 +678,11 @@ export function ExpenseForm({
     }
   }
 
+  /** Whichever table this form's files live in — the draft one when the draft edit page
+   *  passed it, `expense_documents` otherwise. Resolved once so the three remove
+   *  controls cannot drift apart. */
+  const removeDocument = removeDocumentAction ?? removeExpenseDocumentAction;
+
   function save() {
     setError(null);
     setStatus(null);
@@ -689,10 +700,20 @@ export function ExpenseForm({
           setError(result.error);
           return;
         }
+        // The draft owns these files until it is approved, so they go to its own table
+        // (`expense_draft_documents`, migration 0033) and are re-pointed at the expense by
+        // `approveDraftAction`. Uploaded after the save, like every other path, because the
+        // row has to exist before anything can hang off it.
+        const uploadError = await uploadQueued(existing!.id, "draft");
+        if (uploadError) {
+          setStatus(null);
+          setError(uploadError);
+          router.refresh();
+          return;
+        }
         // Not `savedMessage()`: that one nags about a missing proof of payment, which a draft
-        // cannot have yet — proof is added after approving (PHASE-14.md §2.1 C5), and the
-        // ticket is explicit that a missing proof is not a blocker on a draft (§5). No
-        // `UI.draft*` string covers this line, so it reads plainly here.
+        // is not blocked by (ticket §5) — a draft is in no gate and no packet until it is
+        // approved. No `UI.draft*` string covers this line, so it reads plainly here.
         toast.success("Draft saved.");
         await switchHeaderSourceIfNeeded();
         router.push(`/r/expenses?month=${values.month}`);
@@ -709,8 +730,10 @@ export function ExpenseForm({
           setError(result.error);
           return;
         }
-        // The draft owns these files until it is approved, so they go to its own table.
-        const uploadError = await uploadQueued(existing!.id, "draft");
+        // A real expense owns its files directly — `expense_documents`, the default owner.
+        // (Review fix: this branch used to pass "draft", which sent an expense id to the
+        // draft ingest path and failed every attachment with "That draft no longer exists.")
+        const uploadError = await uploadQueued(existing!.id);
         if (uploadError) {
           setStatus(null);
           setError(uploadError);
@@ -818,7 +841,7 @@ export function ExpenseForm({
             startTransition(async () => {
               if (
                 reportResult(
-                  await removeExpenseDocumentAction(id),
+                  await removeDocument(id),
                   "File removed.",
                 )
               ) {
@@ -846,7 +869,7 @@ export function ExpenseForm({
             startTransition(async () => {
               if (
                 reportResult(
-                  await removeExpenseDocumentAction(id),
+                  await removeDocument(id),
                   "File removed.",
                 )
               ) {
@@ -1294,7 +1317,7 @@ export function ExpenseForm({
                   startTransition(async () => {
                     if (
                       reportResult(
-                        await removeExpenseDocumentAction(id),
+                        await removeDocument(id),
                         "File removed.",
                       )
                     ) {
@@ -1385,7 +1408,7 @@ export function ExpenseForm({
           </div>
           {/* A draft has no `expense_documents` row, so anything queued here would never attach
               (PHASE-14.md §2.1 C5) — said next to the button that actually discards it. */}
-          {embedded && queued.length > 0 && <Helper>{UI.invoiceDraftKeepsNoFiles}</Helper>}
+          {embedded && queued.length > 0 && <Helper>{UI.invoiceDraftKeepsFiles}</Helper>}
 
           {/* Both only reachable while editing: a new expense has nothing attached yet. */}
           {editing && (

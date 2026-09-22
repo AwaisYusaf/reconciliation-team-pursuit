@@ -13,6 +13,7 @@ import { and, eq, isNull, sql } from "drizzle-orm";
 import { v7 as uuidv7 } from "uuid";
 
 import { db } from "@/src/db";
+import { isUuid } from "@/src/lib/ids";
 import { monthLabel } from "@/src/domain/dates";
 import { UI } from "@/src/domain/strings";
 import { isKnownSupportingDocType } from "@/src/modules/settings/labels";
@@ -164,10 +165,16 @@ export function storageQuotaError(usedBytes: number, incomingBytes: number): str
 export async function orgStorageBytes(tx: Queryable, orgId: string): Promise<number | null> {
   const rows = await tx
     .select({
+      // Every table that owns a stored object has to be named here, or its bytes are real
+      // spend the cap can never see. `expense_draft_documents` and `expense_imports` (Phase
+      // 14) are the two newest: an invoice and the files hung off a draft are stored the
+      // moment they are uploaded, long before anything is approved.
       used: sql<number>`
         coalesce((select sum(size_bytes + thumbnail_bytes) from expense_documents where org_id = ${orgId}), 0)
         + coalesce((select sum(size_bytes + thumbnail_bytes) from month_documents where org_id = ${orgId}), 0)
         + coalesce((select sum(size_bytes) from month_lock_events where org_id = ${orgId}), 0)
+        + coalesce((select sum(size_bytes + thumbnail_bytes) from expense_draft_documents where org_id = ${orgId}), 0)
+        + coalesce((select sum(size_bytes) from expense_imports where org_id = ${orgId}), 0)
       `,
     })
     .from(organizations)
@@ -570,10 +577,12 @@ export async function deleteStoredObjects(key: string): Promise<void> {
  * `expense_documents.expense_id` is NOT NULL, so a draft has nothing to point at until it is
  * approved. Approval re-points this object at the new expense rather than uploading it again.
  *
- * Deliberately simpler than the expense path in two ways, both because a draft counts in
- * nothing (D-115): there is no month lock to respect, since a draft is in no month total, and
- * there are no per-expense byte or page budgets, since a draft is in no packet. The
- * organization's storage quota IS enforced, because these bytes are real.
+ * Differs from the expense path in exactly one way: there is no month lock to respect, because
+ * a draft is in no month total (D-115). Everything else is the same and deliberately so — the
+ * org storage quota, the per-expense file/byte/page budget, the upload lock, and storing the
+ * object before the row so a refusal leaves neither behind. Approval re-points these rows at a
+ * real expense without re-checking any of it, so anything relaxed here is simply relaxed on
+ * the expense that follows.
  */
 export async function ingestDraftDocument(input: {
   orgId: string;
@@ -582,6 +591,11 @@ export async function ingestDraftDocument(input: {
   supportingType?: string | null;
   file: File;
 }): Promise<IngestResult> {
+  // Shape-checked before it reaches a uuid column: a malformed id must read as "not found",
+  // not raise a Postgres 22P02 that the route turns into a 500 — which would also make a
+  // malformed id distinguishable from a well-formed one belonging to another organisation.
+  if (!isUuid(input.draftId)) return { ok: false, error: "That draft no longer exists." };
+
   const failure = precheck(input.file);
   if (failure) return { ok: false, error: failure };
 
@@ -620,42 +634,77 @@ export async function ingestDraftDocument(input: {
     docId,
     mimeType: inspection.mimeType,
   });
-  const thumbKey = inspection.thumbnail ? thumbnailKey(key) : null;
+  const incomingBytes = inspection.body.byteLength + (inspection.thumbnail?.byteLength ?? 0);
 
-  const written = await db.transaction(async (tx) => {
-    const quotaError = await orgStorageError(tx, input.orgId, inspection.body.byteLength);
-    if (quotaError) return { ok: false as const, error: quotaError };
-
-    const [{ next }] = await tx
-      .select({ next: sql<number>`coalesce(max(${expenseDraftDocuments.sortOrder}), -1) + 1` })
-      .from(expenseDraftDocuments)
-      .where(eq(expenseDraftDocuments.draftId, input.draftId));
-
-    await tx.insert(expenseDraftDocuments).values({
-      id: docId,
-      orgId: input.orgId,
-      draftId: input.draftId,
-      kind: input.scope,
-      supportingType: input.scope === "supporting" ? input.supportingType! : null,
-      status: "attached",
-      s3Key: key,
-      filename: input.file.name,
-      mimeType: inspection.mimeType,
-      sizeBytes: inspection.body.byteLength,
-      thumbnailBytes: inspection.thumbnail?.byteLength ?? 0,
-      pageCount: inspection.pageCount,
-      widthPx: inspection.widthPx,
-      heightPx: inspection.heightPx,
-      sortOrder: Number(next),
+  // Stored BEFORE the row, and taken back out if the row is refused — the same order as
+  // `ingestExpenseDocument` and `ingestMonthDocument`, and deliberately not the reverse.
+  // Committing the row first leaves the worse artifact of the two: a row saying `attached`
+  // with no bytes behind it, which approval copies straight into `expense_documents`, where
+  // the documentation gate (R4.6) trusts it and the packet build is what discovers the object
+  // is missing. An orphan object is merely wasted space, and this path deletes it here.
+  const store = storage();
+  await store.put({ key, body: inspection.body, contentType: inspection.mimeType });
+  if (inspection.thumbnail) {
+    await store.put({
+      key: thumbnailKey(key),
+      body: inspection.thumbnail,
+      contentType: "image/jpeg",
     });
-    return { ok: true as const };
-  });
-  if (!written.ok) return { ok: false, error: written.error };
+  }
 
-  // Stored only after the row is committed, so a refused upload never leaves an orphan object.
-  await storage().put({ key, body: inspection.body, contentType: inspection.mimeType });
-  if (thumbKey && inspection.thumbnail) {
-    await storage().put({ key: thumbKey, body: inspection.thumbnail, contentType: "image/jpeg" });
+  const refusal = await db.transaction(async (tx) =>
+    withOrgUploadLock(tx, input.orgId, async (): Promise<string | null> => {
+      // Under the lock for the same reason the expense path is: the quota, the budget and the
+      // sort order are all totals read before an insert, and two concurrent uploads reading
+      // the same total both overshoot by a whole file.
+      const [held] = await tx
+        .select({
+          files: sql<number>`count(*)::int`,
+          bytes: sql<number>`coalesce(sum(size_bytes + thumbnail_bytes), 0)::bigint`,
+          pages: sql<number>`coalesce(sum(coalesce(page_count, 1)), 0)::int`,
+        })
+        .from(expenseDraftDocuments)
+        .where(eq(expenseDraftDocuments.draftId, input.draftId));
+
+      // The SAME per-expense budget the expense path enforces. A draft has no packet of its
+      // own, but approval re-points every one of these rows at a real expense — so a draft
+      // allowed to exceed the budget would simply move the breach to the moment it becomes an
+      // expense, where nothing checks it again.
+      const budgetError = expenseBudgetError(
+        { files: Number(held.files), bytes: Number(held.bytes), pages: Number(held.pages) },
+        { bytes: incomingBytes, pages: inspection.pageCount ?? 1 },
+      );
+      if (budgetError) return budgetError;
+
+      const quotaError = await orgStorageError(tx, input.orgId, incomingBytes);
+      if (quotaError) return quotaError;
+
+      await tx.insert(expenseDraftDocuments).values({
+        id: docId,
+        orgId: input.orgId,
+        draftId: input.draftId,
+        kind: input.scope,
+        supportingType: input.scope === "supporting" ? input.supportingType! : null,
+        // Stored only after the bytes are proven, so the gate can trust it once approval
+        // copies this row across (R4.6).
+        status: "attached",
+        s3Key: key,
+        filename: input.file.name,
+        mimeType: inspection.mimeType,
+        sizeBytes: inspection.body.byteLength,
+        thumbnailBytes: inspection.thumbnail?.byteLength ?? 0,
+        pageCount: inspection.pageCount,
+        widthPx: inspection.widthPx,
+        heightPx: inspection.heightPx,
+        sortOrder: Number(held.files),
+      });
+      return null;
+    }),
+  );
+
+  if (refusal) {
+    await discardStored(key, inspection.thumbnail !== null);
+    return { ok: false, error: refusal };
   }
 
   return { ok: true, documentId: docId };
