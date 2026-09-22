@@ -6,15 +6,31 @@ import { cn } from "@/src/lib/cn";
  * Data tables, matching the design: a bordered white card that scrolls horizontally on
  * small screens, uppercase column headers over a 2px ink rule, hairline row dividers.
  */
+/**
+ * Tighter cells, for a table with enough columns that the roomy default cannot fit the
+ * 1220px content cap.
+ *
+ * Padding and type size, not column widths: the columns here are sized by their content, so
+ * taking roughly 12px off every cell's horizontal padding is what actually buys the room, and
+ * it buys it from every column at once rather than squeezing one. Applied to descendants so a
+ * table opts in at one place instead of threading a prop through every `Th` and `Td`.
+ */
+const DENSE = "[&_th]:px-2.5 [&_th]:py-2.5 [&_td]:px-2.5 [&_td]:py-2.5 [&_td]:text-[15px] sm:[&_td]:text-[15px]";
+
 export function TableCard({
   minWidth,
+  dense = false,
   className,
   children,
   ...props
-}: ComponentProps<"div"> & { minWidth?: number }) {
+}: ComponentProps<"div"> & { minWidth?: number; dense?: boolean }) {
   return (
     <div
-      className={cn("bg-surface border border-line rounded-[4px] overflow-x-auto", className)}
+      className={cn(
+        "bg-surface border border-line rounded-[4px] overflow-x-auto",
+        dense && DENSE,
+        className,
+      )}
       {...props}
     >
       <table

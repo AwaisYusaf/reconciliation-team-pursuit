@@ -506,6 +506,7 @@ export function InvoiceExtract({
             />
             <Button
               variant="secondary"
+              data-tour="add-expense-from-invoice"
               onClick={() => fileInputRef.current?.click()}
               disabled={reading || monthLockedForSelected}
             >

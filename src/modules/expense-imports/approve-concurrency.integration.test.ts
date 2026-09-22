@@ -298,7 +298,6 @@ describe.skipIf(!hasDatabase)("approving one draft twice at once (integration)",
     // would be noise in the suite output; the breakdown is worth having when it does break,
     // because it says whether the race went wrong the dangerous way or merely stalled.
     if (bothSucceeded.length > 0 || bothFailed.length > 0) {
-      // eslint-disable-next-line no-console
       console.log(
         `approve-vs-discard race over ${RACE_ITERATIONS} runs: approve won ${approveWon}, ` +
           `discard won ${discardWon}, BOTH SUCCEEDED (the duplicate-expense danger) ${bothSucceeded.length} ` +

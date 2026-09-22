@@ -39,7 +39,21 @@ export function addExpenseTourSteps(readAmounts: boolean): readonly TourStep[] {
     body: readAmounts ? UI.tourReceiptBodyWithReading : UI.tourReceiptBody,
   };
 
+  /**
+   * Phase 14. Last, not first: this screen's job is still one expense typed by hand, and the
+   * tour should teach that before offering the shortcut past it.
+   *
+   * Only offered alongside reading, because the button it points at only exists then — and the
+   * engine drops a step whose target is not on the page, so an organisation without the Plus
+   * plan simply gets the tour it had before rather than a step about a button it cannot see.
+   */
+  const fromInvoice: TourStep = {
+    target: "add-expense-from-invoice",
+    title: "One invoice, many charges",
+    body: "If a bill covers several charges, upload it once here. Each line becomes its own charge for you to check, and anything you are not ready to finish waits as a draft on the Expenses tab.",
+  };
+
   return readAmounts
-    ? [name, description, proof, receipt, amounts, reimbursable]
+    ? [name, description, proof, receipt, amounts, reimbursable, fromInvoice]
     : [name, description, amounts, reimbursable, proof, receipt];
 }

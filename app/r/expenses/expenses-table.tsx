@@ -496,7 +496,11 @@ export function ExpensesTable({
         {sourceFilterControl}
       </div>
 
-      <TableCard minWidth={1160}>
+      {/* `dense`, and a floor that accounts for the column count: the 1160 measured for this
+          table predates the Funding source column, which "All sources" adds as a twelfth. At
+          the 1220px content cap the extra column pushed it over and the whole table scrolled
+          sideways, which the design language does not allow at that width (m03). */}
+      <TableCard dense minWidth={multiSource ? 1160 : 1060}>
         <thead>
           <tr>
             <Th sticky>Ref / Date</Th>

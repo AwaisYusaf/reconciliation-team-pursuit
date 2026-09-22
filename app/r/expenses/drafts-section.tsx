@@ -3,6 +3,11 @@
 /**
  * "Waiting for review" — the drafts an invoice upload created, above the normal expenses
  * table (Phase 14 §5). Renders nothing when there are no drafts in scope.
+ *
+ * Shown in place of the expenses table, never above it: the two carry different columns and
+ * different actions, and stacking them made the screen read as two lists competing for the
+ * same attention. `ExpensesView` owns which one is on screen; this component only renders the
+ * drafts themselves, and nothing at all when there are none.
  */
 import { useRouter } from "next/navigation";
 import { useTransition } from "react";
@@ -51,26 +56,31 @@ export function DraftsSection({
       <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
         <h2 className="text-lg font-bold">{UI.draftsWaitingHeading(rows.length)}</h2>
         <Button
-          variant="secondary"
-          className="min-h-11 px-4 text-[15px]"
-          disabled={pending || readyCount === 0}
-          onClick={() =>
-            startTransition(async () => {
-              const result = await approveReadyDraftsAction(month, fundingSourceId);
-              if (result.ok) {
-                toast.success(result.data.message);
-                router.refresh();
-              } else {
-                reportResult(result);
-              }
-            })
-          }
-        >
+            variant="secondary"
+            className="min-h-11 px-4 text-[15px]"
+            disabled={pending || readyCount === 0}
+            // Why it is unavailable, rather than a greyed button with no reason: every draft
+            // in the section is still missing something, and the row's own "Still needs" cell
+            // is the place that says what.
+            title={readyCount === 0 ? UI.draftsNoneReady : undefined}
+            onClick={() =>
+              startTransition(async () => {
+                const result = await approveReadyDraftsAction(month, fundingSourceId);
+                if (result.ok) {
+                  toast.success(result.data.message);
+                  router.refresh();
+                } else {
+                  reportResult(result);
+                }
+              })
+            }
+          >
           {UI.draftApproveAllReady(readyCount)}
         </Button>
       </div>
 
-      <TableCard minWidth={1160}>
+      {/* Same density as the expenses table below it, so the two read as one list. */}
+      <TableCard dense minWidth={multiSource ? 1060 : 960}>
         <thead>
           <tr>
             <Th sticky>Date</Th>

@@ -417,6 +417,9 @@ export async function loadOrgHistory(orgId: string): Promise<OrgAccountEventRow[
  *  a thousandth of a cent — because a single amount read costs a fraction of a cent. */
 export type OrgAiUsage = {
   currentMonth: MonthKey;
+  /** Invoice reads (Phase 14): one per invoice the app read into charges. Counted apart from
+   *  `reads` because one costs far more — a whole multi-page bill rather than one receipt. */
+  invoiceReads: { total: number; currentMonth: number; unsaved: number };
   /** Amount reads (Phase 10) and monthly summaries (Phase 11), counted separately: they cost
    *  two orders of magnitude apart, so one combined number would say nothing useful. */
   reads: { total: number; currentMonth: number; unsaved: number };
@@ -434,6 +437,7 @@ function emptyAiUsage(currentMonth: MonthKey): OrgAiUsage {
     currentMonth,
     reads: { total: 0, currentMonth: 0, unsaved: 0 },
     summaries: { total: 0, currentMonth: 0, unsaved: 0 },
+    invoiceReads: { total: 0, currentMonth: 0, unsaved: 0 },
     costMicroUsdTotal: 0,
     costMicroUsdCurrentMonth: 0,
     costIncomplete: false,
@@ -480,10 +484,14 @@ export async function loadOrgAiUsage(orgId: string): Promise<OrgAiUsage> {
       currentMonth: Number(row.currentMonth),
       unsaved: Number(row.unsaved),
     };
-    // Explicit on both sides: a feature added later must show up as its own tile rather than
-    // being silently added to the summaries column.
+    // Explicit on every side: a feature added later must show up as its own tile rather than
+    // being silently added to another column. `invoice_read` (Phase 14) was the case this
+    // warning was written for and it still landed in no tile, so its runs were invisible on
+    // this page while its cost was still added to the totals below — the counts and the money
+    // did not reconcile, which is exactly what a billing page must never do.
     if (row.feature === "amount_read") usage.reads = counts;
     else if (row.feature === "monthly_summary") usage.summaries = counts;
+    else if (row.feature === "invoice_read") usage.invoiceReads = counts;
     usage.costMicroUsdTotal += Number(row.cost);
     usage.costMicroUsdCurrentMonth += Number(row.costThisMonth);
     if (Number(row.missingCost) > 0) usage.costIncomplete = true;

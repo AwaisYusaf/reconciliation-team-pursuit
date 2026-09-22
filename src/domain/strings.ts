@@ -373,7 +373,7 @@ export const UI = {
   /** The one control that starts the whole thing, on the Add Expense screen. It says what it
    *  does rather than where it goes: pressing it opens the file picker and the charges it
    *  finds replace the form. */
-  invoiceExtractFromInvoice: "Extract from invoice",
+  invoiceExtractFromInvoice: "Extract From Invoice",
   /** An invoice may be the bill itself or a photo of it. iPhone photos are converted before
    *  they reach the server (D-111), so HEIC is accepted without being named here. */
   invoiceFileType: "Upload the invoice as a PDF or a photo.",
@@ -446,6 +446,11 @@ export const UI = {
       ? `${approved} ${approved === 1 ? "expense" : "expenses"} approved.`
       : `${approved} ${approved === 1 ? "expense" : "expenses"} approved. ${remaining} still ${remaining === 1 ? "needs" : "need"} your attention.`,
   /** Discard, with the undo offered in the toast itself rather than a trip to Trash (ticket §5). */
+  /** Why "Approve all ready" is unavailable. Every draft in the section still needs
+   *  something, and each row's own "Still needs" cell says what. */
+  /** The same button, once it is showing the drafts: it says the way back, not the way in. */
+  draftsBackToExpenses: "Back to expenses",
+  draftsNoneReady: "No draft has everything it needs yet.",
   draftDiscarded: "Draft discarded.",
   draftUndo: "Undo",
   /** Refusal when Approve is somehow reached on a draft that is still missing something. */

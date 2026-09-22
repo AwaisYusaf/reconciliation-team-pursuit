@@ -18,6 +18,14 @@ export const EXPENSES_TOUR_STEPS: readonly TourStep[] = [
     body: "Press the reference number to open every document filed under that expense at once.",
   },
   {
+    // Phase 14. Before the row steps, because it sits above the table and is the first thing
+    // to deal with when an invoice has just been read. Dropped by the engine on a month with
+    // no drafts, which is most of them, so the tour is unchanged for everyone else.
+    target: "expenses-drafts-toggle",
+    title: "Waiting for review",
+    body: "Charges read from an invoice wait here until you check them. Turn this on to see them, fill in whatever each one still needs, then approve. Nothing counts towards the month until it is approved.",
+  },
+  {
     target: "expenses-row-menu-panel",
     autoOpen: "expenses-row-menu-trigger",
     title: "Edit, delete, history",

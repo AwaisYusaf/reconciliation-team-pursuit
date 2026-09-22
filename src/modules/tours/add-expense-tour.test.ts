@@ -90,7 +90,14 @@ describe("Add Expense tour amounts step (Phase 10 §6, Appendix A)", () => {
       "add-expense-receipt",
       "add-expense-amounts",
       "add-expense-reimbursable",
+      // Phase 14, last and only with reading: the button it points at exists only then, and
+      // the tour should teach one expense typed by hand before offering the shortcut past it.
+      "add-expense-from-invoice",
     ]);
+    // Without reading there is no such button, so the step is not offered at all.
+    expect(addExpenseTourSteps(false).map((s) => s.target)).not.toContain(
+      "add-expense-from-invoice",
+    );
     // The form really does render them in that order when reading is on.
     const form = readFileSync(`${repoRoot}src/modules/expenses/expense-form.tsx`, "utf8");
     const plusUploads = form.indexOf("{readAmounts && proofAndReceipt}");

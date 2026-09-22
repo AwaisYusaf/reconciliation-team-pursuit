@@ -132,8 +132,8 @@ export type ExpenseFormProps = {
     /** Seeded into the form's initial state, merged over the empty-form defaults — there is no
      *  `existing` on this path, so this is the only way a card arrives prefilled. */
     initialValues?: Partial<ExpenseInput>;
-    /** Full rules. On success the form runs the EXISTING `uploadQueued(id)` so proof and
-     *  supporting files attach exactly as on a normal new expense. */
+    /** Full rules. Writes nothing: it marks the card, and the id it returns is the CARD's, not
+     *  an expense's. No upload runs here — the queued files ride to the server with Done. */
     save: { label: string; action: (input: ExpenseInput) => Promise<ActionResult<{ id: string }>> };
     /** Relaxed rules (the card posts kind "draft"). No uploads run here: there is no draft
      *  row of its own yet; the card holds them and the one Done request attaches them to
@@ -756,15 +756,14 @@ export function ExpenseForm({
           setError(created.error);
           return;
         }
-        const uploadError = await uploadQueued(created.data.id);
+        // No upload here, exactly like the draft branch below. Marking a charge card writes
+        // nothing: `saveCard` hands back the CARD's own id, not an expense id, and the whole
+        // invoice is written by one request when Done is pressed. Posting the queued files
+        // against that card id asked the server for an expense that does not exist yet, so a
+        // card with a file attached always answered "That expense no longer exists. The
+        // expense was saved. Add the file again below." — three statements, two of them untrue.
+        // The files are already mirrored to the card by `onQueuedChange` and travel with Done.
         setStatus(null);
-        if (uploadError) {
-          // The expense exists and must not be creatable twice, so this stays put rather than
-          // navigating to an edit page the way the plain create path below does.
-          toast.error(`${uploadError} The expense was saved. Add the file again below.`);
-          embedded.onSaved("expense");
-          return;
-        }
         toast.success(savedMessage());
         embedded.onSaved("expense");
         return;
