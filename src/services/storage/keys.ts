@@ -127,6 +127,13 @@ export function signedPacketKey(input: {
   ].join("/");
 }
 
+/** `org/{orgId}/months/{YYYY-MM}/expense-imports/{importId}.pdf` (Phase 14) — one invoice PDF,
+ *  owned by the import row rather than any one expense (D-115); the filename lives on the row,
+ *  never in the key. */
+export function expenseImportKey(input: { orgId: string; month: MonthKey; importId: string }): string {
+  return ["org", input.orgId, "months", input.month, "expense-imports", `${input.importId}.pdf`].join("/");
+}
+
 /** Thumbnail beside its source object. */
 export function thumbnailKey(objectKey: string): string {
   return `${objectKey.replace(/\.[^./]+$/, "")}.thumb.jpg`;

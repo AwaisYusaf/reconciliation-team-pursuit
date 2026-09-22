@@ -1,12 +1,14 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { PickFundingSource } from "@/src/components/app-shell/pick-funding-source";
+import { buttonClassName } from "@/src/components/ui/button";
 import { PageTitle, Subtext } from "@/src/components/ui/surfaces";
 import { TourGuide } from "@/src/components/ui/tour";
 import { loadExpenseAmounts, loadLineItemBudgets } from "@/src/db/queries";
 import { allLineItemStats } from "@/src/domain/budget-math";
 import { monthLabel, monthWindow, todayIso } from "@/src/domain/dates";
-import { pageTitle } from "@/src/domain/strings";
+import { pageTitle, UI } from "@/src/domain/strings";
 import { readAmountsAllowedForOrg } from "@/src/modules/ai/access";
 import { ExpenseForm } from "@/src/modules/expenses/expense-form";
 import { loadExpenseFormOptions } from "@/src/modules/expenses/queries";
@@ -75,7 +77,14 @@ export default async function NewExpensePage() {
         steps={addExpenseTourSteps(readAmounts)}
         alreadySeen={seenAddExpenseTour}
       />
-      <PageTitle className="mb-2">Add Expense</PageTitle>
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-2">
+        <PageTitle>Add Expense</PageTitle>
+        {readAmounts && (
+          <Link href="/r/expenses/from-invoice" className={buttonClassName("secondary")}>
+            {UI.invoiceAddFromInvoice}
+          </Link>
+        )}
+      </div>
       <Subtext className="mb-[30px] max-w-[60ch]">
         Enter one expense for {monthLabel(month)}. It will appear on the Expenses list and the
         matching cover sheet right away.
