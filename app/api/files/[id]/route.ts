@@ -2,7 +2,13 @@ import { and, eq, isNotNull } from "drizzle-orm";
 import { NextResponse } from "next/server";
 
 import { db } from "@/src/db";
-import { expenseDocuments, monthDocuments, monthLockEvents } from "@/src/db/schema";
+import {
+  expenseDocuments,
+  expenseDraftDocuments,
+  expenseImports,
+  monthDocuments,
+  monthLockEvents,
+} from "@/src/db/schema";
 import { attachmentHeader, INLINE_DISPOSITION } from "@/src/lib/http";
 import { isUuid } from "@/src/lib/ids";
 import { getSession } from "@/src/services/auth/session";
@@ -74,7 +80,36 @@ export async function GET(
     ? { key: lockEvent.key, name: lockEvent.name ?? "Signed packet.pdf", type: "application/pdf" }
     : undefined;
 
-  const document = expenseDoc ?? monthDoc ?? signedPacket;
+  // A file attached to a draft, and the invoice an import was read from. Both are org-scoped
+  // like everything above, and both are real records someone is looking at on screen: a draft
+  // being reviewed, and the invoice that is about to become its receipt (Phase 14).
+  const [draftDoc] =
+    (expenseDoc ?? monthDoc ?? signedPacket)
+      ? [undefined]
+      : await db
+          .select({
+            key: expenseDraftDocuments.s3Key,
+            name: expenseDraftDocuments.filename,
+            type: expenseDraftDocuments.mimeType,
+          })
+          .from(expenseDraftDocuments)
+          .where(and(eq(expenseDraftDocuments.id, id), eq(expenseDraftDocuments.orgId, session.orgId)))
+          .limit(1);
+
+  const [importDoc] =
+    (expenseDoc ?? monthDoc ?? signedPacket ?? draftDoc)
+      ? [undefined]
+      : await db
+          .select({
+            key: expenseImports.s3Key,
+            name: expenseImports.filename,
+            type: expenseImports.mimeType,
+          })
+          .from(expenseImports)
+          .where(and(eq(expenseImports.id, id), eq(expenseImports.orgId, session.orgId)))
+          .limit(1);
+
+  const document = expenseDoc ?? monthDoc ?? signedPacket ?? draftDoc ?? importDoc;
   // Indistinguishable from "belongs to another organisation", so a probe learns nothing.
   if (!document) return new NextResponse(NOT_FOUND, { status: 404 });
 

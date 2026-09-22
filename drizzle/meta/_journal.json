@@ -232,6 +232,13 @@
       "when": 1789993004201,
       "tag": "0032_expense_imports",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1790064436039,
+      "tag": "0033_expense_draft_documents",
+      "breakpoints": true
     }
   ]
 }

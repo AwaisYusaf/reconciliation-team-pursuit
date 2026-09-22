@@ -14,6 +14,8 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/src/db";
 import {
   expenseAuditEvents,
+  expenseDocuments,
+  expenseDraftDocuments,
   expenseDrafts,
   expenseImports,
   expenses,
@@ -222,6 +224,35 @@ export async function approveDraftAction(id: string): Promise<ActionResult<{ id:
       beforeData: null,
       afterData: snapshot,
     });
+
+    // Files added while this was a draft become the expense's own, carrying the SAME s3 key:
+    // the object was stored once and is re-pointed, never uploaded again. Done inside this
+    // transaction so an approval can never half move them, and before the draft row is
+    // deleted, which would cascade them away.
+    const draftDocs = await tx
+      .select()
+      .from(expenseDraftDocuments)
+      .where(eq(expenseDraftDocuments.draftId, id));
+    if (draftDocs.length > 0) {
+      await tx.insert(expenseDocuments).values(
+        draftDocs.map((doc) => ({
+          orgId: current.orgId,
+          expenseId: inserted.id,
+          kind: doc.kind,
+          supportingType: doc.supportingType,
+          status: doc.status,
+          s3Key: doc.s3Key,
+          filename: doc.filename,
+          mimeType: doc.mimeType,
+          sizeBytes: doc.sizeBytes,
+          thumbnailBytes: doc.thumbnailBytes,
+          pageCount: doc.pageCount,
+          widthPx: doc.widthPx,
+          heightPx: doc.heightPx,
+          sortOrder: doc.sortOrder,
+        })),
+      );
+    }
 
     await tx.delete(expenseDrafts).where(eq(expenseDrafts.id, id));
 

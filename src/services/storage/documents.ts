@@ -17,12 +17,21 @@ import { monthLabel } from "@/src/domain/dates";
 import { UI } from "@/src/domain/strings";
 import { isKnownSupportingDocType } from "@/src/modules/settings/labels";
 import { monthLocked } from "@/src/modules/packet/month-guard";
-import { expenseDocuments, expenses, monthDocuments, organizations } from "@/src/db/schema";
+import {
+  expenseDocuments,
+  expenseDraftDocuments,
+  expenseDrafts,
+  expenses,
+  monthDocuments,
+  organizations,
+} from "@/src/db/schema";
 import type { MonthDocumentCategory } from "@/src/db/schema";
+import type { MonthKey } from "@/src/domain/dates";
 
 import { storage } from "./driver";
 import { inspectUpload } from "./inspect";
 import {
+  draftDocumentKey,
   expenseDocumentKey,
   isAllowedMimeType,
   isUndeclaredMimeType,
@@ -552,4 +561,102 @@ export async function ingestMonthDocument(input: {
 export async function deleteStoredObjects(key: string): Promise<void> {
   const store = storage();
   await Promise.allSettled([store.delete(key), store.delete(thumbnailKey(key))]);
+}
+
+/**
+ * Attach a file to a DRAFT, which is not an expense yet (Phase 14).
+ *
+ * The same shape as `ingestExpenseDocument`, against `expense_draft_documents` instead:
+ * `expense_documents.expense_id` is NOT NULL, so a draft has nothing to point at until it is
+ * approved. Approval re-points this object at the new expense rather than uploading it again.
+ *
+ * Deliberately simpler than the expense path in two ways, both because a draft counts in
+ * nothing (D-115): there is no month lock to respect, since a draft is in no month total, and
+ * there are no per-expense byte or page budgets, since a draft is in no packet. The
+ * organization's storage quota IS enforced, because these bytes are real.
+ */
+export async function ingestDraftDocument(input: {
+  orgId: string;
+  draftId: string;
+  scope: DocumentScope;
+  supportingType?: string | null;
+  file: File;
+}): Promise<IngestResult> {
+  const failure = precheck(input.file);
+  if (failure) return { ok: false, error: failure };
+
+  if (input.scope === "supporting") {
+    if (!input.supportingType) return { ok: false, error: "Choose a document type first." };
+    if (!(await isKnownSupportingDocType(input.orgId, input.supportingType))) {
+      return {
+        ok: false,
+        error: "That document type is no longer in use. Choose another type and add the file again.",
+      };
+    }
+  }
+
+  const [owner] = await db
+    .select({ month: expenseDrafts.month })
+    .from(expenseDrafts)
+    .where(and(eq(expenseDrafts.id, input.draftId), eq(expenseDrafts.orgId, input.orgId)))
+    .limit(1);
+  if (!owner) return { ok: false, error: "That draft no longer exists." };
+
+  const inspection = await inspectUpload({
+    body: Buffer.from(await input.file.arrayBuffer()),
+    declaredMimeType: input.file.type,
+  });
+  if (!inspection.ok) return { ok: false, error: inspection.error };
+  if (inspection.body.byteLength > MAX_UPLOAD_BYTES) {
+    return { ok: false, error: "That file is larger than 25 MB." };
+  }
+
+  const docId = uuidv7();
+  const key = draftDocumentKey({
+    orgId: input.orgId,
+    month: owner.month as MonthKey,
+    draftId: input.draftId,
+    scope: input.scope,
+    docId,
+    mimeType: inspection.mimeType,
+  });
+  const thumbKey = inspection.thumbnail ? thumbnailKey(key) : null;
+
+  const written = await db.transaction(async (tx) => {
+    const quotaError = await orgStorageError(tx, input.orgId, inspection.body.byteLength);
+    if (quotaError) return { ok: false as const, error: quotaError };
+
+    const [{ next }] = await tx
+      .select({ next: sql<number>`coalesce(max(${expenseDraftDocuments.sortOrder}), -1) + 1` })
+      .from(expenseDraftDocuments)
+      .where(eq(expenseDraftDocuments.draftId, input.draftId));
+
+    await tx.insert(expenseDraftDocuments).values({
+      id: docId,
+      orgId: input.orgId,
+      draftId: input.draftId,
+      kind: input.scope,
+      supportingType: input.scope === "supporting" ? input.supportingType! : null,
+      status: "attached",
+      s3Key: key,
+      filename: input.file.name,
+      mimeType: inspection.mimeType,
+      sizeBytes: inspection.body.byteLength,
+      thumbnailBytes: inspection.thumbnail?.byteLength ?? 0,
+      pageCount: inspection.pageCount,
+      widthPx: inspection.widthPx,
+      heightPx: inspection.heightPx,
+      sortOrder: Number(next),
+    });
+    return { ok: true as const };
+  });
+  if (!written.ok) return { ok: false, error: written.error };
+
+  // Stored only after the row is committed, so a refused upload never leaves an orphan object.
+  await storage().put({ key, body: inspection.body, contentType: inspection.mimeType });
+  if (thumbKey && inspection.thumbnail) {
+    await storage().put({ key: thumbKey, body: inspection.thumbnail, contentType: "image/jpeg" });
+  }
+
+  return { ok: true, documentId: docId };
 }

@@ -1161,6 +1161,53 @@ export const expenseDrafts = pgTable(
   ],
 );
 
+/**
+ * Files attached to a draft before it is an expense (Phase 14).
+ *
+ * `expense_documents.expense_id` is NOT NULL, and a draft has no expense to point at, so the
+ * proof of payment and supporting files someone adds while reviewing a draft live here until
+ * approval moves them across. The stored object is written once and never re-uploaded: approval
+ * inserts an `expense_documents` row carrying the same `s3_key` and deletes the row here, so the
+ * bytes are only ever paid for once.
+ *
+ * Mirrors `expense_documents` field for field on purpose — the two are read by the same viewer,
+ * and a column that exists on one and not the other would show as a gap in the packet estimates.
+ */
+export const expenseDraftDocuments = pgTable(
+  "expense_draft_documents",
+  {
+    id: id(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    draftId: uuid("draft_id")
+      .notNull()
+      .references(() => expenseDrafts.id, { onDelete: "cascade" }),
+    kind: documentKind().notNull(),
+    supportingType: text("supporting_type"),
+    status: documentStatus().notNull().default("pending"),
+    s3Key: text("s3_key").notNull(),
+    filename: text().notNull(),
+    mimeType: text("mime_type").notNull(),
+    sizeBytes: bigint("size_bytes", { mode: "number" }).notNull().default(0),
+    thumbnailBytes: integer("thumbnail_bytes").notNull().default(0),
+    pageCount: integer("page_count"),
+    widthPx: integer("width_px"),
+    heightPx: integer("height_px"),
+    sortOrder: integer("sort_order").notNull().default(0),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    index("expense_draft_documents_draft_idx").on(t.draftId, t.kind, t.sortOrder),
+    index("expense_draft_documents_org_idx").on(t.orgId),
+    check(
+      "expense_draft_documents_supporting_type_ck",
+      sql`(${t.kind} = 'supporting') = (${t.supportingType} is not null)`,
+    ),
+  ],
+);
+
 /* ------------------------------------------------------ generated artifacts */
 
 /**
@@ -1550,6 +1597,7 @@ export type MonthLockEvent = typeof monthLockEvents.$inferSelect;
 export type VendorDefault = typeof vendorDefaults.$inferSelect;
 export type ExpenseImport = typeof expenseImports.$inferSelect;
 export type ExpenseDraft = typeof expenseDrafts.$inferSelect;
+export type ExpenseDraftDocument = typeof expenseDraftDocuments.$inferSelect;
 export type RecurringItem = typeof recurringItems.$inferSelect;
 export type GeneratedArtifact = typeof generatedArtifacts.$inferSelect;
 export type UserTourProgress = typeof userTourProgress.$inferSelect;
