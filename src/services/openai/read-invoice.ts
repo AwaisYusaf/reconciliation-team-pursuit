@@ -224,7 +224,7 @@ export function parseReadInvoiceResponse(json: unknown): ReadInvoiceResult {
   if (lines.length === 0) return { outcome: "none", ...usage };
 
   const vendor = toNullableString(parsed.vendor) ?? null;
-  const invoiceDate = toNullableString(parsed.invoice_date) ?? null;
+  const invoiceDate = toIsoDate(toNullableString(parsed.invoice_date));
   const billTax = toNullableString(parsed.bill_tax);
   const billFees = toNullableString(parsed.bill_fees);
   // A whole-bill tax or fee is a note only (Phase 14 assumptions); an unparsable value is dropped
@@ -238,6 +238,49 @@ export function parseReadInvoiceResponse(json: unknown): ReadInvoiceResult {
     truncated,
     ...usage,
   };
+}
+
+/**
+ * The invoice's printed date, as an `IsoDate`, or null when it cannot be read as one.
+ *
+ * The model returns the date as the invoice prints it, and a US vendor prints `07/14/2026`.
+ * Everything downstream expects ISO: `formatDateUS` splits on "-" (so a slashed date renders as
+ * `undefined/undefined/NaN`), and every draft's `date` is validated with `isValidIsoDate` before
+ * the create route will write it. Normalising here, in the one place the model's answer is
+ * parsed, is what keeps both of those honest — asking the prompt for ISO is not enough on its
+ * own, because a model that ignores the instruction would otherwise break the whole import.
+ *
+ * Deliberately narrow: ISO, and US month-first slashed or dashed. A date this cannot read
+ * becomes null, which the screen then falls back to today for, rather than a guess. `2026-13-45`
+ * is rejected by the calendar check rather than accepted for having the right shape.
+ */
+function toIsoDate(value: string | null): string | null {
+  if (!value) return null;
+  const text = value.trim();
+
+  const iso = /^(\d{4})-(\d{2})-(\d{2})$/.exec(text);
+  if (iso) return isRealDate(iso[1], iso[2], iso[3]) ? text : null;
+
+  // 7/14/2026, 07-14-2026. Month first: these invoices are American, and there is no way to
+  // tell 03/04 apart from 04/03 without knowing that, so the ambiguity is resolved by locale
+  // rather than left to chance.
+  const us = /^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/.exec(text);
+  if (us) {
+    const [, month, day, year] = us;
+    const padded = `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+    return isRealDate(year, month, day) ? padded : null;
+  }
+
+  return null;
+}
+
+/** A real day in a real month, so 2026-02-30 and 2026-13-01 are refused, not merely reshaped. */
+function isRealDate(year: string, month: string, day: string): boolean {
+  const y = Number(year);
+  const m = Number(month);
+  const d = Number(day);
+  if (m < 1 || m > 12 || d < 1) return false;
+  return d <= new Date(Date.UTC(y, m, 0)).getUTCDate();
 }
 
 function toInvoiceLine(raw: unknown): InvoiceLine | null {

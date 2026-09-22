@@ -391,3 +391,47 @@ describe("readInvoice", () => {
     expect(result.outcome).toBe("failed");
   });
 });
+
+describe("the invoice date is normalised to ISO", () => {
+  /** The date as the invoice printed it → what every draft's `date` must end up being. */
+  function dateFrom(printed: unknown): string | null {
+    const result = parseReadInvoiceResponse(
+      responsesBody(invoiceBody([line()], { invoice_date: printed })),
+    );
+    return result.outcome === "found" ? result.invoice.invoiceDate : null;
+  }
+
+  it("keeps a date already written as ISO", () => {
+    expect(dateFrom("2026-01-05")).toBe("2026-01-05");
+  });
+
+  it("converts the US form a real vendor actually prints", () => {
+    // Not hypothetical: a live model read of a real invoice returned "07/14/2026", which
+    // reached formatDateUS as undefined/undefined/NaN on screen and made the create route
+    // refuse every draft with a 400. Found by driving the browser, not by any unit test.
+    expect(dateFrom("07/14/2026")).toBe("2026-07-14");
+    expect(dateFrom("7/4/2026")).toBe("2026-07-04");
+    expect(dateFrom("07-14-2026")).toBe("2026-07-14");
+    expect(dateFrom("  07/14/2026  ")).toBe("2026-07-14");
+  });
+
+  it("refuses a date that is the right shape but not a real day", () => {
+    expect(dateFrom("2026-02-30")).toBeNull();
+    expect(dateFrom("2026-13-01")).toBeNull();
+    expect(dateFrom("13/45/2026")).toBeNull();
+    expect(dateFrom("02/30/2026")).toBeNull();
+  });
+
+  it("accepts the leap day only in a leap year", () => {
+    expect(dateFrom("02/29/2024")).toBe("2024-02-29");
+    expect(dateFrom("02/29/2026")).toBeNull();
+  });
+
+  it("gives null for a date it cannot read, rather than a guess", () => {
+    expect(dateFrom(null)).toBeNull();
+    expect(dateFrom("")).toBeNull();
+    expect(dateFrom("July 14, 2026")).toBeNull();
+    expect(dateFrom("14/07/2026")).toBeNull(); // day-first is refused, not silently swapped
+    expect(dateFrom(12345)).toBeNull();
+  });
+});
