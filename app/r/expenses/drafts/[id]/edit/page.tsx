@@ -7,6 +7,13 @@ import { updateDraftAction } from "@/src/modules/expense-imports/draft-actions";
 import { loadDraftById } from "@/src/modules/expense-imports/queries";
 import { ExpenseForm } from "@/src/modules/expenses/expense-form";
 import { loadExpenseFormOptions } from "@/src/modules/expenses/queries";
+import { loadExpenseAmounts, loadLineItemBudgets } from "@/src/db/queries";
+import { allLineItemStats } from "@/src/domain/budget-math";
+import { readAmountsAllowedForOrg } from "@/src/modules/ai/access";
+import { and, eq } from "drizzle-orm";
+import { db } from "@/src/db";
+import { expenseImports } from "@/src/db/schema";
+import { inlineSrc } from "@/src/services/storage/preview";
 import { loadSourceContext } from "@/src/modules/funding-sources/queries";
 import { getSession } from "@/src/services/auth/session";
 
@@ -30,6 +37,25 @@ export default async function EditDraftPage({
     loadSourceContext(session.orgId, session.activeFundingSourceId),
   ]);
 
+  // The invoice this draft was read from, so the receipt field can show the bill itself. The
+  // file belongs to the import, not to the draft, which is why it is fetched separately and
+  // shown as something to open rather than as an attached document.
+  const [invoice] = await db
+    .select({ id: expenseImports.id, filename: expenseImports.filename })
+    .from(expenseImports)
+    .where(and(eq(expenseImports.id, draft.importId), eq(expenseImports.orgId, session.orgId)))
+    .limit(1);
+
+  const [readAmounts, lineItemBudgets, amounts] = await Promise.all([
+    readAmountsAllowedForOrg(session.orgId),
+    loadLineItemBudgets(session.orgId, draft.fundingSourceId),
+    loadExpenseAmounts(session.orgId, draft.fundingSourceId, draft.month),
+  ]);
+  const remaining: Record<string, number> = {};
+  for (const row of allLineItemStats(lineItemBudgets, amounts, draft.month)) {
+    remaining[row.lineItem.id] = row.remainingCents;
+  }
+
   // Narrowed to the draft's OWN source, and the month list to its OWN month:
   // `updateDraftAction` writes neither the funding source nor the month, so offering either as
   // a choice would silently discard it — a one-entry source list already renders as static
@@ -48,17 +74,20 @@ export default async function EditDraftPage({
 
       <ExpenseForm
         options={{ ...options, fundingSources, months: [draft.month] }}
-        // A draft is in no total and no line-item spend (PHASE-14.md §6), so there is no
-        // projection to show rather than implying one.
-        remaining={{}}
+        // The same live projection the Add Expense form shows. A draft is in no total itself
+        // (PHASE-14.md §6), so this is what is left BEFORE this charge, which is exactly the
+        // figure someone needs while deciding which line item it belongs on.
+        remaining={remaining}
         // Only ever used as a new expense's default date, so it never reaches this form; kept
         // honest rather than passing the draft's own date under the name `today`.
         today={todayIso()}
         activeMonth={draft.month}
         initialFundingSourceId={draft.fundingSourceId}
         headerSelectedSourceId={headerSelectedSourceId}
-        // Re-reading amounts for an existing draft is out of scope ("Not part of this ticket").
-        readAmounts={false}
+        readAmounts={readAmounts}
+        invoiceReceipt={
+          invoice ? { filename: invoice.filename, href: inlineSrc(invoice.id) } : undefined
+        }
         existing={{
           id: draft.id,
           documents: [],

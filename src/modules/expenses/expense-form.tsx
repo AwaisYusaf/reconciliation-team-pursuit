@@ -51,6 +51,7 @@ import {
 import type { AttachedDocument } from "./queries";
 import { canSave } from "./can-save";
 import { UploadField, type PendingUpload } from "./upload-field";
+import type { DocumentScope } from "@/src/services/storage/keys";
 
 export type FormOptions = {
   /** Active sources, plus the expense's own source on edit even when it is archived. */
@@ -110,6 +111,41 @@ export type ExpenseFormProps = {
   /** Present only for a draft edit: saves through `updateDraftAction` instead of
    *  `updateExpenseAction`, and switches the form into draft mode (no uploads, no delete). */
   saveAction?: (input: ExpenseInput) => Promise<ActionResult>;
+  /**
+   * The invoice this expense or draft came from, shown in the receipt field as something that
+   * can be opened.
+   *
+   * Deliberately not a queued upload and not an attached document: the invoice is stored once,
+   * owned by the import, and becomes a real receipt row when the charge is created. Showing it
+   * here is how someone checking a draft can see the bill it was read from.
+   */
+  invoiceReceipt?: { filename: string; href?: string; file?: File };
+  /** Present only when this form is one charge card on the invoice screen (Phase 14). The
+   *  invoice fixes the funding source and month for every charge, the form creates through
+   *  `save.action` instead of `createExpenseAction`, and it stays on the page afterwards
+   *  instead of navigating to the Expenses list. */
+  embedded?: {
+    /** Seeded into the form's initial state, merged over the empty-form defaults — there is no
+     *  `existing` on this path, so this is the only way a card arrives prefilled. */
+    initialValues?: Partial<ExpenseInput>;
+    /** Full rules. On success the form runs the EXISTING `uploadQueued(id)` so proof and
+     *  supporting files attach exactly as on a normal new expense. */
+    save: { label: string; action: (input: ExpenseInput) => Promise<ActionResult<{ id: string }>> };
+    /** Relaxed rules (the card posts kind "draft"). No uploads run: a draft has no
+     *  `expense_documents` row to attach to (PHASE-14.md 2.1 C5). */
+    draft: { label: string; action: (input: ExpenseInput) => Promise<ActionResult> };
+    /** Called after either succeeds, so the card can collapse and show its saved state. */
+    onSaved: (kind: "expense" | "draft") => void;
+    /**
+     * Mirrors the files queued on this form up to the card that owns it.
+     *
+     * Nothing is written until the whole invoice is submitted, so these cannot be uploaded
+     * here: there is no expense yet to attach them to. The card holds them and they travel
+     * with the one request that creates everything.
+     */
+    onQueuedChange?: (files: Array<{ scope: DocumentScope; file: File }>) => void;
+
+  };
 };
 
 /** Long enough for a one-minute rate-limit window to have rolled over. */
@@ -134,6 +170,50 @@ const EMPTY: ExpenseInput = {
   noReceiptReason: "",
 };
 
+/**
+ * The invoice this charge came from, shown the way an attached file is shown elsewhere: a row
+ * with a document icon that opens it. The object URL is made once per file and released when
+ * the card unmounts, so opening twelve cards does not leak twelve blobs.
+ */
+function InvoiceReceiptChip({ filename, href, file }: { filename: string; href?: string; file?: File }) {
+  // A stored invoice has a real URL. One still sitting on the check screen has only the picked
+  // file, so its blob URL is made at the moment someone asks to see it and released shortly
+  // after: making it up front would leak one per card on a twelve line invoice.
+  function openPickedFile() {
+    if (!file) return;
+    const url = URL.createObjectURL(file);
+    // No `noreferrer` here, unlike every other link in this app: it opens the tab in a context
+    // that cannot resolve a blob URL, which Chrome reports as ERR_FILE_NOT_FOUND. There is no
+    // referrer to leak anyway, since the URL never leaves this browser.
+    window.open(url, "_blank");
+    setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  }
+
+  return (
+    <div className="mt-2.5 flex items-center gap-2.5 rounded-[3px] border border-line bg-surface px-3 py-2">
+      <svg viewBox="0 0 20 20" aria-hidden="true" className="w-4 h-4 flex-none text-sub">
+        <path
+          d="M5 2.5h6l4 4v11H5zM11 2.5V7h4"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.4"
+          strokeLinejoin="round"
+        />
+      </svg>
+      <span className="flex-1 text-[14px] truncate">{filename}</span>
+      {href ? (
+        <a href={href} target="_blank" rel="noreferrer" className="text-[14px] underline whitespace-nowrap">
+          Open
+        </a>
+      ) : (
+        <button type="button" onClick={openPickedFile} className="text-[14px] underline whitespace-nowrap">
+          Open
+        </button>
+      )}
+    </div>
+  );
+}
+
 export function ExpenseForm({
   options,
   remaining,
@@ -147,6 +227,8 @@ export function ExpenseForm({
   readAmounts,
   existing,
   saveAction,
+  invoiceReceipt,
+  embedded,
 }: ExpenseFormProps) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -167,6 +249,7 @@ export function ExpenseForm({
             feesReimbursable: initialSource.feesReimbursable,
           }
         : {}),
+      ...(embedded?.initialValues ?? {}),
     },
   );
   const [error, setError] = useState<string | null>(null);
@@ -213,6 +296,15 @@ export function ExpenseForm({
 
   // On the add form files are held until the expense exists, then uploaded against it.
   const [queued, setQueued] = useState<PendingUpload[]>([]);
+  // Held in a ref so the effect below depends only on `queued`: `embedded` is rebuilt inline
+  // by the card on every render, and depending on it directly would loop.
+  const onQueuedChangeRef = useRef(embedded?.onQueuedChange);
+  useEffect(() => {
+    onQueuedChangeRef.current = embedded?.onQueuedChange;
+  });
+  useEffect(() => {
+    onQueuedChangeRef.current?.(queued.map((item) => ({ scope: item.scope, file: item.file })));
+  }, [queued]);
   // A picked HEIC is still becoming a JPEG in the browser (PR #18 round 2, #6).
   const converting = queued.some((item) => item.converting);
   const [status, setStatus] = useState<string | null>(null);
@@ -514,12 +606,15 @@ export function ExpenseForm({
     return hasProof ? "Expense saved." : UI.savedMissingProof;
   }
 
-  async function uploadQueued(expenseId: string): Promise<string | null> {
+  /** `owner` is the expense these files belong to, or the draft when the form is editing one:
+   *  a draft has no `expense_documents` row, so its files live in their own table until it is
+   *  approved (Phase 14). */
+  async function uploadQueued(ownerId: string, owner: "expense" | "draft" = "expense"): Promise<string | null> {
     for (const [index, item] of queued.entries()) {
       setStatus(`Uploading ${index + 1} of ${queued.length}…`);
       const form = new FormData();
-      form.set("target", "expense");
-      form.set("expenseId", expenseId);
+      form.set("target", owner);
+      form.set(owner === "draft" ? "draftId" : "expenseId", ownerId);
       form.set("scope", item.scope);
       if (item.supportingType) form.set("supportingType", item.supportingType);
       form.set("file", item.file);
@@ -614,7 +709,8 @@ export function ExpenseForm({
           setError(result.error);
           return;
         }
-        const uploadError = await uploadQueued(existing!.id);
+        // The draft owns these files until it is approved, so they go to its own table.
+        const uploadError = await uploadQueued(existing!.id, "draft");
         if (uploadError) {
           setStatus(null);
           setError(uploadError);
@@ -628,6 +724,26 @@ export function ExpenseForm({
         await switchHeaderSourceIfNeeded();
         router.push(`/r/expenses?month=${values.month}`);
         router.refresh();
+        return;
+      }
+
+      if (embedded) {
+        const created = await embedded.save.action(values);
+        if (!created.ok) {
+          setError(created.error);
+          return;
+        }
+        const uploadError = await uploadQueued(created.data.id);
+        setStatus(null);
+        if (uploadError) {
+          // The expense exists and must not be creatable twice, so this stays put rather than
+          // navigating to an edit page the way the plain create path below does.
+          toast.error(`${uploadError} The expense was saved. Add the file again below.`);
+          embedded.onSaved("expense");
+          return;
+        }
+        toast.success(savedMessage());
+        embedded.onSaved("expense");
         return;
       }
 
@@ -654,15 +770,38 @@ export function ExpenseForm({
     });
   }
 
+  /** The draft button beside Save, present only when `embedded`. Same locked-month guard as
+   *  `save()`, but posts through `embedded.draft.action` and skips uploads entirely — a draft
+   *  has no `expense_documents` row to attach anything to. */
+  function saveDraft() {
+    if (!embedded) return;
+    setError(null);
+    setStatus(null);
+    if (selectedMonthLocked) {
+      setError(UI.monthLocked(monthLabel(values.month)));
+      return;
+    }
+    startTransition(async () => {
+      const result = await embedded.draft.action(values);
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
+      toast.success("Draft saved.");
+      embedded.onSaved("draft");
+    });
+  }
+
   const highlight = autofilled ? "bg-autofill" : "bg-surface";
 
   // Proof of payment + Receipt, defined once: Plus renders them above the amounts, everyone
   // else below (Phase 10) — one definition so the two orders can never drift apart.
   //
-  // Null in draft mode (which also hides the "No receipt available" block below with it):
-  // proof of payment is added after approving, and a draft has no `expense_documents` row to
-  // attach anything to (PHASE-14.md §2.1 C5).
-  const proofAndReceipt = draftMode ? null : (
+  // Shown everywhere now. A draft's files go to `expense_draft_documents` and approval
+  // re-points them at the new expense; an invoice card's are held in the browser and travel
+  // with the one request that creates everything. Both have somewhere to live, which is what
+  // PHASE-14.md §2.1 C5 originally said they did not.
+  const proofAndReceipt = (
     <>
       <div data-tour="add-expense-proof">
         <UploadField
@@ -716,6 +855,16 @@ export function ExpenseForm({
             })
           }
         />
+
+        {/* Under the receipt tile, where the files for this expense are listed: the invoice is
+            one of them, it is simply owned by the import until the charge is created. */}
+        {invoiceReceipt && !values.noReceipt && (
+          <InvoiceReceiptChip
+            filename={invoiceReceipt.filename}
+            href={invoiceReceipt.href}
+            file={invoiceReceipt.file}
+          />
+        )}
 
         <label className="flex items-center gap-2.5 mt-3.5 text-base cursor-pointer min-h-11">
           <input
@@ -852,6 +1001,7 @@ export function ExpenseForm({
             )}
           </div>
 
+          {!embedded && (
           <div>
             <Label htmlFor="fundingSource">Funding source</Label>
             {options.fundingSources.length === 1 ? (
@@ -889,6 +1039,7 @@ export function ExpenseForm({
               </Select>
             )}
           </div>
+          )}
 
           <div>
             <Label id="lineItem-label" htmlFor="lineItem">
@@ -940,6 +1091,7 @@ export function ExpenseForm({
           </div>
 
           <div className="flex flex-wrap gap-[18px]">
+            {!embedded && (
             <div className="flex-1 min-w-[220px]">
               <Label id="month-label" htmlFor="month">
                 Month
@@ -961,6 +1113,7 @@ export function ExpenseForm({
                 ))}
               </Select>
             </div>
+            )}
             <div className="flex-1 min-w-[220px]">
               <Label htmlFor="date">Date</Label>
               <Input
@@ -1123,7 +1276,7 @@ export function ExpenseForm({
 
           {!readAmounts && proofAndReceipt}
 
-          {!draftMode && (
+          {(
             <div className="border-t border-line pt-[22px]">
               <UploadField
                 label="Supporting documents"
@@ -1193,16 +1346,31 @@ export function ExpenseForm({
           <div className="flex flex-wrap items-center gap-5">
             {!ownSavedLocked && (
               <Button type="submit" disabled={!canSave(queued, pending)}>
-                {pending ? "Saving…" : converting ? UI.convertingPhotos : editing ? "Save changes" : "Save expense"}
+                {pending
+                  ? "Saving…"
+                  : converting
+                    ? UI.convertingPhotos
+                    : embedded
+                      ? embedded.save.label
+                      : editing
+                        ? "Save changes"
+                        : "Save expense"}
               </Button>
             )}
-            <Button
-              variant="quiet"
-              onClick={() => router.push("/r/expenses")}
-              disabled={pending}
-            >
-              Cancel
-            </Button>
+            {embedded && (
+              <Button type="button" variant="secondary" disabled={pending} onClick={saveDraft}>
+                {embedded.draft.label}
+              </Button>
+            )}
+            {!embedded && (
+              <Button
+                variant="quiet"
+                onClick={() => router.push("/r/expenses")}
+                disabled={pending}
+              >
+                Cancel
+              </Button>
+            )}
             {/* Hidden in draft mode: `deleteExpenseAction` cannot touch a draft row — Discard on
                 the Expenses list is the equivalent. */}
             {editing && !draftMode && (
@@ -1215,6 +1383,9 @@ export function ExpenseForm({
               </Button>
             )}
           </div>
+          {/* A draft has no `expense_documents` row, so anything queued here would never attach
+              (PHASE-14.md §2.1 C5) — said next to the button that actually discards it. */}
+          {embedded && queued.length > 0 && <Helper>{UI.invoiceDraftKeepsNoFiles}</Helper>}
 
           {/* Both only reachable while editing: a new expense has nothing attached yet. */}
           {editing && (
