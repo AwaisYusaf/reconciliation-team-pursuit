@@ -17,6 +17,10 @@ import { SESSION_EXPIRED } from "@/src/lib/action-result";
 
 export const runtime = "nodejs";
 
+/** What an invoice may arrive as: the bill itself, or a photo or scan of it. HEIC is absent on
+ *  purpose — it is decoded to JPEG before it reaches this list (D-111). */
+const READABLE_INVOICE_TYPES = ["application/pdf", "image/jpeg", "image/png", "image/webp"];
+
 /**
  * Read vendor, date and charge lines from one uploaded invoice PDF (Phase 14 §2).
  *
@@ -90,9 +94,9 @@ export async function POST(request: NextRequest) {
       await logFailure(session.orgId, session.userId);
       return NextResponse.json({ ok: false, error: inspection.error }, { status: 400 });
     }
-    // This route reads invoices only — refuse anything the inspected bytes say isn't a PDF, not
-    // just whatever the browser declared (Phase 14 §2).
-    if (inspection.mimeType !== "application/pdf") {
+    // Judged on the inspected bytes, never on what the browser declared. A HEIC has already
+    // been decoded to JPEG by `inspectUpload` (D-111), so it passes as an image here.
+    if (!READABLE_INVOICE_TYPES.includes(inspection.mimeType)) {
       await logFailure(session.orgId, session.userId);
       return NextResponse.json({ ok: false, error: "Invoices must be uploaded as a PDF." }, { status: 400 });
     }

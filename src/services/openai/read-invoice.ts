@@ -110,8 +110,11 @@ export async function readInvoice(
 ): Promise<ReadInvoiceResult> {
   const { fetch: doFetch, env, timeoutMs } = { ...defaultDeps(), ...deps };
 
-  // PDF only — this route refuses images (Phase 14 §2).
-  if (input.mimeType !== "application/pdf") {
+  // A PDF or a photo of the bill. HEIC never reaches here as HEIC: `inspectUpload` has
+  // already decoded it to JPEG, in the browser when it could and on the server otherwise
+  // (D-111), so this only ever sees the three types OpenAI itself accepts.
+  const filePart = toFilePart(input.body, input.mimeType);
+  if (!filePart) {
     console.error("invoice read failed", { status: "unsupported-mime-type" });
     return { outcome: "failed", inputTokens: null, outputTokens: null };
   }
@@ -122,8 +125,6 @@ export async function readInvoice(
     console.error("invoice read failed", { status: "not-configured" });
     return { outcome: "failed", inputTokens: null, outputTokens: null };
   }
-
-  const base64 = input.body.toString("base64");
 
   let response: Response;
   try {
@@ -142,11 +143,7 @@ export async function readInvoice(
             role: "user",
             content: [
               { type: "input_text", text: INSTRUCTION },
-              {
-                type: "input_file",
-                filename: GENERIC_PDF_FILENAME,
-                file_data: `data:application/pdf;base64,${base64}`,
-              },
+              filePart,
             ],
           },
         ],
@@ -281,6 +278,27 @@ function isRealDate(year: string, month: string, day: string): boolean {
   const d = Number(day);
   if (m < 1 || m > 12 || d < 1) return false;
   return d <= new Date(Date.UTC(y, m, 0)).getUTCDate();
+}
+
+/**
+ * The document as the Responses API takes it: a PDF as a file, a photo as an image.
+ *
+ * Same two shapes `read-amounts.ts` builds, and the same generic filename rather than the
+ * user's own (Phase 10 §3.3). A type that is neither is refused here rather than sent and
+ * rejected by OpenAI, so the caller gets an outcome instead of an error.
+ */
+function toFilePart(
+  body: Buffer,
+  mimeType: string,
+): { type: "input_file"; filename: string; file_data: string } | { type: "input_image"; image_url: string } | null {
+  const base64 = body.toString("base64");
+  if (mimeType === "application/pdf") {
+    return { type: "input_file", filename: GENERIC_PDF_FILENAME, file_data: `data:application/pdf;base64,${base64}` };
+  }
+  if (mimeType === "image/jpeg" || mimeType === "image/png" || mimeType === "image/webp") {
+    return { type: "input_image", image_url: `data:${mimeType};base64,${base64}` };
+  }
+  return null;
 }
 
 function toInvoiceLine(raw: unknown): InvoiceLine | null {

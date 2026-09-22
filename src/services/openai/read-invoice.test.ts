@@ -327,14 +327,36 @@ function baseEnv(): NodeJS.ProcessEnv {
 }
 
 describe("readInvoice", () => {
-  it("a non-PDF mime type → failed without calling fetch", async () => {
-    const fetchMock = vi.fn();
-    const result = await readInvoice(
-      { body: Buffer.from("img-bytes"), mimeType: "image/jpeg" },
-      { fetch: fetchMock, env: baseEnv() },
-    );
-    expect(result.outcome).toBe("failed");
-    expect(fetchMock).not.toHaveBeenCalled();
+  it("reads a photo of the invoice as an image, not a file", async () => {
+    // An invoice is often a phone photo rather than the PDF. A HEIC never reaches here as
+    // HEIC: inspectUpload decodes it to JPEG first (D-111), which is why only these three
+    // types need handling.
+    for (const mimeType of ["image/jpeg", "image/png", "image/webp"]) {
+      const fetchMock = vi.fn().mockResolvedValue(jsonResponse(responsesBody({ found: false })));
+      const result = await readInvoice(
+        { body: Buffer.from("img-bytes"), mimeType },
+        { fetch: fetchMock, env: baseEnv() },
+      );
+      expect(result.outcome).not.toBe("failed");
+      const body = JSON.parse(fetchMock.mock.calls[0][1].body as string);
+      const part = body.input[0].content[1];
+      expect(part.type).toBe("input_image");
+      expect(part.image_url).toBe(`data:${mimeType};base64,${Buffer.from("img-bytes").toString("base64")}`);
+      // A photo carries no filename at all, so the user's own can never be sent.
+      expect(part.filename).toBeUndefined();
+    }
+  });
+
+  it("a type that is neither a PDF nor a photo → failed without calling fetch", async () => {
+    for (const mimeType of ["text/plain", "application/zip", "image/heic"]) {
+      const fetchMock = vi.fn();
+      const result = await readInvoice(
+        { body: Buffer.from("bytes"), mimeType },
+        { fetch: fetchMock, env: baseEnv() },
+      );
+      expect(result.outcome).toBe("failed");
+      expect(fetchMock).not.toHaveBeenCalled();
+    }
   });
 
   it("sends store:false, the generic 'document.pdf' filename, and a 4000-token cap", async () => {
