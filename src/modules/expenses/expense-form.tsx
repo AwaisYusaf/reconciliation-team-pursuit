@@ -30,7 +30,7 @@ import {
 } from "@/src/domain/money";
 import { aggregateAmountSuggestion, panelVisible, type ReadableFile } from "@/src/domain/amount-suggestion";
 import { exclusionNote, UI } from "@/src/domain/strings";
-import { SESSION_EXPIRED } from "@/src/lib/action-result";
+import { SESSION_EXPIRED, type ActionResult } from "@/src/lib/action-result";
 import { cn } from "@/src/lib/cn";
 
 import { AmountSuggestionPanel } from "./amount-suggestion-panel";
@@ -107,6 +107,9 @@ export type ExpenseFormProps = {
     /** The date the month was submitted, already formatted — null when it was not. */
     monthSubmittedOn: string | null;
   };
+  /** Present only for a draft edit: saves through `updateDraftAction` instead of
+   *  `updateExpenseAction`, and switches the form into draft mode (no uploads, no delete). */
+  saveAction?: (input: ExpenseInput) => Promise<ActionResult>;
 };
 
 /** Long enough for a one-minute rate-limit window to have rolled over. */
@@ -143,10 +146,12 @@ export function ExpenseForm({
   headerSelectedSourceId,
   readAmounts,
   existing,
+  saveAction,
 }: ExpenseFormProps) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const editing = Boolean(existing);
+  const draftMode = saveAction !== undefined;
 
   const initialSource = options.fundingSources.find((source) => source.id === initialFundingSourceId);
 
@@ -583,6 +588,23 @@ export function ExpenseForm({
       return;
     }
     startTransition(async () => {
+      if (saveAction) {
+        const result = await saveAction({ ...values, id: existing!.id });
+        if (!result.ok) {
+          setError(result.error);
+          return;
+        }
+        // Not `savedMessage()`: that one nags about a missing proof of payment, which a draft
+        // cannot have yet — proof is added after approving (PHASE-14.md §2.1 C5), and the
+        // ticket is explicit that a missing proof is not a blocker on a draft (§5). No
+        // `UI.draft*` string covers this line, so it reads plainly here.
+        toast.success("Draft saved.");
+        await switchHeaderSourceIfNeeded();
+        router.push(`/r/expenses?month=${values.month}`);
+        router.refresh();
+        return;
+      }
+
       if (editing) {
         const result = await updateExpenseAction({
           ...values,
@@ -636,7 +658,11 @@ export function ExpenseForm({
 
   // Proof of payment + Receipt, defined once: Plus renders them above the amounts, everyone
   // else below (Phase 10) — one definition so the two orders can never drift apart.
-  const proofAndReceipt = (
+  //
+  // Null in draft mode (which also hides the "No receipt available" block below with it):
+  // proof of payment is added after approving, and a draft has no `expense_documents` row to
+  // attach anything to (PHASE-14.md §2.1 C5).
+  const proofAndReceipt = draftMode ? null : (
     <>
       <div data-tour="add-expense-proof">
         <UploadField
@@ -1097,33 +1123,35 @@ export function ExpenseForm({
 
           {!readAmounts && proofAndReceipt}
 
-          <div className="border-t border-line pt-[22px]">
-            <UploadField
-              label="Supporting documents"
-              scope="supporting"
-              queued={queued}
-              setQueued={setQueued}
-              attached={
-                existing?.documents.filter(
-                  (doc) => doc.kind === "supporting",
-                ) ?? []
-              }
-              disabled={pending || ownSavedLocked}
-              supportingTypes={options.supportingDocTypes}
-              onRemoveAttached={(id) =>
-                startTransition(async () => {
-                  if (
-                    reportResult(
-                      await removeExpenseDocumentAction(id),
-                      "File removed.",
-                    )
-                  ) {
-                    router.refresh();
-                  }
-                })
-              }
-            />
-          </div>
+          {!draftMode && (
+            <div className="border-t border-line pt-[22px]">
+              <UploadField
+                label="Supporting documents"
+                scope="supporting"
+                queued={queued}
+                setQueued={setQueued}
+                attached={
+                  existing?.documents.filter(
+                    (doc) => doc.kind === "supporting",
+                  ) ?? []
+                }
+                disabled={pending || ownSavedLocked}
+                supportingTypes={options.supportingDocTypes}
+                onRemoveAttached={(id) =>
+                  startTransition(async () => {
+                    if (
+                      reportResult(
+                        await removeExpenseDocumentAction(id),
+                        "File removed.",
+                      )
+                    ) {
+                      router.refresh();
+                    }
+                  })
+                }
+              />
+            </div>
+          )}
 
           <fieldset disabled={ownSavedLocked} className="contents">
           <div className="border-t border-line pt-[22px]">
@@ -1175,7 +1203,9 @@ export function ExpenseForm({
             >
               Cancel
             </Button>
-            {editing && (
+            {/* Hidden in draft mode: `deleteExpenseAction` cannot touch a draft row — Discard on
+                the Expenses list is the equivalent. */}
+            {editing && !draftMode && (
               <Button
                 variant="quiet"
                 onClick={() => setConfirmingDelete(true)}

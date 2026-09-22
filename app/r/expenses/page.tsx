@@ -1,4 +1,4 @@
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, inArray } from "drizzle-orm";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
@@ -6,11 +6,12 @@ import { buttonClassName } from "@/src/components/ui/button";
 import { DangerPanel, PageTitle, Subtext } from "@/src/components/ui/surfaces";
 import { TourGuide } from "@/src/components/ui/tour";
 import { db } from "@/src/db";
-import { paymentSources } from "@/src/db/schema";
+import { lineItems, paymentSources } from "@/src/db/schema";
 import { isValidMonthKey, monthLabel } from "@/src/domain/dates";
 import { expenseReference, pageTitle } from "@/src/domain/strings";
 import { documentationStatus, type GateExpense } from "@/src/domain/gate";
 import { reimbursableCents } from "@/src/domain/money";
+import { loadMonthDrafts } from "@/src/modules/expense-imports/queries";
 import { loadMonthExpenses } from "@/src/modules/expenses/queries";
 import { findFundingSource, loadSourceContext } from "@/src/modules/funding-sources/queries";
 import { loadLockedMonths } from "@/src/modules/packet/queries";
@@ -18,6 +19,7 @@ import { EXPENSES_TOUR_STEPS } from "@/src/modules/tours/expenses-tour";
 import { hasSeenTour } from "@/src/modules/tours/queries";
 import { getSession } from "@/src/services/auth/session";
 
+import { DraftsSection, type DraftSectionRow } from "./drafts-section";
 import { ExpensesTable, type ExpenseRow, type RowDocument } from "./expenses-table";
 
 /** The attached documents of one kind, in the shape the row's viewer needs. */
@@ -67,8 +69,9 @@ export default async function ExpensesPage({
         ? (await findFundingSource(session.orgId, requestedSource))?.id ?? null
         : null;
 
-  const [expenses, paySources, seenExpensesTour, lockedMonthKeys] = await Promise.all([
+  const [expenses, drafts, paySources, seenExpensesTour, lockedMonthKeys] = await Promise.all([
     loadMonthExpenses(session.orgId, scope, month),
+    loadMonthDrafts(session.orgId, scope, month),
     db
       .select({ label: paymentSources.label })
       .from(paymentSources)
@@ -79,6 +82,22 @@ export default async function ExpensesPage({
   ]);
 
   const sourceNameById = new Map(sources.map((source) => [source.id, source.name]));
+
+  const draftLineItemIds = [...new Set(drafts.flatMap((draft) => (draft.lineItemId ? [draft.lineItemId] : [])))];
+  const draftLineItemNames =
+    draftLineItemIds.length === 0
+      ? []
+      : await db
+          .select({ id: lineItems.id, name: lineItems.name })
+          .from(lineItems)
+          .where(and(eq(lineItems.orgId, session.orgId), inArray(lineItems.id, draftLineItemIds)));
+  const draftLineItemNameById = new Map(draftLineItemNames.map((item) => [item.id, item.name]));
+
+  const draftRows: DraftSectionRow[] = drafts.map((draft) => ({
+    ...draft,
+    lineItemName: draft.lineItemId ? draftLineItemNameById.get(draft.lineItemId) ?? null : null,
+    fundingSourceName: sourceNameById.get(draft.fundingSourceId) ?? "",
+  }));
 
   const rows: ExpenseRow[] = expenses.map((expense) => {
     const gate: GateExpense = {
@@ -175,6 +194,13 @@ export default async function ExpensesPage({
           Trash
         </Link>
       </div>
+
+      <DraftsSection
+        rows={draftRows}
+        month={month}
+        fundingSourceId={scope}
+        multiSource={multiSource}
+      />
 
       <ExpensesTable
         rows={rows}

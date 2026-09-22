@@ -9,6 +9,7 @@ import { and, asc, eq } from "drizzle-orm";
 import { db } from "@/src/db";
 import { expenseDrafts, fundingSources, lineItems } from "@/src/db/schema";
 import { reimbursableCents } from "@/src/domain/money";
+import { isUuid } from "@/src/lib/ids";
 
 export type DraftRow = {
   id: string;
@@ -105,4 +106,20 @@ export async function loadMonthDrafts(
       feesReimbursable: row.feesReimbursable,
     }),
   }));
+}
+
+/** One draft's own columns, org-scoped, for the edit page. `undefined` when it's gone. */
+export async function loadDraftById(orgId: string, id: string) {
+  // Same guard, for the same reason, as `loadExpense`: the id comes off a route parameter,
+  // and comparing a non-UUID against a uuid column raises a Postgres 22P02 that reaches the
+  // page as a 500 rather than the "not found" that is both the truth and all a probe should
+  // learn.
+  if (!isUuid(id)) return undefined;
+
+  const [row] = await db
+    .select()
+    .from(expenseDrafts)
+    .where(and(eq(expenseDrafts.id, id), eq(expenseDrafts.orgId, orgId)))
+    .limit(1);
+  return row;
 }
