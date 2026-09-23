@@ -1,0 +1,4 @@
+ALTER TABLE "expense_drafts" ADD COLUMN "created_by_user_id" uuid;--> statement-breakpoint
+ALTER TABLE "expense_drafts" ADD COLUMN "updated_by_user_id" uuid;--> statement-breakpoint
+ALTER TABLE "expense_drafts" ADD CONSTRAINT "expense_drafts_created_by_user_id_users_id_fk" FOREIGN KEY ("created_by_user_id") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "expense_drafts" ADD CONSTRAINT "expense_drafts_updated_by_user_id_users_id_fk" FOREIGN KEY ("updated_by_user_id") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;

@@ -193,6 +193,16 @@ export const users = pgTable(
      * render (`userDisplay`) rather than a guessed value.
      */
     name: text(),
+    /**
+     * Object key of the profile photo, null when none is set.
+     *
+     * The key, not the image: photos go to the same storage every other upload uses, so one
+     * driver, one retention story and one place where org-scoped keys are enforced. The key
+     * carries a uuid rather than being derived from the user id alone, so replacing a photo
+     * writes a new object and changes the URL — a stable key would keep serving the old
+     * picture out of the browser cache after a change.
+     */
+    avatarKey: text("avatar_key"),
     /** argon2id; password minimum 12 chars (D-06/D-24). */
     passwordHash: text("password_hash").notNull(),
     /** admin = the org-creating account and anyone it promotes; manager = expenses/grants only.
@@ -1151,6 +1161,24 @@ export const expenseDrafts = pgTable(
     narrative: text(),
     /** The order the lines appeared on the invoice, so the review list reads like the bill. */
     sortOrder: integer("sort_order").notNull().default(0),
+    /**
+     * Who read the invoice in, and who last saved this draft.
+     *
+     * Drafts are reviewed by whoever is free, so "who touched this last" is the question a
+     * second reviewer asks before picking one up. An approved draft becomes an expense and
+     * gains the full `expense_audit` trail from that moment; until then it has no history of
+     * its own, and these two columns are the smallest thing that answers the question.
+     *
+     * Nullable because a draft that predates this column has no actor on file — the same
+     * reason `users.name` is nullable — and `set null` rather than cascade because removing a
+     * person must not remove the work they left behind for someone else to review.
+     */
+    createdByUserId: uuid("created_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    updatedByUserId: uuid("updated_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
