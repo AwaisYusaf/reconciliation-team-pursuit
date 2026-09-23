@@ -72,6 +72,54 @@ describe("parseReadInvoiceResponse", () => {
     }
   });
 
+  describe("charges that could not be read are counted, not just dropped", () => {
+    // A twelve-line bill coming back as ten used to say nothing at all: the two missing
+    // charges were found by someone adding the invoice up by hand. The count is what the
+    // check screen turns into "2 charges on this invoice could not be read".
+    it("counts each dropped line", () => {
+      const result = parseReadInvoiceResponse(
+        responsesBody(
+          invoiceBody([
+            line({ name: "Kept" }),
+            line({ amount: null }),
+            line({ amount: "12,50" }),
+            line({ name: "Also kept" }),
+          ]),
+        ),
+      );
+      expect(result.outcome).toBe("found");
+      if (result.outcome === "found") {
+        expect(result.invoice.lines).toHaveLength(2);
+        expect(result.unreadableLines).toBe(2);
+      }
+    });
+
+    it("is zero when every charge read cleanly", () => {
+      const result = parseReadInvoiceResponse(
+        responsesBody(invoiceBody([line(), line({ name: "Second" })])),
+      );
+      expect(result.outcome).toBe("found");
+      if (result.outcome === "found") expect(result.unreadableLines).toBe(0);
+    });
+
+    it("counts only within the 50-line cap, not the lines never looked at", () => {
+      // The cap is applied first, so a 60-line bill reports "truncated" for the ten it never
+      // read and `unreadableLines` only for the ones it tried and could not.
+      const lines = [
+        ...Array.from({ length: 49 }, (_, i) => line({ name: `Line ${i}` })),
+        line({ amount: null }),
+        ...Array.from({ length: 10 }, (_, i) => line({ name: `Over ${i}` })),
+      ];
+      const result = parseReadInvoiceResponse(responsesBody(invoiceBody(lines)));
+      expect(result.outcome).toBe("found");
+      if (result.outcome === "found") {
+        expect(result.truncated).toBe(true);
+        expect(result.invoice.lines).toHaveLength(49);
+        expect(result.unreadableLines).toBe(1);
+      }
+    });
+  });
+
   it("a $0.00 line is kept", () => {
     const result = parseReadInvoiceResponse(responsesBody(invoiceBody([line({ amount: "0.00" })])));
     expect(result.outcome).toBe("found");

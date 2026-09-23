@@ -615,6 +615,13 @@ export async function deleteStoredObjects(key: string): Promise<void> {
  *
  * Deliberately not org-scoped: a key is unique across the bucket, and the question being asked
  * is "would deleting this file break something", which does not depend on whose file it is.
+ *
+ * **This list and `orgStorageBytes`'s must name the same tables.** They answer two halves of
+ * one question — what is stored, and what would still be pointed at — so a table counted here
+ * but not there is billed for after it is deleted, and one counted there but not here can have
+ * its file deleted while a row still names it. `month_lock_events` was in that second state:
+ * counted, unchecked. Nothing shares a signed-packet key today, which is exactly why it would
+ * have gone unnoticed until something did.
  */
 async function objectStillReferenced(key: string): Promise<boolean> {
   const [row] = await db
@@ -624,6 +631,7 @@ async function objectStillReferenced(key: string): Promise<boolean> {
         or exists (select 1 from expense_draft_documents where s3_key = ${key})
         or exists (select 1 from expense_imports where s3_key = ${key})
         or exists (select 1 from month_documents where s3_key = ${key})
+        or exists (select 1 from month_lock_events where s3_key = ${key})
       `,
     })
     .from(organizations)
