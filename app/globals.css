@@ -6,7 +6,10 @@
  * (bg-paper, text-ink, border-line, font-serif …), so no component hardcodes a hex.
  */
 @theme {
-  --color-paper: #fbf9f5;
+  /* The page behind the cards. Was #FBF9F5, a warm paper stock; now a near-neutral light
+     grey so white cards read as raised off it rather than as the same colour with a border.
+     One token, so the warm original is one line away if the cooler page loses the feel. */
+  --color-paper: #f4f4f3;
   --color-surface: #ffffff;
   --color-ink: #211b16;
   --color-sub: #5b5147;
@@ -40,8 +43,44 @@
      on a 20 px pill, dark enough that white bold text clears 4.5:1 (#94603F on white ≈ 5.2:1). */
   --color-plus-light: #94603f;
 
-  --font-serif: Georgia, "Times New Roman", serif;
-  --font-sans: Arial, Helvetica, sans-serif;
+  /* The filled accent `StatTile`'s gradient (`src/components/ui/stat-tile.tsx`). The second
+     deliberate gradient in the app, after the Plus badge, and the reason it is a token rather
+     than a literal is so the pair stays reviewable in one place.
+
+     The ramp stays inside the brown family and lightens along it — it does not turn orange at
+     the far end. Both stops are colours the palette already holds rather than two new
+     literals, so the tile reads as the same material as the accent surfaces beside it.
+
+     `hero-to` is the light end and therefore the one that has to carry white text: #94603F
+     against white computes to about 5.3:1, so body copy on the gradient clears AA at any size
+     rather than only at the 24px+ a big money figure uses. `hero-from` is far darker and never
+     the constraint. Picking the light end for contrast first is what keeps this from becoming
+     a tile whose text is legible on the left and not on the right. */
+  --color-hero-from: var(--color-accent-dark);
+  --color-hero-to: var(--color-plus-light);
+
+  /* The foot of the dashboard hero card, which fades from white at the top down into this
+     (`app/r/dashboard-hero.tsx`). It is `accent` washed to roughly 30% over white, so it is
+     the same brown as everything else here and not a second hue — light enough that the
+     card's own ink, sub and accent text all keep their contrast over it, which is what lets
+     the card stay a normal light card with a gradient rather than a dark one. */
+  --color-hero-wash: #d6c9bf;
+
+  /**
+   * Plus Jakarta Sans throughout, loaded in `app/layout.tsx`.
+   *
+   * `--font-serif` keeps its name but no longer names a serif: it is the *heading* role, and
+   * every heading primitive already reads it through the `font-serif` utility. Repointing the
+   * token changes all of them at once, where renaming it would mean editing every heading in
+   * the app to gain nothing. Georgia stays on as the fallback so a failed font load degrades
+   * to the previous design rather than to a system default.
+   *
+   * `--font-document` is deliberately untouched. It matches the theme font of the generated
+   * Word cover sheet, so the on-screen preview and the file the City receives stay the same
+   * document; restyling it here would make the preview a lie.
+   */
+  --font-serif: var(--font-jakarta), Georgia, "Times New Roman", serif;
+  --font-sans: var(--font-jakarta), Arial, Helvetica, sans-serif;
   /* Cover sheet previews match the generated Word document's theme font. */
   --font-document: Aptos, Calibri, "Segoe UI", Arial, sans-serif;
 
@@ -135,6 +174,89 @@ body {
 @media print {
   .no-print {
     display: none !important;
+  }
+}
+
+/**
+ * Motion.
+ *
+ * Three small animations, deliberately quiet. Every one moves only `opacity` and `transform`,
+ * which the compositor handles without laying the page out again — the app renders long
+ * financial tables, and anything that animates a width or a colour on those repaints hundreds
+ * of cells per frame.
+ *
+ * Distances are single-digit pixels and durations are under a quarter second. The test is
+ * whether someone notices the movement: they should notice that a panel arrived, not watch it
+ * travel. Anything larger on a screen people use forty times a month becomes a tax.
+ *
+ * `both` fill mode on all three, so an element starts at the animation's first frame rather
+ * than painting once at full opacity and then jumping back to begin.
+ */
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes grow-up {
+  from {
+    transform: scaleY(0);
+  }
+  to {
+    transform: scaleY(1);
+  }
+}
+
+/** Page content arriving. 4px, so it reads as settling rather than sliding. */
+.rise-in {
+  animation: rise-in 0.24s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/**
+ * Overlays: modals, dialogs, dropdown panels.
+ *
+ * Faster than the page, and scaling from 0.985 rather than something more obvious. A menu is
+ * a response to a click that just happened, so it has to feel immediate; the scale is there to
+ * stop it appearing fully formed out of nothing, not to be seen as a zoom.
+ */
+.pop-in {
+  animation: pop-in 0.14s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/** The dashboard's spend bars, growing from the axis they are measured from. */
+.grow-up {
+  transform-origin: bottom;
+  animation: grow-up 0.45s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/**
+ * Someone who asked their operating system for less motion gets the end state immediately.
+ *
+ * Not `animation: none`: these all use `both`, so removing the animation outright would leave
+ * an element at whatever the unanimated styles say, which for a bar scaled from its keyframes
+ * is the wrong height. Collapsing the duration runs the animation to its final frame instead.
+ */
+@media (prefers-reduced-motion: reduce) {
+  .rise-in,
+  .pop-in,
+  .grow-up {
+    animation-duration: 0.001ms !important;
   }
 }
 
