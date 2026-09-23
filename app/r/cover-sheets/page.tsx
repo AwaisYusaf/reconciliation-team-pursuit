@@ -1,11 +1,11 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
+import { BlockingPanel } from "@/src/components/ui/blocking-panel";
 import { PickFundingSource } from "@/src/components/app-shell/pick-funding-source";
 import { TourSequenceSkip } from "@/src/components/app-shell/tour-sequence-skip";
 import { DownloadButton } from "@/src/components/ui/download-button";
 import {
-  DangerPanel,
   EmptyState,
   PageHeader,
   SectionTitle,
@@ -196,28 +196,14 @@ function CoverSheetSection({
     <section>
       <SectionHeading title={lineItem.name} />
 
-      {/* Wrapper matches the panel's own width — see the same note on the packet page. */}
       {blocking.length > 0 && (
-        <div data-tour="cover-sheet-blocked" className="max-w-[820px]">
-          <DangerPanel title={UI.blockedTitleLineItem} className="mb-5 max-w-[820px]">
-            <p className="mt-1.5">{UI.blockedIntro}</p>
-            <ul className="mt-2 flex flex-col gap-1">
-              {blocking.map((record) => (
-                <li key={record.expenseId} className="flex flex-wrap items-baseline gap-2">
-                  <span>{record.label}</span>
-                  {/* R4.4: each record links straight to the expense that needs fixing. This
-                      screen is where the gap is most often discovered. */}
-                  <Link
-                    href={`/r/expenses/${record.expenseId}/edit`}
-                    className="underline text-danger font-medium"
-                  >
-                    Open expense
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </DangerPanel>
-        </div>
+        <BlockingPanel
+          data-tour="cover-sheet-blocked"
+          title={UI.blockedTitleLineItem}
+          intro={UI.blockedIntro}
+          records={blocking}
+          className="mb-5"
+        />
       )}
 
       {/* Buttons live on each sheet, so they are still reachable in All Line Items mode. */}

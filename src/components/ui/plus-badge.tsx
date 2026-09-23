@@ -39,6 +39,39 @@ export const PLUS_GRADIENT_TEXT: React.CSSProperties = {
 };
 
 /**
+ * The badge's own fill — dark, where `PLUS_GRADIENT` is light. The badge is the one place the
+ * mark is a solid object rather than a tint, and the glow below only reads as a glow if the
+ * thing casting it is darker than what it sits on.
+ *
+ * Staying in the brown family: `accent` at the lit corner falling to `accent-dark` and one
+ * step past it. White bold 14px on this is roughly 14:1, where the old light caramel fill was
+ * 5.2:1 — the dark pill is the more legible of the two, not a contrast trade.
+ */
+const PLUS_BADGE_FILL =
+  "linear-gradient(145deg, var(--color-accent) 0%, var(--color-accent-dark) 55%, #2b1a10 100%)";
+
+/**
+ * The glow, painted inside the pill rather than cast around it.
+ *
+ * The reference for this effect sits on a dark page, where a caramel halo bleeding past the
+ * edge reads as light. On this app's white cards the same halo has nothing to glow against and
+ * comes out as a brown smudge with no edge — the badge stops looking like an object. Clipping
+ * the glow to the pill keeps the lit-from-within look and gives the mark a hard edge again.
+ */
+const PLUS_BADGE_GLOW_LAYER =
+  "radial-gradient(125% 150% at 50% 125%, rgba(148,96,63,0.65) 0%, rgba(148,96,63,0.18) 45%, rgba(148,96,63,0) 70%)";
+
+/**
+ * The pill's edges: a lit top line, a dark hairline ring to seat it against a white card, and a
+ * 1px lift. Deliberately tight — this is the part that was overflowing before.
+ */
+const PLUS_BADGE_EDGE = [
+  "inset 0 1px 0 rgba(255,255,255,0.20)",
+  "inset 0 0 0 1px rgba(43,26,16,0.55)",
+  "0 1px 2px rgba(43,26,16,0.30)",
+].join(", ");
+
+/**
  * The Reconciliation + AI plan mark. The one gradient in the app: design-language.md says no
  * gradients, and this is the deliberate exception, so the AI plan reads as a product tier
  * rather than another brown control. Shared by the header and every Plus-only surface (Phase 10)
@@ -48,7 +81,10 @@ export function PlusBadge({ size = "md", className }: { size?: "sm" | "md"; clas
   return (
     <span
       title={PLAN_LABELS.reconciliation_ai}
-      style={{ backgroundImage: PLUS_GRADIENT }}
+      style={{
+        backgroundImage: `${PLUS_BADGE_GLOW_LAYER}, ${PLUS_BADGE_FILL}`,
+        boxShadow: PLUS_BADGE_EDGE,
+      }}
       className={cn(
         // `font-sans` is explicit: without it the badge inherits whatever sits around it, so the one
         // beside a serif page title came out in Georgia while the header's stayed Arial.

@@ -41,8 +41,13 @@ export function CoverSheetPreview({
    */
   showMissingProofPlaceholders: boolean;
 }) {
+  // Full width of the content column, not capped at 820px. Widening stays faithful to the
+  // document rather than departing from it: the table's columns are percentages (24/61/15),
+  // exactly as the Word file sets them, so a wider card renders the same proportions at a
+  // larger size. The cap left a third of the screen empty beside the one thing this screen
+  // exists to show.
   return (
-    <div className="bg-white border border-line rounded-lg max-w-[820px] overflow-x-auto">
+    <div className="bg-white border border-line rounded-lg overflow-x-auto">
       {/*
         The document scrolls at a readable minimum rather than compressing to fit. Squeezing
         it into a phone's width put about eleven characters on a line of the Role column,

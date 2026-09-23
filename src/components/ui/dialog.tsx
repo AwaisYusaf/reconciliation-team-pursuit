@@ -68,7 +68,7 @@ export function DialogPanel({
       aria-modal="true"
       aria-labelledby={titleId}
       aria-describedby={bodyId}
-      className={`${TONE[tone].panel} rounded-[3px] p-4 sm:p-5 shadow-xl`}
+      className={`${TONE[tone].panel} rounded-[3px] p-4 sm:p-5 shadow-xl pop-in`}
     >
       <div id={titleId} className={`font-serif text-lg sm:text-xl font-bold ${TONE[tone].title}`}>
         {title}

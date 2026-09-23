@@ -25,11 +25,56 @@ import { cn } from "@/src/lib/cn";
  */
 export const CARD_PADDING = "p-4 sm:p-5 lg:p-6";
 
-/** White panel with the paper-stock border. The app's default container. */
+/**
+ * Top clearance for a screen's own top-right controls.
+ *
+ * The app layout parks the month and funding-source selectors in the content column's
+ * top-right corner from `lg`, out of the flow so they sit level with the page title. Anything
+ * else a screen puts in that corner has to start below them or it renders underneath and
+ * cannot be clicked — which is exactly what happened to the Expenses screen's Trash button.
+ *
+ * 44px: the selector pill is 36px tall and the layout offsets it 16px from the top of the
+ * content column, so this clears it with a little air. Exported rather than repeated, because
+ * every screen with corner controls needs the same number and they must move together if the
+ * selectors ever change height.
+ */
+export const ACTION_CLEARANCE = "lg:pt-11";
+
+/**
+ * One grey block standing in for content that has not arrived yet.
+ *
+ * Size it with `className` — `h-4 w-40` for a line of text, `h-24` for a card's body. It never
+ * sets its own size, because a skeleton is only useful when it is the shape of the thing it is
+ * standing in for.
+ *
+ * `motion-safe:` on the pulse, not a bare `animate-pulse`: a screenful of blocks breathing in
+ * unison is exactly the kind of motion `prefers-reduced-motion` exists to turn off, and the
+ * grey blocks still read as "not loaded yet" when they hold still.
+ *
+ * Marked `aria-hidden`, so announce the wait once on the container instead — see the page
+ * skeletons in `loading.tsx`. Twelve blocks each announcing themselves is noise, not help.
+ */
+export function Skeleton({ className, ...props }: ComponentProps<"div">) {
+  return (
+    <div
+      aria-hidden="true"
+      className={cn("bg-line/50 rounded-[6px] motion-safe:animate-pulse", className)}
+      {...props}
+    />
+  );
+}
+
+/**
+ * White panel with the paper-stock border. The app's default container.
+ *
+ * 10px, matching `StatTile` and `TableCard`. Was 4px, and the radius is set here rather than
+ * per screen so the three never drift apart again: a 3px tile beside a 4px card was one of
+ * the inconsistencies the redesign started from.
+ */
 export function Card({ className, ...props }: ComponentProps<"div">) {
   return (
     <div
-      className={cn("bg-surface border border-line rounded-[4px]", className)}
+      className={cn("bg-surface border border-line rounded-[10px]", className)}
       {...props}
     />
   );
@@ -49,12 +94,50 @@ export function PageTitle({ className, ...props }: ComponentProps<"h1">) {
 }
 
 /** Section title (h2) — 18 / 20 / 20. Cards and page sections. */
-export function SectionTitle({ className, ...props }: ComponentProps<"h2">) {
+/**
+ * Text painted `ink → accent → plus-light` across its own width, rather than set in one colour.
+ *
+ * **Put it on a span wrapping the words, not on the heading or button itself.** Two reasons,
+ * both of which show up as "the gradient did nothing". It clips every background the element
+ * has, so on a filled button or card it would clip the fill away too. And `cn` here is a plain
+ * join, not `tailwind-merge`, so a `text-ink` already on the element is not removed — which of
+ * it and `text-transparent` wins is down to stylesheet order, not the order they are passed. A
+ * bare span carries neither problem.
+ *
+ * It also needs a box that fits its text: a gradient fills the element's box, not its glyphs,
+ * so on a full-width block the light end lands in the empty space beside the words and every
+ * letter stays flat ink. `w-fit` below is what prevents that.
+ *
+ * The light end is `plus-light`, about 5.3:1 on white, so text set in this clears AA at body
+ * size and not only at display size.
+ */
+export const GRADIENT_TEXT =
+  "w-fit bg-clip-text text-transparent " +
+  "bg-[linear-gradient(105deg,var(--color-ink)_0%,var(--color-accent)_55%,var(--color-plus-light)_100%)]";
+
+export function SectionTitle({
+  className,
+  gradient = false,
+  children,
+  ...props
+}: ComponentProps<"h2"> & {
+  /** Paint the heading in `GRADIENT_TEXT` instead of flat ink. */
+  gradient?: boolean;
+}) {
   return (
     <h2
-      className={cn("font-serif text-lg sm:text-xl font-bold text-ink m-0", className)}
+      className={cn(
+        "font-serif text-lg sm:text-xl font-bold m-0",
+        // Dropped entirely when the gradient is on rather than layered under it: `cn` does not
+        // de-duplicate, so leaving `text-ink` in place would leave the winner to stylesheet
+        // order. See `GRADIENT_TEXT`.
+        gradient ? "" : "text-ink",
+        className,
+      )}
       {...props}
-    />
+    >
+      {gradient ? <span className={GRADIENT_TEXT}>{children}</span> : children}
+    </h2>
   );
 }
 
@@ -100,7 +183,11 @@ export function PageHeader({
   return (
     <div
       className={cn(
-        "flex flex-col gap-3 mb-6 sm:mb-[26px] lg:flex-row lg:items-end lg:justify-between lg:gap-6",
+        // `lg:items-start`, not `items-end`. The actions carry `ACTION_CLEARANCE` to clear the
+        // layout's floating selectors, and with a bottom-aligned row that extra height pushed
+        // the title down with them — 48px of empty space above every heading on the five
+        // screens that use this. Top-aligned, the clearance moves only the thing it is for.
+        "flex flex-col gap-3 mb-6 sm:mb-[26px] lg:flex-row lg:items-start lg:justify-between lg:gap-6",
         className,
       )}
     >
@@ -108,7 +195,12 @@ export function PageHeader({
         <PageTitle className="mb-1.5">{title}</PageTitle>
         {subtext && <Subtext>{subtext}</Subtext>}
       </div>
-      {actions && <div className="flex flex-wrap items-end gap-3 shrink-0">{actions}</div>}
+      {/* Cleared past the layout's selectors — see `ACTION_CLEARANCE`. */}
+      {actions && (
+        <div className={cn("flex flex-wrap items-end gap-3 shrink-0", ACTION_CLEARANCE)}>
+          {actions}
+        </div>
+      )}
     </div>
   );
 }

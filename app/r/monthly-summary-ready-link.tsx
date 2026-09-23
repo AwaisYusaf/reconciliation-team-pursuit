@@ -14,6 +14,7 @@ import { summaryLinkNeedsSourceSwitch } from "@/src/modules/monthly-summary/dash
  * The Dashboard's "Monthly summary ready" link (Phase 11 §7.5). Same pattern as
  * `PickFundingSource`: on "All" or another source, the header must switch to this source before
  * /r/monthly-summary is opened, since that screen follows the header, not this link.
+ *
  */
 export function MonthlySummaryReadyLink({
   sourceId,

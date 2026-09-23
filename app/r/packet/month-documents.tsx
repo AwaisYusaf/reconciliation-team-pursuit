@@ -104,7 +104,9 @@ export function MonthDocuments({
   })).filter((group) => group.rows.length > 0);
 
   return (
-    <Card className={`${CARD_PADDING} max-w-[720px]`}>
+    // No width cap: the packet screen now gives this a column, and a cap inside it left
+    // the card short of its own column's edge.
+    <Card className={CARD_PADDING}>
       <SectionTitle className="mb-1">Month documents</SectionTitle>
       <p className="text-sm text-muted mb-4">
         Bank statements, timesheets and the fiduciary invoice for {monthLabel}. These are

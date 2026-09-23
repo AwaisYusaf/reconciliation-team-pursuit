@@ -2,8 +2,9 @@ import { and, asc, eq, inArray } from "drizzle-orm";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
-import { buttonClassName } from "@/src/components/ui/button";
-import { DangerPanel, PageTitle, Subtext } from "@/src/components/ui/surfaces";
+import { ButtonLabel, buttonClassName } from "@/src/components/ui/button";
+import { ACTION_CLEARANCE, DangerPanel, PageTitle, Subtext } from "@/src/components/ui/surfaces";
+import { cn } from "@/src/lib/cn";
 import { TourGuide } from "@/src/components/ui/tour";
 import { db } from "@/src/db";
 import { lineItems, paymentSources } from "@/src/db/schema";
@@ -147,6 +148,14 @@ export default async function ExpensesPage({
       fundingSourceId: expense.fundingSourceId,
       month: expense.month,
       reimbursableCents: reimbursableCents(expense),
+      // The remaining fields exist only for the details dialog; no column renders them.
+      subtotalCents: expense.subtotalCents,
+      taxCents: expense.taxCents,
+      feesCents: expense.feesCents,
+      taxReimbursable: expense.taxReimbursable,
+      feesReimbursable: expense.feesReimbursable,
+      narrative: expense.narrative,
+      note: expense.note,
       // The whole attached set per kind, not a count and a first id: the row opens a viewer
       // that pages through them, and an expense with three receipts could otherwise only ever
       // show the first. Only `attached` documents are included — a pending or failed upload
@@ -205,7 +214,9 @@ export default async function ExpensesPage({
         {/* Both buttons in one group, so the row's `justify-between` keeps the title on the
             left and these together on the right. Left as two direct children they became three
             items spread across the row, which put this one adrift in the middle. */}
-        <div className="flex flex-wrap items-center gap-3">
+        {/* Cleared past the layout's month and funding-source selectors, which sit in this
+            corner from `lg` — see `ACTION_CLEARANCE`. */}
+        <div className={cn("flex flex-wrap items-center gap-3", ACTION_CLEARANCE)}>
         {/* Only when there is something waiting, so the toolbar is unchanged for anyone not
             using invoices. Beside Trash because both are "leave this list and look at another
             one", and this is the more frequent of the two while an import is being reviewed. */}
@@ -221,7 +232,9 @@ export default async function ExpensesPage({
             // button on the drafts screen should be "Approve all ready", not the way out.
             className={buttonClassName("secondary", "min-h-11 px-4 text-[15px]")}
           >
-            {showingDrafts ? UI.draftsBackToExpenses : UI.draftsWaitingHeading(draftRows.length)}
+            <ButtonLabel>
+              {showingDrafts ? UI.draftsBackToExpenses : UI.draftsWaitingHeading(draftRows.length)}
+            </ButtonLabel>
           </Link>
         )}
         <Link

@@ -29,7 +29,11 @@ describe("DialogPanel", () => {
     const html = renderPanel({ ...BASE, children: "Could not save." });
     const buttons = html.match(/<button/g) ?? [];
     expect(buttons).toHaveLength(1);
-    expect(html).toContain(">OK</button>");
+    // `>OK<` rather than `>OK</button>`: a secondary button wraps a plain-string label in
+    // `ButtonLabel`'s gradient span, so the label is no longer the button's direct text. What
+    // this test is about is that there is one button and it says OK, not which element the
+    // words sit in.
+    expect(html).toContain(">OK<");
   });
 
   it("renders both buttons, confirm before dismiss, when a confirm is given", () => {

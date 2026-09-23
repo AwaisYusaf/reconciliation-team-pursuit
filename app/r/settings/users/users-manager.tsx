@@ -79,7 +79,11 @@ export function UsersManager({ users }: { users: OrgUser[] }) {
 
   return (
     <Card className={CARD_PADDING}>
-      <SectionTitle className="mb-5">Users</SectionTitle>
+      {/* `gradient`, like every other heading in Settings. This one lives on its own route
+          rather than in `settings-sections.tsx`, which is how it got missed. */}
+      <SectionTitle gradient className="mb-5">
+        Users
+      </SectionTitle>
 
       {users.length === 0 ? (
         <p className="text-[15px] text-sub">No users yet.</p>

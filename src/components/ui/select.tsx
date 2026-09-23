@@ -59,10 +59,22 @@ type SelectProps = {
   disabled?: boolean;
   required?: boolean;
   className?: string;
+  /**
+   * Pill form, for the header's month and funding-source controls.
+   *
+   * A separate class string rather than one appended to `CONTROL`: `cn` concatenates without
+   * merging, so a compact height and radius passed alongside the full control's would leave
+   * both in the attribute and let stylesheet order pick the winner.
+   */
+  compact?: boolean;
   "aria-label"?: string;
   "aria-labelledby"?: string;
   "aria-describedby"?: string;
 };
+
+const COMPACT_TRIGGER =
+  "w-full h-9 rounded-full border border-line bg-surface pl-3.5 pr-2.5 text-[14px] text-ink " +
+  "hover:bg-section transition-colors";
 
 /**
  * Hand-rolled accessible listbox dropdown — keeps `<option>` children so existing call
@@ -78,6 +90,7 @@ export function Select({
   disabled,
   required,
   className,
+  compact = false,
   "aria-label": ariaLabel,
   "aria-labelledby": ariaLabelledBy,
   "aria-describedby": ariaDescribedBy,
@@ -241,8 +254,8 @@ export function Select({
         onClick={() => (open ? closePanel() : openPanel())}
         onKeyDown={onKeyDown}
         className={cn(
-          CONTROL,
-          "px-3 py-[11px] flex items-center justify-between gap-2 text-left disabled:opacity-60",
+          compact ? COMPACT_TRIGGER : `${CONTROL} px-3 py-[11px]`,
+          "flex items-center justify-between gap-2 text-left disabled:opacity-60",
         )}
       >
         <span className="truncate">{displayOption?.label ?? ""}</span>
@@ -286,10 +299,17 @@ export function Select({
           role="listbox"
           aria-label={ariaLabel}
           className={cn(
-            // Above the app shell's sticky nav bar (z-30, app/r/layout.tsx) — a Select opened
-            // near it, like the header's month picker, must not render underneath.
+            // Above the app shell's sticky header (z-30) for a Select on the page itself.
+            //
+            // It does not lift the panel over that header for the two compact selectors: their
+            // wrapper in `app/r/layout.tsx` carries `lg:z-10`, which opens a stacking context,
+            // and this z-40 is resolved inside it. That is deliberate rather than a defect —
+            // the selectors are meant to slide *under* the header as the page scrolls, and
+            // raising the wrapper above z-30 to free the panel would drag them over the tabs
+            // on the way past. The panel opens downward, away from the header, so the only
+            // thing given up is a dropdown left open while the page scrolls under the bar.
             "absolute z-40 left-0 right-0 max-h-[min(320px,60vh)] overflow-y-auto",
-            "bg-surface border border-line rounded-[3px]",
+            "bg-surface border border-line rounded-[10px] pop-in",
             openUpward ? "bottom-full mb-1" : "top-full mt-1",
           )}
         >

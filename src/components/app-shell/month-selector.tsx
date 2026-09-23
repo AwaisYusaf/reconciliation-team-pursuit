@@ -21,9 +21,16 @@ const OTHER = "__other__";
 export function MonthSelector({
   months,
   activeMonth,
+  compact = false,
 }: {
   months: readonly string[];
   activeMonth: string;
+  /**
+   * Header pill form: no stacked label, and the control names itself through `aria-label`
+   * instead. The visible word "Month" is dropped, not the accessible one, so the control is
+   * still announced as what it is.
+   */
+  compact?: boolean;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -44,15 +51,19 @@ export function MonthSelector({
   }
 
   return (
-    <div className="flex flex-col gap-1.5">
-      <label id="month-selector-label" htmlFor="month-selector" className="block text-[15px] font-semibold text-ink">
-        Month
-      </label>
+    <div className={compact ? "flex flex-col gap-1.5 relative" : "flex flex-col gap-1.5"}>
+      {!compact && (
+        <label id="month-selector-label" htmlFor="month-selector" className="block text-[15px] font-semibold text-ink">
+          Month
+        </label>
+      )}
       <Select
         id="month-selector"
-        aria-labelledby="month-selector-label"
+        aria-label={compact ? "Month" : undefined}
+        aria-labelledby={compact ? undefined : "month-selector-label"}
         value={activeMonth}
         disabled={pending}
+        compact={compact}
         onValueChange={(value) => {
           if (value === OTHER) {
             setShowPicker(true);
@@ -60,7 +71,9 @@ export function MonthSelector({
           }
           apply(value);
         }}
-        className="w-[200px]"
+        // Full width of its share of the row on a phone, fixed from `sm`. The header gives the
+        // two compact selectors one line between them at every width.
+        className={compact ? "w-full sm:w-[150px]" : "w-[200px]"}
       >
         {monthsByYear(months).map((group) => (
           <optgroup key={group.year} label={group.year}>
@@ -74,8 +87,18 @@ export function MonthSelector({
         <option value={OTHER}>Other month…</option>
       </Select>
 
+      {/*
+        Floated in compact form. These two are conditional and would otherwise add their own
+        height to the header row the moment they appear, shunting the page down mid-interaction.
+      */}
       {showPicker && (
-        <div className="flex items-center gap-2">
+        <div
+          className={
+            compact
+              ? "absolute top-full right-0 mt-1 z-40 flex items-center gap-2 bg-surface border border-line rounded-[10px] p-2 shadow-lg whitespace-nowrap"
+              : "flex items-center gap-2"
+          }
+        >
           <input
             type="month"
             aria-label="Choose any other month"
@@ -95,7 +118,17 @@ export function MonthSelector({
         </div>
       )}
 
-      {error && <div className="text-[15px] text-danger">{error}</div>}
+      {error && (
+        <div
+          className={
+            compact
+              ? "absolute top-full right-0 mt-1 z-40 text-[13px] text-danger bg-surface border border-danger rounded-[8px] px-2.5 py-1.5 whitespace-nowrap"
+              : "text-[15px] text-danger"
+          }
+        >
+          {error}
+        </div>
+      )}
     </div>
   );
 }

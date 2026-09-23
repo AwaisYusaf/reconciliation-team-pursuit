@@ -1,12 +1,12 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
+import { BlockingPanel } from "@/src/components/ui/blocking-panel";
 import { PickFundingSource } from "@/src/components/app-shell/pick-funding-source";
 import { TourSequenceSkip } from "@/src/components/app-shell/tour-sequence-skip";
 import {
   Card,
   CARD_PADDING,
-  DangerPanel,
   EmptyState,
   PageHeader,
   SectionTitle,
@@ -136,34 +136,30 @@ export default async function PacketPage() {
 
       <LockHistory events={events} />
 
-      {/* The tour wrapper below is the same width as the panel inside it: the spotlight lights
-          that element's box, so a full-width wrapper around a narrower panel lit a wide empty
-          strip beside it. */}
       {blocked && (
-        <div data-tour="packet-blocking-alert" className="max-w-[820px]">
-          <DangerPanel title={UI.blockedTitle} className="mb-7 max-w-[820px]">
-            <p className="mt-1.5">{UI.blockedIntro}</p>
-            <ul className="mt-2 flex flex-col gap-1">
-              {readiness.blocking.map((record) => (
-                <li key={record.expenseId} className="flex flex-wrap items-baseline gap-2">
-                  <span>{record.label}</span>
-                  <Link
-                    href={`/r/expenses/${record.expenseId}/edit`}
-                    className="underline text-danger font-medium"
-                  >
-                    Open expense
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </DangerPanel>
-        </div>
+        <BlockingPanel
+          data-tour="packet-blocking-alert"
+          title={UI.blockedTitle}
+          intro={UI.blockedIntro}
+          records={readiness.blocking}
+        />
       )}
 
       {readiness.totalRecords === 0 && (
         <p className="text-[15px] text-muted mb-7">This month has no expenses.</p>
       )}
 
+      {/*
+        The month's readiness and the thing it produces, side by side.
+
+        These were stacked full width, which put the download buttons most of a screen below
+        the table explaining why they were disabled — the two facts someone opens this screen
+        to compare. The table also had four columns spread over 1220px and read as mostly gap.
+        Two thirds and one third gives the table a sensible measure and brings the packet
+        itself up next to it.
+      */}
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)] items-start">
+        <div className="flex flex-col gap-6 min-w-0">
       {readiness.rows.length === 0 ? (
         <EmptyState>
           No line items yet. Set up your budget in{" "}
@@ -217,7 +213,22 @@ export default async function PacketPage() {
         </TableCard>
       )}
 
-      <div className="mt-8 grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] items-start">
+        {/* Second in the left column, under the readiness table. On a row of its own it began
+            only after the taller packet card had finished, leaving a screen-high hole beside
+            it. */}
+        <div data-tour="packet-month-documents">
+          <MonthDocuments
+            month={month}
+            fundingSourceId={fundingSourceId}
+            documents={readiness.documents}
+            monthLabel={label}
+            hasBankStatement={readiness.hasBankStatement}
+            readOnly={sourceIsArchived || locked}
+            lockedMessage={locked ? UI.monthLocked(label) : null}
+          />
+        </div>
+        </div>
+
         <Card className={CARD_PADDING}>
           <SectionTitle className="mb-1">Packet contents</SectionTitle>
           <p className="text-sm text-muted mb-4">In the order the funder will read them.</p>
@@ -263,19 +274,6 @@ export default async function PacketPage() {
             orgCancelled={shared.orgCancelled}
           />
         </Card>
-
-        {/* Matches the Card's own width inside `MonthDocuments` — same reason as above. */}
-        <div data-tour="packet-month-documents" className="max-w-[720px]">
-          <MonthDocuments
-            month={month}
-            fundingSourceId={fundingSourceId}
-            documents={readiness.documents}
-            monthLabel={label}
-            hasBankStatement={readiness.hasBankStatement}
-            readOnly={sourceIsArchived || locked}
-            lockedMessage={locked ? UI.monthLocked(label) : null}
-          />
-        </div>
       </div>
 
       {/* ponytail: `MonthlySummarySection` re-derives the month's expenses fingerprint that

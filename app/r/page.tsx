@@ -2,10 +2,15 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { WelcomeBanner } from "@/src/components/app-shell/welcome-banner";
-import { EmptyState, PageTitle, Subtext } from "@/src/components/ui/surfaces";
+import {
+  EmptyState,
+  PageTitle,
+  Subtext,
+} from "@/src/components/ui/surfaces";
 import { TourGuide } from "@/src/components/ui/tour";
 import { monthLabel } from "@/src/domain/dates";
 import { pageTitle } from "@/src/domain/strings";
+import { greetingName } from "@/src/domain/user-display";
 import { loadSourceContext } from "@/src/modules/funding-sources/queries";
 import { loadReadySummarySourceIds } from "@/src/modules/monthly-summary/queries";
 import { DASHBOARD_TOUR_STEPS } from "@/src/modules/tours/dashboard-tour";
@@ -31,6 +36,7 @@ export default async function DashboardPage() {
     session.activeFundingSourceId,
   );
   const month = session.activeMonth;
+  const greeting = greetingName(session.userName, session.email);
   const seenDashboardTour = await hasSeenTour(session.userId, "dashboard");
   const selected = selectedId ? sources.find((s) => s.id === selectedId) : undefined;
   // One source selected (or a single-source org, where `selectedId` is always that source):
@@ -49,8 +55,15 @@ export default async function DashboardPage() {
   return (
     <div>
       <TourGuide tour="dashboard" steps={DASHBOARD_TOUR_STEPS} alreadySeen={seenDashboardTour} />
-      <PageTitle className="mb-1.5">Dashboard</PageTitle>
-      <Subtext className="mb-[26px]">Budget status for {monthLabel(month)}.</Subtext>
+      {/*
+        The month line sits above the greeting rather than under it. It is the one fact that
+        changes what every figure below means, so it reads first; the greeting names the
+        person and carries no information, so it reads second and large.
+      */}
+      <Subtext className="mb-1">Budget status for {monthLabel(month)}.</Subtext>
+      <PageTitle className="mb-5 sm:mb-6">
+        {greeting ? `Welcome back, ${greeting}!` : "Welcome back!"}
+      </PageTitle>
 
       {!session.welcomeDismissed && <WelcomeBanner />}
 

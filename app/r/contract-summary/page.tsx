@@ -10,6 +10,7 @@ import { TourGuide } from "@/src/components/ui/tour";
 import { loadExpenseAmounts, loadFundingSourceSettings, loadLineItemBudgets } from "@/src/db/queries";
 import { db } from "@/src/db";
 import { fundingSources } from "@/src/db/schema";
+import { StatTile } from "@/src/components/ui/stat-tile";
 import { contractContextItems } from "@/src/domain/contract-context";
 import { formatDateUS, monthLabel, todayIso } from "@/src/domain/dates";
 import { formatMoney, formatPercent, summaryRowLabel } from "@/src/domain/format";
@@ -143,11 +144,24 @@ export default async function ContractSummaryPage() {
       <PageTitle className="mb-1.5">Contract Summary</PageTitle>
       <Subtext className="mb-3.5">Contract position for {monthLabel(month)}.</Subtext>
 
-      <div className="flex flex-wrap gap-x-8 gap-y-1.5 text-base text-muted mb-[26px]">
-        {context.map((item) => (
-          <span key={item.label}>{item.text}</span>
-        ))}
-      </div>
+      {/*
+        Tiles, not a run of muted text.
+
+        `ContextItem` has always carried `label` and `value` apart from the joined `text`; the
+        screen simply was not using them. Read as one line, the contract number, the total and
+        the two PO numbers ran together into a sentence nobody could scan — and these are the
+        reference numbers someone checks against the paperwork in front of them. Same words,
+        same order, given a shape.
+
+        `text` is untouched and still what the packet prints, so the two cannot drift.
+      */}
+      {context.length > 0 && (
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 mb-[26px]">
+          {context.map((item) => (
+            <StatTile key={item.label} label={item.label} value={item.value} size="sm" />
+          ))}
+        </div>
+      )}
 
       <TableCard minWidth={900} data-tour="contract-summary-table">
         <thead>

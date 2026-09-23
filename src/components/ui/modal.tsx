@@ -49,7 +49,7 @@ export function Modal({
           role="dialog"
           aria-modal="true"
           aria-labelledby={titleId}
-          className="bg-surface border border-line rounded-[4px] p-4 sm:p-5 shadow-xl"
+          className="bg-surface border border-line rounded-[4px] p-4 sm:p-5 shadow-xl pop-in"
         >
           <div className="flex items-start justify-between gap-3">
             <div id={titleId} className="font-serif text-lg sm:text-xl font-bold text-ink">

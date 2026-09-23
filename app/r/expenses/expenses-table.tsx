@@ -2,10 +2,11 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useMemo, useState, useTransition } from "react";
+import { useCallback, useMemo, useState, useTransition, type ReactNode } from "react";
 
 import { ACTION_LABELS, AuditDiffContent } from "@/src/components/audit/audit-diff";
 import { Button } from "@/src/components/ui/button";
+import { ExpenseDetailsDialog } from "./expense-details-dialog";
 import { Dialog } from "@/src/components/ui/dialog";
 import {
   DocumentThumbnail,
@@ -30,11 +31,33 @@ import {
   type MissingKind,
 } from "@/src/domain/gate";
 import { UI } from "@/src/domain/strings";
+import { cn } from "@/src/lib/cn";
 import { userDisplay } from "@/src/domain/user-display";
 import { deleteExpenseAction, loadExpenseHistoryAction } from "@/src/modules/expenses/actions";
 // Type-only: `queries.ts` is `server-only`, so importing a runtime value from it into this
 // client component would fail the build.
 import type { OrgAuditEvent } from "@/src/modules/expenses/queries";
+
+/**
+ * The gate's verdict on one requirement, as a pill.
+ *
+ * `MISSING` was bold red text at body size, repeated in up to four columns on every row — on a
+ * month where little is documented yet the table came out as a wall of red shouting the same
+ * word, which stops being a signal. A pill at label size says the same thing once per cell and
+ * leaves the figures as the loudest thing in the row, which is what should be.
+ */
+function StatusPill({ tone, children }: { tone: "missing" | "ok"; children: ReactNode }) {
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center rounded-full px-2 py-1 text-[11px] font-bold uppercase tracking-[0.06em] whitespace-nowrap",
+        tone === "missing" ? "bg-danger-bg text-danger" : "bg-success-bg text-success",
+      )}
+    >
+      {children}
+    </span>
+  );
+}
 
 /** One attached document, as much of it as a row needs to preview it. */
 export type RowDocument = {
@@ -82,6 +105,20 @@ export type ExpenseRow = {
   noReceipt: boolean;
   noReceiptReason: string | null;
   hasNarrative: boolean;
+  /**
+   * The rest of the record, for the details dialog only — no column shows these.
+   *
+   * Carried on the row rather than fetched when the dialog opens: `loadMonthExpenses` has
+   * already read every one of them for this table, so passing them through costs nothing,
+   * where a lookup per open would be a round trip for data the page is holding.
+   */
+  subtotalCents: number;
+  taxCents: number;
+  feesCents: number;
+  taxReimbursable: boolean;
+  feesReimbursable: boolean;
+  narrative: string | null;
+  note: string | null;
   complete: boolean;
   /** What R4.4 says this record is missing, or null when it is complete. From the gate. */
   missing: MissingKind | null;
@@ -228,6 +265,9 @@ export function ExpensesTable({
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<SortKey>(DEFAULT_SORT);
   const [confirming, setConfirming] = useState<ExpenseRow | null>(null);
+  /** The row whose details dialog is open, or null. Holds the row itself, so the dialog needs
+   *  no fetch of its own — every field it shows is already on the row. */
+  const [detailsRow, setDetailsRow] = useState<ExpenseRow | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [viewingHistory, setViewingHistory] = useState<ExpenseRow | null>(null);
   const [history, setHistory] = useState<{
@@ -396,6 +436,12 @@ export function ExpensesTable({
         </DangerPanel>
       )}
 
+      <ExpenseDetailsDialog
+        row={detailsRow}
+        onClose={() => setDetailsRow(null)}
+        onOpenDocuments={openDocuments}
+      />
+
       <Dialog
         open={confirming !== null}
         title="Move this expense to the trash?"
@@ -520,7 +566,18 @@ export function ExpensesTable({
           {visible.map((row) => {
             const rowLocked = lockedMonthKeys.has(`${row.fundingSourceId}:${row.month}`);
             return (
-            <tr key={row.id}>
+            <tr
+              key={row.id}
+              onClick={(event) => {
+                // The row holds three controls of its own — the reference and the document
+                // counts open the viewer, and the menu opens itself. A blanket handler would
+                // fire on all of them, so anything that is already interactive keeps its own
+                // click and only the gaps between them open the details.
+                if ((event.target as HTMLElement).closest("a, button, [role='menuitem']")) return;
+                setDetailsRow(row);
+              }}
+              className="cursor-pointer hover:bg-section/60 transition-colors"
+            >
               <Td sticky className="whitespace-nowrap">
                 {row.allDocuments.length > 0 ? (
                   <button
@@ -543,7 +600,20 @@ export function ExpensesTable({
                   {formatDateUS(row.date)}
                 </span>
               </Td>
-              <Td>{row.name}</Td>
+              {/*
+                A real button, not just the row's click handler. A clickable `<tr>` cannot be
+                tabbed to and is not announced as doing anything, so the name carries the
+                affordance: it is the obvious thing to click and it works from the keyboard.
+              */}
+              <Td>
+                <button
+                  type="button"
+                  onClick={() => setDetailsRow(row)}
+                  className="text-left underline decoration-line underline-offset-2 hover:decoration-accent focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent rounded-[2px]"
+                >
+                  {row.name}
+                </button>
+              </Td>
               <Td>{row.lineItemName}</Td>
               {multiSource && (
                 // Capped and clipped, with the full name on hover and for a screen reader:
@@ -556,8 +626,22 @@ export function ExpensesTable({
                   </span>
                 </Td>
               )}
-              <Td className="text-[15px] text-sub leading-snug">{row.paymentSource}</Td>
-              <Td align="right" numeric>
+              {/*
+                Capped and clipped, with the full label on hover and for a screen reader, the
+                same treatment the funding source column already gets.
+
+                These labels are sentences — "Paid by us, reimbursement requested" — and they
+                repeat on every row, so left to wrap they took three lines each and set the
+                height of the entire table. One line per row is what makes the list scannable;
+                the value is the same on most rows anyway, so it is the column you read least.
+              */}
+              <Td className="text-[15px] text-sub">
+                <span className="block max-w-[150px] truncate" title={row.paymentSource}>
+                  {row.paymentSource}
+                </span>
+              </Td>
+              {/* The one figure on the row, so it carries the weight the repeated red used to. */}
+              <Td align="right" numeric bold>
                 {formatMoney(row.reimbursableCents)}
               </Td>
               <Td>
@@ -587,9 +671,9 @@ export function ExpensesTable({
               </Td>
               <Td>
                 {row.hasNarrative ? (
-                  <span className="text-[15px] text-sub">Provided</span>
+                  <StatusPill tone="ok">Provided</StatusPill>
                 ) : (
-                  <span className="text-base font-bold text-danger">MISSING</span>
+                  <StatusPill tone="missing">Missing</StatusPill>
                 )}
               </Td>
               <Td align="right" stickyEnd className="whitespace-nowrap">
@@ -669,7 +753,7 @@ function DocumentCell({
   onOpen: (documents: RowDocument[], index: number) => void;
 }) {
   if (documents.length === 0) {
-    return <span className="text-base font-bold text-danger">MISSING</span>;
+    return <StatusPill tone="missing">Missing</StatusPill>;
   }
 
   const [first] = documents;

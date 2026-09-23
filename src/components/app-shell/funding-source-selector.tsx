@@ -15,9 +15,12 @@ const ALL = "__all__";
 export function FundingSourceSelector({
   sources,
   selectedId,
+  compact = false,
 }: {
   sources: readonly FundingSource[];
   selectedId: string | null;
+  /** Header pill form, matching `MonthSelector`: no stacked label, named by `aria-label`. */
+  compact?: boolean;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -43,21 +46,26 @@ export function FundingSourceSelector({
   }
 
   return (
-    <div className="flex flex-col gap-1.5">
-      <label
-        id="funding-source-selector-label"
-        htmlFor="funding-source-selector"
-        className="block text-[15px] font-semibold text-ink"
-      >
-        Funding source
-      </label>
+    <div className={compact ? "flex flex-col gap-1.5 relative" : "flex flex-col gap-1.5"}>
+      {!compact && (
+        <label
+          id="funding-source-selector-label"
+          htmlFor="funding-source-selector"
+          className="block text-[15px] font-semibold text-ink"
+        >
+          Funding source
+        </label>
+      )}
       <Select
         id="funding-source-selector"
-        aria-labelledby="funding-source-selector-label"
+        aria-label={compact ? "Funding source" : undefined}
+        aria-labelledby={compact ? undefined : "funding-source-selector-label"}
         value={selectedId ?? ALL}
         disabled={pending}
+        compact={compact}
         onValueChange={apply}
-        className="w-[220px]"
+        // Matches `MonthSelector`: shares the phone's row, fixed width from `sm`.
+        className={compact ? "w-full sm:w-[190px]" : "w-[220px]"}
       >
         <option value={ALL}>All funding sources</option>
         {active.map((source) => (
@@ -76,7 +84,18 @@ export function FundingSourceSelector({
         )}
       </Select>
 
-      {error && <div className="text-[15px] text-danger">{error}</div>}
+      {/* Floated in compact form, so an error cannot grow the header row. */}
+      {error && (
+        <div
+          className={
+            compact
+              ? "absolute top-full right-0 mt-1 z-40 text-[13px] text-danger bg-surface border border-danger rounded-[8px] px-2.5 py-1.5 whitespace-nowrap"
+              : "text-[15px] text-danger"
+          }
+        >
+          {error}
+        </div>
+      )}
     </div>
   );
 }

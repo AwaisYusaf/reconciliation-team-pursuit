@@ -2,17 +2,16 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
 
 import { cn } from "@/src/lib/cn";
 
 /**
  * The nine primary tabs, in the order the client approved.
- * Active tab: bold ink with a 3px accent underline; inactive: secondary text.
  *
- * On a phone the row scrolls sideways instead of wrapping. Wrapping put nine links on four
- * ragged rows and made the header 545px tall — two thirds of a 812px screen before a single
- * figure appeared. Scrolling keeps the header one row high at every width, and the active
- * tab is scrolled into view on load so the user can see where they are.
+ * Two shapes, one list. From `lg` they are a centred pill of tabs; below that they collapse
+ * behind a menu button, because nine tabs cannot fit a phone and a sideways-scrolling row
+ * hides most of them behind a gesture nobody thinks to try.
  */
 export const NAV_ITEMS = [
   { label: "Dashboard", href: "/r" },
@@ -43,6 +42,15 @@ export function matches(pathname: string, href: string): boolean {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
+/**
+ * The pill shell, shared by the desktop track and the mobile menu button.
+ *
+ * Dark brown, with the current tab reversed out of it in white. Both directions clear AA with
+ * room to spare — white on `accent-dark` is about 13:1, and the white pill carries the brown
+ * back as its text — so the strongest contrast on the bar is what marks where you are.
+ */
+const PILL = "rounded-full bg-accent-dark shadow-[0_2px_12px_rgba(33,27,22,0.18)]";
+
 export function AppNav() {
   const pathname = usePathname();
   // Longest matching href wins, so /expenses/new lights up "Add Expense" rather than
@@ -50,37 +58,130 @@ export function AppNav() {
   const activeHref = NAV_ITEMS.filter((item) => matches(pathname, item.href)).sort(
     (a, b) => b.href.length - a.href.length,
   )[0]?.href;
+  const activeLabel = NAV_ITEMS.find((item) => item.href === activeHref)?.label ?? "Menu";
+
+  const [open, setOpen] = useState(false);
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function onPointerDown(event: PointerEvent) {
+      if (!wrapperRef.current?.contains(event.target as Node)) setOpen(false);
+    }
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setOpen(false);
+        triggerRef.current?.focus();
+      }
+    }
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [open]);
 
   return (
-    <nav
-      // The negative margin lets the scrolled row bleed to the screen edges, so a partially
-      // visible tab reads as "there is more this way" rather than as a clipped mistake.
-      // Top spacing is the wrapper's own padding-top in layout.tsx, not a margin here: a
-      // margin on this nav's box doesn't get painted with its sticky wrapper's background,
-      // which showed as a gap of bare page background between the header above and this bar.
-      className="-mx-4 sm:mx-0 px-4 sm:px-0 flex gap-5 sm:gap-6 overflow-x-auto lg:flex-wrap lg:overflow-visible [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-      aria-label="Primary"
-    >
-      {NAV_ITEMS.map((item) => {
-        const active = item.href === activeHref;
-        return (
-          <Link
-            key={item.href}
-            href={item.href}
-            aria-current={active ? "page" : undefined}
-            ref={active ? scrollActiveIntoView : undefined}
-            data-tour={item.href === "/r/expenses/new" ? "add-expense-nav" : undefined}
-            className={cn(
-              "pt-2.5 pb-3 sm:pt-3 sm:pb-[13px] text-[15px] sm:text-base border-b-[3px] transition-colors whitespace-nowrap",
-              active
-                ? "text-ink font-bold border-accent"
-                : "text-sub font-normal border-transparent hover:text-ink",
-            )}
+    // The tour anchors here rather than on the "Add Expense" tab: that tab is a real element
+    // at one width and inside a closed menu at the other, and a walkthrough may not point at
+    // something that is not on screen. This wrapper is the node present at both.
+    <div data-tour="add-expense-nav">
+      {/* Phone and tablet: a menu button naming the current screen. */}
+      <div ref={wrapperRef} className="relative lg:hidden">
+        <button
+          ref={triggerRef}
+          type="button"
+          aria-haspopup="menu"
+          aria-expanded={open}
+          onClick={() => setOpen((value) => !value)}
+          className={cn(PILL, "flex items-center gap-2 px-3 py-2 max-w-full")}
+        >
+          <svg
+            aria-hidden="true"
+            viewBox="0 0 20 20"
+            className="w-4 h-4 flex-none text-surface"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.6"
+            strokeLinecap="round"
           >
-            {item.label}
-          </Link>
-        );
-      })}
-    </nav>
+            <path d="M3.5 6h13M3.5 10h13M3.5 14h13" />
+          </svg>
+          {/* The current screen's name doubles as the button's label, so the control says
+              where you are as well as offering to move. */}
+          <span className="text-[14px] font-bold text-surface truncate">{activeLabel}</span>
+        </button>
+
+        {open && (
+          <div
+            role="menu"
+            aria-label="Primary"
+            className="absolute left-0 top-full mt-2 z-40 w-[240px] max-w-[calc(100vw-2rem)] bg-surface border border-line rounded-[10px] shadow-lg overflow-hidden pop-in"
+          >
+            {NAV_ITEMS.map((item) => {
+              const active = item.href === activeHref;
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  role="menuitem"
+                  aria-current={active ? "page" : undefined}
+                  // Closed here rather than by watching the path: a route change does not
+                  // unmount this menu, so it would otherwise stay open over the screen the
+                  // person just picked.
+                  onClick={() => setOpen(false)}
+                  className={cn(
+                    "block w-full min-h-11 flex items-center px-3.5 text-[15px] hover:bg-section",
+                    active ? "bg-section font-bold text-ink" : "text-sub",
+                  )}
+                >
+                  {item.label}
+                </Link>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* Desktop: all nine as one centred pill. */}
+      <nav
+        className="hidden lg:flex py-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        aria-label="Primary"
+      >
+        {/*
+          `w-max` so the track sizes to its tabs rather than to the row, and `mx-auto` to
+          centre it. 14px with 10px side padding puts it at roughly 945px against the ~995px
+          the row has once the mark and the account controls are taken out, so all nine fit
+          down to about a 1180px viewport and the row scrolls below that.
+        */}
+        <div className={cn(PILL, "flex items-center gap-0.5 w-max mx-auto p-1")}>
+          {NAV_ITEMS.map((item) => {
+            const active = item.href === activeHref;
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                aria-current={active ? "page" : undefined}
+                ref={active ? scrollActiveIntoView : undefined}
+                className={cn(
+                  "rounded-full px-2.5 py-2 text-[14px] whitespace-nowrap",
+                  active
+                    ? "bg-surface text-accent font-bold"
+                    : // No hover pill and no fade: the white pill marks where you are, and a
+                      // second lit-up pill under the cursor competes with it. The label
+                      // brightening to full white is the whole hover affordance — a nav link
+                      // with no hover response at all reads as not clickable.
+                      "text-surface/75 font-medium hover:text-surface",
+                )}
+              >
+                {item.label}
+              </Link>
+            );
+          })}
+        </div>
+      </nav>
+    </div>
   );
 }

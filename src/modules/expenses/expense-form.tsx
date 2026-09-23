@@ -13,7 +13,7 @@ import {
   Textarea,
 } from "@/src/components/ui/field";
 import { Select } from "@/src/components/ui/select";
-import { Card, DangerPanel } from "@/src/components/ui/surfaces";
+import { DangerPanel } from "@/src/components/ui/surfaces";
 import toast from "react-hot-toast";
 
 import { reportResult } from "@/src/components/ui/toast";
@@ -1032,8 +1032,14 @@ export function ExpenseForm({
     </>
   );
 
+  // 560px standalone was a narrow column with most of a desktop empty beside it. The paired
+  // fields below need roughly twice that; the cap stays so the form never becomes a
+  // full-bleed row of very wide inputs, which is its own readability problem.
+  //
+  // An invoice card keeps the narrow column: it renders several of these stacked inside a
+  // 720px check screen, where a second column has nowhere to go.
   return (
-    <div className="max-w-[560px]">
+    <div className={embedded ? undefined : "max-w-[560px] lg:max-w-[940px]"}>
       {ownSavedLocked && existing && (
         <DangerPanel className="mb-5">
           {UI.monthLocked(monthLabel(existing.values.month))}
@@ -1059,11 +1065,29 @@ export function ExpenseForm({
           if (canSave(queued, pending)) save();
         }}
       >
-        <Card className="p-7 flex flex-col gap-[22px]">
-          {/* `display: contents` keeps the Card's own flex layout unchanged — the fieldset
+        {/*
+          A panel of its own only when this form IS the screen. Inside an invoice charge card
+          the card already draws the border and the padding, so a `Card` here put a second
+          rounded box inside the first — the extra divider down the middle of the charge.
+
+          The classes are spelled out rather than layering overrides onto `Card`: `cn` joins
+          without merging, so a `border-0` beside its `border` would leave both in the class
+          list and let stylesheet order decide which won.
+        */}
+        <div
+          className={cn(
+            "flex flex-col gap-[22px]",
+            !embedded && "bg-surface border border-line rounded-[10px] p-7",
+          )}
+        >
+          {/* `display: contents` keeps the panel's own flex layout unchanged — the fieldset
               contributes only its native disabling, in one attribute, of every input, select,
               textarea and button inside it (plan §3.11). */}
           <fieldset disabled={ownSavedLocked} className="contents">
+          {/* The only fields that gain from pairing: short, single-line, and read together.
+              One grid wrapper rather than making the whole card a grid and then spanning the
+              dozen children that must stay full width. */}
+          <div className="grid gap-x-6 gap-y-[22px] lg:grid-cols-2">
           <div className="relative" data-tour="add-expense-name">
             <Label htmlFor={fieldId("name")}>Name</Label>
             <Input
@@ -1209,7 +1233,13 @@ export function ExpenseForm({
             </Select>
           </div>
 
-          <div className="flex flex-wrap gap-[18px]">
+          {/*
+            Spans both columns only when it actually holds both fields. An invoice card fixes
+            the month from the invoice and hides that field, leaving Date alone in a row still
+            claiming the full width — so Date stretched across the card while Payment source
+            sat beside an empty cell. As an ordinary cell there, Date simply pairs with it.
+          */}
+          <div className={cn("flex flex-wrap gap-[18px]", !embedded && "lg:col-span-2")}>
             {!embedded && (
             <div className="flex-1 min-w-[220px]">
               <Label id={fieldId("month-label")} htmlFor={fieldId("month")}>
@@ -1242,6 +1272,7 @@ export function ExpenseForm({
                 onChange={(event) => set("date", event.target.value)}
               />
             </div>
+          </div>
           </div>
 
           <div data-tour="add-expense-description">
@@ -1593,7 +1624,7 @@ export function ExpenseForm({
               {UI.amountsSummary(suggestion)}
             </Dialog>
           )}
-        </Card>
+        </div>
       </form>
     </div>
   );

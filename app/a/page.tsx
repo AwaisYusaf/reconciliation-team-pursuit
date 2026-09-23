@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-import { buttonClassName } from "@/src/components/ui/button";
+import { ButtonLabel, buttonClassName } from "@/src/components/ui/button";
 import { PageTitle, Subtext } from "@/src/components/ui/surfaces";
 import { TableCard, Td, Th } from "@/src/components/ui/table";
 import { formatDateShort, todayIso } from "@/src/domain/dates";
@@ -243,7 +243,7 @@ export default async function AdminPage({ searchParams }: { searchParams: Search
                 href={withParams(current, { page: directory.page - 1 })}
                 className={buttonClassName("secondary", "min-h-11 px-4 text-[15px] no-underline")}
               >
-                Previous
+                <ButtonLabel>Previous</ButtonLabel>
               </Link>
             ) : (
               <span
@@ -258,7 +258,7 @@ export default async function AdminPage({ searchParams }: { searchParams: Search
                 href={withParams(current, { page: directory.page + 1 })}
                 className={buttonClassName("secondary", "min-h-11 px-4 text-[15px] no-underline")}
               >
-                Next
+                <ButtonLabel>Next</ButtonLabel>
               </Link>
             ) : (
               <span

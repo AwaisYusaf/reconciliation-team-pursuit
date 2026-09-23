@@ -14,7 +14,7 @@
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 
-import { buttonClassName } from "@/src/components/ui/button";
+import { ButtonLabel, buttonClassName } from "@/src/components/ui/button";
 import { Dialog } from "@/src/components/ui/dialog";
 import { useDownload } from "@/src/components/ui/download-button";
 import { reportResult } from "@/src/components/ui/toast";
@@ -125,7 +125,16 @@ export function PacketDownloadButtons({
 
   return (
     <>
-      <div className="flex flex-wrap gap-3 mt-6" data-tour="packet-downloads">
+      {/*
+        A stacked column of equal-width buttons, not a wrapping row. These now sit in the
+        packet card's narrow column beside the readiness table, where a wrapping row put three
+        buttons of three different widths on three ragged lines. Stretched to the column they
+        read as one set of actions, in order of how often they are used.
+      */}
+      <div
+        className="flex flex-col gap-2.5 mt-6 [&>*]:w-full [&>*]:justify-center"
+        data-tour="packet-downloads"
+      >
         <button
           type="button"
           className={buttonClassName("primary")}
@@ -140,7 +149,9 @@ export function PacketDownloadButtons({
           disabled={blocked || summaryDownload.busy}
           onClick={() => requestDownload("summary")}
         >
-          {summaryDownload.busy ? "Preparing…" : "Download summary (Excel)"}
+          <ButtonLabel disabled={blocked || summaryDownload.busy}>
+            {summaryDownload.busy ? "Preparing…" : "Download summary (Excel)"}
+          </ButtonLabel>
         </button>
         <button
           id={SHARE_BUTTON_ID}
@@ -149,7 +160,7 @@ export function PacketDownloadButtons({
           disabled={shareBlocked}
           onClick={() => gated((confirmedDeletions) => setShareDialog({ confirmedDeletions }))}
         >
-          {UI.shareButton}
+          <ButtonLabel disabled={shareBlocked}>{UI.shareButton}</ButtonLabel>
         </button>
       </div>
       {/* Why Share link is off when the plan is cancelled, even before anything was shared. */}

@@ -9,6 +9,7 @@ import { Dialog } from "@/src/components/ui/dialog";
 import { Helper, Input, Label, MoneyInput, Textarea } from "@/src/components/ui/field";
 import { Select } from "@/src/components/ui/select";
 import { Card, DangerPanel, EmptyState } from "@/src/components/ui/surfaces";
+import { cn } from "@/src/lib/cn";
 import { TableCard, Td, Th } from "@/src/components/ui/table";
 import { reportResult } from "@/src/components/ui/toast";
 import type { ActionResult } from "@/src/lib/action-result";
@@ -222,6 +223,71 @@ export function RecurringManager({
    * require scrolling to the bottom of the page to find it; the "+ Add recurring item" flow
    * still renders it below the table, where there is no row to sit under.
    */
+  /**
+   * Edit, and either "Add to {month}" or the added marker with Remove.
+   *
+   * Extracted because the same controls render twice: in the table's last column on a desktop
+   * and inside each card in the phone list. Written out in both places they would quietly
+   * diverge the first time either changed.
+   */
+  function rowActions(row: RecurringRow, rowLocked: boolean) {
+    return (
+      <div className="flex flex-col items-end gap-1">
+        <div className="flex items-center justify-end gap-4 flex-wrap">
+          <Button
+            variant="quiet"
+            disabled={pending}
+            onClick={() =>
+              setDraft({
+                defaultNarrative: row.defaultNarrative,
+                defaultPaymentSource: row.defaultPaymentSource,
+                defaultTax: row.defaultTax,
+                defaultFees: row.defaultFees,
+                id: row.id,
+                name: row.name,
+                amount: (row.amountCents / 100).toFixed(2),
+                lineItemId: row.lineItemId,
+                defaultDescription: row.defaultDescription,
+              })
+            }
+          >
+            Edit
+          </Button>
+
+          {row.added ? (
+            <div className="flex items-center gap-3.5" data-tour="recurring-added-item">
+              <span className="text-sm font-bold text-success whitespace-nowrap">
+                ✓ Added to {monthLabel}
+              </span>
+              <Button
+                variant="quiet"
+                className="min-h-9"
+                disabled={pending || rowLocked}
+                onClick={() => remove(row)}
+              >
+                Remove
+              </Button>
+            </div>
+          ) : (
+            <Button
+              variant="secondary"
+              // `min-h-9`, matching Remove beside it. At `min-h-11` this button was 44px inside
+              // a cell padded to 24px, so it — not the text — set the height of every row in
+              // the table.
+              className="min-h-9 px-4 text-[15px] whitespace-nowrap"
+              disabled={pending || rowLocked}
+              onClick={() => add(row)}
+              data-tour="recurring-add-to-month"
+            >
+              Add to {monthShort}
+            </Button>
+          )}
+        </div>
+        {rowLocked && <span className="text-xs text-sub">{UI.monthLocked(monthLabel)}</span>}
+      </div>
+    );
+  }
+
   function renderDraftForm(currentDraft: Draft) {
     return (
       <Card className="p-6 max-w-[860px]">
@@ -468,7 +534,41 @@ export function RecurringManager({
           the rest.
         </EmptyState>
       ) : (
-        <TableCard minWidth={860}>
+        <>
+        {/*
+          A phone gets the same rows stacked, not the table scrolled sideways. Five columns
+          plus an actions cell holding Edit and "Add to Jun" need about 860px, so on a 390px
+          screen the table showed the name and half of the amount with everything that can be
+          done to the row off the right edge.
+        */}
+        <Card className="lg:hidden divide-y divide-line">
+          {shown.map((row) => {
+            const rowLocked = lockedMonthKeys.has(`${row.fundingSourceId}:${month}`);
+            return (
+              <div
+                key={row.id}
+                className={cn("px-4 py-3.5", justChanged === row.id && "bg-success-bg")}
+              >
+                <div className="flex items-baseline justify-between gap-3">
+                  <span className="font-bold text-[15px] text-ink min-w-0 break-words">
+                    {row.name}
+                  </span>
+                  <span className="tabular-nums font-bold text-[15px] text-ink shrink-0">
+                    {formatMoney(row.amountCents)}
+                  </span>
+                </div>
+                <div className="text-[13px] text-sub mt-0.5">
+                  {row.lineItemName}
+                  {multiSource ? ` · ${row.fundingSourceName}` : ""}
+                </div>
+                <div className="mt-2.5">{rowActions(row, rowLocked)}</div>
+                {draft?.id === row.id && <div className="mt-3">{renderDraftForm(draft)}</div>}
+              </div>
+            );
+          })}
+        </Card>
+
+        <TableCard minWidth={860} className="hidden lg:block">
           <thead>
             <tr>
               <Th>Name</Th>
@@ -493,58 +593,7 @@ export function RecurringManager({
                 <Td>{row.lineItemName}</Td>
                 {multiSource && <Td className="text-[15px] text-sub leading-snug">{row.fundingSourceName}</Td>}
                 <Td align="right">
-                  <div className="flex flex-col items-end gap-1">
-                  <div className="flex items-center justify-end gap-4 flex-wrap">
-                    <Button
-                      variant="quiet"
-                      disabled={pending}
-                      onClick={() =>
-                        setDraft({
-                          defaultNarrative: row.defaultNarrative,
-                          defaultPaymentSource: row.defaultPaymentSource,
-                          defaultTax: row.defaultTax,
-                          defaultFees: row.defaultFees,
-                          id: row.id,
-                          name: row.name,
-                          amount: (row.amountCents / 100).toFixed(2),
-                          lineItemId: row.lineItemId,
-                          defaultDescription: row.defaultDescription,
-                        })
-                      }
-                    >
-                      Edit
-                    </Button>
-
-                    {row.added ? (
-                      <div className="flex items-center gap-3.5" data-tour="recurring-added-item">
-                        <span className="text-sm font-bold text-success whitespace-nowrap">
-                          ✓ Added to {monthLabel}
-                        </span>
-                        <Button
-                          variant="quiet"
-                          className="min-h-9"
-                          disabled={pending || rowLocked}
-                          onClick={() => remove(row)}
-                        >
-                          Remove
-                        </Button>
-                      </div>
-                    ) : (
-                      <Button
-                        variant="secondary"
-                        className="min-h-11 px-4 text-[15px] whitespace-nowrap"
-                        disabled={pending || rowLocked}
-                        onClick={() => add(row)}
-                        data-tour="recurring-add-to-month"
-                      >
-                        Add to {monthShort}
-                      </Button>
-                    )}
-                  </div>
-                  {rowLocked && (
-                    <span className="text-xs text-sub">{UI.monthLocked(monthLabel)}</span>
-                  )}
-                  </div>
+                  {rowActions(row, rowLocked)}
                 </Td>
               </tr>
               {draft?.id === row.id && (
@@ -559,6 +608,7 @@ export function RecurringManager({
             })}
           </tbody>
         </TableCard>
+        </>
       )}
 
       {visible.length > PAGE_SIZE && (

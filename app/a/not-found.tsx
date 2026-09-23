@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-import { buttonClassName } from "@/src/components/ui/button";
+import { ButtonLabel, buttonClassName } from "@/src/components/ui/button";
 import { EmptyState, PageTitle, Subtext } from "@/src/components/ui/surfaces";
 
 /**
@@ -15,7 +15,7 @@ export default function AdminNotFound() {
       <Subtext className="mb-6">That organization does not exist, or has been deleted.</Subtext>
       <EmptyState>
         <Link href="/a" className={buttonClassName("secondary")}>
-          All organizations
+          <ButtonLabel>All organizations</ButtonLabel>
         </Link>
       </EmptyState>
     </div>
