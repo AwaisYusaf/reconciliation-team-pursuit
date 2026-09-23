@@ -39,27 +39,34 @@ export const PLUS_GRADIENT_TEXT: React.CSSProperties = {
 };
 
 /**
- * The badge's own fill — dark, where `PLUS_GRADIENT` is light. The badge is the one place the
- * mark is a solid object rather than a tint, and the glow below only reads as a glow if the
- * thing casting it is darker than what it sits on.
+ * The badge's own fill: flat, and the darkest brown in the palette's direction.
  *
- * Staying in the brown family: `accent` at the lit corner falling to `accent-dark` and one
- * step past it. White bold 14px on this is roughly 14:1, where the old light caramel fill was
- * 5.2:1 — the dark pill is the more legible of the two, not a contrast trade.
+ * Flat on purpose. The glow below lives on the pill's edges, and an edge glow only reads as
+ * one if the middle it fades into is even — a ramp across the fill competes with it and the
+ * whole thing turns to mush. White bold 14px on this is roughly 15:1.
  */
-const PLUS_BADGE_FILL =
-  "linear-gradient(145deg, var(--color-accent) 0%, var(--color-accent-dark) 55%, #2b1a10 100%)";
+const PLUS_BADGE_FILL = "#241509";
 
 /**
- * The glow, painted inside the pill rather than cast around it.
+ * The glow: along the bottom and up both sides, never through the middle.
  *
- * The reference for this effect sits on a dark page, where a caramel halo bleeding past the
- * edge reads as light. On this app's white cards the same halo has nothing to glow against and
- * comes out as a brown smudge with no edge — the badge stops looking like an object. Clipping
- * the glow to the pill keeps the lit-from-within look and gives the mark a hard edge again.
+ * Three radials, each with its centre placed *outside* the pill — below it, and past each
+ * end. That is what keeps the centre clear: a gradient centred on the badge lights the middle
+ * brightest, which is the opposite of a rim. Pushed out, only their falloff lands inside, and
+ * it lands on the edge nearest each one.
+ *
+ * Painted inside the pill rather than cast around it. On this app's white cards a halo bleeding
+ * past the edge has nothing to glow against and comes out as a brown smudge with no edge; the
+ * badge stops looking like an object. Clipping it keeps the lit-from-within look and the pill
+ * keeps a hard outline.
  */
-const PLUS_BADGE_GLOW_LAYER =
-  "radial-gradient(125% 150% at 50% 125%, rgba(148,96,63,0.65) 0%, rgba(148,96,63,0.18) 45%, rgba(148,96,63,0) 70%)";
+const PLUS_BADGE_GLOW_LAYER = [
+  // Bottom, the brightest of the three and the one that reads as the light source.
+  "radial-gradient(80% 120% at 50% 122%, rgba(160,108,72,0.95) 0%, rgba(160,108,72,0.38) 38%, rgba(160,108,72,0) 68%)",
+  // The two ends, dimmer, so the rim carries round the corners instead of stopping.
+  "radial-gradient(38% 150% at -6% 55%, rgba(160,108,72,0.62) 0%, rgba(160,108,72,0) 70%)",
+  "radial-gradient(38% 150% at 106% 55%, rgba(160,108,72,0.62) 0%, rgba(160,108,72,0) 70%)",
+].join(", ");
 
 /**
  * The pill's edges: a lit top line, a dark hairline ring to seat it against a white card, and a
@@ -82,7 +89,12 @@ export function PlusBadge({ size = "md", className }: { size?: "sm" | "md"; clas
     <span
       title={PLAN_LABELS.reconciliation_ai}
       style={{
-        backgroundImage: `${PLUS_BADGE_GLOW_LAYER}, ${PLUS_BADGE_FILL}`,
+        // The flat fill goes on `background-color`, the glow on `background-image`. They were
+        // one `background-image` list with the colour on the end, which is invalid — a colour
+        // is not an image — so the browser dropped the whole declaration and the badge came
+        // out as white text on nothing.
+        backgroundColor: PLUS_BADGE_FILL,
+        backgroundImage: PLUS_BADGE_GLOW_LAYER,
         boxShadow: PLUS_BADGE_EDGE,
       }}
       className={cn(

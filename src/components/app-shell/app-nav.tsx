@@ -49,7 +49,7 @@ export function matches(pathname: string, href: string): boolean {
  * room to spare — white on `accent-dark` is about 13:1, and the white pill carries the brown
  * back as its text — so the strongest contrast on the bar is what marks where you are.
  */
-export const PILL = "rounded-full bg-accent-dark shadow-[0_2px_12px_rgba(33,27,22,0.18)]";
+const PILL = "rounded-full bg-accent-dark shadow-[0_2px_12px_rgba(33,27,22,0.18)]";
 
 export function AppNav() {
   const pathname = usePathname();
