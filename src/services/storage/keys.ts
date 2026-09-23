@@ -170,6 +170,59 @@ export function expenseImportKey(input: {
   ].join("/");
 }
 
+/**
+ * Image types a profile photo may be.
+ *
+ * A narrower list than `ALLOWED_MIME_TYPES` on purpose. PDF is not a picture. HEIC is left
+ * out because it needs the decode step documents go through, and an avatar is not worth that
+ * path. SVG is absent from both lists and must stay absent: an SVG is a document that can
+ * carry script, and this one is served from the app's own origin.
+ */
+export const AVATAR_MIME_TYPES = ["image/jpeg", "image/png", "image/webp"] as const;
+
+/** Profile photos are small; a 5 MB ceiling is generous for one and bounds the upload. */
+export const MAX_AVATAR_BYTES = 5 * 1024 * 1024;
+
+export function isAllowedAvatarMimeType(mimeType: string): boolean {
+  return (AVATAR_MIME_TYPES as readonly string[]).includes(mimeType);
+}
+
+/**
+ * `org/{orgId}/users/{userId}/avatar/{uuid}.{ext}`
+ *
+ * Under the org prefix like every other key, so `keyBelongsToOrg` guards it unchanged. The
+ * uuid makes each upload its own object: replacing a photo writes a new key and the old one
+ * is deleted explicitly, rather than overwriting a path browsers have already cached.
+ */
+export function avatarKey(input: {
+  orgId: string;
+  userId: string;
+  uploadId: string;
+  mimeType: string;
+}): string {
+  return [
+    "org",
+    input.orgId,
+    "users",
+    input.userId,
+    "avatar",
+    `${input.uploadId}.${extensionFor(input.mimeType)}`,
+  ].join("/");
+}
+
+/**
+ * The uuid out of an avatar key, used as a cache-busting query parameter on the avatar URL.
+ *
+ * The avatar endpoint has no id in its path, so its URL is the same string for every photo
+ * that person ever sets. This is what makes a replacement visible: the version changes, the
+ * URL changes, and the browser fetches rather than serving the previous picture from cache.
+ */
+export function avatarVersionOf(objectKey: string): string {
+  const name = objectKey.slice(objectKey.lastIndexOf("/") + 1);
+  const dot = name.lastIndexOf(".");
+  return dot === -1 ? name : name.slice(0, dot);
+}
+
 /** Thumbnail beside its source object. */
 export function thumbnailKey(objectKey: string): string {
   return `${objectKey.replace(/\.[^./]+$/, "")}.thumb.jpg`;
