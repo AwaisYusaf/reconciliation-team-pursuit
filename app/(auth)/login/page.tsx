@@ -1,4 +1,3 @@
-import Image from "next/image";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
@@ -6,7 +5,8 @@ import { pageTitle } from "@/src/domain/strings";
 import { signupEnabled } from "@/src/modules/auth/config";
 import { getSession, getStaffSession } from "@/src/services/auth/session";
 
-import { PageTitle } from "@/src/components/ui/surfaces";
+import { AuthCard } from "@/src/components/ui/auth-card";
+import { AuthSplit } from "@/src/components/ui/auth-shell";
 
 import { LoginForm } from "./login-form";
 
@@ -19,29 +19,24 @@ export default async function LoginPage() {
   if (await getStaffSession()) redirect("/a");
 
   return (
-    <div className="w-full max-w-[440px] bg-surface border border-line rounded-[4px] px-8 pt-9 pb-8">
-      <div className="flex justify-center">
-        <Image
-          src="/brand/stayfunded-logo.png"
-          alt="Stay Funded 360"
-          width={220}
-          height={147}
-          priority
-          className="w-[180px] sm:w-[220px] h-auto"
-        />
-      </div>
-      <PageTitle className="leading-tight mt-2.5 mb-6 sm:mb-[26px]">Sign in to your organization</PageTitle>
-
-      <LoginForm />
-
-      {signupEnabled() && (
-        <div className="border-t border-line mt-6 pt-5 text-center text-[15px] text-sub">
-          Don&apos;t have an account?{" "}
-          <Link href="/signup" className="text-accent underline hover:text-accent-dark">
-            Create an account
-          </Link>
-        </div>
-      )}
-    </div>
+    <AuthSplit>
+      <AuthCard
+        bare
+        eyebrow={<span className="text-[14px] font-bold text-accent">Welcome back</span>}
+        title="Sign in to your organization"
+        footer={
+          signupEnabled() ? (
+            <>
+              Don&apos;t have an account?{" "}
+              <Link href="/signup" className="text-accent underline hover:text-accent-dark">
+                Create an account
+              </Link>
+            </>
+          ) : undefined
+        }
+      >
+        <LoginForm />
+      </AuthCard>
+    </AuthSplit>
   );
 }
