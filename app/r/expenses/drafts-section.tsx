@@ -18,7 +18,7 @@ import { Dialog } from "@/src/components/ui/dialog";
 import { Menu, MenuItem, MenuLink } from "@/src/components/ui/menu";
 import { Subtext } from "@/src/components/ui/surfaces";
 import { TableCard, Td, Th } from "@/src/components/ui/table";
-import { formatDateUS } from "@/src/domain/dates";
+import { formatDateUS, todayIso } from "@/src/domain/dates";
 import { formatMoney } from "@/src/domain/format";
 import { draftIsReady, draftNeeds } from "@/src/domain/draft-rules";
 import { UI } from "@/src/domain/strings";
@@ -129,6 +129,22 @@ export function DraftsSection({
                   >
                     {row.name}
                   </Link>
+                  {/*
+                    Who last saved it, under the name rather than in a column of its own. This
+                    table already has eight columns and the value repeats for every draft from
+                    the same import, so as a column it would be width spent on one repeated
+                    name. Under the name it is context for the row someone is about to open:
+                    two people review the same invoice, and the question before picking a
+                    draft up is whether the other one is already in it.
+
+                    Silent when no actor was recorded — a draft written before the column
+                    existed, or one whose author's account has been removed.
+                  */}
+                  {row.lastSavedBy && (
+                    <span className="block text-[13px] text-sub">
+                      {UI.draftLastSavedBy(row.lastSavedBy, formatDateUS(todayIso(row.lastSavedAt)))}
+                    </span>
+                  )}
                 </Td>
                 <Td>{row.lineItemName ?? "-"}</Td>
                 {multiSource && (

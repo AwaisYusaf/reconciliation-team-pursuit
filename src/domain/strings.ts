@@ -446,6 +446,15 @@ export const UI = {
   /** The section above the month's expenses, and the mark on each of its rows. */
   draftsWaitingHeading: (count: number) => `Waiting for review (${count})`,
   draftMark: "Draft",
+  /**
+   * Who last saved a draft, and when.
+   *
+   * "Saved by", not "edited by": the person who read the invoice in never edited anything, and
+   * saying they did would be wrong on the majority of drafts. Saving is the act both the
+   * import and a later edit have in common, and it is what the reader is actually asking
+   * about — whether someone else has already been through this one.
+   */
+  draftLastSavedBy: (name: string, date: string) => `Saved by ${name} on ${date}`,
   /** What a draft still needs before it can be approved, in plain words (ticket §5). */
   draftNeedsLineItem: "Needs a line item",
   draftNeedsNarrative: "Needs a narrative",

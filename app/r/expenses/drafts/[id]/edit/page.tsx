@@ -1,8 +1,9 @@
 import { notFound, redirect } from "next/navigation";
 
 import { PageTitle, Subtext } from "@/src/components/ui/surfaces";
-import { todayIso } from "@/src/domain/dates";
-import { pageTitle } from "@/src/domain/strings";
+import { cn } from "@/src/lib/cn";
+import { formatDateUS, todayIso } from "@/src/domain/dates";
+import { pageTitle, UI } from "@/src/domain/strings";
 import {
   approveDraftAction,
   removeDraftDocumentAction,
@@ -77,7 +78,18 @@ export default async function EditDraftPage({
   return (
     <div>
       <PageTitle className="mb-2">Edit draft</PageTitle>
-      <Subtext className="mb-[30px] max-w-[60ch]">{draft.name}</Subtext>
+      {/* The gap below the header belongs to whichever line ends it, rather than to an empty
+          spacer: the attribution carries it when there is one, the name when there is not. */}
+      <Subtext className={cn("max-w-[60ch]", draft.lastSavedBy ? "mb-1" : "mb-[30px]")}>
+        {draft.name}
+      </Subtext>
+      {/* Who had it last. This is the screen where someone commits to working on a draft, so
+          it is the last chance to notice a colleague was already in it. */}
+      {draft.lastSavedBy && (
+        <p className="text-[13px] text-sub mb-[30px] m-0">
+          {UI.draftLastSavedBy(draft.lastSavedBy, formatDateUS(todayIso(draft.updatedAt)))}
+        </p>
+      )}
 
       <ExpenseForm
         options={{ ...options, fundingSources, months: [draft.month] }}

@@ -423,6 +423,10 @@ export async function POST(request: NextRequest) {
               narrative: input.narrative.trim() || null,
               note: input.note.trim() || null,
               sortOrder: index,
+              // Whoever read the invoice in is both the author and, until someone edits it,
+              // the last person to have saved it.
+              createdByUserId: session.userId,
+              updatedByUserId: session.userId,
             })),
           )
           .returning({ id: expenseDrafts.id });

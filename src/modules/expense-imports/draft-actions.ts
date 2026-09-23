@@ -511,6 +511,9 @@ export async function undoDiscardAction(draft: DiscardedDraft): Promise<ActionRe
       id: draft.id,
       importId: draft.importId,
       orgId: current.orgId,
+      // Restoring is a save: the person who pressed Undo is who this draft came back from.
+      createdByUserId: current.userId,
+      updatedByUserId: current.userId,
       fundingSourceId: draft.fundingSourceId,
       month: draft.month,
       date: draft.date,
@@ -595,6 +598,7 @@ export async function updateDraftAction(input: ExpenseInput): Promise<ActionResu
       feesCents: parseMoneyToCentsOrZero(input.fees),
       note: input.note.trim() || null,
       narrative: input.narrative.trim() || null,
+      updatedByUserId: current.userId,
     })
     .where(and(eq(expenseDrafts.id, input.id), eq(expenseDrafts.orgId, current.orgId)))
     .returning({ id: expenseDrafts.id });
