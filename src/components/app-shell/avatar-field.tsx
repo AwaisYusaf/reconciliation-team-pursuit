@@ -7,7 +7,7 @@ import { Button } from "@/src/components/ui/button";
 import { ConfirmButton } from "@/src/components/ui/confirm-button";
 import { toast } from "@/src/components/ui/toast";
 import { AvatarCropper } from "@/src/components/app-shell/avatar-cropper";
-import { initialsFor } from "@/src/components/app-shell/profile-menu";
+import { initialsFor } from "@/src/domain/user-display";
 
 /**
  * Set or remove the signed-in person's profile photo (Settings, Account).

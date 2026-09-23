@@ -81,15 +81,28 @@ export function Card({ className, ...props }: ComponentProps<"div">) {
 }
 
 /** Page title (h1) — 22 / 24 / 28. One per screen. */
-export function PageTitle({ className, ...props }: ComponentProps<"h1">) {
+export function PageTitle({
+  className,
+  gradient = false,
+  children,
+  ...props
+}: ComponentProps<"h1"> & {
+  /** Paint the heading in `GRADIENT_TEXT` instead of flat ink. */
+  gradient?: boolean;
+}) {
   return (
     <h1
       className={cn(
-        "font-serif text-[22px] sm:text-2xl lg:text-[28px] font-bold text-ink m-0",
+        "font-serif text-[22px] sm:text-2xl lg:text-[28px] font-bold m-0",
+        // Dropped rather than layered under the gradient — `cn` does not de-duplicate, so
+        // leaving it would leave the winner to stylesheet order. See `GRADIENT_TEXT`.
+        gradient ? "" : "text-ink",
         className,
       )}
       {...props}
-    />
+    >
+      {gradient ? <span className={GRADIENT_TEXT}>{children}</span> : children}
+    </h1>
   );
 }
 
@@ -142,12 +155,26 @@ export function SectionTitle({
 }
 
 /** Subsection title (h3) — 16 / 17. Groups inside a card. */
-export function SubsectionTitle({ className, ...props }: ComponentProps<"h3">) {
+export function SubsectionTitle({
+  className,
+  gradient = false,
+  children,
+  ...props
+}: ComponentProps<"h3"> & {
+  /** Paint the heading in `GRADIENT_TEXT` instead of flat ink. */
+  gradient?: boolean;
+}) {
   return (
     <h3
-      className={cn("font-serif text-base sm:text-[17px] font-bold text-ink m-0", className)}
+      className={cn(
+        "font-serif text-base sm:text-[17px] font-bold m-0",
+        gradient ? "" : "text-ink",
+        className,
+      )}
       {...props}
-    />
+    >
+      {gradient ? <span className={GRADIENT_TEXT}>{children}</span> : children}
+    </h3>
   );
 }
 

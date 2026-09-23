@@ -70,25 +70,30 @@ function SummaryTile({
       // because the global ring is the accent colour, which is this tile's own background.
       aria-current={active ? "true" : undefined}
       className={cn(
-        "block rounded-[4px] border px-4 py-3.5 transition-colors",
+        // A cell in the hairline grid, so no border and no radius of its own — see
+        // `FILTER_GRID`. The block used to be eight separate bordered boxes with gaps between
+        // them, which at this count reads as clutter rather than as one control.
+        "block px-4 py-4 sm:px-5 transition-colors",
         active
-          ? "border-accent bg-accent text-surface focus-visible:outline-surface"
-          : "border-line bg-surface hover:bg-section",
+          ? // A 2px accent rule along the top, drawn as an inset shadow so it takes no layout
+            // space and cannot shift the cell's contents when the filter is applied.
+            "bg-section shadow-[inset_0_2px_0_var(--color-accent)]"
+          : "bg-surface hover:bg-section",
       )}
     >
-      <div className={cn("text-[13px] leading-snug", active ? "text-surface/85" : "text-sub")}>{label}</div>
+      <div className="text-[11px] uppercase tracking-[0.08em] font-semibold text-muted leading-none">
+        {label}
+      </div>
       <div
         className={cn(
-          "text-[26px] font-bold tabular-nums leading-none mt-1.5",
+          "text-[30px] font-bold tabular-nums leading-none mt-2.5",
           // A zero recedes rather than shouting: most of these are zero most of the time.
-          !active && value === 0 && "text-muted",
+          value === 0 && !active ? "text-muted" : "text-ink",
         )}
       >
         {value}
       </div>
-      <div className={cn("text-[12px] mt-2 uppercase tracking-[0.04em]", active ? "text-surface/75" : "text-muted")}>
-        {caption}
-      </div>
+      <div className="text-[12px] mt-2.5 text-muted">{caption}</div>
     </Link>
   );
 }
@@ -125,12 +130,20 @@ export default async function AdminPage({ searchParams }: { searchParams: Search
 
   return (
     <div>
-      <PageTitle className="mb-2">Organizations</PageTitle>
+      <PageTitle gradient className="mb-2">
+        Organizations
+      </PageTitle>
       <Subtext className="mb-6">Every organization on the app, its plan, status and access.</Subtext>
 
-      {/* Four across on desktop, two on tablet. Clicking a tile filters; clicking the active
-          one clears it. They are links, so the filter is shareable and the back button works. */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      {/*
+        Four across on desktop, two on tablet. Clicking a tile filters; clicking the active one
+        clears it. They are links, so the filter is shareable and the back button works.
+
+        One hairline block rather than eight floating boxes. The rules are the grid's own 1px
+        gaps with the line colour behind them — borders on each cell would double to 2px at
+        every seam and leave a stray edge where the rows wrap at `grid-cols-2`.
+      */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-px bg-line border border-line rounded-[10px] overflow-hidden">
         {(Object.keys(PLAN_LABELS) as OrgPlanFilter[]).map((key) => (
           <SummaryTile
             key={key}
