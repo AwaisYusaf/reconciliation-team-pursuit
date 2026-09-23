@@ -6,12 +6,12 @@
  * Enforcement lives here, not in the page or nav: server actions are directly invocable,
  * so `requireAdmin()` at the top of every export is the real boundary.
  */
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 import { db } from "@/src/db";
-import { users, type UserRole } from "@/src/db/schema";
+import { expenseAuditEvents, sessions, users, type UserRole } from "@/src/db/schema";
 import { nameSchema } from "@/src/domain/name";
 import { fail, ok, type ActionResult } from "@/src/lib/action-result";
 import { requireAdmin } from "@/src/lib/action-session";
@@ -163,7 +163,24 @@ export async function setUserNameAction(userId: string, name: string): Promise<A
 
 export async function listOrgUsersAction(): Promise<
   ActionResult<
-    Array<{ id: string; name: string | null; email: string; role: UserRole; createdAt: Date }>
+    Array<{
+      id: string;
+      name: string | null;
+      email: string;
+      role: UserRole;
+      createdAt: Date;
+      /** Set once an admin revoked this account; null while it is active. */
+      deactivatedAt: Date | null;
+      /**
+       * Whether a permanent delete would succeed.
+       *
+       * Computed here rather than discovered when the button is pressed: the answer is "no" for
+       * almost every real account, and a Delete that is offered and then refuses is worse than
+       * one that is not offered. `expense_audit.actor_user_id` is NOT NULL with no cascade, so
+       * any history at all makes the row undeletable.
+       */
+      deletable: boolean;
+    }>
   >
 > {
   const current = await requireAdmin();
@@ -176,10 +193,143 @@ export async function listOrgUsersAction(): Promise<
       email: users.email,
       role: users.role,
       createdAt: users.createdAt,
+      deactivatedAt: users.deactivatedAt,
+      auditCount: sql<number>`count(${expenseAuditEvents.id})::int`,
     })
     .from(users)
+    // Left, and grouped: a user with no history must still appear, and they are precisely the
+    // ones this count exists to identify.
+    .leftJoin(expenseAuditEvents, eq(expenseAuditEvents.actorUserId, users.id))
     .where(eq(users.orgId, current.orgId))
+    .groupBy(users.id)
     .orderBy(users.createdAt);
 
-  return ok(rows);
+  return ok(
+    rows.map(({ auditCount, ...row }) => ({
+      ...row,
+      // Managers only, matching what the actions will accept.
+      deletable: row.role === "manager" && auditCount === 0,
+    })),
+  );
+}
+
+/**
+ * A manager in this admin's own organisation, loaded for a removal action.
+ *
+ * Every guard the removal paths share, in one place and on the server, because a server action
+ * is directly invocable: the caller is an admin (`requireAdmin`), the target is in the caller's
+ * organisation, and the target is a manager.
+ *
+ * Admins are refused deliberately. The client asked for managers only, and it also removes the
+ * question of what happens to the last admin — an organisation cannot lock itself out through
+ * this screen at all.
+ *
+ * "No longer exists" for every refusal, matching the other actions here: a crafted id must not
+ * be able to distinguish "is an admin" from "is in another org" from "was never real".
+ */
+const NO_SUCH_USER = "That user no longer exists.";
+const NOT_A_MANAGER = "Only a manager's access can be changed here.";
+const HAS_HISTORY =
+  "This account has a history of changes, so it can't be deleted. Revoke its access instead, which keeps that history readable.";
+
+/** Postgres `foreign_key_violation`. The driver surfaces the SQLSTATE as `code`. */
+function isForeignKeyViolation(error: unknown): boolean {
+  return typeof error === "object" && error !== null && "code" in error && error.code === "23503";
+}
+
+async function requireManagerTarget(userId: string) {
+  const current = await requireAdmin();
+  // An explicit `ok` discriminant rather than testing for a `denied` key: the success branch
+  // has no such key, so `"denied" in guard` leaves its type optional at every call site.
+  if ("denied" in current) return { ok: false as const, denied: current.denied };
+  if (!isUuid(userId)) return { ok: false as const, denied: fail(NO_SUCH_USER) };
+
+  const [target] = await db
+    .select({ id: users.id, role: users.role, deactivatedAt: users.deactivatedAt })
+    .from(users)
+    .where(and(eq(users.id, userId), eq(users.orgId, current.orgId)))
+    .limit(1);
+
+  if (!target) return { ok: false as const, denied: fail(NO_SUCH_USER) };
+  // Belt and braces with the role check: an admin cannot reach their own row here anyway,
+  // since they are an admin, but stating it means a future change to who counts as a manager
+  // cannot quietly make self-removal reachable.
+  if (target.id === current.userId) return { ok: false as const, denied: fail(NOT_A_MANAGER) };
+  if (target.role !== "manager") return { ok: false as const, denied: fail(NOT_A_MANAGER) };
+
+  return { ok: true as const, current, target };
+}
+
+/**
+ * Close a manager's account: they cannot sign in, and every session they hold ends now.
+ *
+ * Deleting their `sessions` rows is what makes this immediate — without it a cookie already in
+ * a browser keeps resolving until it expires, which for this app is up to thirty days.
+ * `resolveSession` also filters on `deactivated_at`, so the two together mean there is no
+ * window and no path.
+ */
+export async function revokeUserAccessAction(userId: string): Promise<ActionResult> {
+  const guard = await requireManagerTarget(userId);
+  if (!guard.ok) return guard.denied;
+
+  await db.transaction(async (tx) => {
+    await tx.update(users).set({ deactivatedAt: new Date() }).where(eq(users.id, userId));
+    await tx.delete(sessions).where(eq(sessions.userId, userId));
+  });
+
+  revalidatePath("/r/settings/users");
+  return ok();
+}
+
+/** Undo a revocation. They keep their own history rather than returning as a new person. */
+export async function reinstateUserAccessAction(userId: string): Promise<ActionResult> {
+  const guard = await requireManagerTarget(userId);
+  if (!guard.ok) return guard.denied;
+
+  await db.update(users).set({ deactivatedAt: null }).where(eq(users.id, userId));
+
+  revalidatePath("/r/settings/users");
+  return ok();
+}
+
+/**
+ * Delete a manager's account outright, which is only possible when they have no audit history.
+ *
+ * `expense_audit.actor_user_id` is NOT NULL with no cascade, so Postgres refuses to delete
+ * anyone who has ever created, edited or deleted an expense — by design, since an audit trail
+ * that loses its actor is not one. Rather than let that surface as a foreign-key error, the
+ * count is checked first and the refusal is said in words.
+ *
+ * The check and the delete share a transaction so an expense saved between them cannot leave
+ * an account deleted whose history has just started.
+ */
+export async function deleteUserAccountAction(userId: string): Promise<ActionResult> {
+  const guard = await requireManagerTarget(userId);
+  if (!guard.ok) return guard.denied;
+
+  return db.transaction(async (tx) => {
+    const [{ count }] = await tx
+      .select({ count: sql<number>`count(*)::int` })
+      .from(expenseAuditEvents)
+      .where(eq(expenseAuditEvents.actorUserId, userId));
+
+    if (count > 0) return fail(HAS_HISTORY);
+
+    // `sessions` and `user_tour_progress` cascade from the user; everything else that points
+    // at one nulls out, and for an account with no audit history there is nothing to null.
+    //
+    // The count above is not quite enough on its own. If this person saves an expense between
+    // the count and this delete, Postgres refuses the delete on `expense_audit`'s foreign key
+    // and would throw where every other refusal here is a sentence. Catching the violation
+    // turns that race into the same answer the count gives, which is also the true one: by the
+    // time it fires, they do have a history.
+    try {
+      await tx.delete(users).where(eq(users.id, userId));
+    } catch (error) {
+      if (isForeignKeyViolation(error)) return fail(HAS_HISTORY);
+      throw error;
+    }
+    revalidatePath("/r/settings/users");
+    return ok();
+  });
 }

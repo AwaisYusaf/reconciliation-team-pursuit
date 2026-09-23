@@ -209,6 +209,15 @@ export const UI = {
    */
   orgAccessPaused: "Your organization's access is paused. Please contact support.",
   /**
+   * A revoked account, shown only after the password checks out — same reason as the paused
+   * organization above.
+   *
+   * Points at the organization rather than at support: an admin inside the org did this and an
+   * admin inside the org can undo it, so support is the wrong door.
+   */
+  signInAccessRevoked:
+    "Your access to this organization has been removed. Ask an administrator there if you think this is a mistake.",
+  /**
    * The same message with the reason AB Solutions gave when suspending. The reason is staff
    * input, so the suspend dialog says out loud that it is shown here — otherwise an internal
    * note ("chasing Misty about the invoice") ends up in front of the customer.

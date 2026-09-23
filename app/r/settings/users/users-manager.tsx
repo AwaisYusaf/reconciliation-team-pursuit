@@ -11,6 +11,8 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
 import { Button } from "@/src/components/ui/button";
+import { Dialog } from "@/src/components/ui/dialog";
+import { Menu, MenuItem } from "@/src/components/ui/menu";
 import { Input, Label } from "@/src/components/ui/field";
 import { Card, CARD_PADDING, DangerPanel, SectionTitle } from "@/src/components/ui/surfaces";
 import { TableCard, Td, Th } from "@/src/components/ui/table";
@@ -20,11 +22,24 @@ import { reportResult } from "@/src/components/ui/toast";
 import type { UserRole } from "@/src/db/schema";
 import {
   createOrgUserAction,
+  deleteUserAccountAction,
+  reinstateUserAccessAction,
+  revokeUserAccessAction,
   setUserNameAction,
   setUserPasswordAction,
 } from "@/src/modules/users/actions";
 
-export type OrgUser = { id: string; name: string | null; email: string; role: UserRole; createdAt: Date };
+export type OrgUser = {
+  id: string;
+  name: string | null;
+  email: string;
+  role: UserRole;
+  createdAt: Date;
+  /** Set once an admin revoked this account; null while it is active. */
+  deactivatedAt: Date | null;
+  /** Whether a permanent delete would actually succeed — see `listOrgUsersAction`. */
+  deletable: boolean;
+};
 
 /** Shown once, right after a password is generated — never persisted anywhere. */
 function GeneratedPasswordPanel({
@@ -74,6 +89,10 @@ export function UsersManager({ users }: { users: OrgUser[] }) {
     null,
   );
   // Inline row edit state — which row's name cell is swapped for an Input, and its draft value.
+  /** The manager a confirmation is open for, or null. The menu closes on click, so the
+   *  question has to live outside it. */
+  const [confirmRevoke, setConfirmRevoke] = useState<OrgUser | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<OrgUser | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState("");
 
@@ -140,13 +159,27 @@ export function UsersManager({ users }: { users: OrgUser[] }) {
                     </div>
                   )}
                 </Td>
-                <Td className="capitalize">{user.role}</Td>
+                <Td className="capitalize">
+                  {user.role}
+                  {user.deactivatedAt && (
+                    <span className="block text-[11px] uppercase tracking-[0.06em] font-bold text-danger normal-case">
+                      Access removed
+                    </span>
+                  )}
+                </Td>
                 <Td>{formatDateUS(todayIso(user.createdAt))}</Td>
                 <Td align="right">
-                  <div className="flex gap-4 justify-end">
-                    {editingId !== user.id && (
-                      <Button
-                        variant="quiet"
+                  {/*
+                    One menu, so every row is the same shape whatever it offers.
+
+                    These were four underlined links in a row, which wrapped onto two ragged
+                    lines and made rows with a Delete look arbitrarily different from rows
+                    without one. A menu is also the pattern the expenses table already uses for
+                    per-row actions.
+                  */}
+                  {editingId !== user.id && (
+                    <Menu label={`Actions for ${userDisplay(user.name, user.email)}`}>
+                      <MenuItem
                         disabled={pending}
                         onClick={() => {
                           setEditingId(user.id);
@@ -154,30 +187,125 @@ export function UsersManager({ users }: { users: OrgUser[] }) {
                         }}
                       >
                         Edit name
-                      </Button>
-                    )}
-                    <Button
-                      variant="quiet"
-                      disabled={pending}
-                      onClick={() =>
-                        startTransition(async () => {
-                          const result = await setUserPasswordAction(user.id);
-                          if (reportResult(result, "Password reset.")) {
-                            if (result.data) setShownPassword({ userId: user.id, password: result.data.password });
-                            router.refresh();
-                          }
-                        })
-                      }
-                    >
-                      Reset password
-                    </Button>
-                  </div>
+                      </MenuItem>
+
+                      <MenuItem
+                        disabled={pending}
+                        onClick={() =>
+                          startTransition(async () => {
+                            const result = await setUserPasswordAction(user.id);
+                            if (reportResult(result, "Password reset.")) {
+                              if (result.data) {
+                                setShownPassword({ userId: user.id, password: result.data.password });
+                              }
+                              router.refresh();
+                            }
+                          })
+                        }
+                      >
+                        Reset password
+                      </MenuItem>
+
+                      {/* Managers only — an admin row offers neither, matching what the
+                          actions accept, so the organisation cannot lock itself out here. */}
+                      {user.role === "manager" &&
+                        (user.deactivatedAt ? (
+                          <MenuItem
+                            disabled={pending}
+                            onClick={() =>
+                              startTransition(async () => {
+                                const result = await reinstateUserAccessAction(user.id);
+                                if (reportResult(result, "Access restored.")) router.refresh();
+                              })
+                            }
+                          >
+                            Restore access
+                          </MenuItem>
+                        ) : (
+                          <MenuItem disabled={pending} onClick={() => setConfirmRevoke(user)}>
+                            Remove access
+                          </MenuItem>
+                        ))}
+
+                      {/*
+                        Always listed for a manager, and disabled with the reason when it would
+                        fail, rather than appearing on some rows and not others. The database
+                        refuses to delete anyone who has recorded anything — `actor_user_id` on
+                        the audit log is NOT NULL with no cascade — so this is a real limit, not
+                        a policy, and saying so is better than an unexplained gap.
+                      */}
+                      {user.role === "manager" && (
+                        <>
+                          <MenuItem
+                            disabled={pending || !user.deletable}
+                            onClick={() => setConfirmDelete(user)}
+                          >
+                            Delete account
+                          </MenuItem>
+                          {!user.deletable && (
+                            <p className="px-3.5 pb-2.5 pt-0 m-0 text-[12px] text-sub max-w-[230px] leading-snug">
+                              This account has recorded work, so it can only have its access
+                              removed.
+                            </p>
+                          )}
+                        </>
+                      )}
+                    </Menu>
+                  )}
                 </Td>
               </tr>
             ))}
           </tbody>
         </TableCard>
       )}
+
+      <Dialog
+        open={confirmRevoke !== null}
+        title="Remove this person's access?"
+        dismissLabel="Keep it"
+        onDismiss={() => setConfirmRevoke(null)}
+        confirm={{
+          label: "Remove access",
+          disabled: pending,
+          onConfirm: () => {
+            const target = confirmRevoke!;
+            startTransition(async () => {
+              const result = await revokeUserAccessAction(target.id);
+              if (reportResult(result, "Access removed.")) {
+                setConfirmRevoke(null);
+                router.refresh();
+              }
+            });
+          },
+        }}
+      >
+        {confirmRevoke &&
+          `${userDisplay(confirmRevoke.name, confirmRevoke.email)} will be signed out everywhere and won't be able to sign in. Everything they recorded stays, and you can restore their access later.`}
+      </Dialog>
+
+      <Dialog
+        open={confirmDelete !== null}
+        title="Delete this account?"
+        dismissLabel="Keep it"
+        onDismiss={() => setConfirmDelete(null)}
+        confirm={{
+          label: "Delete account",
+          disabled: pending,
+          onConfirm: () => {
+            const target = confirmDelete!;
+            startTransition(async () => {
+              const result = await deleteUserAccountAction(target.id);
+              if (reportResult(result, "Account deleted.")) {
+                setConfirmDelete(null);
+                router.refresh();
+              }
+            });
+          },
+        }}
+      >
+        {confirmDelete &&
+          `${userDisplay(confirmDelete.name, confirmDelete.email)} has never recorded anything, so the account can be removed completely. This can't be undone.`}
+      </Dialog>
 
       {shownPassword && (
         <GeneratedPasswordPanel

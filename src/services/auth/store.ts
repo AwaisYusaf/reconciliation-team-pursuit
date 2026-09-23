@@ -120,7 +120,16 @@ export async function resolveSession(
     .from(sessions)
     .innerJoin(users, eq(users.id, sessions.userId))
     .innerJoin(organizations, eq(organizations.id, users.orgId))
-    .where(and(eq(sessions.id, tokenHash), isNull(organizations.suspendedAt)))
+    // `deactivatedAt` here as well as deleting the sessions at revocation time: the delete is
+    // what ends access immediately, and this is what makes it impossible for any cookie to
+    // outlive the revocation if a session row is ever created or restored another way.
+    .where(
+      and(
+        eq(sessions.id, tokenHash),
+        isNull(organizations.suspendedAt),
+        isNull(users.deactivatedAt),
+      ),
+    )
     .limit(1);
 
   const row = rows[0];

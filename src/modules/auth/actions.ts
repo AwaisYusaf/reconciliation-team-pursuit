@@ -111,6 +111,7 @@ export async function signInAction(
       id: users.id,
       passwordHash: users.passwordHash,
       orgId: users.orgId,
+      deactivatedAt: users.deactivatedAt,
       onboardedAt: organizations.onboardedAt,
       suspendedAt: organizations.suspendedAt,
     })
@@ -149,6 +150,11 @@ export async function signInAction(
   // gets the normal wrong-password message above, so the form can't be used to learn whether
   // an address's organization is suspended. No session, no `last_sign_in_at` write, and the
   // rate limiters stay untouched — this attempt did not prove anything a limiter should forget.
+  // A revoked account, checked after the password for the same reason as the suspended org
+  // below: answering before the password would turn this form into a way of asking whether a
+  // given address still has access.
+  if (user.deactivatedAt) return fail(UI.signInAccessRevoked);
+
   if (user.suspendedAt) {
     // The reason AB Solutions gave, from the suspension that is still in force — the newest
     // `suspended` event, since an org can have been suspended and reinstated before. Falls back

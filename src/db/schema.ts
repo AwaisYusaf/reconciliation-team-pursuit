@@ -209,6 +209,19 @@ export const users = pgTable(
      *  No column default on purpose, same reason as expenses.referenceSeq: a default makes this
      *  optional on insert, and a forgotten role would silently mint an admin. */
     role: userRole().notNull(),
+    /**
+     * When an admin revoked this account's access, or null while it is active.
+     *
+     * A flag rather than a deletion because `expense_audit.actor_user_id` is NOT NULL with no
+     * cascade: the database refuses to delete anyone who has ever touched an expense, and that
+     * refusal is deliberate — an audit trail that loses its actor when someone leaves is not an
+     * audit trail. Revoking keeps the row, so every "who did this" still resolves a name, while
+     * `resolveSession` and the sign-in path both treat the account as closed.
+     *
+     * Reversible on purpose: someone revoked in error is reinstated by clearing this, and comes
+     * back to their own history rather than as a second, unrelated person.
+     */
+    deactivatedAt: timestamp("deactivated_at", { withTimezone: true }),
     /** Written from ship date on (Phase 9); null on every account that predates it. */
     lastSignInAt: timestamp("last_sign_in_at", { withTimezone: true }),
     createdAt: createdAt(),
