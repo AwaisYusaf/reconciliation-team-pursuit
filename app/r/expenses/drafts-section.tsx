@@ -13,9 +13,11 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 
+import { UserAvatar } from "@/src/components/app-shell/user-avatar";
 import { Button } from "@/src/components/ui/button";
 import { Dialog } from "@/src/components/ui/dialog";
 import { Menu, MenuItem, MenuLink } from "@/src/components/ui/menu";
+import { Modal } from "@/src/components/ui/modal";
 import { Subtext } from "@/src/components/ui/surfaces";
 import { TableCard, Td, Th } from "@/src/components/ui/table";
 import { formatDateUS, todayIso } from "@/src/domain/dates";
@@ -51,6 +53,9 @@ export function DraftsSection({
   const [pending, startTransition] = useTransition();
   /** The draft the confirmation dialog is asking about, by id and name. */
   const [confirmDiscard, setConfirmDiscard] = useState<{ id: string; name: string } | null>(null);
+  // The draft whose history is open. The whole row, not an id: everything the dialog shows is
+  // already on it, so opening it needs no fetch.
+  const [historyDraft, setHistoryDraft] = useState<DraftSectionRow | null>(null);
 
   if (rows.length === 0) return null;
 
@@ -130,21 +135,12 @@ export function DraftsSection({
                     {row.name}
                   </Link>
                   {/*
-                    Who last saved it, under the name rather than in a column of its own. This
-                    table already has eight columns and the value repeats for every draft from
-                    the same import, so as a column it would be width spent on one repeated
-                    name. Under the name it is context for the row someone is about to open:
-                    two people review the same invoice, and the question before picking a
-                    draft up is whether the other one is already in it.
-
-                    Silent when no actor was recorded — a draft written before the column
-                    existed, or one whose author's account has been removed.
+                    "Saved by X on DATE" used to print here, under every name. It repeats for
+                    every draft from the same import, so on a five-row invoice the same
+                    sentence appeared five times and made each row two lines tall for one fact
+                    nobody reads twice. It moved into History in the row's own menu, where
+                    expenses already keep theirs.
                   */}
-                  {row.lastSavedBy && (
-                    <span className="block text-[13px] text-sub">
-                      {UI.draftLastSavedBy(row.lastSavedBy, formatDateUS(todayIso(row.lastSavedAt)))}
-                    </span>
-                  )}
                 </Td>
                 <Td>{row.lineItemName ?? "-"}</Td>
                 {multiSource && (
@@ -183,6 +179,13 @@ export function DraftsSection({
                       <MenuLink href={`/r/expenses/drafts/${row.id}/edit`}>
                         {UI.draftEdit}
                       </MenuLink>
+                      {/* Only when there is an actor to name. A draft written before the
+                          column existed, or whose author's account is gone, has nothing to
+                          put in the dialog — an item that opens an empty box is worse than
+                          no item. */}
+                      {row.lastSavedBy && (
+                        <MenuItem onClick={() => setHistoryDraft(row)}>History</MenuItem>
+                      )}
                       <MenuItem
                         // Asks first: this sits one line under Edit in the same menu, it
                         // destroys the files attached to the draft for good, and Undo brings
@@ -200,6 +203,55 @@ export function DraftsSection({
           })}
         </tbody>
       </TableCard>
+
+      {/*
+        One row, and that is the whole truth: a draft keeps only who saved it last and when,
+        overwritten on every save. There is no draft audit table, so this cannot list earlier
+        saves and does not pretend to — the note under the table says as much rather than
+        leaving a one-line log looking like a bug.
+      */}
+      <Modal
+        open={historyDraft !== null}
+        title={historyDraft ? `History: ${historyDraft.name}` : "History"}
+        onClose={() => setHistoryDraft(null)}
+        size="md"
+      >
+        {historyDraft && (
+          <>
+            <TableCard>
+              <thead>
+                <tr>
+                  <Th>Date</Th>
+                  <Th>User</Th>
+                  <Th>Action</Th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <Td className="whitespace-nowrap tabular-nums">
+                    {formatDateUS(todayIso(historyDraft.lastSavedAt))}
+                  </Td>
+                  <Td>
+                    <span className="flex items-center gap-2.5 min-w-0">
+                      <UserAvatar
+                        name={historyDraft.lastSavedByName}
+                        email={historyDraft.lastSavedByEmail ?? ""}
+                        avatarKey={historyDraft.lastSavedByAvatarKey}
+                      />
+                      <span className="truncate">{historyDraft.lastSavedBy}</span>
+                    </span>
+                  </Td>
+                  <Td>Saved</Td>
+                </tr>
+              </tbody>
+            </TableCard>
+            <Subtext className="mt-3">
+              A draft records only its most recent save. Once approved, every change to the
+              expense is kept in its own history.
+            </Subtext>
+          </>
+        )}
+      </Modal>
 
       <Dialog
         open={confirmDiscard !== null}

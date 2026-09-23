@@ -32,6 +32,7 @@ import {
 } from "@/src/domain/gate";
 import { UI } from "@/src/domain/strings";
 import { cn } from "@/src/lib/cn";
+import { UserAvatar } from "@/src/components/app-shell/user-avatar";
 import { userDisplay } from "@/src/domain/user-display";
 import { deleteExpenseAction, loadExpenseHistoryAction } from "@/src/modules/expenses/actions";
 // Type-only: `queries.ts` is `server-only`, so importing a runtime value from it into this
@@ -196,7 +197,18 @@ function HistoryModal({
                       <Td className="whitespace-nowrap tabular-nums">
                         {formatDateTimeUS(event.at)}
                       </Td>
-                      <Td>{userDisplay(event.actorName, event.actorEmail)}</Td>
+                      <Td>
+                        <span className="flex items-center gap-2.5 min-w-0">
+                          <UserAvatar
+                            name={event.actorName}
+                            email={event.actorEmail}
+                            avatarKey={event.actorAvatarKey}
+                          />
+                          <span className="truncate">
+                            {userDisplay(event.actorName, event.actorEmail)}
+                          </span>
+                        </span>
+                      </Td>
                       <Td>{ACTION_LABELS[event.action]}</Td>
                       <Td align="right">
                         {(event.beforeData || event.afterData) && (

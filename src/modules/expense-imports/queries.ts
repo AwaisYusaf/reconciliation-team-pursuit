@@ -56,6 +56,16 @@ export type DraftRow = {
    * is the time of the last save whether or not an actor was recorded with it.
    */
   lastSavedBy: string | null;
+  /**
+   * The saver's own name, email and avatar key, unformatted.
+   *
+   * `lastSavedBy` above is already a display string, which is right for a sentence but useless
+   * to an avatar: initials come from the name *or* the email local part, and those have to be
+   * told apart. Null together with `lastSavedBy`, for the same reasons.
+   */
+  lastSavedByName: string | null;
+  lastSavedByEmail: string | null;
+  lastSavedByAvatarKey: string | null;
   lastSavedAt: Date;
 };
 
@@ -96,6 +106,8 @@ export async function loadMonthDrafts(
       updatedAt: expenseDrafts.updatedAt,
       updatedByName: updatedBy.name,
       updatedByEmail: updatedBy.email,
+      // No extra query: `updatedBy` is already joined for the name and email.
+      updatedByAvatarKey: updatedBy.avatarKey,
     })
     .from(expenseDrafts)
     // Left, and aliased: the column is nullable for a draft written before it existed, and
@@ -117,6 +129,11 @@ export async function loadMonthDrafts(
 
   return rows.map((row) => ({
     lastSavedBy: row.updatedByEmail ? userDisplay(row.updatedByName, row.updatedByEmail) : null,
+    // Gated on the email too, so all four move together: with no actor row the join returns
+    // nulls across the board and the screen shows no saver at all rather than a faceless one.
+    lastSavedByName: row.updatedByEmail ? row.updatedByName : null,
+    lastSavedByEmail: row.updatedByEmail,
+    lastSavedByAvatarKey: row.updatedByEmail ? row.updatedByAvatarKey : null,
     lastSavedAt: row.updatedAt,
     id: row.id,
     importId: row.importId,
@@ -184,6 +201,8 @@ export async function loadDraftById(orgId: string, id: string) {
       draft: expenseDrafts,
       updatedByName: updatedBy.name,
       updatedByEmail: updatedBy.email,
+      // No extra query: `updatedBy` is already joined for the name and email.
+      updatedByAvatarKey: updatedBy.avatarKey,
     })
     .from(expenseDrafts)
     // Left, for the same reason as in `loadMonthDrafts`: the actor is nullable and a removed

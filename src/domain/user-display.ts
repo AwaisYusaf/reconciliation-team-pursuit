@@ -18,3 +18,25 @@ export function greetingName(name: string | null | undefined, email: string): st
   if (trimmed) return trimmed.split(/\s+/)[0];
   return email.split("@")[0]?.trim() ?? "";
 }
+
+/**
+ * Up to two initials from a display name, falling back to the email.
+ *
+ * Splits on whitespace and takes the first and last part, so "Mary-Anne Carter" reads MC and
+ * a single name reads one letter rather than a doubled one. The email fallback takes the
+ * local part only, because the domain is the same for everyone in an organisation and
+ * initials drawn from it would make every avatar identical.
+ *
+ * Here rather than beside the avatar that draws it: this is a pure string function, like the
+ * two above, and it had been living in `profile-menu.tsx` — a `"use client"` module — which
+ * meant a server component wanting initials had to pull a client component's module in to get
+ * them.
+ */
+export function initialsFor(name: string | null, email: string): string {
+  const source = name?.trim() || email.split("@")[0]?.trim() || "";
+  const parts = source.split(/[\s._-]+/).filter(Boolean);
+  if (parts.length === 0) return "?";
+  const first = parts[0].charAt(0);
+  const last = parts.length > 1 ? parts[parts.length - 1].charAt(0) : "";
+  return (first + last).toUpperCase();
+}

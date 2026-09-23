@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 
+import { initialsFor } from "@/src/domain/user-display";
 import { cn } from "@/src/lib/cn";
 
 /**
@@ -18,33 +19,19 @@ import { cn } from "@/src/lib/cn";
  * sign-out `<form>` inside the menu rather than stranded across a portal boundary.
  */
 
-/**
- * Up to two initials from a display name, falling back to the email.
- *
- * Splits on whitespace and takes the first and last part, so "Mary-Anne Carter" reads MC and
- * a single name reads one letter rather than a doubled one. The email fallback takes the
- * local part only, because the domain is the same for everyone in an organisation and
- * initials drawn from it would make every avatar identical.
- */
-export function initialsFor(name: string | null, email: string): string {
-  const source = name?.trim() || email.split("@")[0]?.trim() || "";
-  const parts = source.split(/[\s._-]+/).filter(Boolean);
-  if (parts.length === 0) return "?";
-  const first = parts[0].charAt(0);
-  const last = parts.length > 1 ? parts[parts.length - 1].charAt(0) : "";
-  return (first + last).toUpperCase();
-}
-
 export function ProfileMenu({
   name,
   email,
   photoUrl,
   signOut,
+  profileHref = "/r/settings?section=account",
 }: {
   name: string | null;
   email: string;
   /** Set once a profile photo exists; until then the avatar is initials. */
   photoUrl?: string | null;
+  /** Where "Your profile" goes, or `null` to leave the item out — see below. */
+  profileHref?: string | null;
   /** The sign-out server action, passed down so this stays a presentational client component. */
   signOut: () => void | Promise<void>;
 }) {
@@ -111,16 +98,23 @@ export function ProfileMenu({
             {name?.trim() && <div className="text-[13px] text-sub truncate">{email}</div>}
           </div>
 
-          <Link
-            href="/r/settings?section=account"
-            role="menuitem"
-            onClick={() => setOpen(false)}
-            className="block w-full min-h-11 flex items-center px-3.5 text-[15px] text-ink hover:bg-section"
-          >
-            Your profile
-          </Link>
+          {/*
+            Omitted for staff. `/r/settings` is a customer route, and a staff session is not a
+            customer session, so following it would land an AB Solutions user on the sign-in
+            page — a menu item that signs you out by accident is worse than no menu item.
+          */}
+          {profileHref && (
+            <Link
+              href={profileHref}
+              role="menuitem"
+              onClick={() => setOpen(false)}
+              className="block w-full min-h-11 flex items-center px-3.5 text-[15px] text-ink hover:bg-section"
+            >
+              Your profile
+            </Link>
+          )}
 
-          <form action={signOut} className="border-t border-line">
+          <form action={signOut} className={profileHref ? "border-t border-line" : undefined}>
             <button
               type="submit"
               role="menuitem"

@@ -177,6 +177,9 @@ export type OrgAuditEvent = {
   /** Null for a legacy account that predates the `users.name` column (D-89); render through
    *  `userDisplay` at the UI, not here. */
   actorName: string | null;
+  /** The actor's `users.avatar_key`, null until they upload a photo. Carried so the log can
+   *  show a face beside the name; the UI turns it into a URL, never the key itself. */
+  actorAvatarKey: string | null;
   at: Date;
   expenseId: string | null;
   /** `{month}-{seq}` when the expense (still or once) has a month/reference to print — null
@@ -222,6 +225,8 @@ export async function loadOrgAuditHistory(
       action: expenseAuditEvents.action,
       actorEmail: users.email,
       actorName: users.name,
+      // No extra query: `users` is already joined for the name and email.
+      actorAvatarKey: users.avatarKey,
       at: expenseAuditEvents.createdAt,
       expenseId: expenseAuditEvents.expenseId,
       month: expenses.month,
@@ -260,6 +265,7 @@ export async function loadOrgAuditHistory(
       action: row.action,
       actorEmail: row.actorEmail,
       actorName: row.actorName,
+      actorAvatarKey: row.actorAvatarKey,
       at: row.at,
       expenseId: row.expenseId,
       reference: row.month && row.referenceSeq ? expenseReference(row.month, row.referenceSeq) : null,
