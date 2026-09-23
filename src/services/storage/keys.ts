@@ -64,6 +64,29 @@ export function expenseDocumentKey(input: {
   ].join("/");
 }
 
+/** `org/{orgId}/months/{YYYY-MM}/draft-docs/{draftId}/{scope}/{docId}.{ext}` (Phase 14) — a
+ *  file added to a draft before it is an expense. Approval re-points the same object at the
+ *  new expense rather than copying it, so this key outlives the draft row. */
+export function draftDocumentKey(input: {
+  orgId: string;
+  month: MonthKey;
+  draftId: string;
+  scope: DocumentScope;
+  docId: string;
+  mimeType: string;
+}): string {
+  return [
+    "org",
+    input.orgId,
+    "months",
+    input.month,
+    "draft-docs",
+    input.draftId,
+    input.scope,
+    `${input.docId}.${extensionFor(input.mimeType)}`,
+  ].join("/");
+}
+
 /** `org/{orgId}/months/{YYYY-MM}/month-docs/{category}/{docId}.{ext}` */
 export function monthDocumentKey(input: {
   orgId: string;
@@ -124,6 +147,26 @@ export function signedPacketKey(input: {
     "signed-packets",
     input.fundingSourceId,
     `${input.eventId}.pdf`,
+  ].join("/");
+}
+
+/** `org/{orgId}/months/{YYYY-MM}/expense-imports/{importId}.{ext}` (Phase 14) — one invoice,
+ *  owned by the import row rather than any one expense (D-115); the filename lives on the row,
+ *  never in the key. The extension comes from the inspected type, since an invoice may be a
+ *  PDF or a photo of the bill. */
+export function expenseImportKey(input: {
+  orgId: string;
+  month: MonthKey;
+  importId: string;
+  mimeType: string;
+}): string {
+  return [
+    "org",
+    input.orgId,
+    "months",
+    input.month,
+    "expense-imports",
+    `${input.importId}.${extensionFor(input.mimeType)}`,
   ].join("/");
 }
 

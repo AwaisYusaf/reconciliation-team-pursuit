@@ -1,0 +1,1 @@
+ALTER TABLE "expense_imports" ADD COLUMN "thumbnail_bytes" integer DEFAULT 0 NOT NULL;

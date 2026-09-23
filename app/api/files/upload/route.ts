@@ -7,7 +7,11 @@ import { consume } from "@/src/services/rate-limit";
 import { getSession } from "@/src/services/auth/session";
 import { findFundingSource } from "@/src/modules/funding-sources/queries";
 import { lockMonth } from "@/src/modules/packet/lock";
-import { ingestExpenseDocument, ingestMonthDocument } from "@/src/services/storage/documents";
+import {
+  ingestDraftDocument,
+  ingestExpenseDocument,
+  ingestMonthDocument,
+} from "@/src/services/storage/documents";
 import { MAX_UPLOAD_BYTES, type DocumentScope } from "@/src/services/storage/keys";
 import type { MonthDocumentCategory } from "@/src/db/schema";
 import { SESSION_EXPIRED } from "@/src/lib/action-result";
@@ -133,13 +137,24 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: false, error: "Unknown document kind." }, { status: 400 });
   }
 
-  const result = await ingestExpenseDocument({
-    orgId: session.orgId,
-    expenseId: String(form.get("expenseId") ?? ""),
-    scope,
-    supportingType: form.get("supportingType") ? String(form.get("supportingType")) : null,
-    file,
-  });
+  // A draft is not an expense yet, so its files go to their own table and are re-pointed at
+  // the expense on approval (Phase 14). Everything else about this branch is identical.
+  const result =
+    target === "draft"
+      ? await ingestDraftDocument({
+          orgId: session.orgId,
+          draftId: String(form.get("draftId") ?? ""),
+          scope,
+          supportingType: form.get("supportingType") ? String(form.get("supportingType")) : null,
+          file,
+        })
+      : await ingestExpenseDocument({
+          orgId: session.orgId,
+          expenseId: String(form.get("expenseId") ?? ""),
+          scope,
+          supportingType: form.get("supportingType") ? String(form.get("supportingType")) : null,
+          file,
+        });
 
   return NextResponse.json(result, { status: result.ok ? 200 : 400 });
   } catch (error) {

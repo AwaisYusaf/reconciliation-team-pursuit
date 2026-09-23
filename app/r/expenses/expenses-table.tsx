@@ -496,7 +496,11 @@ export function ExpensesTable({
         {sourceFilterControl}
       </div>
 
-      <TableCard minWidth={1160}>
+      {/* `dense`, and a floor that accounts for the column count: the 1160 measured for this
+          table predates the Funding source column, which "All sources" adds as an eleventh. At
+          the 1220px content cap the extra column pushed it over and the whole table scrolled
+          sideways, which the design language does not allow at that width (m03). */}
+      <TableCard dense minWidth={multiSource ? 1160 : 1060}>
         <thead>
           <tr>
             <Th sticky>Ref / Date</Th>
@@ -541,7 +545,17 @@ export function ExpensesTable({
               </Td>
               <Td>{row.name}</Td>
               <Td>{row.lineItemName}</Td>
-              {multiSource && <Td className="text-[15px] text-sub leading-snug">{row.fundingSourceName}</Td>}
+              {multiSource && (
+                // Capped and clipped, with the full name on hover and for a screen reader:
+                // this is the column that pushed the table past the 1220px content cap, and a
+                // grant name like "Community Violence Intervention" has no short word to wrap
+                // on, so it set its own column three lines tall and as wide as its longest word.
+                <Td className="text-[15px] text-sub leading-snug">
+                  <span className="block max-w-[132px] truncate" title={row.fundingSourceName}>
+                    {row.fundingSourceName}
+                  </span>
+                </Td>
+              )}
               <Td className="text-[15px] text-sub leading-snug">{row.paymentSource}</Td>
               <Td align="right" numeric>
                 {formatMoney(row.reimbursableCents)}

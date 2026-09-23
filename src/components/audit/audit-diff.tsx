@@ -27,6 +27,14 @@ export const ACTION_LABELS: Record<ExpenseAuditActionType, string> = {
 /** Visible, non-em-dash placeholder for a blank field in the diff dialog. */
 const NONE = "None";
 
+/** Reads the `fromInvoice` flag `approveDraftAction` writes into a "created" snapshot's jsonb,
+ *  without touching `ExpenseAuditSnapshot` in schema.ts (off limits). Not added to `FIELDS`
+ *  below on purpose: that list renders in full in the single-column view, so a field there
+ *  would put a "None" row on every hand-typed expense. */
+function fromInvoice(snapshot: ExpenseAuditSnapshot | null): boolean {
+  return Boolean(snapshot && (snapshot as ExpenseAuditSnapshot & { fromInvoice?: boolean }).fromInvoice);
+}
+
 /**
  * One row's field, in the fixed order the dialog shows them. `differs` decides which rows are
  * kept for the two-column edit view; `value` is shared by every view. `diffable` marks the
@@ -375,16 +383,18 @@ export function AuditDiffContent({ event }: { event: OrgAuditEvent }) {
   }, [before, after]);
 
   return rows ? (
-    <TableCard minWidth={640}>
-      <thead>
-        <tr>
-          <Th>Field</Th>
-          <Th>Before</Th>
-          <Th>After</Th>
-        </tr>
-      </thead>
-      <tbody>
-        {rows.map(({ label, beforeValue, afterValue, blocks, changeCount, groups }) => {
+    <>
+      {fromInvoice(after) && <p className="text-[15px] text-sub mb-3">Created from an invoice</p>}
+      <TableCard minWidth={640}>
+        <thead>
+          <tr>
+            <Th>Field</Th>
+            <Th>Before</Th>
+            <Th>After</Th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map(({ label, beforeValue, afterValue, blocks, changeCount, groups }) => {
           // Not diffable, or too long to diff within the memory ceiling (see MAX_DIFF_PAIRS) —
           // fall back to the plain two-column view.
           if (!blocks) {
@@ -430,24 +440,30 @@ export function AuditDiffContent({ event }: { event: OrgAuditEvent }) {
               </Td>
             </tr>
           );
-        })}
-      </tbody>
-    </TableCard>
+          })}
+        </tbody>
+      </TableCard>
+    </>
   ) : (
-    <TableCard minWidth={480}>
-      <thead>
-        <tr>
-          <Th colSpan={2}>{before ? "Final values" : "Initial values"}</Th>
-        </tr>
-      </thead>
-      <tbody>
-        {FIELDS.map((field) => (
-          <tr key={field.label}>
-            <Td bold>{field.label}</Td>
-            <Td>{field.value((before ?? after)!)}</Td>
+    <>
+      {fromInvoice(before ?? after) && (
+        <p className="text-[15px] text-sub mb-3">Created from an invoice</p>
+      )}
+      <TableCard minWidth={480}>
+        <thead>
+          <tr>
+            <Th colSpan={2}>{before ? "Final values" : "Initial values"}</Th>
           </tr>
-        ))}
-      </tbody>
-    </TableCard>
+        </thead>
+        <tbody>
+          {FIELDS.map((field) => (
+            <tr key={field.label}>
+              <Td bold>{field.label}</Td>
+              <Td>{field.value((before ?? after)!)}</Td>
+            </tr>
+          ))}
+        </tbody>
+      </TableCard>
+    </>
   );
 }

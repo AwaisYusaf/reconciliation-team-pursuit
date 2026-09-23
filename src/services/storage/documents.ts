@@ -13,16 +13,26 @@ import { and, eq, isNull, sql } from "drizzle-orm";
 import { v7 as uuidv7 } from "uuid";
 
 import { db } from "@/src/db";
+import { isUuid } from "@/src/lib/ids";
 import { monthLabel } from "@/src/domain/dates";
 import { UI } from "@/src/domain/strings";
 import { isKnownSupportingDocType } from "@/src/modules/settings/labels";
 import { monthLocked } from "@/src/modules/packet/month-guard";
-import { expenseDocuments, expenses, monthDocuments, organizations } from "@/src/db/schema";
+import {
+  expenseDocuments,
+  expenseDraftDocuments,
+  expenseDrafts,
+  expenses,
+  monthDocuments,
+  organizations,
+} from "@/src/db/schema";
 import type { MonthDocumentCategory } from "@/src/db/schema";
+import type { MonthKey } from "@/src/domain/dates";
 
 import { storage } from "./driver";
 import { inspectUpload } from "./inspect";
 import {
+  draftDocumentKey,
   expenseDocumentKey,
   isAllowedMimeType,
   isUndeclaredMimeType,
@@ -155,10 +165,39 @@ export function storageQuotaError(usedBytes: number, incomingBytes: number): str
 export async function orgStorageBytes(tx: Queryable, orgId: string): Promise<number | null> {
   const rows = await tx
     .select({
+      // Every table that owns a stored object has to be named here, or its bytes are real
+      // spend the cap can never see.
+      //
+      // Counted PER OBJECT, not per row, which is why this is a union grouped by key rather
+      // than five sums added together. One stored file is now pointed at by several rows on
+      // purpose: the invoice an import owns becomes the receipt on every expense that invoice
+      // produced, and a draft's own files are re-pointed onto the expense at approval, both
+      // keeping the same `s3_key` instead of storing the bytes again. Adding the rows up would
+      // charge a 25-line invoice 26 times for one 1.3 MB file — the very cost that re-pointing
+      // exists to avoid — and the admin usage figure, which reads this same function, would
+      // report storage the bucket does not hold.
       used: sql<number>`
-        coalesce((select sum(size_bytes + thumbnail_bytes) from expense_documents where org_id = ${orgId}), 0)
-        + coalesce((select sum(size_bytes + thumbnail_bytes) from month_documents where org_id = ${orgId}), 0)
-        + coalesce((select sum(size_bytes) from month_lock_events where org_id = ${orgId}), 0)
+        coalesce((
+          select sum(bytes) from (
+            select s3_key, max(bytes) as bytes from (
+              select s3_key, size_bytes + thumbnail_bytes as bytes
+                from expense_documents where org_id = ${orgId}
+              union all
+              select s3_key, size_bytes + thumbnail_bytes
+                from expense_draft_documents where org_id = ${orgId}
+              union all
+              select s3_key, size_bytes + thumbnail_bytes
+                from month_documents where org_id = ${orgId}
+              union all
+              select s3_key, size_bytes + thumbnail_bytes
+                from expense_imports where org_id = ${orgId}
+              union all
+              select s3_key, coalesce(size_bytes, 0)
+                from month_lock_events where org_id = ${orgId} and s3_key is not null
+            ) every_row
+            group by s3_key
+          ) per_object
+        ), 0)
       `,
     })
     .from(organizations)
@@ -361,6 +400,11 @@ export async function ingestExpenseDocument(input: {
           files: sql<number>`count(*)::int`,
           bytes: sql<number>`coalesce(sum(size_bytes + thumbnail_bytes), 0)::bigint`,
           pages: sql<number>`coalesce(sum(coalesce(page_count, 1)), 0)::int`,
+          // The next POSITION, which is not the same as the count: removing a file leaves a
+          // gap, so a count would hand the new row a position another row still holds, and
+          // packet document order is defined by this column (R10.1 determinism). Read off the
+          // same locked select as the budget, so the two cannot disagree.
+          nextSortOrder: sql<number>`coalesce(max(sort_order), -1) + 1`,
         })
         .from(expenseDocuments)
         .where(eq(expenseDocuments.expenseId, input.expenseId));
@@ -392,7 +436,7 @@ export async function ingestExpenseDocument(input: {
         pageCount: inspection.pageCount,
         widthPx: inspection.widthPx,
         heightPx: inspection.heightPx,
-        sortOrder: Number(held.files),
+        sortOrder: Number(held.nextSortOrder),
       });
       return null;
     }),
@@ -550,6 +594,251 @@ export async function ingestMonthDocument(input: {
  * never loses the bytes.
  */
 export async function deleteStoredObjects(key: string): Promise<void> {
+  // One object can now be pointed at by more than one row: the invoice an import owns becomes
+  // the receipt on every expense the invoice produced, re-pointed rather than copied, and a
+  // draft's own files are re-pointed onto the expense at approval the same way. Deleting the
+  // object because ONE of those rows went would take the file out from under the others,
+  // leaving rows the documentation gate (R4.6) trusts with nothing behind them.
+  //
+  // Checked here, in the one place every delete path already routes through, rather than in
+  // each caller — `removeExpenseDocumentAction`, `permanentlyDeleteExpenseAction`,
+  // `updateExpenseAction`'s no-receipt sweep, `discardDraftAction` and `removeDraftDocumentAction`
+  // all reach this function, and a guard in one of them would leave the rest wrong.
+  if (await objectStillReferenced(key)) return;
+
   const store = storage();
   await Promise.allSettled([store.delete(key), store.delete(thumbnailKey(key))]);
+}
+
+/**
+ * Whether any row still points at this stored object.
+ *
+ * Deliberately not org-scoped: a key is unique across the bucket, and the question being asked
+ * is "would deleting this file break something", which does not depend on whose file it is.
+ *
+ * **This list and `orgStorageBytes`'s must name the same tables.** They answer two halves of
+ * one question — what is stored, and what would still be pointed at — so a table counted here
+ * but not there is billed for after it is deleted, and one counted there but not here can have
+ * its file deleted while a row still names it. `month_lock_events` was in that second state:
+ * counted, unchecked. Nothing shares a signed-packet key today, which is exactly why it would
+ * have gone unnoticed until something did.
+ */
+async function objectStillReferenced(key: string): Promise<boolean> {
+  const [row] = await db
+    .select({
+      referenced: sql<boolean>`
+        exists (select 1 from expense_documents where s3_key = ${key})
+        or exists (select 1 from expense_draft_documents where s3_key = ${key})
+        or exists (select 1 from expense_imports where s3_key = ${key})
+        or exists (select 1 from month_documents where s3_key = ${key})
+        or exists (select 1 from month_lock_events where s3_key = ${key})
+      `,
+    })
+    .from(organizations)
+    .limit(1);
+  return Boolean(row?.referenced);
+}
+
+/**
+ * Make an already-stored invoice the receipt on an expense, WITHOUT storing it again.
+ *
+ * The invoice is stored once, owned by `expense_imports`, and one bill can produce fifty
+ * expenses. Re-uploading it per expense stored fifty-one copies of the same file and charged
+ * every one of them against the organisation's 5 GB cap — on a real 1.3 MB invoice of 25 lines
+ * that is ~34 MB for one bill, and "Approve all ready" did 25 downloads and 25 uploads inside
+ * one request. Pointing the row at the key the import already holds is what `approveDraftAction`
+ * already does for a draft's own files (D-116), applied to the invoice itself.
+ *
+ * The object therefore outlives any single row that points at it, which `deleteStoredObjects`
+ * accounts for: it refuses to remove an object another row still references.
+ *
+ * Takes the executor so it can run inside the approving transaction, where the expense it is
+ * attaching to does not exist outside yet.
+ */
+export async function attachImportAsReceipt(
+  tx: Pick<typeof db, "select" | "insert">,
+  input: {
+    orgId: string;
+    expenseId: string;
+    imported: {
+      s3Key: string;
+      filename: string;
+      mimeType: string;
+      sizeBytes: number;
+      /** Zero for a PDF, and for an import stored before imports kept one. */
+      thumbnailBytes: number;
+      pageCount: number | null;
+    };
+  },
+): Promise<void> {
+  const [held] = await tx
+    .select({ next: sql<number>`coalesce(max(sort_order), -1) + 1` })
+    .from(expenseDocuments)
+    .where(eq(expenseDocuments.expenseId, input.expenseId));
+
+  await tx.insert(expenseDocuments).values({
+    orgId: input.orgId,
+    expenseId: input.expenseId,
+    kind: "receipt",
+    supportingType: null,
+    // The bytes are already stored and already proven, by the import that wrote them.
+    status: "attached",
+    s3Key: input.imported.s3Key,
+    filename: input.imported.filename,
+    mimeType: input.imported.mimeType,
+    sizeBytes: input.imported.sizeBytes,
+    // The import's own thumbnail, not a new one: it was made and stored once, when the invoice
+    // was. Zero for a PDF, which has none — the table shows it a glyph rather than asking for
+    // one. Carried here because the quota counts an object by the rows that point at it, and a
+    // row claiming zero while the object beside it holds bytes is spend the cap cannot see.
+    thumbnailBytes: input.imported.thumbnailBytes,
+    pageCount: input.imported.pageCount,
+    widthPx: null,
+    heightPx: null,
+    sortOrder: Number(held?.next ?? 0),
+  });
+}
+
+/**
+ * Attach a file to a DRAFT, which is not an expense yet (Phase 14).
+ *
+ * The same shape as `ingestExpenseDocument`, against `expense_draft_documents` instead:
+ * `expense_documents.expense_id` is NOT NULL, so a draft has nothing to point at until it is
+ * approved. Approval re-points this object at the new expense rather than uploading it again.
+ *
+ * Differs from the expense path in exactly one way: there is no month lock to respect, because
+ * a draft is in no month total (D-115). Everything else is the same and deliberately so — the
+ * org storage quota, the per-expense file/byte/page budget, the upload lock, and storing the
+ * object before the row so a refusal leaves neither behind. Approval re-points these rows at a
+ * real expense without re-checking any of it, so anything relaxed here is simply relaxed on
+ * the expense that follows.
+ */
+export async function ingestDraftDocument(input: {
+  orgId: string;
+  draftId: string;
+  scope: DocumentScope;
+  supportingType?: string | null;
+  file: File;
+}): Promise<IngestResult> {
+  // Shape-checked before it reaches a uuid column: a malformed id must read as "not found",
+  // not raise a Postgres 22P02 that the route turns into a 500 — which would also make a
+  // malformed id distinguishable from a well-formed one belonging to another organisation.
+  if (!isUuid(input.draftId)) return { ok: false, error: "That draft no longer exists." };
+
+  const failure = precheck(input.file);
+  if (failure) return { ok: false, error: failure };
+
+  if (input.scope === "supporting") {
+    if (!input.supportingType) return { ok: false, error: "Choose a document type first." };
+    if (!(await isKnownSupportingDocType(input.orgId, input.supportingType))) {
+      return {
+        ok: false,
+        error: "That document type is no longer in use. Choose another type and add the file again.",
+      };
+    }
+  }
+
+  const [owner] = await db
+    .select({ month: expenseDrafts.month })
+    .from(expenseDrafts)
+    .where(and(eq(expenseDrafts.id, input.draftId), eq(expenseDrafts.orgId, input.orgId)))
+    .limit(1);
+  if (!owner) return { ok: false, error: "That draft no longer exists." };
+
+  const inspection = await inspectUpload({
+    body: Buffer.from(await input.file.arrayBuffer()),
+    declaredMimeType: input.file.type,
+  });
+  if (!inspection.ok) return { ok: false, error: inspection.error };
+  if (inspection.body.byteLength > MAX_UPLOAD_BYTES) {
+    return { ok: false, error: "That file is larger than 25 MB." };
+  }
+
+  const docId = uuidv7();
+  const key = draftDocumentKey({
+    orgId: input.orgId,
+    month: owner.month as MonthKey,
+    draftId: input.draftId,
+    scope: input.scope,
+    docId,
+    mimeType: inspection.mimeType,
+  });
+  const incomingBytes = inspection.body.byteLength + (inspection.thumbnail?.byteLength ?? 0);
+
+  // Stored BEFORE the row, and taken back out if the row is refused — the same order as
+  // `ingestExpenseDocument` and `ingestMonthDocument`, and deliberately not the reverse.
+  // Committing the row first leaves the worse artifact of the two: a row saying `attached`
+  // with no bytes behind it, which approval copies straight into `expense_documents`, where
+  // the documentation gate (R4.6) trusts it and the packet build is what discovers the object
+  // is missing. An orphan object is merely wasted space, and this path deletes it here.
+  const store = storage();
+  await store.put({ key, body: inspection.body, contentType: inspection.mimeType });
+  if (inspection.thumbnail) {
+    await store.put({
+      key: thumbnailKey(key),
+      body: inspection.thumbnail,
+      contentType: "image/jpeg",
+    });
+  }
+
+  const refusal = await db.transaction(async (tx) =>
+    withOrgUploadLock(tx, input.orgId, async (): Promise<string | null> => {
+      // Under the lock for the same reason the expense path is: the quota, the budget and the
+      // sort order are all totals read before an insert, and two concurrent uploads reading
+      // the same total both overshoot by a whole file.
+      const [held] = await tx
+        .select({
+          files: sql<number>`count(*)::int`,
+          bytes: sql<number>`coalesce(sum(size_bytes + thumbnail_bytes), 0)::bigint`,
+          pages: sql<number>`coalesce(sum(coalesce(page_count, 1)), 0)::int`,
+          // See the same field on the expense path: a position, not a count. It matters here
+          // too because `approveDraftAction` carries this value straight into
+          // `expense_documents`, where the packet's order reads it.
+          nextSortOrder: sql<number>`coalesce(max(sort_order), -1) + 1`,
+        })
+        .from(expenseDraftDocuments)
+        .where(eq(expenseDraftDocuments.draftId, input.draftId));
+
+      // The SAME per-expense budget the expense path enforces. A draft has no packet of its
+      // own, but approval re-points every one of these rows at a real expense — so a draft
+      // allowed to exceed the budget would simply move the breach to the moment it becomes an
+      // expense, where nothing checks it again.
+      const budgetError = expenseBudgetError(
+        { files: Number(held.files), bytes: Number(held.bytes), pages: Number(held.pages) },
+        { bytes: incomingBytes, pages: inspection.pageCount ?? 1 },
+      );
+      if (budgetError) return budgetError;
+
+      const quotaError = await orgStorageError(tx, input.orgId, incomingBytes);
+      if (quotaError) return quotaError;
+
+      await tx.insert(expenseDraftDocuments).values({
+        id: docId,
+        orgId: input.orgId,
+        draftId: input.draftId,
+        kind: input.scope,
+        supportingType: input.scope === "supporting" ? input.supportingType! : null,
+        // Stored only after the bytes are proven, so the gate can trust it once approval
+        // copies this row across (R4.6).
+        status: "attached",
+        s3Key: key,
+        filename: input.file.name,
+        mimeType: inspection.mimeType,
+        sizeBytes: inspection.body.byteLength,
+        thumbnailBytes: inspection.thumbnail?.byteLength ?? 0,
+        pageCount: inspection.pageCount,
+        widthPx: inspection.widthPx,
+        heightPx: inspection.heightPx,
+        sortOrder: Number(held.nextSortOrder),
+      });
+      return null;
+    }),
+  );
+
+  if (refusal) {
+    await discardStored(key, inspection.thumbnail !== null);
+    return { ok: false, error: refusal };
+  }
+
+  return { ok: true, documentId: docId };
 }

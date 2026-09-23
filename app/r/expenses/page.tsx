@@ -1,4 +1,4 @@
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, inArray } from "drizzle-orm";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
@@ -6,11 +6,12 @@ import { buttonClassName } from "@/src/components/ui/button";
 import { DangerPanel, PageTitle, Subtext } from "@/src/components/ui/surfaces";
 import { TourGuide } from "@/src/components/ui/tour";
 import { db } from "@/src/db";
-import { paymentSources } from "@/src/db/schema";
+import { lineItems, paymentSources } from "@/src/db/schema";
 import { isValidMonthKey, monthLabel } from "@/src/domain/dates";
-import { expenseReference, pageTitle } from "@/src/domain/strings";
+import { expenseReference, pageTitle, UI } from "@/src/domain/strings";
 import { documentationStatus, type GateExpense } from "@/src/domain/gate";
 import { reimbursableCents } from "@/src/domain/money";
+import { loadMonthDrafts } from "@/src/modules/expense-imports/queries";
 import { loadMonthExpenses } from "@/src/modules/expenses/queries";
 import { findFundingSource, loadSourceContext } from "@/src/modules/funding-sources/queries";
 import { loadLockedMonths } from "@/src/modules/packet/queries";
@@ -18,6 +19,7 @@ import { EXPENSES_TOUR_STEPS } from "@/src/modules/tours/expenses-tour";
 import { hasSeenTour } from "@/src/modules/tours/queries";
 import { getSession } from "@/src/services/auth/session";
 
+import { DraftsSection, type DraftSectionRow } from "./drafts-section";
 import { ExpensesTable, type ExpenseRow, type RowDocument } from "./expenses-table";
 
 /** The attached documents of one kind, in the shape the row's viewer needs. */
@@ -35,7 +37,7 @@ export const metadata = { title: pageTitle("Expenses") };
 export default async function ExpensesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ month?: string; source?: string }>;
+  searchParams: Promise<{ month?: string; source?: string; view?: string }>;
 }) {
   const session = await getSession();
   if (!session) redirect("/login");
@@ -47,7 +49,7 @@ export default async function ExpensesPage({
   // shown here instead of (never persisted as) the org-wide active month, which stays exactly
   // what it was (R2.3) — one save must not silently redirect the whole organisation's shared
   // reporting period out from under everyone else using it.
-  const { month: requestedMonth, source: requestedSource } = await searchParams;
+  const { month: requestedMonth, source: requestedSource, view: requestedView } = await searchParams;
   const viewingRequestedMonth = Boolean(requestedMonth && isValidMonthKey(requestedMonth));
   const month = viewingRequestedMonth ? requestedMonth! : session.activeMonth;
   const isAdmin = session.role === "admin";
@@ -67,8 +69,9 @@ export default async function ExpensesPage({
         ? (await findFundingSource(session.orgId, requestedSource))?.id ?? null
         : null;
 
-  const [expenses, paySources, seenExpensesTour, lockedMonthKeys] = await Promise.all([
+  const [expenses, drafts, paySources, seenExpensesTour, lockedMonthKeys] = await Promise.all([
     loadMonthExpenses(session.orgId, scope, month),
+    loadMonthDrafts(session.orgId, scope, month),
     db
       .select({ label: paymentSources.label })
       .from(paymentSources)
@@ -79,6 +82,47 @@ export default async function ExpensesPage({
   ]);
 
   const sourceNameById = new Map(sources.map((source) => [source.id, source.name]));
+
+  const draftLineItemIds = [...new Set(drafts.flatMap((draft) => (draft.lineItemId ? [draft.lineItemId] : [])))];
+  const draftLineItemNames =
+    draftLineItemIds.length === 0
+      ? []
+      : await db
+          .select({ id: lineItems.id, name: lineItems.name })
+          .from(lineItems)
+          .where(and(eq(lineItems.orgId, session.orgId), inArray(lineItems.id, draftLineItemIds)));
+  const draftLineItemNameById = new Map(draftLineItemNames.map((item) => [item.id, item.name]));
+
+  const draftRows: DraftSectionRow[] = drafts.map((draft) => ({
+    ...draft,
+    lineItemName: draft.lineItemId ? draftLineItemNameById.get(draft.lineItemId) ?? null : null,
+    fundingSourceName: sourceNameById.get(draft.fundingSourceId) ?? "",
+  }));
+
+  /**
+   * Which list this page is showing, carried in the URL rather than in client state.
+   *
+   * A search param, not `useState`, because the control that switches lists sits in the page
+   * toolbar next to Trash while the tables themselves are rendered further down: with client
+   * state the two would need a wrapper around both, and the server would still have to build
+   * both tables on every load. It also means the back button works, the view survives a
+   * refresh after approving a draft, and a link can point straight at the review list.
+   *
+   * Falls back to the expenses table the moment the month has no drafts left, so approving or
+   * discarding the last one cannot strand anyone on an empty screen whose way back has just
+   * been removed with it.
+   */
+  const showingDrafts = requestedView === "drafts" && draftRows.length > 0;
+  const listHref = (view: "expenses" | "drafts") => {
+    const params = new URLSearchParams();
+    if (viewingRequestedMonth) params.set("month", requestedMonth!);
+    // Only while it is actually in effect: once the header holds a source, `requestedSource`
+    // is ignored, and carrying it forward put a dead grant id into every link and bookmark.
+    if (selectedId === null && requestedSource) params.set("source", requestedSource);
+    if (view === "drafts") params.set("view", "drafts");
+    const query = params.toString();
+    return query ? `/r/expenses?${query}` : "/r/expenses";
+  };
 
   const rows: ExpenseRow[] = expenses.map((expense) => {
     const gate: GateExpense = {
@@ -158,6 +202,28 @@ export default async function ExpensesPage({
             </DangerPanel>
           )}
         </div>
+        {/* Both buttons in one group, so the row's `justify-between` keeps the title on the
+            left and these together on the right. Left as two direct children they became three
+            items spread across the row, which put this one adrift in the middle. */}
+        <div className="flex flex-wrap items-center gap-3">
+        {/* Only when there is something waiting, so the toolbar is unchanged for anyone not
+            using invoices. Beside Trash because both are "leave this list and look at another
+            one", and this is the more frequent of the two while an import is being reviewed. */}
+        {draftRows.length > 0 && (
+          <Link
+            href={listHref(showingDrafts ? "expenses" : "drafts")}
+            // No `aria-current`: this link always points at the view you are NOT on, so
+            // marking it as the current page announced the opposite of the truth ("Back to
+            // expenses, current page") and sent people away from the list they were reading.
+            // The label already carries the state.
+            data-tour="expenses-drafts-toggle"
+            // Quiet in both states: the label already says which view is on, and the loud
+            // button on the drafts screen should be "Approve all ready", not the way out.
+            className={buttonClassName("secondary", "min-h-11 px-4 text-[15px]")}
+          >
+            {showingDrafts ? UI.draftsBackToExpenses : UI.draftsWaitingHeading(draftRows.length)}
+          </Link>
+        )}
         <Link
           href="/r/expenses/trash"
           className={buttonClassName("secondary", "min-h-11 px-4 text-[15px] gap-2")}
@@ -174,22 +240,34 @@ export default async function ExpensesPage({
           </svg>
           Trash
         </Link>
+        </div>
       </div>
 
-      <ExpensesTable
-        rows={rows}
-        paymentSourceLabels={labels}
-        lineItemNames={[...new Set(rows.map((row) => row.lineItemName))].sort()}
-        month={monthLabel(month)}
-        monthParam={viewingRequestedMonth ? requestedMonth : undefined}
-        isAdmin={isAdmin}
-        multiSource={multiSource}
-        fundingSources={fundingSources}
-        selectedSourceId={scope}
-        sourceFilterOffered={selectedId === null}
-        totalBy={scope === null ? "source" : "payment"}
-        lockedMonths={[...lockedMonthKeys]}
-      />
+      {/* One list at a time, never both: the two tables carry different columns and different
+          row actions, and stacked they read as two lists competing for the same attention. */}
+      {showingDrafts ? (
+        <DraftsSection
+          rows={draftRows}
+          month={month}
+          fundingSourceId={scope}
+          multiSource={multiSource}
+        />
+      ) : (
+        <ExpensesTable
+          rows={rows}
+          paymentSourceLabels={labels}
+          lineItemNames={[...new Set(rows.map((row) => row.lineItemName))].sort()}
+          month={monthLabel(month)}
+          monthParam={viewingRequestedMonth ? requestedMonth : undefined}
+          isAdmin={isAdmin}
+          multiSource={multiSource}
+          fundingSources={fundingSources}
+          selectedSourceId={scope}
+          sourceFilterOffered={selectedId === null}
+          totalBy={scope === null ? "source" : "payment"}
+          lockedMonths={[...lockedMonthKeys]}
+        />
+      )}
     </div>
   );
 }

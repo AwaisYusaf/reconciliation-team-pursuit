@@ -805,6 +805,53 @@ describe.skipIf(!hasDatabase)("admin queries (integration, Phase 9 part 3)", asy
       expect(usage.lastRunAt).toBeInstanceOf(Date);
     });
 
+    it("counts invoice reads in their own tile, not silently into another one (Phase 14)", async () => {
+      // The defect this pins: `invoice_read` matched no branch, so its runs showed nowhere on
+      // the admin page while its cost was still added to the totals — a billing page whose
+      // counts and money did not reconcile. An invoice read costs far more than a receipt
+      // read, so it cannot be folded into `reads` either.
+      //
+      // Measured as a delta rather than against absolute totals: this org's rows depend on
+      // whichever sibling tests in this block have already run.
+      const before = await loadOrgAiUsage(aiOrgId);
+
+      await db.insert(aiUsageEvents).values([
+        {
+          orgId: aiOrgId,
+          feature: "invoice_read",
+          // `ai_usage_events_invoice_read_ck` allows only found/none/failed here, and requires
+          // both document columns: an invoice is always a freshly picked file read as a
+          // receipt (PHASE-14.md 3).
+          outcome: "found",
+          model: "test",
+          documentSource: "upload",
+          documentKind: "receipt",
+          costMicroUsd: 9000,
+        },
+        {
+          orgId: aiOrgId,
+          feature: "invoice_read",
+          outcome: "failed",
+          model: "test",
+          documentSource: "upload",
+          documentKind: "receipt",
+        },
+      ]);
+
+      const after = await loadOrgAiUsage(aiOrgId);
+      expect({
+        total: after.invoiceReads.total - before.invoiceReads.total,
+        currentMonth: after.invoiceReads.currentMonth - before.invoiceReads.currentMonth,
+        unsaved: after.invoiceReads.unsaved - before.invoiceReads.unsaved,
+      }).toEqual({ total: 2, currentMonth: 2, unsaved: 1 });
+      // And they did not leak into either of the other two tiles, which is what the defect
+      // did in reverse: counted nowhere, while still costing money.
+      expect(after.reads.total).toBe(before.reads.total);
+      expect(after.summaries.total).toBe(before.summaries.total);
+      // The cost they contribute is the cost the tile now accounts for.
+      expect(after.costMicroUsdTotal - before.costMicroUsdTotal).toBe(9000);
+    });
+
     it("Detroit month boundary: the instant just before local midnight on the 1st is still the previous month; the exact boundary instant is this month", async () => {
       const boundary = detroitMonthStartUtc(currentMonth);
       const justBefore = new Date(boundary.getTime() - 1);
@@ -888,6 +935,7 @@ describe.skipIf(!hasDatabase)("admin queries (integration, Phase 9 part 3)", asy
       await expect(loadOrgAiUsage("not-a-uuid")).resolves.toEqual({
         currentMonth,
         reads: { total: 0, currentMonth: 0, unsaved: 0 },
+        invoiceReads: { total: 0, currentMonth: 0, unsaved: 0 },
         summaries: { total: 0, currentMonth: 0, unsaved: 0 },
         costMicroUsdTotal: 0,
         costMicroUsdCurrentMonth: 0,

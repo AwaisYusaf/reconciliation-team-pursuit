@@ -225,6 +225,34 @@
       "when": 1789796379003,
       "tag": "0031_shared_links",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1789993004201,
+      "tag": "0032_expense_imports",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1790064436039,
+      "tag": "0033_expense_draft_documents",
+      "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1790081637767,
+      "tag": "0034_expense_draft_documents_org_fk",
+      "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1790085208797,
+      "tag": "0035_invoice_thumbnail_and_draft_doc_fk",
+      "breakpoints": true
     }
   ]
 }

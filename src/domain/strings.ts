@@ -360,6 +360,135 @@ export const UI = {
   readAmountsTooLongLine: "Too long to read (over 10 pages). Enter the amounts yourself.",
   readAmountsTooManyPages: (pages: number, limit: number) =>
     `That document has ${pages} pages. Amounts can only be read from documents of up to ${limit} pages. Enter the amounts yourself.`,
+  /** An invoice with more pages than `MAX_PAGES_READ` (Phase 14 §2, mirrors `readAmountsTooManyPages`). */
+  readInvoiceTooManyPages: (pages: number, limit: number) =>
+    `That file has ${pages} pages. Invoices of up to ${limit} pages can be read. For a longer document, add the expenses by hand.`,
+  /** The invoice read found no usable charge lines (Phase 14 §2). */
+  readInvoiceNothingFound: "We could not find any charges on that invoice. Please add the expenses by hand.",
+  /** More than `MAX_INVOICE_LINES` lines were read; only the first 50 came through (Phase 14 §2). */
+  readInvoiceTooManyLines: "This invoice has more than 50 lines. The first 50 were read. Add the rest by hand.",
+  /* ---------------- Adding expenses from one invoice (Phase 14, D-115) ---------------- */
+  /** What the entry point says while the model is working. */
+  invoiceReadingButton: "Reading the invoice…",
+  /** The one control that starts the whole thing, on the Add Expense screen. It says what it
+   *  does rather than where it goes: pressing it opens the file picker and the charges it
+   *  finds replace the form. */
+  invoiceExtractFromInvoice: "Extract From Invoice",
+  /** An invoice may be the bill itself or a photo of it. iPhone photos are converted before
+   *  they reach the server (D-111), so HEIC is accepted without being named here. */
+  invoiceFileType: "Upload the invoice as a PDF or a photo.",
+  /** The one button at the end of the check screen. It writes both kinds at once: the charges
+   *  marked as expenses become real expenses, the rest become drafts. */
+  /** The org-wide active month changed while these charges were being reviewed. Names the
+   *  month they would otherwise have landed in, since that is the surprising part. */
+  invoiceMonthChanged: (month: string) =>
+    `The month changed to ${month} while you were checking these charges. Nothing was saved. Read the invoice again to add them to ${month}.`,
+  /** Files queued on a charge that the save could not attach. The charges themselves are
+   *  written either way, so this names what to add again rather than claiming nothing saved —
+   *  and it has to be said, because the file is gone from the browser once the screen moves. */
+  invoiceFilesNotAttached: (files: Array<{ filename: string; reason: string }>) =>
+    files.length === 1
+      ? `The charges were saved, but ${files[0].filename} could not be attached. ${files[0].reason} Add it again from the expense.`
+      : `The charges were saved, but ${files.length} files could not be attached: ${files
+          .map((file) => file.filename)
+          .join(", ")}. Add them again from the expense.`,
+  /** Charges that were on the bill but whose amount could not be read. Silently dropping them
+   *  left a twelve-line invoice arriving as ten charges with nothing said. */
+  invoiceUnreadableLines: (count: number) =>
+    count === 1
+      ? "One charge on this invoice could not be read and is not shown. Add it by hand."
+      : `${count} charges on this invoice could not be read and are not shown. Add them by hand.`,
+  invoiceDone: "Done",
+  /** Done can post a dozen charges and their files in one request; on a slow line that is
+   *  several seconds, and a greyed button with no words reads as a page that has stopped. */
+  invoiceDoneSaving: "Saving the charges…",
+  /** What Done just did, said in the plain terms the person chose it in. */
+  invoiceDoneResult: (expenses: number, drafts: number) => {
+    const parts: string[] = [];
+    if (expenses > 0) parts.push(`${expenses} ${expenses === 1 ? "expense" : "expenses"} added`);
+    if (drafts > 0) parts.push(`${drafts} ${drafts === 1 ? "draft" : "drafts"} waiting for review`);
+    return parts.length > 0 ? `${parts.join(", and ")}.` : "Nothing was added.";
+  },
+  /** Done pressed with nothing left to write. The check screen has no tickboxes — charges are
+   *  taken off it with Remove — so the wording names the control that actually exists. */
+  invoiceNoCharges: "Keep at least one charge, or go back and read another invoice.",
+  /** The hint after `draftNeeds`' own missing parts, on a card the person is trying to save as
+   *  a real expense straight from the invoice (Phase 14 §3). */
+  invoiceOrMarkAsDraft: "You can fill these in now, or mark this charge as a draft and finish it later.",
+  /** Next to the draft button when files are queued on the card. A draft holds its own files
+   *  (`expense_draft_documents`, migration 0033) and approval moves them onto the expense, so
+   *  this says where they go rather than warning they are lost. */
+  invoiceDraftKeepsFiles: "These files stay with the draft and move onto the expense when it is approved.",
+  /** Discarding a draft removes the files attached to it; Undo brings the draft back without
+   *  them, so the toast has to say so rather than promise a whole restore. */
+  draftDiscardedWithFiles: "Draft discarded. Its attached files were removed too.",
+  /**
+   * The same invoice file was already imported into this month (ticket §4).
+   *
+   * A warning, never a refusal: a vendor really can bill the same lines twice, and the person
+   * looking at the paperwork knows better than the app. `by` is already resolved through
+   * `userDisplay`, and is left out entirely when the uploading account has since been removed,
+   * rather than printing "by Unknown".
+   */
+  invoiceAlreadyAdded: (date: string, by: string | null) =>
+    by
+      ? `This invoice was already added on ${date} by ${by}. Adding it again will create these expenses a second time.`
+      : `This invoice was already added on ${date}. Adding it again will create these expenses a second time.`,
+  /**
+   * A tax or fee charged on the whole bill rather than on one line (ticket §2).
+   *
+   * Said, never split across the lines: dividing one figure between twelve charges would invent
+   * a number nobody printed, and the ticket puts splitting out of scope.
+   */
+  invoiceWholeBillCharge: (amount: string) =>
+    `This invoice charges ${amount} on the whole bill, not on any one line. It is not included in the drafts below. Add it as its own expense if it belongs in this month.`,
+  /* ---------------- Drafts waiting for review (Phase 14) ---------------- */
+  /** The section above the month's expenses, and the mark on each of its rows. */
+  draftsWaitingHeading: (count: number) => `Waiting for review (${count})`,
+  draftMark: "Draft",
+  /** What a draft still needs before it can be approved, in plain words (ticket §5). */
+  draftNeedsLineItem: "Needs a line item",
+  draftNeedsNarrative: "Needs a narrative",
+  /** The three row actions and the section's bulk action. */
+  draftApprove: "Approve",
+  draftEdit: "Edit",
+  draftDiscard: "Discard",
+  draftApproveAllReady: (count: number) => `Approve all ready (${count})`,
+  /**
+   * The result of "Approve all ready" (ticket §5).
+   *
+   * Always says how many were left, including when none were, so the person never has to work
+   * out whether the rest were silently approved too.
+   */
+  draftsApproved: (approved: number, remaining: number) =>
+    remaining === 0
+      ? `${approved} ${approved === 1 ? "expense" : "expenses"} approved.`
+      : `${approved} ${approved === 1 ? "expense" : "expenses"} approved. ${remaining} still ${remaining === 1 ? "needs" : "need"} your attention.`,
+  /** Discard, with the undo offered in the toast itself rather than a trip to Trash (ticket §5). */
+  /** Why "Approve all ready" is unavailable. Every draft in the section still needs
+   *  something, and each row's own "Still needs" cell says what. */
+  /** The same button, once it is showing the drafts: it says the way back, not the way in. */
+  draftsBackToExpenses: "Back to expenses",
+  draftsNoneReady: "No draft has everything it needs yet.",
+  /** Asked before a discard, because the files attached to the draft go with it for good and
+   *  Undo brings the row back without them. */
+  /** Draft edit: finish the row and make it a real expense in one press. */
+  draftSaveAndApprove: "Save and approve",
+  draftApprovedOne: "Approved. It counts in the month now.",
+  draftDiscardTitle: "Discard this draft?",
+  draftDiscardBody: (name: string) =>
+    `${name} will be removed. It does not go to Trash, and any files attached to it are deleted. Undo brings the charge back, but not its files.`,
+  draftDiscardKeep: "Keep it",
+  draftDiscarded: "Draft discarded.",
+  draftUndo: "Undo",
+  /** Refusal when Approve is somehow reached on a draft that is still missing something. */
+  draftNotReady: "This draft is still missing something. Open it and fill in what it needs.",
+  /** The same refusal, said on the edit screen itself, where "open it" would be nonsense: the
+   *  draft IS open. Names the fields, in the same words the drafts list's "Still needs" uses. */
+  draftSavedNotApproved: (needs: string[]) =>
+    `Saved, but not approved: ${needs.join(" · ")}.`,
+  /** The draft, or the invoice that made it, is gone: someone else discarded or approved it. */
+  draftGone: "That draft no longer exists.",
   /** Amounts panel, when some files were read and others were not (Phase 10 §3.5 table — not in
    *  Appendix A, added so an incomplete total is never used unnoticed). */
   amountsLeftOut: "Documents marked No amount found are left out of these totals.",

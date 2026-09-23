@@ -291,6 +291,79 @@ Index `(org_id, funding_source_id, month, created_at)`.
 | default_description | text null | |
 | sort_order | int | |
 
+### expense_imports (Phase 14, D-115)
+One uploaded invoice covering several charges, and the owner of the stored file. The file becomes
+a real `expense_documents` receipt on each expense only when its draft is approved, so an import
+nobody approves leaves nothing behind but its own object.
+
+| Field | Type | Notes |
+|---|---|---|
+| id | uuid PK | |
+| org_id | uuid FK | cascade |
+| funding_source_id | uuid | Composite FK `(funding_source_id, org_id) → funding_sources(id, org_id)` (D-93 2.3) |
+| month | char(7) | `expense_imports_month_ck` |
+| uploaded_by | uuid FK null | set null on user delete; the duplicate warning then names no one |
+| s3_key, filename, mime_type, size_bytes, page_count | | filename lives here, never in the key (PII-free keys) |
+| sha256 | char(64) | the "already added this month" check. **Not unique**: the same invoice may be added again after a warning |
+| vendor_name | text null | read off the bill as a whole |
+| invoice_date | date null | every draft it creates takes this date |
+| bill_tax_cents | bigint null | a tax charged on the whole bill, shown as a note and never split across lines. null = never read, which is not the same as 0 |
+| bill_fees_cents | bigint null | same |
+
+### expense_drafts (Phase 14, D-115)
+One line read off an invoice, waiting for a person to check it. **Deliberately not an `expenses`
+row with a flag on it** — its own table is what makes "a draft counts in nothing" a property of
+the schema rather than of every reader remembering to filter, and it is why `expenses` needed no
+migration. Approving builds an ordinary `ExpenseInput` and runs the normal create path, then
+deletes the draft.
+
+| Field | Type | Notes |
+|---|---|---|
+| id | uuid PK | |
+| import_id | uuid FK | **cascade delete** with the import: discarding an import takes its drafts |
+| org_id | uuid FK | cascade |
+| funding_source_id | uuid | Composite FK to `funding_sources(id, org_id)` |
+| month | char(7) | `expense_drafts_month_ck` |
+| date | date | the invoice date |
+| name, description | text | |
+| line_item_id | uuid FK **null** | null = "Needs a line item". Set null on line-item delete, unlike `expenses` (R9.3): a suggestion is not a record, so deleting a line item blanks it rather than refusing. The composite FK `(line_item_id, funding_source_id) → line_items(id, funding_source_id)` still pins a suggestion that *is* set to this draft's own source, and is not checked while null (MATCH SIMPLE) |
+| payment_source | text | label snapshot (R5.1); the org's usual one when nothing matched |
+| subtotal_cents, tax_cents, fees_cents | bigint | amounts printed on the invoice line win over anything remembered |
+| note | text null | |
+| narrative | text null | null = "Needs a narrative" |
+| sort_order | int | the order the lines appeared on the bill |
+| — | | **No `reference_seq`.** A draft cannot hold a reference number because there is nowhere to put one; it is claimed at approval like any other new expense |
+
+### expense_draft_documents (Phase 14, migration 0033, D-116)
+Files attached to a draft before it is an expense. A mirror of `expense_documents` — same
+columns, same `document_kind`/`document_status` enums, same supporting-type check — against
+`expense_drafts` instead, because `expense_documents.expense_id` is `NOT NULL` and a draft has
+nothing to point at yet.
+
+Approving **re-points** these rows: `approveDraftAction` copies each one into `expense_documents`
+keeping the same `s3_key`, inside the approval transaction and before the draft row is deleted,
+so the object is stored once and never uploaded again.
+
+| Field | Type | Notes |
+|---|---|---|
+| id | uuid PK | |
+| org_id | uuid FK | cascade |
+| draft_id | uuid FK | **cascade delete** with the draft |
+| kind, supporting_type, status | enum | `expense_draft_documents_supporting_type_ck`, the twin of the expense one |
+| s3_key, filename, mime_type, size_bytes, thumbnail_bytes, page_count, width_px, height_px | | carried across unchanged at approval |
+| sort_order | int | |
+
+**Quota and cleanup**, the two things D-116 records as the price of this table:
+- `orgStorageBytes` sums this table **and** `expense_imports` alongside the other three, so these
+  bytes count against the 5 GB cap and show in the admin usage figure. Leaving them out meant the
+  quota could never see its own writes.
+- `ingestDraftDocument` enforces the same per-expense file/byte/page budget as the expense path,
+  under the same org upload lock, and stores the object **before** the row so a refusal leaves
+  neither behind. Anything relaxed here is relaxed on the expense that approval creates.
+- `discardDraftAction` reads these rows' `s3_key`s **before** deleting the draft (the cascade
+  would otherwise strand them) and deletes the objects after the delete commits.
+  **Undo restores the draft, not its files** — see D-116.
+
 ### generated_artifacts (R10.4 cache + R10.6 pinning)
 | Field | Type | Notes |
 |---|---|---|

@@ -9,12 +9,15 @@ import { monthLabel, monthWindow, todayIso } from "@/src/domain/dates";
 import { pageTitle } from "@/src/domain/strings";
 import { readAmountsAllowedForOrg } from "@/src/modules/ai/access";
 import { ExpenseForm } from "@/src/modules/expenses/expense-form";
+import { loadInvoiceMatchContext } from "@/src/modules/expense-imports/match-context";
 import { loadExpenseFormOptions } from "@/src/modules/expenses/queries";
 import { loadSourceContext } from "@/src/modules/funding-sources/queries";
 import { loadLockedMonths } from "@/src/modules/packet/queries";
 import { addExpenseTourSteps } from "@/src/modules/tours/add-expense-tour";
 import { hasSeenTour } from "@/src/modules/tours/queries";
 import { getSession } from "@/src/services/auth/session";
+
+import { InvoiceExtract } from "./from-invoice/invoice-upload-screen";
 
 export const metadata = { title: pageTitle("Add Expense") };
 
@@ -44,11 +47,15 @@ export default async function NewExpensePage() {
   const initialFundingSourceId =
     activeSources.find((source) => source.id === selectedId)?.id ?? activeSources[0].id;
   const month = session.activeMonth;
-  const [seenAddExpenseTour, options, lockedMonthKeys, readAmounts] = await Promise.all([
+  const [seenAddExpenseTour, options, lockedMonthKeys, readAmounts, matchContext] = await Promise.all([
     hasSeenTour(session.userId, "add_expense"),
     loadExpenseFormOptions(session.orgId, null),
     loadLockedMonths(session.orgId, null),
     readAmountsAllowedForOrg(session.orgId),
+    // The recurring items and remembered vendors each read charge is matched against. Loaded
+    // here because the extract button lives on this screen now; it costs one query whether or
+    // not the button is pressed, which is cheaper than a round trip once it is.
+    loadInvoiceMatchContext(session.orgId),
   ]);
 
   // Remaining per line item drives the live projection as the user types (R3.7). Line item
@@ -75,22 +82,33 @@ export default async function NewExpensePage() {
         steps={addExpenseTourSteps(readAmounts)}
         alreadySeen={seenAddExpenseTour}
       />
-      <PageTitle className="mb-2">Add Expense</PageTitle>
-      <Subtext className="mb-[30px] max-w-[60ch]">
-        Enter one expense for {monthLabel(month)}. It will appear on the Expenses list and the
-        matching cover sheet right away.
-      </Subtext>
-
-      <ExpenseForm
+      <InvoiceExtract
+        enabled={readAmounts}
+        activeSources={activeSources.map((source) => ({ id: source.id, name: source.name }))}
+        headerSelectedSourceId={selectedId}
         options={{ ...options, months: monthWindow([month]) }}
         remaining={remaining}
+        matchContext={matchContext}
         lockedMonths={[...lockedMonthKeys]}
-        today={todayIso()}
         activeMonth={month}
-        initialFundingSourceId={initialFundingSourceId}
-        headerSelectedSourceId={selectedId}
-        readAmounts={readAmounts}
-      />
+        today={todayIso()}
+      >
+        <PageTitle className="mb-2">Add Expense</PageTitle>
+        <Subtext className="mb-[30px] max-w-[60ch]">
+          Enter one expense for {monthLabel(month)}. It will appear on the Expenses list and the
+          matching cover sheet right away.
+        </Subtext>
+        <ExpenseForm
+          options={{ ...options, months: monthWindow([month]) }}
+          remaining={remaining}
+          lockedMonths={[...lockedMonthKeys]}
+          today={todayIso()}
+          activeMonth={month}
+          initialFundingSourceId={initialFundingSourceId}
+          headerSelectedSourceId={selectedId}
+          readAmounts={readAmounts}
+        />
+      </InvoiceExtract>
     </div>
   );
 }

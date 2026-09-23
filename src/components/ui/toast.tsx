@@ -12,22 +12,24 @@ import type { ActionResult } from "@/src/lib/action-result";
  * the blocking panels, which must persist because they describe a state rather than an
  * event.
  */
+const TOAST_STYLE = {
+  background: "var(--color-surface)",
+  color: "var(--color-ink)",
+  border: "1px solid var(--color-line)",
+  borderRadius: "3px",
+  fontFamily: "var(--font-sans)",
+  fontSize: "15px",
+  padding: "12px 16px",
+  maxWidth: "520px",
+};
+
 export function AppToaster() {
   return (
     <Toaster
       position="bottom-center"
       toastOptions={{
         duration: 4000,
-        style: {
-          background: "var(--color-surface)",
-          color: "var(--color-ink)",
-          border: "1px solid var(--color-line)",
-          borderRadius: "3px",
-          fontFamily: "var(--font-sans)",
-          fontSize: "15px",
-          padding: "12px 16px",
-          maxWidth: "520px",
-        },
+        style: TOAST_STYLE,
         success: { iconTheme: { primary: "var(--color-success)", secondary: "#fff" } },
         error: {
           duration: 6000,
@@ -45,6 +47,38 @@ export const toast = {
   loading: (message: string) => hotToast.loading(message),
   dismiss: (id?: string) => hotToast.dismiss(id),
 };
+
+/**
+ * A toast with one action (e.g. "Undo"), for outcomes that can be reversed.
+ *
+ * `hotToast.custom` bypasses the Toaster's `toastOptions.style` entirely, so it's applied here
+ * too, from the same `TOAST_STYLE` constant, to keep the two from drifting apart.
+ *
+ * Duration is 8s, not the default 4s: an undo the person cannot reach in time is not an undo.
+ */
+export function toastWithAction(
+  message: string,
+  action: { label: string; onAction: () => void },
+) {
+  hotToast.custom(
+    (t) => (
+      <div style={TOAST_STYLE} className="flex items-center gap-4">
+        <span>{message}</span>
+        <button
+          type="button"
+          onClick={() => {
+            hotToast.dismiss(t.id);
+            action.onAction();
+          }}
+          className="text-accent font-bold underline hover:text-accent-dark"
+        >
+          {action.label}
+        </button>
+      </div>
+    ),
+    { duration: 8000 },
+  );
+}
 
 /**
  * Report an ActionResult: success message on success, the action's own error on failure.

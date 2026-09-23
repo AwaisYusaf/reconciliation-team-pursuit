@@ -243,8 +243,11 @@ export default async function OrgPage({
 
       <Card className="p-4 sm:p-5 lg:p-6">
         <SubsectionTitle className="mb-3">AI usage</SubsectionTitle>
-        {/* Every OpenAI call this organization has made (ai_usage_events, D-106/D-107). Reads and
-            summaries are counted apart because a summary costs roughly a hundred times a read. */}
+        {/* Every OpenAI call this organization has made (ai_usage_events, D-106/D-107). Each
+            feature is counted apart because they cost wildly different amounts: a summary is
+            roughly a hundred times a receipt read, and an invoice read is a whole multi-page
+            bill rather than one receipt. Every feature needs its own tile, or its runs are
+            invisible here while its cost still lands in the total below. */}
         <dl className="grid grid-cols-2 lg:grid-cols-3 gap-3">
           {/* The big number is all time; the caption says how many of those were this month. The
               two used to be shown as "4 / 4", which read like a fraction. */}
@@ -260,8 +263,16 @@ export default async function OrgPage({
           >
             <Figure>{aiUsage.summaries.total}</Figure>
           </UsageTile>
+          <UsageTile
+            label="Invoice reads"
+            caption={UI.aiUsageInMonth(aiUsage.invoiceReads.currentMonth, monthLabel(aiUsage.currentMonth))}
+          >
+            <Figure>{aiUsage.invoiceReads.total}</Figure>
+          </UsageTile>
           <UsageTile label="Runs with nothing saved" caption={UI.aiUsageUnsavedNote}>
-            <Figure>{aiUsage.reads.unsaved + aiUsage.summaries.unsaved}</Figure>
+            <Figure>
+              {aiUsage.reads.unsaved + aiUsage.summaries.unsaved + aiUsage.invoiceReads.unsaved}
+            </Figure>
           </UsageTile>
           {/* One cost tile: the figure is all time, the caption carries this month and, when some
               runs were logged before the price settings existed, that the figure is a floor. */}

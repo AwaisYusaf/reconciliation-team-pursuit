@@ -17,7 +17,7 @@ import type { MonthKey } from "@/src/domain/dates";
  * Derived from `Database["transaction"]`'s own callback parameter rather than naming a
  * Drizzle internal, so it cannot drift from whatever `db.transaction()` actually hands out.
  */
-type Executor = Database | Parameters<Parameters<Database["transaction"]>[0]>[0];
+export type Executor = Database | Parameters<Parameters<Database["transaction"]>[0]>[0];
 
 /**
  * Claim the next reference number for a source, per month (R2.6, D-93 decision 2.6).

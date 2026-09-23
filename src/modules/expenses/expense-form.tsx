@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useRef, useState, useTransition } from "react";
+import { useCallback, useEffect, useId, useRef, useState, useTransition } from "react";
 
 import { Button } from "@/src/components/ui/button";
 import { Dialog } from "@/src/components/ui/dialog";
@@ -20,6 +20,7 @@ import { reportResult } from "@/src/components/ui/toast";
 import { setActiveFundingSourceAction } from "@/src/modules/auth/actions";
 import { projectedRemainingCents } from "@/src/domain/budget-math";
 import { compareMonthKeys, monthLabel } from "@/src/domain/dates";
+import { draftNeeds } from "@/src/domain/draft-rules";
 import { formatMoney } from "@/src/domain/format";
 import {
   parseMoneyToCents,
@@ -30,7 +31,7 @@ import {
 } from "@/src/domain/money";
 import { aggregateAmountSuggestion, panelVisible, type ReadableFile } from "@/src/domain/amount-suggestion";
 import { exclusionNote, UI } from "@/src/domain/strings";
-import { SESSION_EXPIRED } from "@/src/lib/action-result";
+import { SESSION_EXPIRED, type ActionResult } from "@/src/lib/action-result";
 import { cn } from "@/src/lib/cn";
 
 import { AmountSuggestionPanel } from "./amount-suggestion-panel";
@@ -51,6 +52,7 @@ import {
 import type { AttachedDocument } from "./queries";
 import { canSave } from "./can-save";
 import { UploadField, type PendingUpload } from "./upload-field";
+import type { DocumentScope } from "@/src/services/storage/keys";
 
 export type FormOptions = {
   /** Active sources, plus the expense's own source on edit even when it is archived. */
@@ -107,6 +109,54 @@ export type ExpenseFormProps = {
     /** The date the month was submitted, already formatted — null when it was not. */
     monthSubmittedOn: string | null;
   };
+  /** Present only for a draft edit: saves through `updateDraftAction` instead of
+   *  `updateExpenseAction`, and switches the form into draft mode (no delete). */
+  saveAction?: (input: ExpenseInput) => Promise<ActionResult>;
+  /** Draft edit only: saves, then approves in one press. Absent when the draft is not ready,
+   *  so the button is simply not offered rather than offered and refused. */
+  approveAction?: (id: string) => Promise<ActionResult<{ id: string }>>;
+  /** Which table an already-attached file is removed from. A draft's files live in
+   *  `expense_draft_documents` until approval, so the draft edit page passes its own action;
+   *  everywhere else the default reaches `expense_documents`. */
+  removeDocumentAction?: (documentId: string) => Promise<ActionResult>;
+  /**
+   * The invoice this expense or draft came from, shown in the receipt field as something that
+   * can be opened.
+   *
+   * Deliberately not a queued upload and not an attached document: the invoice is stored once,
+   * owned by the import, and becomes a real receipt row when the charge is created. Showing it
+   * here is how someone checking a draft can see the bill it was read from.
+   */
+  invoiceReceipt?: { filename: string; href?: string; file?: File };
+  /** Present only when this form is one charge card on the invoice screen (Phase 14). The
+   *  invoice fixes the funding source and month for every charge, the form creates through
+   *  `save.action` instead of `createExpenseAction`, and it stays on the page afterwards
+   *  instead of navigating to the Expenses list. */
+  embedded?: {
+    /** Seeded into the form's initial state, merged over the empty-form defaults — there is no
+     *  `existing` on this path, so this is the only way a card arrives prefilled. */
+    initialValues?: Partial<ExpenseInput>;
+    /** Full rules. Writes nothing: it marks the card, and the id it returns is the CARD's, not
+     *  an expense's. No upload runs here — the queued files ride to the server with Done. */
+    save: { label: string; action: (input: ExpenseInput) => Promise<ActionResult<{ id: string }>> };
+    /** Relaxed rules (the card posts kind "draft"). No uploads run here: there is no draft
+     *  row of its own yet; the card holds them and the one Done request attaches them to
+     *  whichever row it creates. */
+    draft: { label: string; action: (input: ExpenseInput) => Promise<ActionResult> };
+    /** Called after either succeeds, so the card can collapse and show its saved state. */
+    onSaved: (kind: "expense" | "draft") => void;
+    /**
+     * Mirrors the files queued on this form up to the card that owns it.
+     *
+     * Nothing is written until the whole invoice is submitted, so these cannot be uploaded
+     * here: there is no expense yet to attach them to. The card holds them and they travel
+     * with the one request that creates everything.
+     */
+    onQueuedChange?: (
+      files: Array<{ scope: DocumentScope; file: File; supportingType: string | null }>,
+    ) => void;
+
+  };
 };
 
 /** Long enough for a one-minute rate-limit window to have rolled over. */
@@ -131,6 +181,50 @@ const EMPTY: ExpenseInput = {
   noReceiptReason: "",
 };
 
+/**
+ * The invoice this charge came from, shown the way an attached file is shown elsewhere: a row
+ * with a document icon that opens it. The object URL is made once per file and released when
+ * the card unmounts, so opening twelve cards does not leak twelve blobs.
+ */
+function InvoiceReceiptChip({ filename, href, file }: { filename: string; href?: string; file?: File }) {
+  // A stored invoice has a real URL. One still sitting on the check screen has only the picked
+  // file, so its blob URL is made at the moment someone asks to see it and released shortly
+  // after: making it up front would leak one per card on a twelve line invoice.
+  function openPickedFile() {
+    if (!file) return;
+    const url = URL.createObjectURL(file);
+    // No `noreferrer` here, unlike every other link in this app: it opens the tab in a context
+    // that cannot resolve a blob URL, which Chrome reports as ERR_FILE_NOT_FOUND. There is no
+    // referrer to leak anyway, since the URL never leaves this browser.
+    window.open(url, "_blank");
+    setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  }
+
+  return (
+    <div className="mt-2.5 flex items-center gap-2.5 rounded-[3px] border border-line bg-surface px-3 py-2">
+      <svg viewBox="0 0 20 20" aria-hidden="true" className="w-4 h-4 flex-none text-sub">
+        <path
+          d="M5 2.5h6l4 4v11H5zM11 2.5V7h4"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.4"
+          strokeLinejoin="round"
+        />
+      </svg>
+      <span className="flex-1 text-[14px] truncate">{filename}</span>
+      {href ? (
+        <a href={href} target="_blank" rel="noreferrer" className="text-[14px] underline whitespace-nowrap">
+          Open
+        </a>
+      ) : (
+        <button type="button" onClick={openPickedFile} className="text-[14px] underline whitespace-nowrap">
+          Open
+        </button>
+      )}
+    </div>
+  );
+}
+
 export function ExpenseForm({
   options,
   remaining,
@@ -143,10 +237,16 @@ export function ExpenseForm({
   headerSelectedSourceId,
   readAmounts,
   existing,
+  saveAction,
+  approveAction,
+  removeDocumentAction,
+  invoiceReceipt,
+  embedded,
 }: ExpenseFormProps) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const editing = Boolean(existing);
+  const draftMode = saveAction !== undefined;
 
   const initialSource = options.fundingSources.find((source) => source.id === initialFundingSourceId);
 
@@ -162,6 +262,7 @@ export function ExpenseForm({
             feesReimbursable: initialSource.feesReimbursable,
           }
         : {}),
+      ...(embedded?.initialValues ?? {}),
     },
   );
   const [error, setError] = useState<string | null>(null);
@@ -208,6 +309,23 @@ export function ExpenseForm({
 
   // On the add form files are held until the expense exists, then uploaded against it.
   const [queued, setQueued] = useState<PendingUpload[]>([]);
+  // Held in a ref so the effect below depends only on `queued`: `embedded` is rebuilt inline
+  // by the card on every render, and depending on it directly would loop.
+  const onQueuedChangeRef = useRef(embedded?.onQueuedChange);
+  useEffect(() => {
+    onQueuedChangeRef.current = embedded?.onQueuedChange;
+  });
+  useEffect(() => {
+    // `supportingType` travels with the file. Without it the server refuses a supporting
+    // document ("Choose a document type first.") and the file is lost in silence.
+    onQueuedChangeRef.current?.(
+      queued.map((item) => ({
+        scope: item.scope,
+        file: item.file,
+        supportingType: item.supportingType ?? null,
+      })),
+    );
+  }, [queued]);
   // A picked HEIC is still becoming a JPEG in the browser (PR #18 round 2, #6).
   const converting = queued.some((item) => item.converting);
   const [status, setStatus] = useState<string | null>(null);
@@ -509,12 +627,15 @@ export function ExpenseForm({
     return hasProof ? "Expense saved." : UI.savedMissingProof;
   }
 
-  async function uploadQueued(expenseId: string): Promise<string | null> {
+  /** `owner` is the expense these files belong to, or the draft when the form is editing one:
+   *  a draft has no `expense_documents` row, so its files live in their own table until it is
+   *  approved (Phase 14). */
+  async function uploadQueued(ownerId: string, owner: "expense" | "draft" = "expense"): Promise<string | null> {
     for (const [index, item] of queued.entries()) {
       setStatus(`Uploading ${index + 1} of ${queued.length}…`);
       const form = new FormData();
-      form.set("target", "expense");
-      form.set("expenseId", expenseId);
+      form.set("target", owner);
+      form.set(owner === "draft" ? "draftId" : "expenseId", ownerId);
       form.set("scope", item.scope);
       if (item.supportingType) form.set("supportingType", item.supportingType);
       form.set("file", item.file);
@@ -572,6 +693,90 @@ export function ExpenseForm({
     }
   }
 
+  /** Whichever table this form's files live in — the draft one when the draft edit page
+   *  passed it, `expense_documents` otherwise. Resolved once so the three remove
+   *  controls cannot drift apart. */
+  const removeDocument = removeDocumentAction ?? removeExpenseDocumentAction;
+
+  /** Where a draft edit returns to: the month's drafts list, which is the one containing the
+   *  row that was just saved. Built once so Save and Cancel cannot drift apart. */
+  const draftListHref = `/r/expenses?month=${values.month}&view=drafts`;
+
+  /**
+   * Field ids, unique per mounted form.
+   *
+   * The invoice check screen mounts one of these per charge, so a fixed `id="narrative"`
+   * appeared a dozen times on one page: clicking the fourth card's Narrative label moved the
+   * cursor into the FIRST card's box, and every `aria-labelledby` pointed at the first card's
+   * label too, so a screen reader read the wrong field name on all but one.
+   */
+  const uid = useId();
+  const fieldId = useCallback((field: string) => `${field}-${uid}`, [uid]);
+
+  /**
+   * What this charge would still be refused for, by the same rule the drafts list shows in its
+   * "Still needs" column — read off the live fields, not the stored row, so it answers for
+   * what the person has just typed rather than for the draft as it arrived.
+   *
+   * Used only to explain a refusal, never to hide the button: the server decides.
+   */
+  const stillNeeds = () =>
+    draftNeeds({
+      lineItemId: values.lineItemId || null,
+      narrative: values.narrative,
+      name: values.name,
+      paymentSource: values.paymentSource,
+      date: values.date,
+    });
+
+  /**
+   * Save this draft and approve it in one press.
+   *
+   * Two actions rather than one, deliberately: the save has to land first, or approval would
+   * check readiness against the row as it was before the edit and refuse a draft the person
+   * has just finished. `approveDraftAction` re-checks everything server side anyway, so a
+   * draft that is still short of something is refused there and the message says what.
+   */
+  function saveAndApprove() {
+    setError(null);
+    setStatus(null);
+    if (selectedMonthLocked) {
+      setError(UI.monthLocked(monthLabel(values.month)));
+      return;
+    }
+    startTransition(async () => {
+      const saved = await saveAction!({ ...values, id: existing!.id });
+      if (!saved.ok) {
+        setError(saved.error);
+        return;
+      }
+      const uploadError = await uploadQueued(existing!.id, "draft");
+      if (uploadError) {
+        setStatus(null);
+        setError(uploadError);
+        router.refresh();
+        return;
+      }
+      const approved = await approveAction!(existing!.id);
+      if (!approved.ok) {
+        // Saved, but not approved: say so rather than leaving it looking like nothing worked.
+        // And name the fields when they are what is wrong. The server's own refusal says "Open
+        // it and fill in what it needs", which is the drafts LIST speaking — read on this
+        // screen, where the draft is already open, it tells the person to do what they are
+        // doing. Every other refusal (locked month, archived source, draft gone) is passed
+        // through untouched, because only this one knows less than the screen does.
+        const needs = stillNeeds();
+        setError(needs.length > 0 ? UI.draftSavedNotApproved(needs) : approved.error);
+        router.refresh();
+        return;
+      }
+      toast.success(UI.draftApprovedOne);
+      await switchHeaderSourceIfNeeded();
+      router.push(`/r/expenses?month=${values.month}`);
+      router.refresh();
+    });
+  }
+
   function save() {
     setError(null);
     setStatus(null);
@@ -583,6 +788,36 @@ export function ExpenseForm({
       return;
     }
     startTransition(async () => {
+      if (saveAction) {
+        const result = await saveAction({ ...values, id: existing!.id });
+        if (!result.ok) {
+          setError(result.error);
+          return;
+        }
+        // The draft owns these files until it is approved, so they go to its own table
+        // (`expense_draft_documents`, migration 0033) and are re-pointed at the expense by
+        // `approveDraftAction`. Uploaded after the save, like every other path, because the
+        // row has to exist before anything can hang off it.
+        const uploadError = await uploadQueued(existing!.id, "draft");
+        if (uploadError) {
+          setStatus(null);
+          setError(uploadError);
+          router.refresh();
+          return;
+        }
+        // Not `savedMessage()`: that one nags about a missing proof of payment, which a draft
+        // is not blocked by (ticket §5) — a draft is in no gate and no packet until it is
+        // approved. No `UI.draft*` string covers this line, so it reads plainly here.
+        toast.success("Draft saved.");
+        await switchHeaderSourceIfNeeded();
+        // Back to the DRAFTS list, not the expenses table: the row just saved is a draft, and
+        // landing on the list that does not contain it reads as a save that failed (invariant
+        // F). On a twelve-line invoice that is twelve wrong landings and twelve trips back.
+        router.push(draftListHref);
+        router.refresh();
+        return;
+      }
+
       if (editing) {
         const result = await updateExpenseAction({
           ...values,
@@ -592,6 +827,9 @@ export function ExpenseForm({
           setError(result.error);
           return;
         }
+        // A real expense owns its files directly — `expense_documents`, the default owner.
+        // (Review fix: this branch used to pass "draft", which sent an expense id to the
+        // draft ingest path and failed every attachment with "That draft no longer exists.")
         const uploadError = await uploadQueued(existing!.id);
         if (uploadError) {
           setStatus(null);
@@ -606,6 +844,25 @@ export function ExpenseForm({
         await switchHeaderSourceIfNeeded();
         router.push(`/r/expenses?month=${values.month}`);
         router.refresh();
+        return;
+      }
+
+      if (embedded) {
+        const created = await embedded.save.action(values);
+        if (!created.ok) {
+          setError(created.error);
+          return;
+        }
+        // No upload here, exactly like the draft branch below. Marking a charge card writes
+        // nothing: `saveCard` hands back the CARD's own id, not an expense id, and the whole
+        // invoice is written by one request when Done is pressed. Posting the queued files
+        // against that card id asked the server for an expense that does not exist yet, so a
+        // card with a file attached always answered "That expense no longer exists. The
+        // expense was saved. Add the file again below." — three statements, two of them untrue.
+        // The files are already mirrored to the card by `onQueuedChange` and travel with Done.
+        setStatus(null);
+        toast.success(savedMessage());
+        embedded.onSaved("expense");
         return;
       }
 
@@ -632,10 +889,37 @@ export function ExpenseForm({
     });
   }
 
+  /** The draft button beside Save, present only when `embedded`. Same locked-month guard as
+   *  `save()`, but posts through `embedded.draft.action` and skips uploads entirely — a draft
+   *  has no `expense_documents` row to attach anything to. */
+  function saveDraft() {
+    if (!embedded) return;
+    setError(null);
+    setStatus(null);
+    if (selectedMonthLocked) {
+      setError(UI.monthLocked(monthLabel(values.month)));
+      return;
+    }
+    startTransition(async () => {
+      const result = await embedded.draft.action(values);
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
+      toast.success("Draft saved.");
+      embedded.onSaved("draft");
+    });
+  }
+
   const highlight = autofilled ? "bg-autofill" : "bg-surface";
 
   // Proof of payment + Receipt, defined once: Plus renders them above the amounts, everyone
   // else below (Phase 10) — one definition so the two orders can never drift apart.
+  //
+  // Shown everywhere now. A draft's files go to `expense_draft_documents` and approval
+  // re-points them at the new expense; an invoice card's are held in the browser and travel
+  // with the one request that creates everything. Both have somewhere to live, which is what
+  // PHASE-14.md §2.1 C5 originally said they did not.
   const proofAndReceipt = (
     <>
       <div data-tour="add-expense-proof">
@@ -653,7 +937,7 @@ export function ExpenseForm({
             startTransition(async () => {
               if (
                 reportResult(
-                  await removeExpenseDocumentAction(id),
+                  await removeDocument(id),
                   "File removed.",
                 )
               ) {
@@ -681,7 +965,7 @@ export function ExpenseForm({
             startTransition(async () => {
               if (
                 reportResult(
-                  await removeExpenseDocumentAction(id),
+                  await removeDocument(id),
                   "File removed.",
                 )
               ) {
@@ -690,6 +974,16 @@ export function ExpenseForm({
             })
           }
         />
+
+        {/* Under the receipt tile, where the files for this expense are listed: the invoice is
+            one of them, it is simply owned by the import until the charge is created. */}
+        {invoiceReceipt && !values.noReceipt && (
+          <InvoiceReceiptChip
+            filename={invoiceReceipt.filename}
+            href={invoiceReceipt.href}
+            file={invoiceReceipt.file}
+          />
+        )}
 
         <label className="flex items-center gap-2.5 mt-3.5 text-base cursor-pointer min-h-11">
           <input
@@ -712,12 +1006,12 @@ export function ExpenseForm({
 
         {values.noReceipt && (
           <div className="mt-2">
-            <Label htmlFor="noReceiptReason">
+            <Label htmlFor={fieldId("noReceiptReason")}>
               Reason (prints on the cover sheet){" "}
               <span className="text-danger">Required</span>
             </Label>
             <Textarea
-              id="noReceiptReason"
+              id={fieldId("noReceiptReason")}
               disabled={ownSavedLocked}
               rows={2}
               value={values.noReceiptReason}
@@ -771,9 +1065,9 @@ export function ExpenseForm({
               textarea and button inside it (plan §3.11). */}
           <fieldset disabled={ownSavedLocked} className="contents">
           <div className="relative" data-tour="add-expense-name">
-            <Label htmlFor="name">Name</Label>
+            <Label htmlFor={fieldId("name")}>Name</Label>
             <Input
-              id="name"
+              id={fieldId("name")}
               value={values.name}
               autoComplete="off"
               onChange={(event) => set("name", event.target.value)}
@@ -826,16 +1120,17 @@ export function ExpenseForm({
             )}
           </div>
 
+          {!embedded && (
           <div>
-            <Label htmlFor="fundingSource">Funding source</Label>
+            <Label htmlFor={fieldId("fundingSource")}>Funding source</Label>
             {options.fundingSources.length === 1 ? (
               // One source: pre-filled and not editable, no extra clicks (spec §2/§4).
-              <div id="fundingSource" className="text-base py-1.5">
+              <div id={fieldId("fundingSource")} className="text-base py-1.5">
                 {options.fundingSources[0].name}
               </div>
             ) : (
               <Select
-                id="fundingSource"
+                id={fieldId("fundingSource")}
                 value={values.fundingSourceId}
                 onValueChange={(value) => {
                   const nextSource = options.fundingSources.find((s) => s.id === value);
@@ -863,14 +1158,15 @@ export function ExpenseForm({
               </Select>
             )}
           </div>
+          )}
 
           <div>
-            <Label id="lineItem-label" htmlFor="lineItem">
+            <Label id={fieldId("lineItem-label")} htmlFor={fieldId("lineItem")}>
               Line item
             </Label>
             <Select
-              id="lineItem"
-              aria-labelledby="lineItem-label"
+              id={fieldId("lineItem")}
+              aria-labelledby={fieldId("lineItem-label")}
               value={values.lineItemId}
               className={highlight}
               onValueChange={(value) => set("lineItemId", value)}
@@ -888,12 +1184,12 @@ export function ExpenseForm({
           </div>
 
           <div>
-            <Label id="paymentSource-label" htmlFor="paymentSource">
+            <Label id={fieldId("paymentSource-label")} htmlFor={fieldId("paymentSource")}>
               Payment source
             </Label>
             <Select
-              id="paymentSource"
-              aria-labelledby="paymentSource-label"
+              id={fieldId("paymentSource")}
+              aria-labelledby={fieldId("paymentSource-label")}
               value={values.paymentSource}
               onValueChange={(value) => set("paymentSource", value)}
             >
@@ -914,13 +1210,14 @@ export function ExpenseForm({
           </div>
 
           <div className="flex flex-wrap gap-[18px]">
+            {!embedded && (
             <div className="flex-1 min-w-[220px]">
-              <Label id="month-label" htmlFor="month">
+              <Label id={fieldId("month-label")} htmlFor={fieldId("month")}>
                 Month
               </Label>
               <Select
-                id="month"
-                aria-labelledby="month-label"
+                id={fieldId("month")}
+                aria-labelledby={fieldId("month-label")}
                 value={values.month}
                 onValueChange={(value) => {
                   set("month", value);
@@ -935,10 +1232,11 @@ export function ExpenseForm({
                 ))}
               </Select>
             </div>
+            )}
             <div className="flex-1 min-w-[220px]">
-              <Label htmlFor="date">Date</Label>
+              <Label htmlFor={fieldId("date")}>Date</Label>
               <Input
-                id="date"
+                id={fieldId("date")}
                 type="date"
                 value={values.date}
                 onChange={(event) => set("date", event.target.value)}
@@ -947,11 +1245,11 @@ export function ExpenseForm({
           </div>
 
           <div data-tour="add-expense-description">
-            <Label htmlFor="description">
+            <Label htmlFor={fieldId("description")}>
               Description / role (prints on the cover sheet exactly as typed)
             </Label>
             <Textarea
-              id="description"
+              id={fieldId("description")}
               rows={2}
               className={highlight}
               value={values.description}
@@ -977,7 +1275,7 @@ export function ExpenseForm({
           >
             {(["subtotal", "tax", "fees"] as const).map((field) => (
               <div key={field} className="flex-1 min-w-[150px]">
-                <Label htmlFor={field} className="capitalize">
+                <Label htmlFor={fieldId(field)} className="capitalize">
                   {field}
                 </Label>
                 <MoneyInput
@@ -1097,41 +1395,43 @@ export function ExpenseForm({
 
           {!readAmounts && proofAndReceipt}
 
-          <div className="border-t border-line pt-[22px]">
-            <UploadField
-              label="Supporting documents"
-              scope="supporting"
-              queued={queued}
-              setQueued={setQueued}
-              attached={
-                existing?.documents.filter(
-                  (doc) => doc.kind === "supporting",
-                ) ?? []
-              }
-              disabled={pending || ownSavedLocked}
-              supportingTypes={options.supportingDocTypes}
-              onRemoveAttached={(id) =>
-                startTransition(async () => {
-                  if (
-                    reportResult(
-                      await removeExpenseDocumentAction(id),
-                      "File removed.",
-                    )
-                  ) {
-                    router.refresh();
-                  }
-                })
-              }
-            />
-          </div>
+          {(
+            <div className="border-t border-line pt-[22px]">
+              <UploadField
+                label="Supporting documents"
+                scope="supporting"
+                queued={queued}
+                setQueued={setQueued}
+                attached={
+                  existing?.documents.filter(
+                    (doc) => doc.kind === "supporting",
+                  ) ?? []
+                }
+                disabled={pending || ownSavedLocked}
+                supportingTypes={options.supportingDocTypes}
+                onRemoveAttached={(id) =>
+                  startTransition(async () => {
+                    if (
+                      reportResult(
+                        await removeDocument(id),
+                        "File removed.",
+                      )
+                    ) {
+                      router.refresh();
+                    }
+                  })
+                }
+              />
+            </div>
+          )}
 
           <fieldset disabled={ownSavedLocked} className="contents">
           <div className="border-t border-line pt-[22px]">
-            <Label htmlFor="note">
+            <Label htmlFor={fieldId("note")}>
               Note <span className="font-normal text-sub">(optional)</span>
             </Label>
             <Input
-              id="note"
+              id={fieldId("note")}
               value={values.note}
               onChange={(event) => set("note", event.target.value)}
             />
@@ -1145,9 +1445,9 @@ export function ExpenseForm({
           </div>
 
           <div>
-            <Label htmlFor="narrative">Narrative</Label>
+            <Label htmlFor={fieldId("narrative")}>Narrative</Label>
             <Textarea
-              id="narrative"
+              id={fieldId("narrative")}
               rows={3}
               value={values.narrative}
               onChange={(event) => set("narrative", event.target.value)}
@@ -1165,17 +1465,52 @@ export function ExpenseForm({
           <div className="flex flex-wrap items-center gap-5">
             {!ownSavedLocked && (
               <Button type="submit" disabled={!canSave(queued, pending)}>
-                {pending ? "Saving…" : converting ? UI.convertingPhotos : editing ? "Save changes" : "Save expense"}
+                {pending
+                  ? "Saving…"
+                  : converting
+                    ? UI.convertingPhotos
+                    : embedded
+                      ? embedded.save.label
+                      : editing
+                        ? "Save changes"
+                        : "Save expense"}
               </Button>
             )}
-            <Button
-              variant="quiet"
-              onClick={() => router.push("/r/expenses")}
-              disabled={pending}
-            >
-              Cancel
-            </Button>
-            {editing && (
+            {embedded && (
+              <Button type="button" variant="secondary" disabled={pending} onClick={saveDraft}>
+                {embedded.draft.label}
+              </Button>
+            )}
+            {/* Always beside Save, never conditional on readiness. It used to be gated on the
+                stored row, on the server, at render — so the button was missing from exactly
+                the drafts someone opens this screen to finish, and appeared only after saving,
+                leaving and coming back. Two buttons that are always both there is one less
+                thing to work out: press either, and a refusal says what is still needed. */}
+            {approveAction && (
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={pending}
+                onClick={saveAndApprove}
+              >
+                {UI.draftSaveAndApprove}
+              </Button>
+            )}
+            {!embedded && (
+              <Button
+                variant="quiet"
+                // Same destination as a save, and it keeps the month: a bare "/r/expenses"
+                // dropped the month too, so cancelling out of a draft in a month other than
+                // the active one landed on a different month's list entirely.
+                onClick={() => router.push(saveAction ? draftListHref : `/r/expenses?month=${values.month}`)}
+                disabled={pending}
+              >
+                Cancel
+              </Button>
+            )}
+            {/* Hidden in draft mode: `deleteExpenseAction` cannot touch a draft row — Discard on
+                the Expenses list is the equivalent. */}
+            {editing && !draftMode && (
               <Button
                 variant="quiet"
                 onClick={() => setConfirmingDelete(true)}
@@ -1185,6 +1520,9 @@ export function ExpenseForm({
               </Button>
             )}
           </div>
+          {/* A draft has no `expense_documents` row, so anything queued here would never attach
+              (PHASE-14.md §2.1 C5) — said next to the button that actually discards it. */}
+          {embedded && queued.length > 0 && <Helper>{UI.invoiceDraftKeepsFiles}</Helper>}
 
           {/* Both only reachable while editing: a new expense has nothing attached yet. */}
           {editing && (
