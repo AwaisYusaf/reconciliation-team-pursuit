@@ -21,6 +21,21 @@ export function formatMoney(cents: number): string {
 }
 
 /**
+ * {@link formatMoney} split at the decimal point, for the dashboard's hero figures, which
+ * set the cents smaller than the dollars so a long grant total stays readable at a glance.
+ *
+ * Splits the formatted string rather than formatting the two parts separately: rounding,
+ * grouping and the leading sign are then decided exactly once, in `formatMoney`, and the
+ * halves cannot disagree with the same figure printed anywhere else (R1.2, R10.2).
+ * `formatMoney` always emits two fraction digits, so the separator is always present.
+ */
+export function splitMoney(cents: number): { whole: string; fraction: string } {
+  const text = formatMoney(cents);
+  const point = text.lastIndexOf(".");
+  return { whole: text.slice(0, point), fraction: text.slice(point) };
+}
+
+/**
  * Format a ratio (0.8625) as a whole-number percentage string (`86%`), rounded
  * half away from zero (R1.5). Non-finite input — including division by zero — is `0%`.
  */

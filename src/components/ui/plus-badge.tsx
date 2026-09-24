@@ -39,6 +39,46 @@ export const PLUS_GRADIENT_TEXT: React.CSSProperties = {
 };
 
 /**
+ * The badge's own fill: flat, and the darkest brown in the palette's direction.
+ *
+ * Flat on purpose. The glow below lives on the pill's edges, and an edge glow only reads as
+ * one if the middle it fades into is even — a ramp across the fill competes with it and the
+ * whole thing turns to mush. White bold 14px on this is roughly 15:1.
+ */
+const PLUS_BADGE_FILL = "#241509";
+
+/**
+ * The glow: along the bottom and up both sides, never through the middle.
+ *
+ * Three radials, each with its centre placed *outside* the pill — below it, and past each
+ * end. That is what keeps the centre clear: a gradient centred on the badge lights the middle
+ * brightest, which is the opposite of a rim. Pushed out, only their falloff lands inside, and
+ * it lands on the edge nearest each one.
+ *
+ * Painted inside the pill rather than cast around it. On this app's white cards a halo bleeding
+ * past the edge has nothing to glow against and comes out as a brown smudge with no edge; the
+ * badge stops looking like an object. Clipping it keeps the lit-from-within look and the pill
+ * keeps a hard outline.
+ */
+const PLUS_BADGE_GLOW_LAYER = [
+  // Bottom, the brightest of the three and the one that reads as the light source.
+  "radial-gradient(80% 120% at 50% 122%, rgba(160,108,72,0.95) 0%, rgba(160,108,72,0.38) 38%, rgba(160,108,72,0) 68%)",
+  // The two ends, dimmer, so the rim carries round the corners instead of stopping.
+  "radial-gradient(38% 150% at -6% 55%, rgba(160,108,72,0.62) 0%, rgba(160,108,72,0) 70%)",
+  "radial-gradient(38% 150% at 106% 55%, rgba(160,108,72,0.62) 0%, rgba(160,108,72,0) 70%)",
+].join(", ");
+
+/**
+ * The pill's edges: a lit top line, a dark hairline ring to seat it against a white card, and a
+ * 1px lift. Deliberately tight — this is the part that was overflowing before.
+ */
+const PLUS_BADGE_EDGE = [
+  "inset 0 1px 0 rgba(255,255,255,0.20)",
+  "inset 0 0 0 1px rgba(43,26,16,0.55)",
+  "0 1px 2px rgba(43,26,16,0.30)",
+].join(", ");
+
+/**
  * The Reconciliation + AI plan mark. The one gradient in the app: design-language.md says no
  * gradients, and this is the deliberate exception, so the AI plan reads as a product tier
  * rather than another brown control. Shared by the header and every Plus-only surface (Phase 10)
@@ -48,7 +88,15 @@ export function PlusBadge({ size = "md", className }: { size?: "sm" | "md"; clas
   return (
     <span
       title={PLAN_LABELS.reconciliation_ai}
-      style={{ backgroundImage: PLUS_GRADIENT }}
+      style={{
+        // The flat fill goes on `background-color`, the glow on `background-image`. They were
+        // one `background-image` list with the colour on the end, which is invalid — a colour
+        // is not an image — so the browser dropped the whole declaration and the badge came
+        // out as white text on nothing.
+        backgroundColor: PLUS_BADGE_FILL,
+        backgroundImage: PLUS_BADGE_GLOW_LAYER,
+        boxShadow: PLUS_BADGE_EDGE,
+      }}
       className={cn(
         // `font-sans` is explicit: without it the badge inherits whatever sits around it, so the one
         // beside a serif page title came out in Georgia while the header's stayed Arial.

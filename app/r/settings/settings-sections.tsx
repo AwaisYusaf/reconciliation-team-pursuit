@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { AvatarField } from "@/src/components/app-shell/avatar-field";
 import { useState, useTransition } from "react";
 
 import { Button, buttonClassName } from "@/src/components/ui/button";
@@ -162,6 +163,8 @@ function SectionIcon({ id }: { id: SectionId }) {
 
 export function SettingsSections({
   email,
+  userName,
+  avatarVersion,
   organisation,
   fundingSources,
   paymentSources,
@@ -175,6 +178,9 @@ export function SettingsSections({
   readAmounts,
 }: {
   email: string;
+  /** The signed-in person's own name and photo version, for the Account section's avatar. */
+  userName: string | null;
+  avatarVersion: string | null;
   organisation: { name: string; docName: string };
   fundingSources: FundingSourceRow[];
   paymentSources: LabelRow[];
@@ -254,7 +260,11 @@ export function SettingsSections({
               className={cn(
                 "flex items-center gap-2.5 text-left px-3.5 py-2.5 rounded-[8px] text-[15px] font-medium transition-colors",
                 active === id
-                  ? "bg-accent text-white shadow-sm"
+                  ? // The same ramp and lit top edge as the dashboard's primary button, so the
+                    // selected section reads as the same kind of object. The label stays solid
+                    // white: over a dark fill a gradient on white type can only go darker.
+                    "text-white bg-[linear-gradient(145deg,var(--color-accent)_0%,var(--color-accent-dark)_100%)] " +
+                    "shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_1px_2px_rgba(43,26,16,0.25)]"
                   : "text-sub hover:bg-surface/60 hover:text-ink",
               )}
             >
@@ -269,7 +279,7 @@ export function SettingsSections({
       <div className="flex-1 min-w-0 w-full">
         {active === "organization" && (
           <Card className={CARD_PADDING}>
-            <SectionTitle className="mb-5">Organization</SectionTitle>
+            <SectionTitle gradient className="mb-5">Organization</SectionTitle>
             <div className="grid gap-5 lg:grid-cols-2">
               <div>
                 <Label htmlFor="orgName">Organization name</Label>
@@ -318,7 +328,7 @@ export function SettingsSections({
 
         {active === "fundingSources" && (
           <Card className={CARD_PADDING} data-tour="settings-funding-sources-list">
-            <SectionTitle className="mb-5">Funding sources</SectionTitle>
+            <SectionTitle gradient className="mb-5">Funding sources</SectionTitle>
             <FundingSourcesSection
               fundingSources={fundingSources}
               orgDocName={org.docName}
@@ -330,7 +340,7 @@ export function SettingsSections({
 
         {active === "labels" && (
           <Card className={CARD_PADDING} data-tour="settings-labels">
-            <SectionTitle className="mb-5">Lists</SectionTitle>
+            <SectionTitle gradient className="mb-5">Lists</SectionTitle>
             <div className="grid gap-8 lg:grid-cols-2">
               <LabelList
                 title="Payment sources"
@@ -360,7 +370,7 @@ export function SettingsSections({
 
         {active === "vendors" && (
           <Card className={CARD_PADDING} data-tour="settings-vendors">
-            <SectionTitle className="mb-5">Vendor library</SectionTitle>
+            <SectionTitle gradient className="mb-5">Vendor library</SectionTitle>
             <VendorLibrary
               vendors={vendors}
               vendorCount={vendorCount}
@@ -388,16 +398,23 @@ export function SettingsSections({
         {active === "account" && (
           <>
             <Card className={CARD_PADDING}>
-              <SectionTitle className="mb-5">Account</SectionTitle>
-              <AccountSection email={email} pending={pending} startTransition={startTransition} />
+              <SectionTitle gradient className="mb-5">Account</SectionTitle>
+              <AccountSection
+                email={email}
+                userName={userName}
+                avatarVersion={avatarVersion}
+                pending={pending}
+                startTransition={startTransition}
+              />
             </Card>
 
             <Card className={cn(CARD_PADDING, "mt-6")} data-tour="settings-app-guide">
-              <SectionTitle className="mb-2">App guide</SectionTitle>
+              <SectionTitle gradient className="mb-2">App guide</SectionTitle>
               <Helper>
                 The short walkthroughs across the app show once each and then stay out of the
                 way. Bring them all back if you&apos;d like to see them again, or use the (i)
-                button next to Sign out to replay just the one for the screen you&apos;re on.
+                button at the top of the screen, beside your profile picture, to replay just
+                the one for the screen you&apos;re on.
               </Helper>
               <div className="flex justify-end mt-4">
                 <Button
@@ -1067,10 +1084,14 @@ function VendorLibrary({
 
 function AccountSection({
   email,
+  userName,
+  avatarVersion,
   pending,
   startTransition,
 }: {
   email: string;
+  userName: string | null;
+  avatarVersion: string | null;
   pending: boolean;
   startTransition: (callback: () => void) => void;
 }) {
@@ -1081,6 +1102,10 @@ function AccountSection({
 
   return (
     <div>
+      <div className="pb-5 mb-5 border-b border-line">
+        <AvatarField name={userName} email={email} initialVersion={avatarVersion} />
+      </div>
+
       <div className="grid gap-5 lg:grid-cols-2">
         <div>
           <Label htmlFor="email">Email</Label>

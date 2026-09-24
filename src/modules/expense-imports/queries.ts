@@ -4,13 +4,27 @@ import "server-only";
  * Draft reads for the "Waiting for review" section (Phase 14 §5), modelled on
  * `loadMonthExpenses` in src/modules/expenses/queries.ts.
  */
+import { alias } from "drizzle-orm/pg-core";
 import { and, asc, eq } from "drizzle-orm";
 
 import { db } from "@/src/db";
-import { expenseDraftDocuments, expenseDrafts, fundingSources, lineItems } from "@/src/db/schema";
+import {
+  expenseDraftDocuments,
+  expenseDrafts,
+  fundingSources,
+  lineItems,
+  users,
+} from "@/src/db/schema";
 import { reimbursableCents } from "@/src/domain/money";
+import { userDisplay } from "@/src/domain/user-display";
 import { isUuid } from "@/src/lib/ids";
 import type { AttachedDocument } from "@/src/modules/expenses/queries";
+
+/**
+ * `users` under its own name, because both queries below join it for the same purpose and a
+ * named alias is what the `set null` actor column reads as in the generated SQL.
+ */
+const updatedBy = alias(users, "draft_updated_by");
 
 export type DraftRow = {
   id: string;
@@ -33,6 +47,26 @@ export type DraftRow = {
   narrative: string | null;
   sortOrder: number;
   reimbursableCents: number;
+  /**
+   * Who last saved this draft, and when.
+   *
+   * `lastSavedBy` is null for a draft written before the column existed, or whose author's
+   * account has since been removed — the screen says nothing rather than guessing at a name.
+   * `lastSavedAt` is the row's `updated_at`, which Postgres maintains on every write, so it
+   * is the time of the last save whether or not an actor was recorded with it.
+   */
+  lastSavedBy: string | null;
+  /**
+   * The saver's own name, email and avatar key, unformatted.
+   *
+   * `lastSavedBy` above is already a display string, which is right for a sentence but useless
+   * to an avatar: initials come from the name *or* the email local part, and those have to be
+   * told apart. Null together with `lastSavedBy`, for the same reasons.
+   */
+  lastSavedByName: string | null;
+  lastSavedByEmail: string | null;
+  lastSavedByAvatarKey: string | null;
+  lastSavedAt: Date;
 };
 
 /**
@@ -67,8 +101,19 @@ export async function loadMonthDrafts(
       // approved can never disagree.
       taxReimbursable: fundingSources.taxReimbursable,
       feesReimbursable: fundingSources.feesReimbursable,
+      // Who last saved this draft, and when. Two people review the same import, so the
+      // question before picking one up is whether someone else is already in it.
+      updatedAt: expenseDrafts.updatedAt,
+      updatedByName: updatedBy.name,
+      updatedByEmail: updatedBy.email,
+      // No extra query: `updatedBy` is already joined for the name and email.
+      updatedByAvatarKey: updatedBy.avatarKey,
     })
     .from(expenseDrafts)
+    // Left, and aliased: the column is nullable for a draft written before it existed, and
+    // `set null` on the foreign key means a removed account leaves the draft behind with no
+    // actor. An inner join would drop exactly the rows someone most needs to see.
+    .leftJoin(updatedBy, eq(updatedBy.id, expenseDrafts.updatedByUserId))
     // Left, not inner: `lineItemId` is nullable and null is exactly the state this section
     // exists to show — an inner join would silently hide those rows.
     .leftJoin(lineItems, eq(lineItems.id, expenseDrafts.lineItemId))
@@ -83,6 +128,13 @@ export async function loadMonthDrafts(
     .orderBy(asc(expenseDrafts.sortOrder));
 
   return rows.map((row) => ({
+    lastSavedBy: row.updatedByEmail ? userDisplay(row.updatedByName, row.updatedByEmail) : null,
+    // Gated on the email too, so all four move together: with no actor row the join returns
+    // nulls across the board and the screen shows no saver at all rather than a faceless one.
+    lastSavedByName: row.updatedByEmail ? row.updatedByName : null,
+    lastSavedByEmail: row.updatedByEmail,
+    lastSavedByAvatarKey: row.updatedByEmail ? row.updatedByAvatarKey : null,
+    lastSavedAt: row.updatedAt,
     id: row.id,
     importId: row.importId,
     name: row.name,
@@ -145,9 +197,25 @@ export async function loadDraftById(orgId: string, id: string) {
   if (!isUuid(id)) return undefined;
 
   const [row] = await db
-    .select()
+    .select({
+      draft: expenseDrafts,
+      updatedByName: updatedBy.name,
+      updatedByEmail: updatedBy.email,
+      // No extra query: `updatedBy` is already joined for the name and email.
+      updatedByAvatarKey: updatedBy.avatarKey,
+    })
     .from(expenseDrafts)
+    // Left, for the same reason as in `loadMonthDrafts`: the actor is nullable and a removed
+    // account nulls it, and neither is a reason to stop returning the draft.
+    .leftJoin(updatedBy, eq(updatedBy.id, expenseDrafts.updatedByUserId))
     .where(and(eq(expenseDrafts.id, id), eq(expenseDrafts.orgId, orgId)))
     .limit(1);
-  return row;
+  if (!row) return undefined;
+
+  return {
+    ...row.draft,
+    lastSavedBy: row.updatedByEmail
+      ? userDisplay(row.updatedByName, row.updatedByEmail)
+      : null,
+  };
 }

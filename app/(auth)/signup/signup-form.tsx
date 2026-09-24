@@ -2,6 +2,7 @@
 
 import { useState, useTransition, type FormEvent } from "react";
 
+import { AUTH_FIELD } from "@/src/components/ui/auth-card";
 import { Button } from "@/src/components/ui/button";
 import { FieldError, Helper, Input, Label } from "@/src/components/ui/field";
 import { DangerPanel } from "@/src/components/ui/surfaces";
@@ -33,19 +34,35 @@ export function SignupForm() {
     <form onSubmit={onSubmit} noValidate>
       {panelError && <DangerPanel className="mb-[22px]">{panelError}</DangerPanel>}
 
-      <div className="mb-[18px]">
-        <Label htmlFor="orgName">Organization name</Label>
-        <Input id="orgName" name="orgName" required />
-        {fieldErrors.orgName && <FieldError>{fieldErrors.orgName}</FieldError>}
+      {/*
+        Five stacked fields ran past the fold on a laptop, so the short ones pair up from `sm`.
+        Three rows instead of five, and the pairing is by meaning rather than to fill space:
+        who you are on one row, the two halves of one password on another.
+
+        One column below `sm`. Two 160px-wide fields side by side on a phone is worse than a
+        longer form.
+      */}
+      {/*
+        `gap-y-4` rather than a margin on the second cell. `mt-4 sm:mt-0` there pushed the
+        right-hand field 16px below its neighbour at every width, because the override never
+        beat the margin — the two labels in a row sat on different lines. A row gap spaces the
+        single-column stack and disappears when the two share a row, with nothing to override.
+      */}
+      <div className="grid sm:grid-cols-2 gap-x-4 gap-y-4 mb-4">
+        <div>
+          <Label htmlFor="orgName">Organization name</Label>
+          <Input id="orgName" name="orgName" className={AUTH_FIELD} required />
+          {fieldErrors.orgName && <FieldError>{fieldErrors.orgName}</FieldError>}
+        </div>
+
+        <div>
+          <Label htmlFor="name">Your name</Label>
+          <Input id="name" name="name" autoComplete="name" className={AUTH_FIELD} required />
+          {fieldErrors.name && <FieldError>{fieldErrors.name}</FieldError>}
+        </div>
       </div>
 
-      <div className="mb-[18px]">
-        <Label htmlFor="name">Your name</Label>
-        <Input id="name" name="name" autoComplete="name" required />
-        {fieldErrors.name && <FieldError>{fieldErrors.name}</FieldError>}
-      </div>
-
-      <div className="mb-[18px]">
+      <div className="mb-4">
         <Label htmlFor="email">Email</Label>
         <Input
           id="email"
@@ -53,46 +70,60 @@ export function SignupForm() {
           type="email"
           autoComplete="username"
           placeholder="you@yourorganization.org"
+          className={AUTH_FIELD}
           required
         />
         {fieldErrors.email && <FieldError>{fieldErrors.email}</FieldError>}
       </div>
 
-      <div className="mb-[18px]">
-        <Label htmlFor="password">Password</Label>
-        <div className="flex gap-2">
+      <div className="grid sm:grid-cols-2 gap-x-4 gap-y-4 mb-5">
+        <div>
+          {/*
+            The Show toggle moved from beside the field to the end of its label row. As a
+            44px-tall button next to the input it took a third of the field's width, and it is
+            what stopped the two password fields from sharing a row.
+
+            It still governs both fields — they read one `passwordType` — so it is labelled for
+            that rather than for the field it sits over.
+          */}
+          <div className="flex items-baseline justify-between gap-2">
+            <Label htmlFor="password">Password</Label>
+            <button
+              type="button"
+              onClick={() => setShowPassword((value) => !value)}
+              aria-pressed={showPassword}
+              className="text-[13px] font-bold text-accent hover:text-accent-dark shrink-0"
+            >
+              {showPassword ? "Hide" : "Show"}
+            </button>
+          </div>
           <Input
             id="password"
             name="password"
             type={passwordType}
             autoComplete="new-password"
+            className={AUTH_FIELD}
             required
           />
-          <button
-            type="button"
-            onClick={() => setShowPassword((value) => !value)}
-            className="min-h-11 px-4 bg-surface border border-accent rounded-[3px] text-accent text-[15px] font-bold whitespace-nowrap"
-          >
-            {showPassword ? "Hide" : "Show"}
-          </button>
+          {fieldErrors.password ? (
+            <FieldError>{fieldErrors.password}</FieldError>
+          ) : (
+            <Helper>At least 12 characters.</Helper>
+          )}
         </div>
-        {fieldErrors.password ? (
-          <FieldError>{fieldErrors.password}</FieldError>
-        ) : (
-          <Helper>At least 12 characters.</Helper>
-        )}
-      </div>
 
-      <div className="mb-6">
-        <Label htmlFor="confirmPassword">Confirm password</Label>
-        <Input
-          id="confirmPassword"
-          name="confirmPassword"
-          type={passwordType}
-          autoComplete="new-password"
-          required
-        />
-        {fieldErrors.confirmPassword && <FieldError>{fieldErrors.confirmPassword}</FieldError>}
+        <div>
+          <Label htmlFor="confirmPassword">Confirm password</Label>
+          <Input
+            id="confirmPassword"
+            name="confirmPassword"
+            type={passwordType}
+            autoComplete="new-password"
+            className={AUTH_FIELD}
+            required
+          />
+          {fieldErrors.confirmPassword && <FieldError>{fieldErrors.confirmPassword}</FieldError>}
+        </div>
       </div>
 
       <Button type="submit" fullWidth disabled={pending}>

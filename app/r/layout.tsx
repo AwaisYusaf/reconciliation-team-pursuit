@@ -1,11 +1,16 @@
+import type { CSSProperties } from "react";
+
 import Image from "next/image";
+import Link from "next/link";
 import { redirect } from "next/navigation";
 
+import { AppHeader } from "@/src/components/app-shell/app-header";
 import { AppNav } from "@/src/components/app-shell/app-nav";
+import { PageTransition } from "@/src/components/app-shell/page-transition";
 import { FundingSourceSelector } from "@/src/components/app-shell/funding-source-selector";
 import { MonthSelector } from "@/src/components/app-shell/month-selector";
+import { ProfileMenu } from "@/src/components/app-shell/profile-menu";
 import { TourReplayButton } from "@/src/components/app-shell/tour-replay-button";
-import { Button } from "@/src/components/ui/button";
 import { AppToaster } from "@/src/components/ui/toast";
 import { loadSelectableMonths } from "@/src/db/months";
 import { PlusBadge } from "@/src/components/ui/plus-badge";
@@ -13,6 +18,7 @@ import { APP_NAME } from "@/src/domain/strings";
 import { aiPlanAllowed } from "@/src/modules/ai/access";
 import { signOutAction } from "@/src/modules/auth/actions";
 import { loadSourceContext } from "@/src/modules/funding-sources/queries";
+import { avatarVersionOf } from "@/src/services/storage/keys";
 import { getSession } from "@/src/services/auth/session";
 
 /**
@@ -38,81 +44,100 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   return (
     <div className="min-h-screen bg-paper">
-      <header className="no-print">
-        <div className="bg-surface border-b border-line px-4 sm:px-6 py-3 sm:py-[18px] flex gap-4 items-center justify-between">
-          <div className="min-w-0">
-            {/* Truncates rather than wrapping: a long organisation name would otherwise push
-                the log-out control onto its own row on a phone. */}
-            <div className="font-serif text-lg sm:text-xl lg:text-2xl font-bold leading-tight text-ink truncate">
-              {session.orgName}
-            </div>
-            {/* The full logo's artwork side by side (mark, then wordmark), as in the landing nav. */}
-            <div className="mt-1 sm:mt-1.5 flex items-center gap-1.5 min-w-0">
-              <Image
-                src="/brand/stayfunded-mark.png"
-                alt=""
-                width={628}
-                height={570}
-                className="h-5 sm:h-6 shrink-0"
-                style={{ width: "auto" }}
-              />
-              <Image
-                src="/brand/stayfunded-wordmark.png"
-                alt={APP_NAME}
-                width={720}
-                height={84}
-                className="h-[11px] sm:h-[13px] min-w-0"
-                style={{ width: "auto" }}
-              />
-            </div>
-          </div>
-          <div className="shrink-0 flex items-center gap-2.5">
+      {/*
+        One sticky bar carrying the mark, the tabs, the account controls and the two
+        selectors. It replaces three stacked rows — the organisation name with the sign-out
+        button, the month and funding-source band, and the tab row — which together ran about
+        190px tall before any content appeared.
+
+        `AppHeader` is a client component only because it watches the scroll position, to drop
+        everything but the tabs once the page moves. Everything inside it is passed as a slot,
+        so the data still comes from here.
+      */}
+      <AppHeader
+        logo={
+          /* The mark alone. The organisation name and wordmark were removed from the header
+             at the client's request; the organisation is named on the Settings screen and on
+             every document the app produces. */
+          <Link href="/r" aria-label={APP_NAME}>
+            <Image
+              src="/brand/stayfunded-mark.png"
+              alt=""
+              width={628}
+              height={570}
+              className="h-8 w-auto"
+              style={{ width: "auto" }}
+            />
+          </Link>
+        }
+        nav={<AppNav />}
+        controls={
+          <>
             {/* Only the AI plan gets a badge: on the plain plan a badge saying so would be
                 noise on every page, forever (Phase 9). */}
             {aiPlanAllowed(session.plan) && <PlusBadge />}
             <TourReplayButton />
-            <form action={signOutAction}>
-              <Button type="submit" variant="secondary" className="min-h-11 sm:min-h-12 text-[15px]">
-                Sign out
-              </Button>
-            </form>
-          </div>
-        </div>
+          </>
+        }
+        // Its own slot, not part of `controls`, because it must not collapse on scroll — it is
+        // the only way to Sign out or reach Your profile. See `AppHeader`.
+        account={
+          <ProfileMenu
+            name={session.userName ?? null}
+            email={session.email}
+            // The key's uuid as a cache buster: the avatar route has no id in its path, so
+            // without this a replaced photo keeps serving the old one from cache.
+            photoUrl={
+              session.avatarKey ? `/api/me/avatar?v=${avatarVersionOf(session.avatarKey)}` : null
+            }
+            signOut={signOutAction}
+          />
+        }
+      />
 
-        {/* No border-b here — this row and the sticky tab row right below it are both
-            bg-surface, and a line between them made two white boxes read as separate bars
-            stacked on top of each other instead of one continuous header surface. */}
-        <div className="bg-surface px-4 sm:px-6 pt-3 sm:pt-4">
-          <div className="max-w-[1220px] mx-auto flex flex-wrap gap-4">
-            <div data-tour="month-selector">
-              <MonthSelector months={months} activeMonth={activeMonth} />
+      {/* Tight against the header: the bar has its own bottom padding, so a large top padding
+          here stacked on it and left a band of empty page above every screen's first line. */}
+      <main
+        className="relative max-w-[1220px] mx-auto px-4 sm:px-6 pt-3 sm:pt-4 pb-12 sm:pb-16"
+        // How much of the content column's top-right corner the floating selectors occupy, so
+        // a screen's own header can keep its title and subtext out of it (`PageHeader` reads
+        // this). Published from here because this is the only place that knows: the widths are
+        // set a few lines below, and whether there are one or two of them depends on `single`.
+        // 150 + 10 gap + 190, or just the month pill on a single-source org.
+        style={{ "--corner-width": single ? "150px" : "350px" } as CSSProperties}
+      >
+        {/*
+          The month and funding-source selectors sit level with the screen's own title rather
+          than in a band of their own above it.
+
+          One element positioned two ways, not two copies: a hidden duplicate would put two
+          nodes on the page carrying `data-tour="month-selector"`, and the walkthrough resolves
+          its target by that attribute, so it would have spotlighted whichever was invisible.
+          From `lg` this is lifted out of the flow into the content column's top-right corner,
+          where it lands beside the first line of whatever the page renders; below that it
+          stays in the flow, since a phone has no room for a title and two selectors abreast.
+
+          This corner is now reserved. A screen with its own top-right controls (Expenses has
+          Trash, Add Expense has "Extract From Invoice", the packet has its lock controls)
+          clears it with `ACTION_CLEARANCE` from `surfaces.tsx` — without that they render
+          underneath these and cannot be clicked.
+        */}
+        {/*
+          `[&>*]:flex-1 [&>*]:min-w-0` below `sm`: the two pills ask for 150px and 190px, which
+          is wider than a 390px phone's content column, so without it they overflow and the
+          month pill is clipped to "une 2026". From `sm` they take their natural widths.
+        */}
+        <div className="flex justify-end gap-2 sm:gap-2.5 mb-3 [&>*]:flex-1 [&>*]:min-w-0 sm:[&>*]:flex-none lg:mb-0 lg:absolute lg:top-4 lg:right-6 lg:z-10">
+          <div data-tour="month-selector">
+            <MonthSelector months={months} activeMonth={activeMonth} compact />
+          </div>
+          {!single && (
+            <div data-tour="funding-source-selector">
+              <FundingSourceSelector sources={sources} selectedId={selectedId} compact />
             </div>
-            {!single && (
-              <div data-tour="funding-source-selector">
-                <FundingSourceSelector sources={sources} selectedId={selectedId} />
-              </div>
-            )}
-          </div>
+          )}
         </div>
-      </header>
-
-      {/* Only the tab row sticks — the org name/log-out row and month selector scroll away
-          normally, so this doesn't eat vertical space on a long screen, just stays reachable
-          without scrolling back up. A sibling of `header`/`main`, not nested inside `header`:
-          `position: sticky` can't hold an element past the bottom edge of its own immediate
-          parent, and `header` is exactly as tall as its own rows — nesting the sticky nav as
-          header's last child gave it nowhere to stick once header itself scrolled past the
-          top of the viewport (confirmed live: after scrolling, the nav's top was -696px,
-          dragged away with header instead of pinned at 0). Its parent here is this page's
-          outermost wrapper, which spans the full page, so it has real room to stick in. */}
-      <div className="no-print sticky top-0 z-30 bg-surface border-b border-line px-4 sm:px-6 pt-4 sm:pt-[18px]">
-        <div className="max-w-[1220px] mx-auto">
-          <AppNav />
-        </div>
-      </div>
-
-      <main className="max-w-[1220px] mx-auto px-4 sm:px-6 pt-6 sm:pt-8 pb-12 sm:pb-16">
-        {children}
+        <PageTransition>{children}</PageTransition>
       </main>
       <AppToaster />
     </div>

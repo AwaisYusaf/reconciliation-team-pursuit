@@ -26,6 +26,18 @@ export type SessionContext = {
   userId: string;
   orgId: string;
   email: string;
+  /**
+   * The signed-in person's display name, for the header's profile menu. Nullable for the same
+   * reason the column is: an account created before the column exists has no name on file, and
+   * every reader falls back to the email rather than inventing one.
+   *
+   * Optional rather than required so the many test fixtures that build a session literal do
+   * not each have to state a field none of them exercises. The real session always sets it,
+   * and an absent value takes the same email fallback a null one does.
+   */
+  userName?: string | null;
+  /** Storage key of the profile photo, null until one is uploaded. */
+  avatarKey?: string | null;
   role: UserRole;
   orgName: string;
   /** The org's plan (Phase 9). Carried on the session because the app header renders a badge
@@ -93,6 +105,8 @@ export async function resolveSession(
       createdAt: sessions.createdAt,
       userId: users.id,
       email: users.email,
+      userName: users.name,
+      avatarKey: users.avatarKey,
       role: users.role,
       orgId: organizations.id,
       orgName: organizations.name,
@@ -106,7 +120,16 @@ export async function resolveSession(
     .from(sessions)
     .innerJoin(users, eq(users.id, sessions.userId))
     .innerJoin(organizations, eq(organizations.id, users.orgId))
-    .where(and(eq(sessions.id, tokenHash), isNull(organizations.suspendedAt)))
+    // `deactivatedAt` here as well as deleting the sessions at revocation time: the delete is
+    // what ends access immediately, and this is what makes it impossible for any cookie to
+    // outlive the revocation if a session row is ever created or restored another way.
+    .where(
+      and(
+        eq(sessions.id, tokenHash),
+        isNull(organizations.suspendedAt),
+        isNull(users.deactivatedAt),
+      ),
+    )
     .limit(1);
 
   const row = rows[0];
@@ -131,6 +154,8 @@ export async function resolveSession(
       userId: row.userId,
       orgId: row.orgId,
       email: row.email,
+      userName: row.userName,
+      avatarKey: row.avatarKey,
       role: row.role,
       orgName: row.orgName,
       plan: row.plan,

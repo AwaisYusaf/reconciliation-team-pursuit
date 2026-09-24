@@ -4,6 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 
+import { GRADIENT_TEXT } from "@/src/components/ui/surfaces";
 import { APP_NAME } from "@/src/domain/strings";
 
 /**
@@ -56,8 +57,8 @@ const FlowStep = Reveal;
 
 const NAV_LINKS = [
   { id: "problem", label: "The Problem" },
-  { id: "system-features", label: "Features" },
-  { id: "ai-narratives", label: "AI Summaries" },
+  { id: "system-features", label: "One System" },
+  { id: "ai-narratives", label: "The Story" },
   { id: "pricing", label: "Pricing" },
   { id: "faq", label: "FAQ" },
 ];
@@ -95,24 +96,59 @@ function useActiveSection(ids: string[]) {
 
 const FAQS = [
   {
+    question: `What is ${APP_NAME}?`,
+    answer:
+      `${APP_NAME} is a funding accountability and readiness platform. It helps organizations track, document, and stay compliant with the funding they receive throughout the funding period, not just at reconciliation. Budgets, expenses, documentation, program activity, and funding requirements live in one connected system, so the details are handled while the work is happening.`,
+  },
+  {
+    question: "What is the difference between reconciliation and readiness?",
+    answer:
+      "Reconciliation is something you do. Readiness is something you maintain. Reconciliation is an important part of the process, but it isn't the whole process. A missing receipt, an undocumented expense, or an uncaptured program activity only becomes a problem later, when the books need to close, a report is due, or a funder asks. Readiness means those details were already handled.",
+  },
+  {
+    question: `Does ${APP_NAME} replace our accountant or accounting software?`,
+    answer:
+      `No. ${APP_NAME} isn't designed to replace your accountant, bookkeeper, or accounting software. It fills the operational space around them. Your books may tell you that $4,800 was spent. ${APP_NAME} answers which funding source paid for it, which budget category it belongs to, where the supporting documentation is, what work it supported, whether it has been reconciled, and whether anything is still missing.`,
+  },
+  {
     question: `Does ${APP_NAME} replace our existing Excel spreadsheets?`,
     answer:
-      `Yes. ${APP_NAME} replaces manual spreadsheet reconciliation with a single ledger where every expense is captured once, with its documentation, at the moment it happens. There's no more retyping totals across separate Word and Excel files.`,
+      `Yes, for the funding records those spreadsheets are holding together. Every expense is captured once, with its documentation, at the moment it happens, so there is no retyping of totals across separate Word and Excel files and no formula that can quietly break between a cover sheet and a sub-ledger.`,
+  },
+  {
+    question: "What is Ready Alerts?",
+    answer:
+      `Ready Alerts\u2122 identifies missing documentation, incomplete records, approaching requirements, and items that need attention, while there is still time to handle them. It is how ${APP_NAME} surfaces a gap in the month it happens rather than in the week a report is due.`,
+  },
+  {
+    question: "What is Ready Check?",
+    answer:
+      "Ready Check\u2122 reviews your funding records before reconciliation, reporting, monitoring, or an audit, so you can see what is complete and what still needs attention before anyone outside the organization looks at it.",
+  },
+  {
+    question: "What is Funding Trail?",
+    answer:
+      "Funding Trail\u2122 follows the connection from funding to expense to documentation to reconciliation. It answers where a dollar came from, what it paid for, what proves it, and what work it supported, as one continuous record rather than four separate lookups.",
+  },
+  {
+    question: "How does the AI Monthly Summary work?",
+    answer:
+      "As your team documents activity throughout the month, AI organizes that information into a monthly funding and program summary: an ongoing narrative of the work performed, the expenses incurred, and the activity the funding supported. At the end of the month you are not reconstructing the story from memory, because the numbers and the narrative stayed connected.",
   },
   {
     question: "What happens if an expense is missing a receipt or bank proof?",
     answer:
-      `${APP_NAME}'s hard documentation gate physically prevents staff from generating a monthly packet until every expense has both an itemized receipt and proof of payment attached, so incomplete expenses can't slip through to filing.`,
+      `Ready Alerts\u2122 flags it while the work is happening, and ${APP_NAME}'s documentation gate prevents a monthly packet from being generated until every expense has both an itemized receipt and proof of payment attached, so incomplete expenses can't slip through to filing.`,
   },
   {
-    question: `Can ${APP_NAME} handle multiple grant contracts at once?`,
+    question: `Can ${APP_NAME} handle multiple grants or funding sources?`,
     answer:
-      "Yes. The Reconciliation + AI plan ($497/month) supports multiple contracts with custom grant contract template customization, on top of everything in the single-contract Reconciliation plan ($297/month).",
+      "Yes. Each funding source keeps its own budget, guidelines, expenses, documentation, and requirements, while leadership keeps visibility across the whole organization. Multiple contracts are supported on the Reconciliation + AI plan ($497/month), on top of everything in the single-contract Reconciliation plan ($297/month).",
   },
   {
     question: "How long does it take to generate a month-end filing packet?",
     answer:
-      "One click compiles the official Word cover sheet, Excel sub-ledger, and a merged filing PDF under 25MB. Team Pursuit Global in Detroit went from a 3-day manual reconciliation ordeal to a 30-minute formality.",
+      "One click compiles the official Word cover sheet, Excel sub-ledger, and a merged filing PDF under 25MB. Because expenses arrive already documented and categorized, the packet confirms what is already there instead of rebuilding it. Team Pursuit Global in Detroit went from a 3-day manual ordeal to a 30-minute formality.",
   },
   {
     question: "How long are our records retained, and is the audit trail tamper-proof?",
@@ -171,15 +207,28 @@ export function LandingPage() {
 <div className="text-left">
 
 <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-lp-surface-container-high border border-outline-variant text-xs font-semibold text-brand-800 mb-6 shadow-xs">
-<span className="w-2 h-2 rounded-full bg-brand-700 animate-pulse"></span> Built for grant-funded nonprofit reconciliation
+<span className="w-2 h-2 rounded-full bg-brand-700 animate-pulse"></span> Track &middot; Document &middot; Comply
         </div>
 
-<h1 className="text-3xl sm:text-4xl lg:text-4xl xl:text-5xl font-semibold tracking-tight text-on-surface font-lp-serif leading-[1.15] mb-5">
-          Take control of <span className="text-primary italic font-lp-serif">your</span>{" "}<br /><span className="text-primary italic font-lp-serif">monthly reconciliation.</span>
+{/* One step down at every width. At the old size the two lines ate the top of the hero and
+          pushed the buttons under the fold on a laptop, and the headline is a claim, not a
+          banner. The `leading` stays tight so the two lines still read as one thought. */}
+        <h1 className="text-2xl sm:text-3xl lg:text-3xl xl:text-4xl font-semibold tracking-tight text-on-surface font-lp-serif leading-[1.15] mb-4">
+          Getting funded is one thing.{" "}<br /><span className="text-primary italic font-lp-serif">Staying funded means staying ready.<span className="align-super text-[0.28em] not-italic">&trade;</span></span>
 </h1>
 
-<p className="text-sm sm:text-base lg:text-lg text-on-surface-variant leading-relaxed max-w-2xl mb-7">
-          Capture every expense once, with its documentation, the moment it happens. When the month closes, generate a complete, funder-ready packet, cover sheets, contract summary, and merged filing, in minutes.
+{/*
+          What it is, then what you do with it. The client's paragraph said both three times
+          over — expenses, documentation, reconciliation and compliance, then budgets,
+          expenses, documentation, reporting, reconciliation and audit readiness, then a
+          360-degree view of the same — so it ran six lines under the headline and pushed the
+          buttons down the page. Every term here is still the client's own; the restatements
+          are what went. `max-w-xl` holds it to roughly two lines beside the screenshot.
+        */}
+        <p className="text-sm lg:text-base text-on-surface-variant leading-relaxed max-w-xl mb-6">
+          {APP_NAME} is an AI powered funding accountability and readiness platform. Track
+          expenses, organize documentation, reconcile funding and stay audit ready across the
+          whole funding lifecycle.
         </p>
 
 <div className="flex flex-wrap items-center gap-4">
@@ -194,7 +243,7 @@ export function LandingPage() {
             </span>
           </a>
 <a className="glass-btn glass-btn-light px-5 py-2.5 rounded-full text-sm font-semibold" href="#pricing">
-            See How It Works
+            See how it works
           </a>
 </div>
 </div>
@@ -207,53 +256,72 @@ export function LandingPage() {
 
 
   <div className="border-b border-outline-variant/50 pb-1 sm:pb-1.5 mb-1.5 sm:mb-2">
-    <nav className="flex items-center gap-1.5 sm:gap-2.5 overflow-hidden text-[6px] sm:text-[8px] font-medium text-on-surface-variant">
-      <a className="pb-2 -mb-2 border-b-2 border-primary text-on-surface font-semibold whitespace-nowrap" href="#">Dashboard</a>
-      <a className="pb-2 -mb-2 border-b-2 border-transparent hover:text-on-surface whitespace-nowrap" href="#">Add Expense</a>
-      <a className="pb-2 -mb-2 border-b-2 border-transparent hover:text-on-surface whitespace-nowrap" href="#">Expenses</a>
-      <a className="pb-2 -mb-2 border-b-2 border-transparent hover:text-on-surface whitespace-nowrap" href="#">Cover Sheets</a>
-      <a className="pb-2 -mb-2 border-b-2 border-transparent hover:text-on-surface whitespace-nowrap" href="#">Recurring</a>
-      <a className="pb-2 -mb-2 border-b-2 border-transparent hover:text-on-surface whitespace-nowrap" href="#">Month-End Packet</a>
-      <a className="pb-2 -mb-2 border-b-2 border-transparent hover:text-on-surface whitespace-nowrap" href="#">Contract Summary</a>
-      <a className="pb-2 -mb-2 border-b-2 border-transparent hover:text-on-surface whitespace-nowrap" href="#">Line Items</a>
-      <a className="pb-2 -mb-2 border-b-2 border-transparent hover:text-on-surface whitespace-nowrap" href="#">Settings</a>
+    {/* The app's own nav: one dark pill, the current tab reversed out of it in white. */}
+    <nav className="flex items-center gap-0.5 overflow-hidden rounded-full bg-accent-dark px-1 py-0.5 text-[6px] sm:text-[7px] font-medium">
+        <span className="rounded-full px-1.5 py-0.5 whitespace-nowrap bg-lp-surface-container-lowest text-primary font-semibold">Dashboard</span>
+        <span className="rounded-full px-1.5 py-0.5 whitespace-nowrap text-lp-surface-container-lowest/75">Add Expense</span>
+        <span className="rounded-full px-1.5 py-0.5 whitespace-nowrap text-lp-surface-container-lowest/75">Expenses</span>
+        <span className="rounded-full px-1.5 py-0.5 whitespace-nowrap text-lp-surface-container-lowest/75">Cover Sheets</span>
+        <span className="rounded-full px-1.5 py-0.5 whitespace-nowrap text-lp-surface-container-lowest/75">Recurring</span>
+        <span className="rounded-full px-1.5 py-0.5 whitespace-nowrap text-lp-surface-container-lowest/75">Month-End Packet</span>
+        <span className="rounded-full px-1.5 py-0.5 whitespace-nowrap text-lp-surface-container-lowest/75">Contract Summary</span>
+        <span className="rounded-full px-1.5 py-0.5 whitespace-nowrap text-lp-surface-container-lowest/75">Line Items</span>
+        <span className="rounded-full px-1.5 py-0.5 whitespace-nowrap text-lp-surface-container-lowest/75">Settings</span>
     </nav>
   </div>
 
   <div className="mb-1.5 sm:mb-2">
-    <h2 className="text-[10px] sm:text-xs lg:text-sm font-semibold text-on-surface font-lp-serif tracking-tight leading-none">Dashboard</h2>
-    <p className="text-[7px] sm:text-[8px] text-on-surface-variant font-normal leading-tight mt-0.5">Budget status for August 2026.</p>
+    <p className="text-[6px] sm:text-[7px] text-on-surface-variant font-normal leading-tight">Budget status for August 2026.</p>
+    <p className="text-[10px] sm:text-xs lg:text-sm font-bold text-on-surface tracking-tight leading-none mt-0.5">Welcome back, Team!</p>
   </div>
 
-  <div className="grid grid-cols-3 gap-1 sm:gap-1.5 mb-1.5 sm:mb-2">
-    <div className="bg-lp-surface-container-lowest/70 backdrop-blur-md border border-outline-variant/50 rounded-lg p-1 sm:p-1.5 flex flex-col gap-0.5 justify-between ring-1 ring-inset ring-white/40">
-      <span className="text-[6px] sm:text-[7px] font-semibold uppercase tracking-wider text-on-surface-variant truncate">Original Approved Budget</span>
-      <div className="text-[9px] sm:text-xs lg:text-sm font-semibold text-on-surface font-lp-serif tracking-tight whitespace-nowrap">$598,692.00</div>
+  {/* The dashboard's hero row: the position and its year on the left, the month's own
+      figures on the right, with one filled tile. */}
+  <div className="grid grid-cols-[1.5fr_1fr] gap-1 sm:gap-1.5 mb-1.5 sm:mb-2">
+    <div className="border border-outline-variant/50 rounded-lg p-1 sm:p-1.5 flex flex-col bg-[linear-gradient(to_top,var(--color-hero-wash)_0%,var(--color-surface)_75%)]">
+      <div className="flex items-baseline justify-between gap-1">
+        <span className="text-[6px] sm:text-[7px] font-bold text-on-surface">Total remaining</span>
+        <span className="text-[5px] sm:text-[6px] font-bold text-on-surface-variant bg-lp-surface-container rounded-full px-1 py-0.5">4% committed</span>
+      </div>
+      <div className="text-[11px] sm:text-sm lg:text-base font-bold text-on-surface tracking-tight leading-none mt-0.5">$576,472<span className="text-[7px] sm:text-[9px] text-on-surface-variant">.00</span></div>
+      <span className="text-[5px] sm:text-[6px] font-bold uppercase tracking-wider text-on-surface-variant mt-1">Spent each month</span>
+      <div className="flex items-end justify-between h-6 sm:h-8 mt-0.5"><span className="w-[3px] sm:w-1 rounded-[1px] bg-accent/45" style={{ height: "18%" }} /><span className="w-[3px] sm:w-1 rounded-[1px] bg-accent/45" style={{ height: "62%" }} /><span className="w-[3px] sm:w-1 rounded-[1px] bg-accent/45" style={{ height: "22%" }} /><span className="w-[3px] sm:w-1 rounded-[1px] bg-accent/45" style={{ height: "30%" }} /><span className="w-[3px] sm:w-1 rounded-[1px] bg-accent/45" style={{ height: "12%" }} /><span className="w-[3px] sm:w-1 rounded-[1px] bg-accent/45" style={{ height: "48%" }} /><span className="w-[3px] sm:w-1 rounded-[1px] bg-accent" style={{ height: "26%" }} /><span className="w-[3px] sm:w-1 rounded-[1px] bg-accent/45" style={{ height: "8%" }} /><span className="w-[3px] sm:w-1 rounded-[1px] bg-accent/45" style={{ height: "14%" }} /><span className="w-[3px] sm:w-1 rounded-[1px] bg-accent/45" style={{ height: "10%" }} /><span className="w-[3px] sm:w-1 rounded-[1px] bg-accent/45" style={{ height: "16%" }} /><span className="w-[3px] sm:w-1 rounded-[1px] bg-accent/45" style={{ height: "9%" }} /></div>
+      <div className="flex justify-between text-[4px] sm:text-[5px] mt-0.5"><span className="text-on-surface-variant/70">Jan</span><span className="text-on-surface-variant/70">Feb</span><span className="text-on-surface-variant/70">Mar</span><span className="text-on-surface-variant/70">Apr</span><span className="text-on-surface-variant/70">May</span><span className="text-on-surface-variant/70">Jun</span><span className="text-on-surface-variant/70">Jul</span><span className="text-on-surface font-bold">Aug</span><span className="text-on-surface-variant/70">Sep</span><span className="text-on-surface-variant/70">Oct</span><span className="text-on-surface-variant/70">Nov</span><span className="text-on-surface-variant/70">Dec</span></div>
     </div>
-    <div className="bg-lp-surface-container-lowest/70 backdrop-blur-md border border-outline-variant/50 rounded-lg p-1 sm:p-1.5 flex flex-col gap-0.5 justify-between ring-1 ring-inset ring-white/40">
-      <span className="text-[6px] sm:text-[7px] font-semibold uppercase tracking-wider text-on-surface-variant truncate">Total Spent To Date</span>
-      <div className="text-[9px] sm:text-xs lg:text-sm font-semibold text-on-surface font-lp-serif tracking-tight whitespace-nowrap">$22,220.00</div>
-    </div>
-    <div className="bg-lp-surface-container-lowest/70 backdrop-blur-md border border-outline-variant/50 rounded-lg p-1 sm:p-1.5 flex flex-col gap-0.5 justify-between ring-1 ring-inset ring-white/40">
-      <span className="text-[6px] sm:text-[7px] font-semibold uppercase tracking-wider text-on-surface-variant truncate">Total Remaining</span>
-      <div className="text-[9px] sm:text-xs lg:text-sm font-semibold text-on-surface font-lp-serif tracking-tight whitespace-nowrap">$576,472.00</div>
+
+    <div className="grid grid-cols-2 gap-1 content-start">
+      <div className="rounded-lg p-1 text-lp-surface-container-lowest bg-[linear-gradient(135deg,var(--color-hero-from)_0%,var(--color-hero-to)_100%)]">
+        <div className="text-[5px] sm:text-[6px] font-bold uppercase tracking-wider opacity-75">Spent this month</div>
+        <div className="text-[7px] sm:text-[9px] font-bold leading-tight mt-0.5">$22,220.00</div>
+      </div>
+      <div className="rounded-lg p-1 bg-lp-surface-container-lowest border border-outline-variant/50">
+        <div className="text-[5px] sm:text-[6px] font-bold uppercase tracking-wider text-on-surface-variant">Expenses in Aug</div>
+        <div className="text-[7px] sm:text-[9px] font-bold text-on-surface leading-tight mt-0.5">14</div>
+      </div>
+      <div className="rounded-lg p-1 bg-lp-surface-container-lowest border border-outline-variant/50">
+        <div className="text-[5px] sm:text-[6px] font-bold uppercase tracking-wider text-on-surface-variant">Approved budget</div>
+        <div className="text-[7px] sm:text-[9px] font-bold text-on-surface leading-tight mt-0.5">$598,692.00</div>
+      </div>
+      <div className="rounded-lg p-1 bg-lp-surface-container-lowest border border-outline-variant/50">
+        <div className="text-[5px] sm:text-[6px] font-bold uppercase tracking-wider text-on-surface-variant">Missing documents</div>
+        <div className="text-[7px] sm:text-[9px] font-bold text-on-surface leading-tight mt-0.5">0</div>
+      </div>
     </div>
   </div>
-  <p className="text-[6px] sm:text-[8px] text-on-surface-variant/80 italic mb-1.5 sm:mb-2 leading-snug">The whole grant to date, across every month - 4% of the approved budget committed.</p>
 
   <div className="mb-1 sm:mb-1.5">
-    <h3 className="text-[9px] sm:text-[11px] lg:text-xs font-semibold text-on-surface font-lp-serif tracking-tight leading-tight">August 2026 on its own</h3>
+    <p className="text-[9px] sm:text-[11px] lg:text-xs font-semibold text-on-surface font-lp-serif tracking-tight leading-tight">August 2026 on its own</p>
     <p className="text-[6px] sm:text-[8px] text-on-surface-variant leading-snug mt-0.5">Opening balance, what this month spent, and what is left at the end of it. Each month starts where the last one closed.</p>
   </div>
 
   <div className="bg-lp-surface-container-lowest/70 backdrop-blur-md rounded-lg border border-outline-variant/50 overflow-hidden flex-1 ring-1 ring-inset ring-white/40">
     <table className="w-full text-left text-[6px] sm:text-[8px] lg:text-[9px]">
       <thead>
-        <tr className="border-b-2 border-on-surface/70 font-semibold uppercase tracking-wider text-on-surface-variant">
-          <th className="py-1 sm:py-1.5 px-1.5 sm:px-2 font-semibold text-left">Line Item</th>
-          <th className="py-1 sm:py-1.5 px-1.5 sm:px-2 font-semibold text-right">Opening Balance</th>
-          <th className="py-1 sm:py-1.5 px-1.5 sm:px-2 font-semibold text-right">Spent In Aug</th>
-          <th className="py-1 sm:py-1.5 px-1.5 sm:px-2 font-semibold text-right">Closing Balance</th>
+        <tr className="font-bold uppercase tracking-wider text-lp-surface-container-lowest bg-[linear-gradient(90deg,var(--color-hero-from)_0%,var(--color-hero-to)_100%)]">
+          <th className="py-0.5 px-1.5 sm:px-2 font-bold text-left whitespace-nowrap">Line Item</th>
+          <th className="py-0.5 px-1.5 sm:px-2 font-bold text-right whitespace-nowrap">Opening Balance</th>
+          <th className="py-0.5 px-1.5 sm:px-2 font-bold text-right whitespace-nowrap">Spent In Aug</th>
+          <th className="py-0.5 px-1.5 sm:px-2 font-bold text-right whitespace-nowrap">Closing Balance</th>
         </tr>
       </thead>
       <tbody className="text-on-surface divide-y divide-outline-variant/20">
@@ -288,7 +356,7 @@ export function LandingPage() {
     </div>
     
     <Image
-      alt="MacBook Pro 14 Display Mockup"
+      alt="The Stay Funded 360 dashboard on a laptop, showing the remaining balance, spending by month, and each budget line's opening and closing balance"
       src="/macbook-pro-14-front.png"
       fill
       priority
@@ -302,7 +370,7 @@ export function LandingPage() {
 <div className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-3 text-sm text-on-surface-variant">
 <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-lp-surface-container border border-outline-variant/50 text-[11px] text-on-surface-variant">
 <span className="w-1.5 h-1.5 rounded-full bg-secondary"></span>
-<span className="">Field-tested with <strong className="text-on-surface font-semibold">Team Pursuit Global</strong> in Detroit to turn a 3-day ordeal into a 30-minute formality.</span>
+<span className="">From award to audit, know where your funding stands. Field-tested with <strong className="text-on-surface font-semibold">Team Pursuit Global</strong> in Detroit.</span>
 </div>
 </div>
 </div>
@@ -311,13 +379,13 @@ export function LandingPage() {
 <Reveal>
 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
 <div className="inline-flex items-center px-3.5 py-1 rounded-full bg-lp-surface-container-high border border-outline-variant text-xs font-semibold text-brand-800 mb-4">
-        The Cost of Manual Reconciliation
+        Don&apos;t wait until reconciliation
       </div>
 <h2 className="text-3xl sm:text-4xl lg:text-5xl font-semibold tracking-tight text-on-surface font-lp-serif mb-4 max-w-3xl mx-auto">
-        Manual reconciliation shouldn&apos;t take three days every month, or cost weeks of delayed reimbursement.
+        Don&apos;t wait until reconciliation to find out you&apos;re not ready.
       </h2>
 <p className="text-base sm:text-lg text-on-surface-variant max-w-2xl mx-auto mb-16">
-        When receipts live in text threads and totals are retyped across Word and Excel, compliance breaks down. Nonprofits lose cash flow while reviewers bounce packets back for revision.
+        And a funding requirement that&apos;s overlooked becomes much more serious when a funder asks for it.
       </p>
 
 <div className="grid grid-cols-1 md:grid-cols-3 gap-8 text-left">
@@ -328,11 +396,11 @@ export function LandingPage() {
 <div className="w-10 h-10 rounded-xl bg-terracotta-100/75 backdrop-blur-md text-terracotta-700 ring-1 ring-inset ring-white/40 border-2 border-primary/15 flex items-center justify-center font-semibold">
 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
 </div>
-<span className="text-xs font-semibold font-mono text-tertiary bg-tertiary-container/60 px-2.5 py-1 rounded-full">24+ Staff Hours Lost</span>
+<span className="text-xs font-semibold font-mono text-tertiary bg-tertiary-container/60 px-2.5 py-1 rounded-full">Due at reconciliation</span>
 </div>
-<h3 className="text-xl font-semibold text-on-surface font-lp-serif mb-2">Scattered Receipts &amp; Lost Hours</h3>
+<h3 className="text-xl font-semibold text-on-surface font-lp-serif mb-2">A missing receipt</h3>
 <p className="text-xs sm:text-sm text-on-surface-variant mb-6 leading-relaxed">
-              Staff spend 2 to 3 full working days every month tracking down lost vendor slips from bank statements, WhatsApp chats, and inbox clutter instead of serving community youth and families.
+              A missing receipt seems small until reconciliation is due.
             </p>
 </div>
 <div className="glass-tile w-full bg-lp-surface-container/60 backdrop-blur-lg rounded-2xl p-4 flex flex-col gap-2.5 border-2 border-primary/18 ring-1 ring-inset ring-white/25">
@@ -356,11 +424,11 @@ export function LandingPage() {
 <div className="w-10 h-10 rounded-xl bg-amber-100/75 backdrop-blur-md text-amber-800 ring-1 ring-inset ring-white/40 border-2 border-primary/15 flex items-center justify-center font-semibold">
 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
 </div>
-<span className="text-xs font-semibold font-mono text-amber-800 bg-amber-100 px-2.5 py-1 rounded-full">Budget Drift Risk</span>
+<span className="text-xs font-semibold font-mono text-amber-800 bg-amber-100 px-2.5 py-1 rounded-full">Due at close</span>
 </div>
-<h3 className="text-xl font-semibold text-on-surface font-lp-serif mb-2">Zero Early Warning on Drift</h3>
+<h3 className="text-xl font-semibold text-on-surface font-lp-serif mb-2">An undocumented expense</h3>
 <p className="text-xs sm:text-sm text-on-surface-variant mb-6 leading-relaxed">
-              Without continuous real-time ledger tracking, directors only discover an overspent budget line when month-end books close, putting grant compliance and reimbursement guarantees at immediate risk.
+              An undocumented expense becomes a problem when the books need to close.
             </p>
 </div>
 <div className="glass-tile w-full bg-lp-surface-container/60 backdrop-blur-lg rounded-2xl p-4 border-2 border-primary/18 ring-1 ring-inset ring-white/25">
@@ -381,11 +449,11 @@ export function LandingPage() {
 <div className="w-10 h-10 rounded-xl bg-brand-100/75 backdrop-blur-md text-brand-800 ring-1 ring-inset ring-white/40 border-2 border-primary/15 flex items-center justify-center font-semibold">
 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
 </div>
-<span className="text-xs font-semibold font-mono text-tertiary bg-tertiary-container/60 px-2.5 py-1 rounded-full">4-6 Wk Payment Holds</span>
+<span className="text-xs font-semibold font-mono text-tertiary bg-tertiary-container/60 px-2.5 py-1 rounded-full">Due at reporting</span>
 </div>
-<h3 className="text-xl font-semibold text-on-surface font-lp-serif mb-2">Rejected Filing Packets</h3>
+<h3 className="text-xl font-semibold text-on-surface font-lp-serif mb-2">An uncaptured activity</h3>
 <p className="text-xs sm:text-sm text-on-surface-variant mb-6 leading-relaxed">
-              Mismatched formula totals between cover sheet tables and Excel summaries trigger instant audit kicks. The review clock resets to day one, trapping non-profit payroll in limbo.
+              A program activity that wasn&apos;t captured becomes a scramble when it&apos;s time to write the monthly narrative.
             </p>
 </div>
 <div className="glass-tile w-full bg-lp-surface-container/60 backdrop-blur-lg rounded-2xl p-4 flex flex-col gap-2 border-2 border-primary/18 ring-1 ring-inset ring-white/25">
@@ -412,40 +480,40 @@ export function LandingPage() {
   dangerouslySetInnerHTML={{
     __html: JSON.stringify({
       "@context": "https://schema.org",
-      "@type": "HowTo",
-      name: "The 5-Step Evidence Flow",
+      "@type": "ItemList",
+      name: "Know what needs your attention",
       description:
-        "How every single dollar spent becomes an indisputable, audit-defensible proof record.",
-      step: [
+        "Funding, budgets, expenses, documentation, requirements, and readiness, all in one place.",
+      itemListElement: [
         {
-          "@type": "HowToStep",
+          "@type": "ListItem",
           position: 1,
-          name: "Capture at Event",
-          text: "Log payee, amount, date, and card/check source at the exact moment of payment.",
+          name: "360 Dashboard",
+          text: "See funding, budgets, expenses, documentation, requirements, and readiness in one place.",
         },
         {
-          "@type": "HowToStep",
+          "@type": "ListItem",
           position: 2,
-          name: "Proof & Receipt Gate",
-          text: "Attach itemized receipt and bank proof. Gate prevents locking incomplete expenses.",
+          name: "Ready Alerts\u2122",
+          text: "Identify missing documentation, incomplete records, approaching requirements, and items that need attention.",
         },
         {
-          "@type": "HowToStep",
+          "@type": "ListItem",
           position: 3,
-          name: "Line-Item Mapping",
-          text: "Directly assign against approved contract budget lines or split between multiple codes.",
+          name: "Ready Check\u2122",
+          text: "Review your funding records before reconciliation, reporting, monitoring, or audit.",
         },
         {
-          "@type": "HowToStep",
+          "@type": "ListItem",
           position: 4,
-          name: "Variance Check",
-          text: "Continuous live depletion check. Prevents inadvertent category overspends in real time.",
+          name: "AI Monthly Summary",
+          text: "Turn monthly expenses and documented program activity into an organized narrative of how funding supported the work.",
         },
         {
-          "@type": "HowToStep",
+          "@type": "ListItem",
           position: 5,
-          name: "1-Click Compilation",
-          text: "Generates official Word cover sheet, Excel sub-ledger, and <25MB merged filing PDF.",
+          name: "Funding Trail\u2122",
+          text: "Follow the connection from funding to expense to documentation to reconciliation.",
         },
       ],
     }).replace(/</g, "\\u003c"),
@@ -454,13 +522,13 @@ export function LandingPage() {
 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
 <div className="text-center max-w-3xl mx-auto mb-16">
 <div className="inline-flex items-center px-3.5 py-1 rounded-full bg-lp-surface-container-high border border-outline-variant text-xs font-semibold text-brand-800 mb-4">
-          From Expense to Evidence
+          One connected view
         </div>
 <h2 className="text-3xl sm:text-4xl lg:text-5xl font-semibold tracking-tight text-on-surface font-lp-serif mb-4">
-          The 5-Step Evidence Flow
+          Know what needs your attention
         </h2>
 <p className="text-base sm:text-lg text-on-surface-variant">
-          How every single dollar spent becomes an indisputable, audit-defensible proof record.
+          Funding, budgets, expenses, documentation, requirements, and readiness, all in one place.
         </p>
 </div>
 
@@ -473,11 +541,11 @@ export function LandingPage() {
 <div className="w-0.5 flex-1 bg-primary/25 mt-2"></div>
 </div>
 <div className="flex-1 pb-8">
-<h3 className="text-lg sm:text-xl font-semibold text-on-surface font-lp-serif mb-1.5">Capture at Event</h3>
+<h3 className="text-lg sm:text-xl font-semibold text-on-surface font-lp-serif mb-1.5">360 Dashboard</h3>
 <p className="text-sm sm:text-base text-on-surface-variant leading-relaxed mb-2">
-              Log payee, amount, date, and card/check source at the exact moment of payment.
+              See funding, budgets, expenses, documentation, requirements, and readiness in one place.
             </p>
-<span className="text-[10px] font-mono text-secondary font-semibold uppercase tracking-wide">No Backtracking</span>
+<span className="text-[10px] font-mono text-secondary font-semibold uppercase tracking-wide">One place</span>
 </div>
 </div>
 </FlowStep>
@@ -489,11 +557,11 @@ export function LandingPage() {
 <div className="w-0.5 flex-1 bg-primary/25 mt-2"></div>
 </div>
 <div className="flex-1 pb-8">
-<h3 className="text-lg sm:text-xl font-semibold text-on-surface font-lp-serif mb-1.5">Proof &amp; Receipt Gate</h3>
+<h3 className="text-lg sm:text-xl font-semibold text-on-surface font-lp-serif mb-1.5">Ready Alerts&trade;</h3>
 <p className="text-sm sm:text-base text-on-surface-variant leading-relaxed mb-2">
-              Attach itemized receipt and bank proof. Gate prevents locking incomplete expenses.
+              Identify missing documentation, incomplete records, approaching requirements, and items that need attention.
             </p>
-<span className="text-[10px] font-mono text-terracotta-700 font-semibold uppercase tracking-wide">Dual Verification</span>
+<span className="text-[10px] font-mono text-terracotta-700 font-semibold uppercase tracking-wide">Nothing missed</span>
 </div>
 </div>
 </FlowStep>
@@ -505,11 +573,11 @@ export function LandingPage() {
 <div className="w-0.5 flex-1 bg-primary/25 mt-2"></div>
 </div>
 <div className="flex-1 pb-8">
-<h3 className="text-lg sm:text-xl font-semibold text-on-surface font-lp-serif mb-1.5">Line-Item Mapping</h3>
+<h3 className="text-lg sm:text-xl font-semibold text-on-surface font-lp-serif mb-1.5">Ready Check&trade;</h3>
 <p className="text-sm sm:text-base text-on-surface-variant leading-relaxed mb-2">
-              Directly assign against approved contract budget lines or split between multiple codes.
+              Review your funding records before reconciliation, reporting, monitoring, or audit.
             </p>
-<span className="text-[10px] font-mono text-brand-800 font-semibold uppercase tracking-wide">Approved Budget Lines Only</span>
+<span className="text-[10px] font-mono text-brand-800 font-semibold uppercase tracking-wide">Before it matters</span>
 </div>
 </div>
 </FlowStep>
@@ -521,11 +589,11 @@ export function LandingPage() {
 <div className="w-0.5 flex-1 bg-primary/25 mt-2"></div>
 </div>
 <div className="flex-1 pb-8">
-<h3 className="text-lg sm:text-xl font-semibold text-on-surface font-lp-serif mb-1.5">Variance Check</h3>
+<h3 className="text-lg sm:text-xl font-semibold text-on-surface font-lp-serif mb-1.5">AI Monthly Summary</h3>
 <p className="text-sm sm:text-base text-on-surface-variant leading-relaxed mb-2">
-              Continuous live depletion check. Prevents inadvertent category overspends in real time.
+              Turn monthly expenses and documented program activity into an organized narrative of how funding supported the work.
             </p>
-<span className="text-[10px] font-mono text-secondary font-semibold uppercase tracking-wide">Live Depletion</span>
+<span className="text-[10px] font-mono text-secondary font-semibold uppercase tracking-wide">Numbers and narrative</span>
 </div>
 </div>
 </FlowStep>
@@ -536,11 +604,11 @@ export function LandingPage() {
 <div className="w-9 h-9 rounded-full bg-secondary text-white font-semibold text-xs flex items-center justify-center flex-shrink-0">5</div>
 </div>
 <div className="flex-1">
-<h3 className="text-lg sm:text-xl font-semibold text-on-surface font-lp-serif mb-1.5">1-Click Compilation</h3>
+<h3 className="text-lg sm:text-xl font-semibold text-on-surface font-lp-serif mb-1.5">Funding Trail&trade;</h3>
 <p className="text-sm sm:text-base text-on-surface-variant leading-relaxed mb-2">
-              Generates official Word cover sheet, Excel sub-ledger, and &lt;25MB merged filing PDF.
+              Follow the connection from funding to expense to documentation to reconciliation.
             </p>
-<span className="text-[10px] font-mono text-secondary font-semibold uppercase tracking-wide">Funder-Ready</span>
+<span className="text-[10px] font-mono text-secondary font-semibold uppercase tracking-wide">End to end</span>
 </div>
 </div>
 </FlowStep>
@@ -555,19 +623,19 @@ export function LandingPage() {
     __html: JSON.stringify({
       "@context": "https://schema.org",
       "@type": "ItemList",
-      name: "The 9-Point Defense",
+      name: "The Questions Behind a Transaction",
       description:
-        `The 9 attributes ${APP_NAME} enforces before an expense can enter the filing packet.`,
+        `What ${APP_NAME} answers about an expense that the ledger line alone does not.`,
       itemListElement: [
-        { "@type": "ListItem", position: 1, name: "Verified Payee" },
-        { "@type": "ListItem", position: 2, name: "Contract Period" },
-        { "@type": "ListItem", position: 3, name: "Line-Item Match" },
-        { "@type": "ListItem", position: 4, name: "Reconciled Amount" },
-        { "@type": "ListItem", position: 5, name: "Bank Account" },
-        { "@type": "ListItem", position: 6, name: "Vendor Invoice" },
-        { "@type": "ListItem", position: 7, name: "Proof of Payment" },
-        { "@type": "ListItem", position: 8, name: "Program Justification" },
-        { "@type": "ListItem", position: 9, name: "Audit Seal" },
+        { "@type": "ListItem", position: 1, name: "Which funding source paid for it?" },
+        { "@type": "ListItem", position: 2, name: "Which budget category does it belong to?" },
+        { "@type": "ListItem", position: 3, name: "Where is the supporting documentation?" },
+        { "@type": "ListItem", position: 4, name: "What work did the expense support?" },
+        { "@type": "ListItem", position: 5, name: "Has it been reconciled?" },
+        { "@type": "ListItem", position: 6, name: "Is anything still missing?" },
+        { "@type": "ListItem", position: 7, name: "Tracked" },
+        { "@type": "ListItem", position: 8, name: "Documented" },
+        { "@type": "ListItem", position: 9, name: "Compliant" },
       ],
     }).replace(/</g, "\\u003c"),
   }}
@@ -575,13 +643,13 @@ export function LandingPage() {
 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
 <div className="text-center max-w-3xl mx-auto mb-16">
 <div className="inline-flex items-center px-3.5 py-1 rounded-full bg-lp-surface-container-high border border-outline-variant text-xs font-semibold text-brand-800 mb-4">
-          Data Integrity Architecture
+          Your accounting system records the transaction
         </div>
 <h2 className="text-3xl sm:text-4xl lg:text-5xl font-semibold tracking-tight text-on-surface font-lp-serif mb-4">
-          What Each Transaction Record Holds
+          {APP_NAME} helps manage the accountability around it
         </h2>
 <p className="text-base sm:text-lg text-on-surface-variant">
-          Every individual entry is structured to satisfy rigorous municipal, state, and federal grant oversight standards.
+          {APP_NAME} isn&apos;t designed to replace your accountant, bookkeeper, or accounting software. It fills the operational space around them. Your books may tell you that $4,800 was spent. {APP_NAME} helps you answer:
         </p>
 </div>
 
@@ -640,18 +708,18 @@ Receipt + Bank Proof
 
 <div className="max-w-3xl mx-auto mt-6 text-center">
 <p className="text-xs sm:text-sm text-on-surface-variant leading-relaxed mb-4">
-        Auditors look for holes where invoices lack bank proofs or descriptions lack mission ties. {APP_NAME} enforces 9 attributes before an expense can enter the filing packet.
+        That&apos;s why {APP_NAME} is more than an expense tracker. It connects the dollars, the documentation, and the work.
       </p>
 <div className="flex flex-wrap justify-center gap-2">
-<span className="px-3 py-1.5 rounded-full bg-lp-surface-container-lowest border border-outline-variant/50 text-xs font-medium text-on-surface">Verified Payee</span>
-<span className="px-3 py-1.5 rounded-full bg-lp-surface-container-lowest border border-outline-variant/50 text-xs font-medium text-on-surface">Contract Period</span>
-<span className="px-3 py-1.5 rounded-full bg-lp-surface-container-lowest border border-outline-variant/50 text-xs font-medium text-on-surface">Line-Item Match</span>
-<span className="px-3 py-1.5 rounded-full bg-lp-surface-container-lowest border border-outline-variant/50 text-xs font-medium text-on-surface">Reconciled Amount</span>
-<span className="px-3 py-1.5 rounded-full bg-lp-surface-container-lowest border border-outline-variant/50 text-xs font-medium text-on-surface">Bank Account</span>
-<span className="px-3 py-1.5 rounded-full bg-lp-surface-container-lowest border border-outline-variant/50 text-xs font-medium text-on-surface">Vendor Invoice</span>
-<span className="px-3 py-1.5 rounded-full bg-lp-surface-container-lowest border border-outline-variant/50 text-xs font-medium text-on-surface">Proof of Payment</span>
-<span className="px-3 py-1.5 rounded-full bg-lp-surface-container-lowest border border-outline-variant/50 text-xs font-medium text-on-surface">Program Justification</span>
-<span className="px-3 py-1.5 rounded-full bg-lp-surface-container-lowest border border-outline-variant/50 text-xs font-medium text-on-surface">Audit Seal</span>
+<span className="px-3 py-1.5 rounded-full bg-lp-surface-container-lowest border border-outline-variant/50 text-xs font-medium text-on-surface">Which funding source paid for it?</span>
+<span className="px-3 py-1.5 rounded-full bg-lp-surface-container-lowest border border-outline-variant/50 text-xs font-medium text-on-surface">Which budget category does it belong to?</span>
+<span className="px-3 py-1.5 rounded-full bg-lp-surface-container-lowest border border-outline-variant/50 text-xs font-medium text-on-surface">Where is the supporting documentation?</span>
+<span className="px-3 py-1.5 rounded-full bg-lp-surface-container-lowest border border-outline-variant/50 text-xs font-medium text-on-surface">What work did the expense support?</span>
+<span className="px-3 py-1.5 rounded-full bg-lp-surface-container-lowest border border-outline-variant/50 text-xs font-medium text-on-surface">Has it been reconciled?</span>
+<span className="px-3 py-1.5 rounded-full bg-lp-surface-container-lowest border border-outline-variant/50 text-xs font-medium text-on-surface">Is anything still missing?</span>
+<span className="px-3 py-1.5 rounded-full bg-lp-surface-container-lowest border border-outline-variant/50 text-xs font-medium text-on-surface">Tracked</span>
+<span className="px-3 py-1.5 rounded-full bg-lp-surface-container-lowest border border-outline-variant/50 text-xs font-medium text-on-surface">Documented</span>
+<span className="px-3 py-1.5 rounded-full bg-lp-surface-container-lowest border border-outline-variant/50 text-xs font-medium text-on-surface">Compliant</span>
 </div>
 </div>
 
@@ -662,13 +730,13 @@ Receipt + Bank Proof
 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
 <div className="text-center max-w-3xl mx-auto mb-16">
 <div className="inline-flex items-center px-3.5 py-1 rounded-full bg-lp-surface-container-high border border-outline-variant text-xs font-semibold text-brand-800 mb-4">
-          Core Engine
+          Scattered across seven places
         </div>
 <h2 className="text-3xl sm:text-4xl lg:text-5xl font-semibold tracking-tight text-on-surface font-lp-serif mb-4">
-          Live Category Tracking &amp; Packet Generation
+          Your funding information is already there. It&apos;s just scattered.
         </h2>
 <p className="text-base sm:text-lg text-on-surface-variant">
-          Continuous contract compliance with deterministic document outputs that reviewers accept without pushback.
+          The problem isn&apos;t always that the information doesn&apos;t exist. It&apos;s that it exists everywhere: accounting software, spreadsheets, emails, receipts, shared folders, staff members, program records.
         </p>
 </div>
 
@@ -678,18 +746,18 @@ Receipt + Bank Proof
 <div className="w-12 h-12 rounded-2xl bg-primary/75 backdrop-blur-md text-white flex items-center justify-center shadow-lg shadow-primary/30 ring-1 ring-inset ring-white/40 border-2 border-primary/15">
 <svg className="w-6 h-6 text-primary-fixed" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
 </div>
-<h3 className="text-2xl sm:text-3xl font-semibold text-on-surface font-lp-serif">Proactive Category Depletion Tracking</h3>
+<h3 className="text-2xl sm:text-3xl font-semibold text-on-surface font-lp-serif">One connected system</h3>
 <p className="text-on-surface-variant leading-relaxed text-xs sm:text-sm">
-              Know the exact balance remaining across each line item before approving purchase orders. Automatic thresholds warn you at 80% and 95% depletion to prevent accidental unallowable cost overruns.
+              Stay Funded 360 brings the accountability behind your funding into one connected system, so your team can manage the details while the work is happening rather than after it.
             </p>
 <div className="pt-2 space-y-2 text-xs">
 <div className="flex items-center gap-2 text-on-surface font-medium">
 <svg className="w-4 h-4 text-secondary flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path clipRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" fillRule="evenodd"></path></svg>
-                Personnel, Supplies, Travel, Participant Support, and Indirect
+                Accounting software. Spreadsheets. Emails. Receipts. Shared folders. Staff members. Program records.
               </div>
 <div className="flex items-center gap-2 text-on-surface font-medium">
 <svg className="w-4 h-4 text-secondary flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path clipRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" fillRule="evenodd"></path></svg>
-                Calculates opening balances carryover from prior month auto-magically
+                Every one of them a place a detail can go missing
               </div>
 </div>
 </div>
@@ -734,39 +802,39 @@ Receipt + Bank Proof
 <div className="w-10 h-10 rounded-xl bg-primary-fixed/75 backdrop-blur-md text-primary flex items-center justify-center mb-4 ring-1 ring-inset ring-white/30 border border-primary/12">
 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
 </div>
-<h4 className="text-lg font-semibold text-on-surface font-lp-serif mb-1">Official Word Cover Sheets</h4>
+<h4 className="text-lg font-semibold text-on-surface font-lp-serif mb-1">Not when the report is due</h4>
 <p className="text-xs text-on-surface-variant mb-4 leading-relaxed">
-            Exports directly to Microsoft Word (.docx) with formatted signature lines, funder contract headers, and category tables ready for officer sign-off.
+              Funding requirements get handled while the work is happening, not in the few days before a deadline lands.
           </p>
 <div className="bg-lp-surface-container/60 backdrop-blur-md rounded-xl p-3 border border-primary/15 text-[11px] font-mono text-on-surface-variant flex items-center justify-between">
-<span className="">DocuSign Signature Ready</span>
-<span className="text-secondary font-semibold">Word .docx</span>
+<span className="">Handled as it happens</span>
+<span className="text-secondary font-semibold">In the moment</span>
 </div>
 </div>
 <div className="glass-tile bg-lp-surface-container-lowest/60 backdrop-blur-xl rounded-3xl p-6 border-2 border-primary/45 shadow-warm-card hover:shadow-warm-card-hover ring-1 ring-inset ring-white/30">
 <div className="w-10 h-10 rounded-xl bg-secondary-container/75 backdrop-blur-md text-secondary flex items-center justify-center mb-4 ring-1 ring-inset ring-white/30 border border-primary/12">
 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M3 10h18M3 14h18m-9-4v8m-7 4h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
 </div>
-<h4 className="text-lg font-semibold text-on-surface font-lp-serif mb-1">Formula-Verified Excel Summaries</h4>
+<h4 className="text-lg font-semibold text-on-surface font-lp-serif mb-1">Not when reconciliation starts</h4>
 <p className="text-xs text-on-surface-variant mb-4 leading-relaxed">
-            Live formula links protect contract totals. Eliminates formula copy-paste errors that trigger immediate desk rejection from city grant reviewers.
+              Expenses arrive already documented, categorized, and connected to a funding source, so reconciliation confirms what is already there.
           </p>
 <div className="bg-lp-surface-container/60 backdrop-blur-md rounded-xl p-3 border border-primary/15 text-[11px] font-mono text-on-surface-variant flex items-center justify-between">
-<span className="">Formula-Verified Totals</span>
-<span className="text-secondary font-semibold">Excel .xlsx</span>
+<span className="">Already documented</span>
+<span className="text-secondary font-semibold">Confirm, don&apos;t rebuild</span>
 </div>
 </div>
 <div className="glass-tile bg-lp-surface-container-lowest/60 backdrop-blur-xl rounded-3xl p-6 border-2 border-primary/45 shadow-warm-card hover:shadow-warm-card-hover ring-1 ring-inset ring-white/30">
 <div className="w-10 h-10 rounded-xl bg-brand-100/75 backdrop-blur-md text-brand-800 flex items-center justify-center mb-4 ring-1 ring-inset ring-white/30 border border-primary/12">
 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
 </div>
-<h4 className="text-lg font-semibold text-on-surface font-lp-serif mb-1">Merged &lt;25MB Filing PDF</h4>
+<h4 className="text-lg font-semibold text-on-surface font-lp-serif mb-1">Not when the auditor arrives</h4>
 <p className="text-xs text-on-surface-variant mb-4 leading-relaxed">
-            Merges cover sheets, contract summaries, and receipt attachments into one paginated PDF file with automated ladder compression to stay under upload limits.
+              Records stay ready throughout the funding period, so a monitoring request or an audit isn&apos;t a scramble through old folders.
           </p>
 <div className="bg-lp-surface-container/60 backdrop-blur-md rounded-xl p-3 border border-primary/15 text-[11px] font-mono text-on-surface-variant flex items-center justify-between">
-<span className="">Merged_Packet_Safe.pdf</span>
-<span className="text-secondary font-semibold">&lt; 25MB Enforced</span>
+<span className="">Ready the whole time</span>
+<span className="text-secondary font-semibold">No scramble</span>
 </div>
 </div>
 </div>
@@ -780,17 +848,28 @@ Receipt + Bank Proof
 <span className="w-2 h-2 rounded-full bg-primary-fixed animate-ping"></span> Tier 2 Enhancement
         </div>
 <h2 className="text-3xl sm:text-4xl lg:text-5xl font-semibold tracking-tight text-on-surface font-lp-serif mb-4">
-          Automated AI Monthly Executive &amp; Funder Summaries
+          Don&apos;t just track the money. Track the story behind it.
         </h2>
-<p className="text-base sm:text-lg text-on-surface-variant leading-relaxed">
-          Executive Directors spend entire weekends writing narrative memorandums explaining line-item numbers. Our AI synthesizes your validated ledger into polished, funder-grade programmatic prose in 10 seconds.
+{/*
+          Four sentences from six, and roughly a third of the characters. The original made its
+          point in the first two and then made it three more times: an ongoing narrative of the
+          work performed, then not reconstructing from memory, then better records, better
+          bookkeeping support, stronger reporting preparation and a clearer picture. Under a
+          heading that already says "track the story behind it", the restatements were the
+          whole reason this ran eight lines. The client's own terms all survive.
+        */}
+        <p className="text-base text-on-surface-variant leading-relaxed">
+          A financial report tells you what was spent. Funders want to know what it supported.
+          {" "}{APP_NAME} connects the two: as your team documents activity through the month, AI
+          turns it into a monthly funding and program summary, so at the end of the month you
+          are not reconstructing the story from memory.
         </p>
 </div>
 <div className="glass-tile bg-lp-surface-container-lowest/60 backdrop-blur-xl border-2 border-primary/45 rounded-3xl p-6 sm:p-10 shadow-warm-glow ring-1 ring-inset ring-white/30">
 <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
 
 <div className="lg:col-span-5 space-y-4">
-<h3 className="text-2xl font-semibold text-on-surface font-lp-serif">What AI Summaries Deliver:</h3>
+<h3 className="text-2xl font-semibold text-on-surface font-lp-serif">The numbers and the narrative stay connected:</h3>
 <ul className="space-y-3.5 text-xs sm:text-sm text-on-surface-variant">
 <li className="flex items-start gap-3">
 <div className="w-5 h-5 rounded-full bg-secondary-container text-secondary flex items-center justify-center font-semibold text-xs mt-0.5 flex-shrink-0">✓</div>
@@ -842,42 +921,42 @@ Receipt + Bank Proof
 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
 <div className="text-center max-w-3xl mx-auto mb-16">
 <div className="inline-flex items-center px-3.5 py-1 rounded-full bg-lp-surface-container-high border border-outline-variant text-xs font-semibold text-brand-800 mb-4">
-          Audit Defensibility
+          More than reconciliation
         </div>
 <h2 className="text-3xl sm:text-4xl lg:text-5xl font-semibold tracking-tight text-on-surface font-lp-serif mb-4">
-          Built for the Day the Auditor Knocks
+          It&apos;s 360&deg; funding readiness
         </h2>
 <p className="text-base sm:text-lg text-on-surface-variant">
-          Grant compliance isn&apos;t about looking busy; it&apos;s about bulletproof traceability that stands up to city inspectors, OIG monitors, and Single Audit standards.
+          Reconciliation is an important part of the process. But it isn&apos;t the whole process.
         </p>
 </div>
 <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
 <div className="glass-tile bg-lp-surface-container-lowest/60 backdrop-blur-xl p-6 rounded-2xl border-2 border-primary/45 shadow-warm-card ring-1 ring-inset ring-white/30">
 <div className="w-9 h-9 rounded-xl bg-brand-100/75 backdrop-blur-md text-primary ring-1 ring-inset ring-white/40 border-2 border-primary/15 flex items-center justify-center font-semibold text-sm mb-3">Ø</div>
-<h3 className="text-base font-semibold text-on-surface font-lp-serif mb-2">Zero Reconstructed Receipts</h3>
+<h3 className="text-base font-semibold text-on-surface font-lp-serif mb-2">Track</h3>
 <p className="text-xs text-on-surface-variant leading-relaxed">
-            Eliminates guesswork 9 months later. Every document was sealed at transaction time, not recreated before an audit.
+              Monitor budgets, expenses, funding sources, spending categories, and remaining balances.
           </p>
 </div>
 <div className="glass-tile bg-lp-surface-container-lowest/60 backdrop-blur-xl p-6 rounded-2xl border-2 border-primary/45 shadow-warm-card ring-1 ring-inset ring-white/30">
 <div className="w-9 h-9 rounded-xl bg-secondary-container/75 backdrop-blur-md text-secondary ring-1 ring-inset ring-white/40 border-2 border-primary/15 flex items-center justify-center font-semibold text-sm mb-3">√</div>
-<h3 className="text-base font-semibold text-on-surface font-lp-serif mb-2">Deterministic Gates</h3>
+<h3 className="text-base font-semibold text-on-surface font-lp-serif mb-2">Document</h3>
 <p className="text-xs text-on-surface-variant leading-relaxed">
-            The software physically prevents staff from generating monthly packets until every single expense has dual proof attached.
+              Connect receipts, invoices, approvals, supporting records, and program activity to the expenses they support.
           </p>
 </div>
 <div className="glass-tile bg-lp-surface-container-lowest/60 backdrop-blur-xl p-6 rounded-2xl border-2 border-primary/45 shadow-warm-card ring-1 ring-inset ring-white/30">
 <div className="w-9 h-9 rounded-xl bg-primary-fixed/75 backdrop-blur-md text-primary ring-1 ring-inset ring-white/40 border-2 border-primary/15 flex items-center justify-center font-semibold text-sm mb-3">∞</div>
-<h3 className="text-base font-semibold text-on-surface font-lp-serif mb-2">Permanent Audit Trail</h3>
+<h3 className="text-base font-semibold text-on-surface font-lp-serif mb-2">Comply</h3>
 <p className="text-xs text-on-surface-variant leading-relaxed">
-            Every change, category assignment, and upload is timestamped and cryptographically logged for 7-year record retention.
+              Stay aligned with funding requirements while preparing for reconciliation, reporting, monitoring, and audit.
           </p>
 </div>
 <div className="glass-tile bg-lp-surface-container-lowest/60 backdrop-blur-xl p-6 rounded-2xl border-2 border-primary/45 shadow-warm-card ring-1 ring-inset ring-white/30">
 <div className="w-9 h-9 rounded-xl bg-terracotta-100/75 backdrop-blur-md text-terracotta-700 ring-1 ring-inset ring-white/40 border-2 border-primary/15 flex items-center justify-center font-semibold text-sm mb-3">§</div>
-<h3 className="text-base font-semibold text-on-surface font-lp-serif mb-2">Filed Against Your Own Budget</h3>
+<h3 className="text-base font-semibold text-on-surface font-lp-serif mb-2">Multiple grants</h3>
 <p className="text-xs text-on-surface-variant leading-relaxed">
-            Every expense is categorized against your organization&apos;s own approved contract line items, not a generic bucket a reviewer has to reinterpret.
+              Each can maintain its own budget, guidelines, expenses, documentation, and requirements while leadership maintains visibility across the organization.
           </p>
 </div>
 </div>
@@ -908,7 +987,7 @@ Receipt + Bank Proof
           &quot;We watched brilliant community heroes spend 20% of their lives fighting Word tables and PDF merge errors. We built {APP_NAME} to eliminate the paperwork hostage situation.&quot;
         </blockquote>
 <p className="">
-          By creating a single unified record where receipts are attached at the moment of payment and monthly submittals are generated with one click, {APP_NAME} turned that 3-day administrative crisis into a calm 30-minute formality.
+          Reconciliation is something you do. Readiness is something you maintain. That is the difference {APP_NAME} was built to make, for Team Pursuit Global first and for every organization carrying the same load.
         </p>
 </div>
 </div>
@@ -921,39 +1000,39 @@ Receipt + Bank Proof
           Target Audience
         </div>
 <h2 className="text-3xl sm:text-4xl lg:text-5xl font-semibold tracking-tight text-on-surface font-lp-serif mb-4">
-          Designed for Grant Subrecipients
+          Designed for teams that stay ready
         </h2>
 <p className="text-base text-on-surface-variant">
-          Purpose-built for teams that must account for every municipal, state, and philanthropic dollar.
+          Purpose-built for organizations that must account for the funding they receive, for the whole funding period.
         </p>
 </div>
 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
 <div className="glass-tile bg-lp-surface-container-lowest/60 backdrop-blur-xl p-6 rounded-2xl border-2 border-primary/45 shadow-warm-card ring-1 ring-inset ring-white/30">
 <div className="w-10 h-10 rounded-xl bg-primary-fixed/75 backdrop-blur-md text-primary ring-1 ring-inset ring-white/40 border-2 border-primary/15 flex items-center justify-center font-semibold text-sm mb-4">01</div>
-<h3 className="text-base font-semibold text-on-surface font-lp-serif mb-2">CVI &amp; Frontline Nonprofits</h3>
+<h3 className="text-base font-semibold text-on-surface font-lp-serif mb-2">Stay bookkeeping ready</h3>
 <p className="text-xs text-on-surface-variant leading-relaxed">
-            Community Violence Intervention teams, youth programs, and grassroots groups with intense field spending.
+              Records stay organized and connected as expenses happen, so the books are easier to keep.
           </p>
 </div>
 <div className="glass-tile bg-lp-surface-container-lowest/60 backdrop-blur-xl p-6 rounded-2xl border-2 border-primary/45 shadow-warm-card ring-1 ring-inset ring-white/30">
 <div className="w-10 h-10 rounded-xl bg-secondary-container/75 backdrop-blur-md text-secondary ring-1 ring-inset ring-white/40 border-2 border-primary/15 flex items-center justify-center font-semibold text-sm mb-4">02</div>
-<h3 className="text-base font-semibold text-on-surface font-lp-serif mb-2">Executive Directors</h3>
+<h3 className="text-base font-semibold text-on-surface font-lp-serif mb-2">Stay reconciliation ready</h3>
 <p className="text-xs text-on-surface-variant leading-relaxed">
-            Leaders who need absolute peace of mind before signing monthly funder certifications and cover sheets.
+              Expenses arrive documented and categorized, so reconciliation confirms what is already there.
           </p>
 </div>
 <div className="glass-tile bg-lp-surface-container-lowest/60 backdrop-blur-xl p-6 rounded-2xl border-2 border-primary/45 shadow-warm-card ring-1 ring-inset ring-white/30">
 <div className="w-10 h-10 rounded-xl bg-brand-100/75 backdrop-blur-md text-brand-800 ring-1 ring-inset ring-white/40 border-2 border-primary/15 flex items-center justify-center font-semibold text-sm mb-4">03</div>
-<h3 className="text-base font-semibold text-on-surface font-lp-serif mb-2">Finance &amp; Grant Managers</h3>
+<h3 className="text-base font-semibold text-on-surface font-lp-serif mb-2">Stay reporting ready</h3>
 <p className="text-xs text-on-surface-variant leading-relaxed">
-            Operations teams responsible for keeping budgets balanced and filing packages submitted before deadline.
+              The numbers and the narrative stay connected, so reports don&apos;t start from memory.
           </p>
 </div>
 <div className="glass-tile bg-lp-surface-container-lowest/60 backdrop-blur-xl p-6 rounded-2xl border-2 border-primary/45 shadow-warm-card ring-1 ring-inset ring-white/30">
 <div className="w-10 h-10 rounded-xl bg-terracotta-100/75 backdrop-blur-md text-terracotta-700 ring-1 ring-inset ring-white/40 border-2 border-primary/15 flex items-center justify-center font-semibold text-sm mb-4">04</div>
-<h3 className="text-base font-semibold text-on-surface font-lp-serif mb-2">Fiscal Sponsors &amp; Fiduciaries</h3>
+<h3 className="text-base font-semibold text-on-surface font-lp-serif mb-2">Stay audit ready</h3>
 <p className="text-xs text-on-surface-variant leading-relaxed">
-            Fiduciary sponsors managing multiple subgrantees who need uniform compliance without endless back-and-forth.
+              Documentation, approvals, and funding requirements stay in place, so a monitoring request isn&apos;t a scramble.
           </p>
 </div>
 </div>
@@ -1027,7 +1106,7 @@ Receipt + Bank Proof
 </div>
 
 <div className="glass-tile relative bg-lp-surface-container-lowest/60 backdrop-blur-xl rounded-3xl p-8 pt-12 border-2 border-primary/70 shadow-warm-glow flex flex-col justify-between ring-1 ring-inset ring-white/20">
-<div className="absolute top-4 right-6 z-[2] px-3.5 py-0.5 rounded-full bg-primary text-white font-semibold text-[11px] uppercase tracking-wider shadow-sm">
+<div className="absolute top-4 right-6 z-[2] px-3.5 py-0.5 rounded-full bg-[linear-gradient(135deg,var(--color-hero-from)_0%,var(--color-hero-to)_100%)] text-white font-semibold text-[11px] uppercase tracking-wider shadow-sm">
             Recommended for Busy Directors
           </div>
 <div>
@@ -1039,7 +1118,7 @@ Receipt + Bank Proof
 </div>
 <div className="mb-6">
 <div className="flex items-baseline gap-2">
-<span className="text-4xl sm:text-5xl font-semibold text-on-surface font-lp-serif">$497</span>
+<span className={`text-4xl sm:text-5xl font-semibold font-lp-serif ${GRADIENT_TEXT}`}>$497</span>
 <span className="text-sm font-medium text-on-surface-variant">/ month</span>
 </div>
 <span className="text-xs text-primary font-semibold mt-1 block">Full Suite + Executive AI Narrative Generator</span>
@@ -1077,7 +1156,10 @@ Receipt + Bank Proof
 <a
   className="glass-btn glass-btn-primary inline-flex w-full items-center justify-center gap-2 py-3.5 rounded-xl text-center text-xs sm:text-sm font-semibold"
   href="#schedule-walkthrough"
-  style={{ background: "color-mix(in srgb, var(--color-brand-900) 90%, transparent)" }}
+  style={{
+    background:
+      "linear-gradient(135deg, var(--color-hero-from) 0%, var(--color-hero-to) 100%)",
+  }}
 >
             <span>Start with Reconciliation + AI</span>
             <span className="glass-btn-arrow">
@@ -1096,48 +1178,14 @@ Receipt + Bank Proof
     __html: JSON.stringify({
       "@context": "https://schema.org",
       "@type": "FAQPage",
-      mainEntity: [
-        {
-          "@type": "Question",
-          name: `Does ${APP_NAME} replace our existing Excel spreadsheets?`,
-          acceptedAnswer: {
-            "@type": "Answer",
-            text: `Yes. ${APP_NAME} replaces manual spreadsheet reconciliation with a single ledger where every expense is captured once, with its documentation, at the moment it happens. There's no more retyping totals across separate Word and Excel files.`,
-          },
+      mainEntity: FAQS.map((faq) => ({
+        "@type": "Question",
+        name: faq.question,
+        acceptedAnswer: {
+          "@type": "Answer",
+          text: faq.answer,
         },
-        {
-          "@type": "Question",
-          name: "What happens if an expense is missing a receipt or bank proof?",
-          acceptedAnswer: {
-            "@type": "Answer",
-            text: `${APP_NAME}'s hard documentation gate physically prevents staff from generating a monthly packet until every expense has both an itemized receipt and proof of payment attached, so incomplete expenses can't slip through to filing.`,
-          },
-        },
-        {
-          "@type": "Question",
-          name: `Can ${APP_NAME} handle multiple grant contracts at once?`,
-          acceptedAnswer: {
-            "@type": "Answer",
-            text: "Yes. The Reconciliation + AI plan ($497/month) supports multiple contracts with custom grant contract template customization, on top of everything in the single-contract Reconciliation plan ($297/month).",
-          },
-        },
-        {
-          "@type": "Question",
-          name: "How long does it take to generate a month-end filing packet?",
-          acceptedAnswer: {
-            "@type": "Answer",
-            text: "One click compiles the official Word cover sheet, Excel sub-ledger, and a merged filing PDF under 25MB. Team Pursuit Global in Detroit went from a 3-day manual reconciliation ordeal to a 30-minute formality.",
-          },
-        },
-        {
-          "@type": "Question",
-          name: "How long are our records retained, and is the audit trail tamper-proof?",
-          acceptedAnswer: {
-            "@type": "Answer",
-            text: "Every change, category assignment, and upload is timestamped and cryptographically logged for 7-year record retention, with a tamper-evident audit seal locking each record against post-filing alterations.",
-          },
-        },
-      ],
+      })),
     }).replace(/</g, "\\u003c"),
   }}
 />
@@ -1184,11 +1232,11 @@ Receipt + Bank Proof
         <span
           className={
             isOpen
-              ? "flex-shrink-0 w-7 h-7 rounded-full bg-primary text-white flex items-center justify-center text-lg leading-none rotate-45 transition-transform transition-colors duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]"
-              : "flex-shrink-0 w-7 h-7 rounded-full bg-lp-surface-container text-on-surface-variant flex items-center justify-center text-lg leading-none rotate-0 transition-transform transition-colors duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]"
+              ? "flex-shrink-0 w-7 h-7 rounded-full bg-primary text-white flex items-center justify-center rotate-45 transition-transform transition-colors duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]"
+              : "flex-shrink-0 w-7 h-7 rounded-full bg-lp-surface-container text-on-surface-variant flex items-center justify-center rotate-0 transition-transform transition-colors duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]"
           }
         >
-          +
+          <svg viewBox="0 0 12 12" aria-hidden="true" className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M6 1v10M1 6h10" /></svg>
         </span>
       </button>
       <div
@@ -1215,39 +1263,44 @@ Receipt + Bank Proof
 <div className="absolute -bottom-24 -right-24 w-96 h-96 bg-terracotta-500/25 rounded-full blur-3xl pointer-events-none"></div>
 <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 text-center relative z-10">
 <h2 className="text-3xl sm:text-4xl lg:text-5xl font-semibold tracking-tight font-lp-serif mb-4 text-white">
-        Turn month-end from a scramble into a formality.
+        Don&apos;t get ready. Stay ready.
       </h2>
 <p className="text-primary-fixed-dim text-sm sm:text-base max-w-2xl mx-auto mb-8 leading-relaxed">
-        Capture expenses as they happen. Generate a complete, submission-ready packet in minutes when the month closes.
+        {APP_NAME}. Track &middot; Document &middot; Comply. 360&deg; funding accountability from award to audit. Because staying funded means staying ready.<span className="align-super text-[0.5em]">&trade;</span>
       </p>
+<ul className="flex flex-wrap items-center justify-center gap-2 mb-8">
+{["Stay organized", "Stay bookkeeping ready", "Stay reconciliation ready", "Stay reporting ready", "Stay funder ready", "Stay audit ready"].map((line) => (
+  <li key={line} className="rounded-full border border-white/20 bg-white/5 px-3.5 py-1.5 text-xs sm:text-sm font-medium text-primary-fixed-dim">{line}</li>
+))}
+</ul>
 <div className="flex flex-wrap items-center justify-center gap-4">
-<a className="glass-btn glass-btn-primary inline-flex items-center gap-2 px-8 py-3.5 rounded-full text-sm font-semibold" href="#schedule-walkthrough">
-          <span>Schedule a Walkthrough</span>
+<a className="glass-btn glass-btn-primary inline-flex items-center gap-2 px-8 py-3.5 rounded-full text-sm font-semibold" href="mailto:tech@teampursuit.org?subject=Stay%20Funded%20360%20demo%20request">
+          <span>Request a demo</span>
           <span className="glass-btn-arrow">
               <svg className="w-3.5 h-3.5 -rotate-90" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6" strokeLinecap="round" strokeLinejoin="round" strokeWidth="3"></path></svg>
             </span>
         </a>
-<a className="glass-btn glass-btn-dark px-8 py-3.5 rounded-full text-sm font-semibold" href="#origin">
-          Talk to Us
+<a className="glass-btn glass-btn-dark px-8 py-3.5 rounded-full text-sm font-semibold" href="mailto:tech@teampursuit.org?subject=Stay%20Funded%20360%20early%20access">
+          Join early access
         </a>
 </div>
 </div>
 </section>
 </main>
 <footer className="bg-[#201a15] py-12 text-[#edbca5]/80 text-xs">
-<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col md:flex-row items-center justify-between gap-4">
+<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col lg:flex-row items-center justify-between gap-4 lg:gap-6">
 <div className="flex items-center gap-3 flex-shrink-0">
 {/* Same white capsule as the nav: the brown logo would vanish on the dark footer. */}
 <div className="flex items-center gap-2 rounded-full bg-white pl-1.5 pr-4 py-1 shadow-sm flex-shrink-0">
 <Image src="/brand/stayfunded-mark.png" alt="" width={628} height={570} className="h-7" style={{ width: "auto" }} />
 <Image src="/brand/stayfunded-wordmark.png" alt={APP_NAME} width={720} height={84} className="h-[15px]" style={{ width: "auto" }} />
 </div>
-<span className="hidden lg:inline text-[#edbca5]/80 whitespace-nowrap">• Nonprofit &amp; CVI Grant Reconciliation Engine</span>
+<span className="hidden 2xl:inline text-[#edbca5]/80 whitespace-nowrap">• Funding Accountability &amp; Readiness Platform</span>
 </div>
-<div className="flex flex-wrap items-center justify-center gap-5">
-<a className="hover:text-white transition-colors" href="#problem">Problem</a>
-<a className="hover:text-white transition-colors" href="#system-features">Features</a>
-<a className="hover:text-white transition-colors" href="#ai-narratives">AI Summaries</a>
+<div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2 lg:flex-nowrap lg:whitespace-nowrap">
+<a className="hover:text-white transition-colors" href="#problem">The Problem</a>
+<a className="hover:text-white transition-colors" href="#system-features">One System</a>
+<a className="hover:text-white transition-colors" href="#ai-narratives">The Story</a>
 <a className="hover:text-white transition-colors" href="#pricing">Pricing</a>
 <a className="hover:text-white transition-colors" href="#faq">FAQ</a>
 </div>

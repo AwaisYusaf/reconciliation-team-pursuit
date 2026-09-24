@@ -39,6 +39,7 @@ Multi-user per org (D-85). Org creation provisions one `admin`; admins create `m
 | id | uuid PK | |
 | org_id | uuid FK | |
 | name | text null | Display name for "who did this" (D-89). Null for an account that predates this column; falls back to email at render (`userDisplay`) rather than a guess |
+| avatar_key | text null | Storage key of the profile photo, null when none is set (D-117). Carries a uuid rather than being derived from the user id, so replacing a photo writes a new object and a new URL instead of serving the old picture out of the browser cache. Under the same `org/{orgId}/…` prefix as every other object, so `keyBelongsToOrg` guards it unchanged. **Not counted by `orgStorageBytes`** — it has no size column and there is at most one small square per user, so the 5 GB cap does not see it |
 | email | text, unique index on `lower(email)` | Login identity. Postgres has no `citext` extension here; the case-insensitive uniqueness is the functional index `users_email_lower_uq` |
 | password_hash | text | argon2id; password minimum 12 chars |
 | role | user_role enum | `admin` \| `manager`. No column default — a forgotten role is a type error, not a silent admin (D-85) |
@@ -332,6 +333,7 @@ deletes the draft.
 | note | text null | |
 | narrative | text null | null = "Needs a narrative" |
 | sort_order | int | the order the lines appeared on the bill |
+| created_by_user_id, updated_by_user_id | uuid FK **null** | Who read the invoice in, and who last saved this draft (D-118). Both `ON DELETE SET NULL`: removing a person must not remove the work they left for someone else to review. Null for a draft written before these columns existed, which is why both reads `LEFT JOIN` the actor. Written at all three write sites — the invoice import, `updateDraftAction`, and the re-insert behind Undo. A draft has no `expense_audit` trail of its own until it is approved, and these two columns are the smallest thing that answers "has someone else already been in this one" |
 | — | | **No `reference_seq`.** A draft cannot hold a reference number because there is nowhere to put one; it is claimed at approval like any other new expense |
 
 ### expense_draft_documents (Phase 14, migration 0033, D-116)

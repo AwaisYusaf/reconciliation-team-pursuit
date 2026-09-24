@@ -68,7 +68,11 @@ export function DialogPanel({
       aria-modal="true"
       aria-labelledby={titleId}
       aria-describedby={bodyId}
-      className={`${TONE[tone].panel} rounded-[3px] p-4 sm:p-5 shadow-xl`}
+      // 14px, matching `Modal`. Deliberately no gradient on the title and no washed header
+      // band here: this panel is tone-coloured, and a confirm prompt's heading is red because
+      // red is the warning. Painting it in the app's brown ramp would take that away and make a
+      // delete prompt look like an ordinary popup.
+      className={`${TONE[tone].panel} rounded-[14px] p-4 sm:p-5 shadow-xl pop-in`}
     >
       <div id={titleId} className={`font-serif text-lg sm:text-xl font-bold ${TONE[tone].title}`}>
         {title}
@@ -76,7 +80,7 @@ export function DialogPanel({
       <div id={bodyId} className="text-[15px] leading-relaxed mt-2.5">
         {children}
       </div>
-      <div className="flex flex-wrap gap-3 mt-4">
+      <div className="flex flex-wrap gap-3 mt-5">
         {confirm ? (
           <>
             <Button variant="secondary" disabled={confirm.disabled} onClick={confirm.onConfirm}>

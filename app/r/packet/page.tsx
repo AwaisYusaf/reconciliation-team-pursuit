@@ -1,12 +1,12 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
+import { BlockingPanel } from "@/src/components/ui/blocking-panel";
 import { PickFundingSource } from "@/src/components/app-shell/pick-funding-source";
 import { TourSequenceSkip } from "@/src/components/app-shell/tour-sequence-skip";
 import {
   Card,
   CARD_PADDING,
-  DangerPanel,
   EmptyState,
   PageHeader,
   SectionTitle,
@@ -136,34 +136,30 @@ export default async function PacketPage() {
 
       <LockHistory events={events} />
 
-      {/* The tour wrapper below is the same width as the panel inside it: the spotlight lights
-          that element's box, so a full-width wrapper around a narrower panel lit a wide empty
-          strip beside it. */}
       {blocked && (
-        <div data-tour="packet-blocking-alert" className="max-w-[820px]">
-          <DangerPanel title={UI.blockedTitle} className="mb-7 max-w-[820px]">
-            <p className="mt-1.5">{UI.blockedIntro}</p>
-            <ul className="mt-2 flex flex-col gap-1">
-              {readiness.blocking.map((record) => (
-                <li key={record.expenseId} className="flex flex-wrap items-baseline gap-2">
-                  <span>{record.label}</span>
-                  <Link
-                    href={`/r/expenses/${record.expenseId}/edit`}
-                    className="underline text-danger font-medium"
-                  >
-                    Open expense
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </DangerPanel>
-        </div>
+        <BlockingPanel
+          data-tour="packet-blocking-alert"
+          title={UI.blockedTitle}
+          intro={UI.blockedIntro}
+          records={readiness.blocking}
+        />
       )}
 
       {readiness.totalRecords === 0 && (
         <p className="text-[15px] text-muted mb-7">This month has no expenses.</p>
       )}
 
+      {/*
+        The month's readiness and the thing it produces, side by side.
+
+        These were stacked full width, which put the download buttons most of a screen below
+        the table explaining why they were disabled — the two facts someone opens this screen
+        to compare. The table also had four columns spread over 1220px and read as mostly gap.
+        Two thirds and one third gives the table a sensible measure and brings the packet
+        itself up next to it.
+      */}
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)] items-start">
+        <div className="min-w-0 xl:col-start-1 xl:row-start-1">
       {readiness.rows.length === 0 ? (
         <EmptyState>
           No line items yet. Set up your budget in{" "}
@@ -217,8 +213,26 @@ export default async function PacketPage() {
         </TableCard>
       )}
 
-      <div className="mt-8 grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] items-start">
-        <Card className={CARD_PADDING}>
+        </div>
+
+        {/*
+          Explicitly placed rather than left to source order, because the two orders wanted
+          here are different ones.
+
+          Stacked, the packet and its download buttons come before the month's documents:
+          collapsing the columns used to drop the whole documents card in between the readiness
+          table and the buttons, so on a phone or tablet the thing the screen is for sat about a
+          screen below the table explaining why it was disabled — the exact fault the two-column
+          layout was introduced to fix, reappearing at every width below the breakpoint.
+
+          Side by side, the grid puts each back where it belongs: the table and the documents
+          down the left, the packet card up the right beside them.
+
+          The split waits for `xl`. At `lg` the left column is about 640px, which is narrower
+          than this table's 660px floor, so the breakpoint that was meant to give the table a
+          sensible measure was instead the point at which it started scrolling sideways.
+        */}
+        <Card className={`${CARD_PADDING} xl:col-start-2 xl:row-start-1`}>
           <SectionTitle className="mb-1">Packet contents</SectionTitle>
           <p className="text-sm text-muted mb-4">In the order the funder will read them.</p>
 
@@ -264,8 +278,10 @@ export default async function PacketPage() {
           />
         </Card>
 
-        {/* Matches the Card's own width inside `MonthDocuments` — same reason as above. */}
-        <div data-tour="packet-month-documents" className="max-w-[720px]">
+        <div
+          data-tour="packet-month-documents"
+          className="min-w-0 xl:col-start-1 xl:row-start-2"
+        >
           <MonthDocuments
             month={month}
             fundingSourceId={fundingSourceId}

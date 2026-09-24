@@ -20,7 +20,7 @@ export const DASHBOARD_TOUR_STEPS: readonly TourStep[] = [
     body: "This turns red when a line item has less than 10% of its budget left, or is overspent.",
   },
   {
-    target: "add-expense-nav",
+    target: "dashboard-add-expense",
     title: "Add Expense",
     body: "Add each expense when it happens, with its receipt. Then month-end takes minutes.",
   },

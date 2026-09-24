@@ -46,7 +46,11 @@ export async function MonthlySummarySection({
   }));
 
   return (
-    <div className="flex flex-col lg:grid lg:grid-cols-[minmax(0,1fr)_280px] lg:items-start gap-6 lg:gap-8">
+    // Stacked, not a two-column split: the saved months are a row across the top and the
+    // editor takes the full width beneath them. See `SavedSummaries` for why.
+    <div className="flex flex-col gap-5">
+      <SavedSummaries rows={savedMonths} activeMonth={month} />
+
       <div className="min-w-0">
         {/* Keyed so switching month or source remounts: the autosave scheduler (and its save
             target) is created once per mount. */}
@@ -77,9 +81,6 @@ export async function MonthlySummarySection({
         />
       </div>
 
-      <div className="min-w-0">
-        <SavedSummaries rows={savedMonths} activeMonth={month} />
-      </div>
     </div>
   );
 }

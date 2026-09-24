@@ -209,6 +209,15 @@ export const UI = {
    */
   orgAccessPaused: "Your organization's access is paused. Please contact support.",
   /**
+   * A revoked account, shown only after the password checks out — same reason as the paused
+   * organization above.
+   *
+   * Points at the organization rather than at support: an admin inside the org did this and an
+   * admin inside the org can undo it, so support is the wrong door.
+   */
+  signInAccessRevoked:
+    "Your access to this organization has been removed. Ask an administrator there if you think this is a mistake.",
+  /**
    * The same message with the reason AB Solutions gave when suspending. The reason is staff
    * input, so the suspend dialog says out loud that it is shown here — otherwise an internal
    * note ("chasing Misty about the invoice") ends up in front of the customer.
@@ -446,6 +455,15 @@ export const UI = {
   /** The section above the month's expenses, and the mark on each of its rows. */
   draftsWaitingHeading: (count: number) => `Waiting for review (${count})`,
   draftMark: "Draft",
+  /**
+   * Who last saved a draft, and when.
+   *
+   * "Saved by", not "edited by": the person who read the invoice in never edited anything, and
+   * saying they did would be wrong on the majority of drafts. Saving is the act both the
+   * import and a later edit have in common, and it is what the reader is actually asking
+   * about — whether someone else has already been through this one.
+   */
+  draftLastSavedBy: (name: string, date: string) => `Saved by ${name} on ${date}`,
   /** What a draft still needs before it can be approved, in plain words (ticket §5). */
   draftNeedsLineItem: "Needs a line item",
   draftNeedsNarrative: "Needs a narrative",

@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 
 import { Card, PageTitle, SubsectionTitle } from "@/src/components/ui/surfaces";
 import { TableCard, Td, Th } from "@/src/components/ui/table";
+import { cn } from "@/src/lib/cn";
 import { formatDateShort, formatDateTimeShort, monthLabel, todayIso } from "@/src/domain/dates";
 import { formatBytes, ratio } from "@/src/domain/format";
 import { PLAN_LABELS, UI } from "@/src/domain/strings";
@@ -42,17 +43,37 @@ function UsageTile({
   children: React.ReactNode;
 }) {
   return (
-    <div className={`rounded-[4px] border border-line bg-section/60 px-4 py-3.5 ${className ?? ""}`}>
-      <dt className="text-[13px] text-sub leading-snug">{label}</dt>
-      <dd className="mt-1.5">{children}</dd>
-      {caption && <p className="text-[12px] text-muted mt-2 leading-snug">{caption}</p>}
+    // A cell in a hairline grid, not a card of its own — see `FIGURE_GRID`. No border, no fill
+    // and no radius here: the rules between cells come from the grid's gaps, so a cell that
+    // drew its own would double every line.
+    <div className={cn("bg-surface px-4 py-4 sm:px-5 sm:py-[18px]", className)}>
+      <dt className="text-[11px] uppercase tracking-[0.08em] font-semibold text-muted leading-none">
+        {label}
+      </dt>
+      <dd className="mt-2.5">{children}</dd>
+      {caption && <p className="text-[12px] text-muted mt-2.5 leading-snug">{caption}</p>}
     </div>
   );
 }
 
-/** A bare count, sized like the organizations list's tiles. */
+/**
+ * The hairline grid the usage figures sit in.
+ *
+ * The rules are the grid's own 1px gaps with the line colour showing through from behind,
+ * rather than a border on each cell. Borders between cells collapse into doubled 2px lines at
+ * every seam and leave a stray edge wherever a row wraps; a gap cannot, at any column count.
+ *
+ * `overflow-hidden` is what rounds the block: the cells are square, and the corners are cut by
+ * the container.
+ */
+const FIGURE_GRID =
+  "grid grid-cols-2 lg:grid-cols-3 gap-px bg-line border border-line rounded-[10px] overflow-hidden";
+
+/** A bare count. Large and tight — on this screen the number is the content. */
 function Figure({ children }: { children: React.ReactNode }) {
-  return <span className="text-[26px] font-bold tabular-nums leading-none">{children}</span>;
+  return (
+    <span className="text-[30px] font-bold tabular-nums leading-none text-ink">{children}</span>
+  );
 }
 
 /** A fact that is a sentence rather than a number ("3 active, 0 archived") — the wording is
@@ -120,7 +141,7 @@ export default async function OrgPage({
       </div>
 
       <Card className="p-4 sm:p-5 lg:p-6">
-        <PageTitle className="mb-4">{account.name}</PageTitle>
+        <PageTitle gradient className="mb-4">{account.name}</PageTitle>
         <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3 mb-5">
           <div>
             <dt className="text-[13px] text-sub">Name printed on documents</dt>
@@ -145,7 +166,7 @@ export default async function OrgPage({
           </div>
         </dl>
 
-        <SubsectionTitle className="mb-2">Users</SubsectionTitle>
+        <SubsectionTitle gradient className="mb-2">Users</SubsectionTitle>
         {users.rows.length === 0 ? (
           <p className="text-[15px] text-sub">{UI.noUsersYet}</p>
         ) : (
@@ -201,11 +222,11 @@ export default async function OrgPage({
       </Card>
 
       <Card className="p-4 sm:p-5 lg:p-6">
-        <SubsectionTitle className="mb-3">Usage</SubsectionTitle>
+        <SubsectionTitle gradient className="mb-3">Usage</SubsectionTitle>
         {/* Tiles rather than a two-column list: the list left half the card empty and gave a
             one-digit count the same weight as a sentence. Same tile language as the
             organizations list, so the two screens read as one dashboard. */}
-        <dl className="grid grid-cols-2 lg:grid-cols-3 gap-3">
+        <dl className={FIGURE_GRID}>
           <UsageTile label="Funding sources">
             <Sentence>{UI.usageFundingSources(usage.fundingSourcesActive, usage.fundingSourcesArchived)}</Sentence>
           </UsageTile>
@@ -233,22 +254,27 @@ export default async function OrgPage({
             <div
               role="img"
               aria-label={storageSentence}
-              className="h-2 w-full max-w-[420px] rounded-full bg-line/50 overflow-hidden mt-2.5"
+              className="h-2.5 w-full max-w-[420px] rounded-full bg-line/50 overflow-hidden mt-2.5"
             >
-              <div className="h-full bg-accent rounded-full" style={{ width: `${storagePercent}%` }} />
+              {/* The bar takes the app's brown ramp rather than a flat `accent`, so it matches
+                  the primary button and the settings sidebar's selected row. */}
+              <div
+                className="h-full rounded-full bg-[linear-gradient(90deg,var(--color-accent)_0%,var(--color-accent-dark)_100%)]"
+                style={{ width: `${storagePercent}%` }}
+              />
             </div>
           </UsageTile>
         </dl>
       </Card>
 
       <Card className="p-4 sm:p-5 lg:p-6">
-        <SubsectionTitle className="mb-3">AI usage</SubsectionTitle>
+        <SubsectionTitle gradient className="mb-3">AI usage</SubsectionTitle>
         {/* Every OpenAI call this organization has made (ai_usage_events, D-106/D-107). Each
             feature is counted apart because they cost wildly different amounts: a summary is
             roughly a hundred times a receipt read, and an invoice read is a whole multi-page
             bill rather than one receipt. Every feature needs its own tile, or its runs are
             invisible here while its cost still lands in the total below. */}
-        <dl className="grid grid-cols-2 lg:grid-cols-3 gap-3">
+        <dl className={FIGURE_GRID}>
           {/* The big number is all time; the caption says how many of those were this month. The
               two used to be shown as "4 / 4", which read like a fraction. */}
           <UsageTile
@@ -292,12 +318,12 @@ export default async function OrgPage({
       </Card>
 
       <Card className="p-4 sm:p-5 lg:p-6">
-        <SubsectionTitle className="mb-3">Actions</SubsectionTitle>
+        <SubsectionTitle gradient className="mb-3">Actions</SubsectionTitle>
         <AccountActions org={account} />
       </Card>
 
       <Card className="p-4 sm:p-5 lg:p-6">
-        <SubsectionTitle className="mb-2">History</SubsectionTitle>
+        <SubsectionTitle gradient className="mb-2">History</SubsectionTitle>
         <ul className="divide-y divide-line">
           {history.map((event) => (
             <li key={event.id} className="py-2.5 text-[15px]">

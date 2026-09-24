@@ -2,6 +2,7 @@
 
 import { useState, useTransition, type FormEvent } from "react";
 
+import { AUTH_FIELD } from "@/src/components/ui/auth-card";
 import { Button } from "@/src/components/ui/button";
 import { Input, Label } from "@/src/components/ui/field";
 import { DangerPanel } from "@/src/components/ui/surfaces";
@@ -29,7 +30,7 @@ export function LoginForm() {
     <form onSubmit={onSubmit} noValidate>
       {error && <DangerPanel className="mb-[22px]">{error}</DangerPanel>}
 
-      <div className="mb-[18px]">
+      <div className="mb-4">
         <Label htmlFor="email">Email</Label>
         <Input
           id="email"
@@ -37,13 +38,21 @@ export function LoginForm() {
           type="email"
           autoComplete="username"
           placeholder="you@yourorganization.org"
+          className={AUTH_FIELD}
           required
         />
       </div>
 
-      <div className="mb-6">
+      <div className="mb-5">
         <Label htmlFor="password">Password</Label>
-        <Input id="password" name="password" type="password" autoComplete="current-password" required />
+        <Input
+          id="password"
+          name="password"
+          type="password"
+          autoComplete="current-password"
+          className={AUTH_FIELD}
+          required
+        />
       </div>
 
       <Button type="submit" fullWidth disabled={pending}>

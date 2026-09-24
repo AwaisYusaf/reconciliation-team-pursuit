@@ -25,46 +25,165 @@ import { cn } from "@/src/lib/cn";
  */
 export const CARD_PADDING = "p-4 sm:p-5 lg:p-6";
 
-/** White panel with the paper-stock border. The app's default container. */
+/**
+ * Top clearance for a screen's own top-right controls.
+ *
+ * The app layout parks the month and funding-source selectors in the content column's
+ * top-right corner from `lg`, out of the flow so they sit level with the page title. Anything
+ * else a screen puts in that corner has to start below them or it renders underneath and
+ * cannot be clicked — which is exactly what happened to the Expenses screen's Trash button.
+ *
+ * 60px, and it is derived, not chosen: the block in that corner is a 12px label, a 4px gap and
+ * a 36px pill, so it stands 52px tall, and 8px of air past that is 60. It was 44px while the
+ * selectors had no visible label — the pill alone plus the same air — and when the labels came
+ * back this number did not, so "Waiting for review", "Trash", the cover sheet's line-item
+ * picker and the packet's lock controls all rendered underneath the selectors and could not be
+ * clicked.
+ *
+ * That is the whole reason this is one exported constant rather than a number written on each
+ * screen: it has to move whenever the corner block's height moves. If those labels are ever
+ * resized or dropped again, this is the line that changes with them.
+ *
+ * An exact pixel rather than a spacing step, because it is measured against a specific stack of
+ * heights and should not quietly drift if the scale is ever retuned.
+ */
+export const ACTION_CLEARANCE = "lg:pt-[60px]";
+
+/**
+ * One grey block standing in for content that has not arrived yet.
+ *
+ * Size it with `className` — `h-4 w-40` for a line of text, `h-24` for a card's body. It never
+ * sets its own size, because a skeleton is only useful when it is the shape of the thing it is
+ * standing in for.
+ *
+ * `motion-safe:` on the pulse, not a bare `animate-pulse`: a screenful of blocks breathing in
+ * unison is exactly the kind of motion `prefers-reduced-motion` exists to turn off, and the
+ * grey blocks still read as "not loaded yet" when they hold still.
+ *
+ * Marked `aria-hidden`, so announce the wait once on the container instead — see the page
+ * skeletons in `loading.tsx`. Twelve blocks each announcing themselves is noise, not help.
+ */
+export function Skeleton({ className, ...props }: ComponentProps<"div">) {
+  return (
+    <div
+      aria-hidden="true"
+      className={cn("bg-line/50 rounded-[6px] motion-safe:animate-pulse", className)}
+      {...props}
+    />
+  );
+}
+
+/**
+ * White panel with the paper-stock border. The app's default container.
+ *
+ * 10px, matching `StatTile` and `TableCard`. Was 4px, and the radius is set here rather than
+ * per screen so the three never drift apart again: a 3px tile beside a 4px card was one of
+ * the inconsistencies the redesign started from.
+ */
 export function Card({ className, ...props }: ComponentProps<"div">) {
   return (
     <div
-      className={cn("bg-surface border border-line rounded-[4px]", className)}
+      className={cn("bg-surface border border-line rounded-[10px]", className)}
       {...props}
     />
   );
 }
 
 /** Page title (h1) — 22 / 24 / 28. One per screen. */
-export function PageTitle({ className, ...props }: ComponentProps<"h1">) {
+export function PageTitle({
+  className,
+  gradient = false,
+  children,
+  ...props
+}: ComponentProps<"h1"> & {
+  /** Paint the heading in `GRADIENT_TEXT` instead of flat ink. */
+  gradient?: boolean;
+}) {
   return (
     <h1
       className={cn(
-        "font-serif text-[22px] sm:text-2xl lg:text-[28px] font-bold text-ink m-0",
+        "font-serif text-[22px] sm:text-2xl lg:text-[28px] font-bold m-0",
+        // Dropped rather than layered under the gradient — `cn` does not de-duplicate, so
+        // leaving it would leave the winner to stylesheet order. See `GRADIENT_TEXT`.
+        gradient ? "" : "text-ink",
         className,
       )}
       {...props}
-    />
+    >
+      {gradient ? <span className={GRADIENT_TEXT}>{children}</span> : children}
+    </h1>
   );
 }
 
 /** Section title (h2) — 18 / 20 / 20. Cards and page sections. */
-export function SectionTitle({ className, ...props }: ComponentProps<"h2">) {
+/**
+ * Text painted `ink → accent → plus-light` across its own width, rather than set in one colour.
+ *
+ * **Put it on a span wrapping the words, not on the heading or button itself.** Two reasons,
+ * both of which show up as "the gradient did nothing". It clips every background the element
+ * has, so on a filled button or card it would clip the fill away too. And `cn` here is a plain
+ * join, not `tailwind-merge`, so a `text-ink` already on the element is not removed — which of
+ * it and `text-transparent` wins is down to stylesheet order, not the order they are passed. A
+ * bare span carries neither problem.
+ *
+ * It also needs a box that fits its text: a gradient fills the element's box, not its glyphs,
+ * so on a full-width block the light end lands in the empty space beside the words and every
+ * letter stays flat ink. `w-fit` below is what prevents that.
+ *
+ * The light end is `plus-light`, about 5.3:1 on white, so text set in this clears AA at body
+ * size and not only at display size.
+ */
+export const GRADIENT_TEXT =
+  "w-fit bg-clip-text text-transparent " +
+  "bg-[linear-gradient(105deg,var(--color-ink)_0%,var(--color-accent)_55%,var(--color-plus-light)_100%)]";
+
+export function SectionTitle({
+  className,
+  gradient = false,
+  children,
+  ...props
+}: ComponentProps<"h2"> & {
+  /** Paint the heading in `GRADIENT_TEXT` instead of flat ink. */
+  gradient?: boolean;
+}) {
   return (
     <h2
-      className={cn("font-serif text-lg sm:text-xl font-bold text-ink m-0", className)}
+      className={cn(
+        "font-serif text-lg sm:text-xl font-bold m-0",
+        // Dropped entirely when the gradient is on rather than layered under it: `cn` does not
+        // de-duplicate, so leaving `text-ink` in place would leave the winner to stylesheet
+        // order. See `GRADIENT_TEXT`.
+        gradient ? "" : "text-ink",
+        className,
+      )}
       {...props}
-    />
+    >
+      {gradient ? <span className={GRADIENT_TEXT}>{children}</span> : children}
+    </h2>
   );
 }
 
 /** Subsection title (h3) — 16 / 17. Groups inside a card. */
-export function SubsectionTitle({ className, ...props }: ComponentProps<"h3">) {
+export function SubsectionTitle({
+  className,
+  gradient = false,
+  children,
+  ...props
+}: ComponentProps<"h3"> & {
+  /** Paint the heading in `GRADIENT_TEXT` instead of flat ink. */
+  gradient?: boolean;
+}) {
   return (
     <h3
-      className={cn("font-serif text-base sm:text-[17px] font-bold text-ink m-0", className)}
+      className={cn(
+        "font-serif text-base sm:text-[17px] font-bold m-0",
+        gradient ? "" : "text-ink",
+        className,
+      )}
       {...props}
-    />
+    >
+      {gradient ? <span className={GRADIENT_TEXT}>{children}</span> : children}
+    </h3>
   );
 }
 
@@ -100,15 +219,39 @@ export function PageHeader({
   return (
     <div
       className={cn(
-        "flex flex-col gap-3 mb-6 sm:mb-[26px] lg:flex-row lg:items-end lg:justify-between lg:gap-6",
+        // `lg:items-start`, not `items-end`. The actions carry `ACTION_CLEARANCE` to clear the
+        // layout's floating selectors, and with a bottom-aligned row that extra height pushed
+        // the title down with them — 48px of empty space above every heading on the five
+        // screens that use this. Top-aligned, the clearance moves only the thing it is for.
+        "flex flex-col gap-3 mb-6 sm:mb-[26px] lg:flex-row lg:items-start lg:justify-between lg:gap-6",
         className,
       )}
     >
-      <div className="min-w-0">
+      {/*
+        Held back from the content column's top-right corner, where the layout floats the month
+        and funding-source selectors from `lg`.
+
+        `ACTION_CLEARANCE` below only solves this for a screen's *controls*. The title and its
+        subtext sit at the very top of the column, level with the selectors, so a subtext long
+        enough to run the full width passed straight underneath them — on Line Items the
+        sentence ran under both pills and its last line broke in an odd place for no visible
+        reason.
+
+        `--corner-width` comes from the layout, which is the only place that knows whether that
+        corner holds two selectors or just the month (a single-source org has no funding-source
+        pill). The 350px fallback is the two-pill case, so a `PageHeader` rendered outside that
+        layout still errs on the side of keeping clear.
+      */}
+      <div className="min-w-0 lg:max-w-[calc(100%-var(--corner-width,350px)-24px)]">
         <PageTitle className="mb-1.5">{title}</PageTitle>
         {subtext && <Subtext>{subtext}</Subtext>}
       </div>
-      {actions && <div className="flex flex-wrap items-end gap-3 shrink-0">{actions}</div>}
+      {/* Cleared past the layout's selectors — see `ACTION_CLEARANCE`. */}
+      {actions && (
+        <div className={cn("flex flex-wrap items-end gap-3 shrink-0", ACTION_CLEARANCE)}>
+          {actions}
+        </div>
+      )}
     </div>
   );
 }

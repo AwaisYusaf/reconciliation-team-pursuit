@@ -16,7 +16,7 @@ import { Button, buttonClassName } from "@/src/components/ui/button";
 import { Dialog } from "@/src/components/ui/dialog";
 import { Label } from "@/src/components/ui/field";
 import { Select } from "@/src/components/ui/select";
-import { DangerPanel, Subtext } from "@/src/components/ui/surfaces";
+import { ACTION_CLEARANCE, DangerPanel, Subtext } from "@/src/components/ui/surfaces";
 import { formatDateUS, monthLabel } from "@/src/domain/dates";
 import { clearCheck, loadCheck, saveCheck } from "@/src/modules/expense-imports/check-draft-store";
 import { draftNeeds } from "@/src/domain/draft-rules";
@@ -528,8 +528,15 @@ export function InvoiceExtract({
             there is no upload page in between and no way to arrive at one with nothing
             picked. The form underneath is untouched until an invoice actually reads. */}
         <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="flex-1 min-w-[260px]">{children}</div>
-          <div className="flex flex-col items-end gap-2.5">
+          <div className="flex-1 min-w-[260px] order-2 lg:order-1">{children}</div>
+          {/*
+            `order-1` on a phone, where the row wraps and this would otherwise land at the very
+            bottom of the screen, under the whole form and its Save button — an entry point to
+            a different way of adding expenses, offered only after you have finished adding one
+            by hand. From `lg` it returns to the corner, cleared past the layout's floating
+            selectors by `ACTION_CLEARANCE`.
+          */}
+          <div className={cn("flex flex-col items-end gap-2.5 order-1 lg:order-2", ACTION_CLEARANCE)}>
             {/* Only when the header is on All sources: an invoice has to land on one source,
                 and with a single button there is no later moment to ask. */}
             {askForSource && (
@@ -592,7 +599,10 @@ export function InvoiceExtract({
   const unsavedCount = check.rows.filter((row) => row.saved === null).length;
 
   return (
-    <div className="max-w-[720px]">
+    // Matches the standalone Add Expense form. 720px was set when each card was a single
+    // column of fields; now that the fields pair up, the cards need the same room the form
+    // they contain does.
+    <div className="max-w-[720px] lg:max-w-[940px]">
       {check.invoiceDate && <Subtext className="mb-4">Invoice date: {formatDateUS(check.invoiceDate)}</Subtext>}
 
       {check.duplicate && (

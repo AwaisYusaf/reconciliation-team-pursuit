@@ -46,6 +46,64 @@ function emptyPerformanceDraft() {
 // Compact sizing for the Manage popup's performances table. `cn` only joins classes (no
 // tailwind-merge), so a plain `py-1` competes with Td/Button/Input's own padding and min-height
 // and loses on CSS order — the trailing `!` is what makes these overrides actually apply.
+/**
+ * The reorder control: one bordered stepper, not two loose glyphs.
+ *
+ * The halves share a frame and a hairline divider, so the pair reads as a single object the
+ * row owns. Two free-floating chevrons with air between them read as debris in the margin —
+ * there is nothing to say the two belong together or that either is a button at all.
+ *
+ * Each half is 18px, so the whole control is 37px in a 40px column. That is under the 44px
+ * touch minimum the design system asks for, and deliberately: a table row is not 44px tall, so
+ * a target that size would overlap the rows above and below and reorder the wrong line. The
+ * control is fully keyboard-operable, which is the path that has to work.
+ */
+const REORDER_HALF =
+  "flex items-center justify-center w-full h-[15px] text-sub transition-colors " +
+  "hover:text-surface hover:bg-accent " +
+  "disabled:text-disabled disabled:hover:bg-transparent disabled:cursor-not-allowed";
+
+/**
+ * A chevron in the plain stroke style the rest of the app's icons use (the settings section
+ * icons, the Select's own chevron) — rather than the `▲`/`▼` text glyphs this used to draw,
+ * which rendered at whatever weight the font felt like and sat off the vertical centre.
+ *
+ * The viewBox is cropped to the stroke rather than the app's usual square. A chevron inside
+ * `0 0 20 20` only spans the middle quarter of it, so the box carries about 3px of empty space
+ * above and below the mark at this size — stacked, that empty space is most of the gap between
+ * the two, and no amount of shrinking the buttons closes it.
+ */
+function ReorderChevron({ up = false }: { up?: boolean }) {
+  return (
+    <svg
+      viewBox="0 0 12 7"
+      aria-hidden="true"
+      className="w-[11px] h-[6px]"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d={up ? "M1 6 6 1l5 5" : "M1 1 6 6l5-5"} />
+    </svg>
+  );
+}
+
+/**
+ * Tighter rows for the line-items table.
+ *
+ * The row was ~78px tall, and almost none of it was the text: the Manage and Delete buttons are
+ * `quiet`, which carries `min-h-11` for touch, and a 44px control inside a 28px-padded cell
+ * sets the height of the whole row. So both halves had to move — `DENSE_BUTTON` on the two
+ * buttons and this on the cells — because shrinking only the padding would have left the
+ * buttons holding the rows open at the same height.
+ *
+ * Applied on the `tr` rather than on each of the six `Td`s: one place to change, and no chance
+ * of a cell being added later that quietly keeps the old padding and re-inflates the row.
+ */
+const ROW_DENSE = "[&>td]:py-2!";
+
 const DENSE_CELL = "py-1.5!";
 const DENSE_CONTROL = "min-h-9! py-1!";
 const DENSE_BUTTON = "min-h-8! px-2.5! py-0.5! text-[15px]!";
@@ -487,26 +545,32 @@ export function LineItemsManager({
         </thead>
         <tbody>
           {rows.map((row, index) => (
-            <tr key={row.id}>
+            // The shared cell padding is sized for tables whose cells hold wrapping text. Every
+            // cell in this one holds a single short line, so the default `py-3.5` was padding
+            // around nothing — see `ROW_DENSE`.
+            <tr key={row.id} className={ROW_DENSE}>
               <Td className="pl-4 pr-2 text-sub select-none">
-                <div className="flex flex-col leading-none" data-tour="line-items-reorder">
+                <div
+                  className="w-[26px] rounded-[6px] border border-line bg-surface overflow-hidden divide-y divide-line"
+                  data-tour="line-items-reorder"
+                >
                   <button
                     type="button"
                     aria-label={`Move ${row.name} up`}
                     disabled={pending || index === 0}
                     onClick={() => move(index, -1)}
-                    className="px-1 text-sub hover:text-ink disabled:opacity-30"
+                    className={REORDER_HALF}
                   >
-                    ▲
+                    <ReorderChevron up />
                   </button>
                   <button
                     type="button"
                     aria-label={`Move ${row.name} down`}
                     disabled={pending || index === rows.length - 1}
                     onClick={() => move(index, 1)}
-                    className="px-1 text-sub hover:text-ink disabled:opacity-30"
+                    className={REORDER_HALF}
                   >
-                    ▼
+                    <ReorderChevron />
                   </button>
                 </div>
               </Td>
@@ -524,13 +588,19 @@ export function LineItemsManager({
                 <div className="flex gap-4 justify-end">
                   <Button
                     variant="quiet"
+                    className={DENSE_BUTTON}
                     onClick={() => openManage(row)}
                     disabled={pending}
                     data-tour="line-items-manage"
                   >
                     Manage
                   </Button>
-                  <Button variant="quiet" onClick={() => remove(row)} disabled={pending}>
+                  <Button
+                    variant="quiet"
+                    className={DENSE_BUTTON}
+                    onClick={() => remove(row)}
+                    disabled={pending}
+                  >
                     Delete
                   </Button>
                 </div>

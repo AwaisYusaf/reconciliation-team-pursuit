@@ -7,7 +7,9 @@ import { asc, eq } from "drizzle-orm";
 import { pageTitle } from "@/src/domain/strings";
 
 import { OnboardingLineItemsForm } from "./line-items-form";
-import { Eyebrow, PageTitle } from "@/src/components/ui/surfaces";
+import { AuthCard } from "@/src/components/ui/auth-card";
+import { AuthCentered } from "@/src/components/ui/auth-shell";
+import { Eyebrow } from "@/src/components/ui/surfaces";
 
 export const metadata = { title: pageTitle("Set up your budget") };
 
@@ -39,14 +41,15 @@ export default async function OnboardingLineItemsPage() {
       : STARTER_NAMES.map((name) => ({ name, budget: "" }));
 
   return (
-    <div className="w-full max-w-[720px] bg-surface border border-line rounded-[4px] p-5 sm:p-8">
-      <Eyebrow>Step 1 of 2</Eyebrow>
-      <PageTitle className="leading-tight mt-2.5 mb-2">Set up your budget line items</PageTitle>
-      <p className="text-[15px] text-sub leading-relaxed m-0 mb-[26px] max-w-[60ch]">
-        These are the categories your funder approved. You can change them later.
-      </p>
-
-      <OnboardingLineItemsForm initialRows={initialRows} />
-    </div>
+    <AuthCentered>
+      <AuthCard
+        width="lg"
+        eyebrow={<Eyebrow>Step 1 of 2</Eyebrow>}
+        title="Set up your budget line items"
+        subtitle="These are the categories your funder approved. You can change them later."
+      >
+        <OnboardingLineItemsForm initialRows={initialRows} />
+      </AuthCard>
+    </AuthCentered>
   );
 }

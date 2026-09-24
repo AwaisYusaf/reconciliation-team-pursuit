@@ -12,7 +12,7 @@
 import { useRouter } from "next/navigation";
 import { useRef, useState, useTransition } from "react";
 
-import { Button, buttonClassName } from "@/src/components/ui/button";
+import { Button, ButtonLabel, buttonClassName } from "@/src/components/ui/button";
 import { Dialog } from "@/src/components/ui/dialog";
 import { Label, Textarea } from "@/src/components/ui/field";
 import { Card, SubsectionTitle } from "@/src/components/ui/surfaces";
@@ -130,7 +130,7 @@ export function MonthLockControls({
             rel="noopener noreferrer"
             className={buttonClassName("secondary", "min-h-11 px-4 text-[15px]")}
           >
-            {UI.viewSignedPacket}
+            <ButtonLabel>{UI.viewSignedPacket}</ButtonLabel>
           </a>
           <Button
             variant="secondary"

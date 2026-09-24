@@ -11,6 +11,7 @@ import { SETTINGS_TOUR_STEPS } from "@/src/modules/tours/settings-tour";
 import { hasSeenTour } from "@/src/modules/tours/queries";
 import type { OrgUser } from "./users/users-manager";
 
+import { avatarVersionOf } from "@/src/services/storage/keys";
 import { SettingsSections } from "./settings-sections";
 
 export const metadata = { title: pageTitle("Settings") };
@@ -43,6 +44,8 @@ export default async function SettingsPage() {
 
       <SettingsSections
         email={session.email}
+        userName={session.userName ?? null}
+        avatarVersion={session.avatarKey ? avatarVersionOf(session.avatarKey) : null}
         organisation={{ name: data.org.name, docName: data.org.docName }}
         fundingSources={data.fundingSources.map((source) => ({
           id: source.id,
