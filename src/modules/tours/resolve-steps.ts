@@ -41,6 +41,41 @@ export function resolveOneStep<El>(
   return null;
 }
 
+/** What `firstShown` reads off a node: structural, so a test can pass plain objects. */
+export type Measurable = {
+  getClientRects(): { length: number };
+  getBoundingClientRect(): { width: number; height: number };
+};
+
+/**
+ * The first of these nodes that is actually on the screen — how the engine turns a `data-tour`
+ * key into an element.
+ *
+ * Not the first node, because a responsive screen renders the same key twice on purpose: a
+ * card list at `lg:hidden` and a table at `hidden lg:block` both carry the row's controls, and
+ * only one of them is displayed at any width. `querySelector` returns whichever comes first in
+ * the document, which on a desktop is the hidden phone copy — a `display:none` element whose
+ * rect is 0×0 at the origin, so the spotlight opened onto an empty box in the corner of the
+ * viewport and the step pointed at nothing.
+ *
+ * Measured rather than inferred from classes: `getClientRects()` is empty for anything
+ * `display:none`, whatever put it there, so this holds for a container hidden three levels up
+ * as well as for the element itself. The dimension check catches the other shape of the same
+ * problem — an element kept in the DOM at zero width to animate, which does report a rect.
+ *
+ * Returning `null` when every copy is hidden is the point: the resolver skips a step whose
+ * target it cannot find, which is the correct outcome for a control that genuinely is not on
+ * this screen, and far better than spotlighting a box nobody can see.
+ */
+export function firstShown<El extends Measurable>(nodes: Iterable<El>): El | null {
+  for (const node of nodes) {
+    if (node.getClientRects().length === 0) continue;
+    const { width, height } = node.getBoundingClientRect();
+    if (width > 0 && height > 0) return node;
+  }
+  return null;
+}
+
 /** The part of a `DOMRect` the placement maths needs — kept structural so these stay testable. */
 export type TargetBox = {
   top: number;

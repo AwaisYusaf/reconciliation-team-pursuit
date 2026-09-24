@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   countResolvableAfter,
+  firstShown,
   fitsVertically,
   popShownStep,
   pushShownStep,
@@ -200,5 +201,40 @@ describe("countResolvableAfter", () => {
     ];
     const find = (key: string) => (key === "recurring-add-item" ? "el" : null);
     expect(countResolvableAfter(steps, 0, find)).toBe(1);
+  });
+});
+
+describe("firstShown", () => {
+  /** A node as the browser measures it: `rects` is what `getClientRects()` reports. */
+  function node(name: string, { rects = 1, width = 100, height = 40 } = {}) {
+    return {
+      name,
+      getClientRects: () => ({ length: rects }),
+      getBoundingClientRect: () => ({ width, height }),
+    };
+  }
+
+  it("skips a display:none copy that comes first in the document", () => {
+    // The phone card list renders before the desktop table, and is hidden on a desktop. The
+    // first node in document order is exactly the one that must not be chosen.
+    const hiddenPhoneCopy = node("phone", { rects: 0, width: 0, height: 0 });
+    const shownTableCopy = node("table");
+    expect(firstShown([hiddenPhoneCopy, shownTableCopy])?.name).toBe("table");
+  });
+
+  it("skips a node that is laid out but has no size", () => {
+    const collapsed = node("collapsed", { width: 0 });
+    const flat = node("flat", { height: 0 });
+    const shown = node("shown");
+    expect(firstShown([collapsed, flat, shown])?.name).toBe("shown");
+  });
+
+  it("keeps document order among the nodes that are shown", () => {
+    expect(firstShown([node("first"), node("second")])?.name).toBe("first");
+  });
+
+  it("returns null when every copy is hidden, so the step is dropped rather than pointed at nothing", () => {
+    expect(firstShown([node("a", { rects: 0 }), node("b", { width: 0, height: 0 })])).toBeNull();
+    expect(firstShown([])).toBeNull();
   });
 });
