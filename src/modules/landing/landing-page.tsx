@@ -93,8 +93,8 @@ export function LandingPage() {
   className="flex items-center gap-2 rounded-full bg-white pl-1.5 pr-4 py-1 shadow-sm transition-transform hover:scale-[1.02]"
   href="/"
 >
-<Image src="/brand/stayfunded-mark.png" alt="" width={628} height={570} className="h-7" style={{ width: "auto" }} priority />
-<Image src="/brand/stayfunded-wordmark.png" alt={APP_NAME} width={720} height={84} className="h-[15px]" style={{ width: "auto" }} priority />
+<Image src="/brand/stayfunded-mark.png" alt="" width={628} height={570} className="h-7" style={{ width: "auto" }} loading="eager" />
+<Image src="/brand/stayfunded-wordmark.png" alt={APP_NAME} width={720} height={84} className="h-[15px]" style={{ width: "auto" }} loading="eager" />
 </Link>
 
 <LandingNav links={NAV_LINKS} />
@@ -276,8 +276,15 @@ export function LandingPage() {
       alt="The Stay Funded 360 dashboard on a laptop, showing the remaining balance, spending by month, and each budget line's opening and closing balance"
       src="/macbook-pro-14-front.png"
       fill
-      priority
-      sizes="(min-width: 1024px) 1024px, 100vw"
+      // The hero is the largest thing painted on arrival, so it is fetched first. Not
+      // `priority`, which Next 16 deprecates, nor `preload`, which its docs reserve for when
+      // neither of these is set.
+      loading="eager"
+      fetchPriority="high"
+      // The column it actually fills: half of the 7xl container from `lg`, the full width
+      // below. The old `1024px` at `lg` asked for twice the pixels the column shows, so every
+      // desktop downloaded the 2048w file for a picture drawn about 580px wide.
+      sizes="(min-width: 1280px) 584px, (min-width: 1024px) 45vw, 100vw"
       className="pointer-events-none z-20 select-none object-contain"
     />
   </div>

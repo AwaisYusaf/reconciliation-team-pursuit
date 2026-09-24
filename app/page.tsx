@@ -30,12 +30,15 @@ export const metadata: Metadata = {
     siteName: APP_NAME,
     type: "website",
     locale: "en_US",
+    // A real 1200x630 render of the page's own first screen (64 KB). The laptop PNG this used
+    // to name is 3944x2564, 4.5 MB and transparent, so previews either timed out or showed it
+    // on black; its declared 1200x780 was not its size either.
     images: [
       {
-        url: "/macbook-pro-14-front.png",
+        url: "/og-image.jpg",
         width: 1200,
-        height: 780,
-        alt: `${APP_NAME} dashboard shown on a laptop screen`,
+        height: 630,
+        alt: `The ${APP_NAME} home page: the headline beside the dashboard on a laptop screen`,
       },
     ],
   },
@@ -43,7 +46,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title,
     description,
-    images: ["/macbook-pro-14-front.png"],
+    images: ["/og-image.jpg"],
   },
 };
 
