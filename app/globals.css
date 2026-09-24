@@ -181,10 +181,21 @@ body {
   color: var(--color-placeholder);
 }
 
-/* Keyboard focus stays visible everywhere; the design has no focus styling of its own. */
+/*
+ * Keyboard focus stays visible everywhere; the design has no focus styling of its own.
+ *
+ * The ring is the accent brown, which is invisible on the brown surfaces the redesign added
+ * (1.4:1 on the nav pill). A dark container marks itself `surface-dark` and every ring inside it
+ * turns the light peach instead, 11:1 on `accent-dark`. A variable rather than a second rule,
+ * so a focusable anywhere inside the container inherits it without being named.
+ */
 :focus-visible {
-  outline: 2px solid var(--color-accent);
+  outline: 2px solid var(--focus-ring, var(--color-accent));
   outline-offset: 2px;
+}
+
+.surface-dark {
+  --focus-ring: var(--color-primary-fixed);
 }
 
 @media print {

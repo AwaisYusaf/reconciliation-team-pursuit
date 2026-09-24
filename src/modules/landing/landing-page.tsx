@@ -163,7 +163,7 @@ export function LandingPage() {
   return (
     <>
 <header className="sticky top-0 z-50 transition-all duration-200 px-4 sm:px-6 py-3">
-<div className="max-w-3xl mx-auto rounded-full bg-[#38231a] border border-[#5b3a29] shadow-xl shadow-black/40 pl-2.5 sm:pl-3 pr-2.5 sm:pr-3 py-2 flex items-center justify-between">
+<div className="surface-dark max-w-3xl mx-auto rounded-full bg-[#38231a] border border-[#5b3a29] shadow-xl shadow-black/40 pl-2.5 sm:pl-3 pr-2.5 sm:pr-3 py-2 flex items-center justify-between">
 
 {/* The full logo's own artwork, laid out side by side: its stacked form (mark over wordmark
     over tagline) would be unreadable at nav height. White so the brown logo reads on the pill. */}
@@ -1257,7 +1257,7 @@ Receipt + Bank Proof
 </div>
 </div>
 </section>
-<section className="relative py-20 bg-[#201a15] text-white overflow-hidden" data-purpose="cta-banner" id="schedule-walkthrough">
+<section className="surface-dark relative py-20 bg-[#201a15] text-white overflow-hidden" data-purpose="cta-banner" id="schedule-walkthrough">
 
 <div className="absolute -top-24 -left-24 w-96 h-96 bg-brand-600/30 rounded-full blur-3xl pointer-events-none"></div>
 <div className="absolute -bottom-24 -right-24 w-96 h-96 bg-terracotta-500/25 rounded-full blur-3xl pointer-events-none"></div>
@@ -1287,7 +1287,7 @@ Receipt + Bank Proof
 </div>
 </section>
 </main>
-<footer className="bg-[#201a15] py-12 text-[#edbca5]/80 text-xs">
+<footer className="surface-dark bg-[#201a15] py-12 text-[#edbca5]/80 text-xs">
 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col lg:flex-row items-center justify-between gap-4 lg:gap-6">
 <div className="flex items-center gap-3 flex-shrink-0">
 {/* Same white capsule as the nav: the brown logo would vanish on the dark footer. */}
