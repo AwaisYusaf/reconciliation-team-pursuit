@@ -18,13 +18,14 @@ import { config } from "dotenv";
 
 config({ path: ".env.local", quiet: true });
 
-import { beforeAll, describe, expect, it } from "vitest";
+import { eq } from "drizzle-orm";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 const hasDatabase = Boolean(process.env.DATABASE_URL);
 
 describe.skipIf(!hasDatabase)("loadYearSpend (integration)", async () => {
   const { db } = await import("@/src/db");
-  const { expenses, fundingSources, lineItems } = await import("@/src/db/schema");
+  const { expenses, fundingSources, lineItems, organizations } = await import("@/src/db/schema");
   const { createTestOrg } = await import("@/src/db/test-org");
   const { claimReferenceSeq } = await import("@/src/modules/expenses/references");
   const { loadYearSpend } = await import("./queries");
@@ -133,6 +134,18 @@ describe.skipIf(!hasDatabase)("loadYearSpend (integration)", async () => {
       })
       .returning({ id: lineItems.id });
     otherOrgItem = io.id;
+  });
+
+  // Every row here hangs off these organisations and goes with them; the files under their
+  // storage prefix do not, so those are removed by hand.
+  afterAll(async () => {
+    const { rm } = await import("node:fs/promises");
+    const path = await import("node:path");
+    for (const id of [orgId, otherOrgId]) {
+      if (!id) continue;
+      await db.delete(organizations).where(eq(organizations.id, id));
+      await rm(path.join(process.cwd(), ".storage", "org", id), { recursive: true, force: true });
+    }
   });
 
   it("returns all twelve months in order, and a month with nothing in it reads zero", async () => {
