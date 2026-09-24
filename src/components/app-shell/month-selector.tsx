@@ -26,9 +26,13 @@ export function MonthSelector({
   months: readonly string[];
   activeMonth: string;
   /**
-   * Header pill form: no stacked label, and the control names itself through `aria-label`
-   * instead. The visible word "Month" is dropped, not the accessible one, so the control is
-   * still announced as what it is.
+   * Pill form, for the corner of the content column: a smaller control under a smaller label.
+   *
+   * The label is smaller here, not absent. It was dropped entirely at one point on the theory
+   * that an `aria-label` covered it, which confuses two different jobs: a screen reader was
+   * told what the control was, and everyone else was left with two unlabelled pills reading
+   * "June 2026" and "All funding sources" side by side, with nothing saying which was the
+   * month and which was the funding source.
    */
   compact?: boolean;
 }) {
@@ -51,16 +55,21 @@ export function MonthSelector({
   }
 
   return (
-    <div className={compact ? "flex flex-col gap-1.5 relative" : "flex flex-col gap-1.5"}>
-      {!compact && (
-        <label id="month-selector-label" htmlFor="month-selector" className="block text-[15px] font-semibold text-ink">
-          Month
-        </label>
-      )}
+    <div className={compact ? "flex flex-col gap-1 relative" : "flex flex-col gap-1.5"}>
+      <label
+        id="month-selector-label"
+        htmlFor="month-selector"
+        className={
+          compact
+            ? "block text-[12px] font-semibold text-sub leading-none"
+            : "block text-[15px] font-semibold text-ink"
+        }
+      >
+        Month
+      </label>
       <Select
         id="month-selector"
-        aria-label={compact ? "Month" : undefined}
-        aria-labelledby={compact ? undefined : "month-selector-label"}
+        aria-labelledby="month-selector-label"
         value={activeMonth}
         disabled={pending}
         compact={compact}

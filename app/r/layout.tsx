@@ -1,3 +1,5 @@
+import type { CSSProperties } from "react";
+
 import Image from "next/image";
 import Link from "next/link";
 import { redirect } from "next/navigation";
@@ -95,7 +97,15 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
       {/* Tight against the header: the bar has its own bottom padding, so a large top padding
           here stacked on it and left a band of empty page above every screen's first line. */}
-      <main className="relative max-w-[1220px] mx-auto px-4 sm:px-6 pt-3 sm:pt-4 pb-12 sm:pb-16">
+      <main
+        className="relative max-w-[1220px] mx-auto px-4 sm:px-6 pt-3 sm:pt-4 pb-12 sm:pb-16"
+        // How much of the content column's top-right corner the floating selectors occupy, so
+        // a screen's own header can keep its title and subtext out of it (`PageHeader` reads
+        // this). Published from here because this is the only place that knows: the widths are
+        // set a few lines below, and whether there are one or two of them depends on `single`.
+        // 150 + 10 gap + 190, or just the month pill on a single-source org.
+        style={{ "--corner-width": single ? "150px" : "350px" } as CSSProperties}
+      >
         {/*
           The month and funding-source selectors sit level with the screen's own title rather
           than in a band of their own above it.

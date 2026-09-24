@@ -84,12 +84,14 @@ export function AppNav() {
   }, [open]);
 
   return (
-    // The tour anchors here rather than on the "Add Expense" tab: that tab is a real element
-    // at one width and inside a closed menu at the other, and a walkthrough may not point at
-    // something that is not on screen. This wrapper is the node present at both.
-    <div data-tour="add-expense-nav">
-      {/* Phone and tablet: a menu button naming the current screen. */}
-      <div ref={wrapperRef} className="relative lg:hidden">
+    // No tour anchor here. The Dashboard's "Add Expense" step used to point at this wrapper,
+    // which is the whole nav — so the spotlight opened over the entire tab bar rather than
+    // over anything to do with adding an expense. It now anchors on the Dashboard's own
+    // "Add Expense" button (`app/r/source-budget-section.tsx`), which is a real, visible
+    // control at every width and is actually the thing the step is describing.
+    <div>
+      {/* Phone, tablet and laptop: a menu button naming the current screen. */}
+      <div ref={wrapperRef} className="relative xl:hidden">
         <button
           ref={triggerRef}
           type="button"
@@ -145,9 +147,9 @@ export function AppNav() {
         )}
       </div>
 
-      {/* Desktop: all nine as one centred pill. */}
+      {/* From `xl`: all nine as one centred pill. */}
       <nav
-        className="hidden lg:flex py-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        className="hidden xl:flex py-1"
         aria-label="Primary"
       >
         {/*

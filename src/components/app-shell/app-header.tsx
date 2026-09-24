@@ -23,8 +23,7 @@ const COLLAPSE_ENTER = 96;
 const COLLAPSE_EXIT = 8;
 
 /**
- * The sticky header. Once the page scrolls it sheds the mark, the plan badge, the tour button
- * and the profile menu, leaving only the tabs.
+ * The sticky header. Once the page scrolls it sheds the mark; everything else stays.
  *
  * The bar has no background at any scroll position, so it reads as part of the page rather
  * than as a white strip laid over it. What keeps the tabs readable once content slides
@@ -45,15 +44,9 @@ export function AppHeader({
 }: {
   logo: ReactNode;
   nav: ReactNode;
-  /** The decorative controls — plan badge, tour replay. These collapse away on scroll. */
+  /** The plan badge and the tour replay button. */
   controls: ReactNode;
-  /**
-   * The profile menu. Collapses with everything else, so a scrolled page shows only the tabs.
-   *
-   * Kept as its own slot rather than folded back into `controls` because it sits on the far
-   * right and has to keep its `ml-auto` independently of whether the controls beside it have
-   * collapsed to zero width and given up theirs.
-   */
+  /** The profile menu, which is the only route to Your profile and Sign out. */
   account: ReactNode;
 }) {
   const [scrolled, setScrolled] = useState(false);
@@ -127,37 +120,26 @@ export function AppHeader({
           `lg`, so it no longer needs a line of its own down there — it is about as wide as
           the longest screen name rather than as wide as nine tabs.
         */}
-        <div className="order-2 min-w-0 lg:flex-1">{nav}</div>
+        <div className="order-2 min-w-0 xl:flex-1">{nav}</div>
 
-        <div
-          inert={scrolled || undefined}
-          className={cn(
-            "flex items-center gap-2 sm:gap-2.5 order-3 ml-auto lg:ml-0",
-            "overflow-hidden transition-all duration-300 ease-out",
-            scrolled ? "opacity-0 max-w-0 -ml-3 sm:-ml-4" : "opacity-100 max-w-[240px]",
-          )}
-        >
+        {/*
+          These two stay, at every scroll position.
+
+          They used to collapse with the mark, which cost more than it bought. Sign out and
+          Your profile live behind the account menu and there is no other route to either, so
+          a page scrolled past 96px had no way to sign out until it was scrolled back to
+          within 8px of the top. The plan badge and the tour button went the same way.
+
+          Collapsing them also broke the account menu outright, even at the top of the page:
+          the slot needed `overflow-hidden` to animate its width down, and the menu's panel is
+          absolutely positioned inside that slot, so it was clipped to a 48px box and never
+          painted. The button toggled `aria-expanded` and nothing appeared.
+        */}
+        <div className="flex items-center gap-2 sm:gap-2.5 order-3 ml-auto xl:ml-0">
           {controls}
         </div>
 
-        {/*
-          Collapses with everything else, so a scrolled page is the tabs and nothing else.
-
-          The trade, stated because it is a real one: Sign out and Your profile live behind
-          this menu and there is no other route to either, so while the page is scrolled they
-          are out of reach. Scrolling back to the top brings them straight back, and `inert`
-          means a keyboard user cannot tab into the invisible menu in the meantime.
-        */}
-        <div
-          inert={scrolled || undefined}
-          className={cn(
-            "shrink-0 order-4 ml-auto lg:ml-0",
-            "overflow-hidden transition-all duration-300 ease-out",
-            scrolled ? "opacity-0 max-w-0 -ml-3 sm:-ml-4" : "opacity-100 max-w-[48px]",
-          )}
-        >
-          {account}
-        </div>
+        <div className="shrink-0 order-4">{account}</div>
       </div>
     </header>
   );

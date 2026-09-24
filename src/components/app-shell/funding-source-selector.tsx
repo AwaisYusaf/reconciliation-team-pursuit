@@ -19,7 +19,7 @@ export function FundingSourceSelector({
 }: {
   sources: readonly FundingSource[];
   selectedId: string | null;
-  /** Header pill form, matching `MonthSelector`: no stacked label, named by `aria-label`. */
+  /** Pill form, matching `MonthSelector`: a smaller control under a smaller label. */
   compact?: boolean;
 }) {
   const router = useRouter();
@@ -46,20 +46,21 @@ export function FundingSourceSelector({
   }
 
   return (
-    <div className={compact ? "flex flex-col gap-1.5 relative" : "flex flex-col gap-1.5"}>
-      {!compact && (
-        <label
-          id="funding-source-selector-label"
-          htmlFor="funding-source-selector"
-          className="block text-[15px] font-semibold text-ink"
-        >
-          Funding source
-        </label>
-      )}
+    <div className={compact ? "flex flex-col gap-1 relative" : "flex flex-col gap-1.5"}>
+      <label
+        id="funding-source-selector-label"
+        htmlFor="funding-source-selector"
+        className={
+          compact
+            ? "block text-[12px] font-semibold text-sub leading-none"
+            : "block text-[15px] font-semibold text-ink"
+        }
+      >
+        Funding source
+      </label>
       <Select
         id="funding-source-selector"
-        aria-label={compact ? "Funding source" : undefined}
-        aria-labelledby={compact ? undefined : "funding-source-selector-label"}
+        aria-labelledby="funding-source-selector-label"
         value={selectedId ?? ALL}
         disabled={pending}
         compact={compact}
