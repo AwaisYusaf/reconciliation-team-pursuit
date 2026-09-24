@@ -5,6 +5,7 @@ import { GRADIENT_TEXT } from "@/src/components/ui/surfaces";
 import { APP_NAME } from "@/src/domain/strings";
 
 import { type Faq, FaqList, LandingNav, type NavLink, Reveal } from "./landing-islands";
+import { planPrice, PLANS } from "./plans";
 
 /** Kept as the name the 5-step flow section already reads. */
 const FlowStep = Reveal;
@@ -66,7 +67,7 @@ const FAQS: readonly Faq[] = [
   {
     question: `Can ${APP_NAME} handle multiple grants or funding sources?`,
     answer:
-      "Yes. Each funding source keeps its own budget, guidelines, expenses, documentation, and requirements, while leadership keeps visibility across the whole organization. Multiple contracts are supported on the Reconciliation + AI plan ($497/month), on top of everything in the single-contract Reconciliation plan ($297/month).",
+      `Yes. Each funding source keeps its own budget, guidelines, expenses, documentation, and requirements, while leadership keeps visibility across the whole organization. Multiple contracts are supported on the ${PLANS.reconciliationAi.name} plan (${planPrice("reconciliationAi")}/month), on top of everything in the single-contract ${PLANS.reconciliation.name} plan (${planPrice("reconciliation")}/month).`,
   },
   {
     question: "How long does it take to generate a month-end filing packet?",
@@ -801,7 +802,7 @@ Receipt + Bank Proof
 </li>
 </ul>
 <div className="pt-2">
-<span className="text-xs text-primary font-semibold italic">Included in the Multi-Contract &amp; AI Tier ($497/mo)</span>
+<span className="text-xs text-primary font-semibold italic">Included in the Multi-Contract &amp; AI Tier ({planPrice("reconciliationAi")}/mo)</span>
 </div>
 </div>
 
@@ -974,14 +975,14 @@ Receipt + Bank Proof
 <div className="glass-tile bg-lp-surface-container-lowest/60 backdrop-blur-xl rounded-3xl p-8 border-2 border-primary/45 shadow-warm-card hover:shadow-warm-card-hover flex flex-col justify-between ring-1 ring-inset ring-white/30">
 <div>
 <div className="flex justify-between items-center mb-4">
-<h3 className="text-2xl font-semibold text-on-surface font-lp-serif">Reconciliation</h3>
+<h3 className="text-2xl font-semibold text-on-surface font-lp-serif">{PLANS.reconciliation.name}</h3>
 <span className="text-xs font-semibold px-3 py-1 rounded-full bg-lp-surface-container text-on-surface-variant border border-outline-variant/40">
                 Single Contract
               </span>
 </div>
 <div className="mb-6">
 <div className="flex items-baseline gap-2">
-<span className="text-4xl sm:text-5xl font-semibold text-on-surface font-lp-serif">$297</span>
+<span className="text-4xl sm:text-5xl font-semibold text-on-surface font-lp-serif">{planPrice("reconciliation")}</span>
 <span className="text-sm font-medium text-on-surface-variant">/ month</span>
 </div>
 <span className="text-xs text-on-surface-variant font-medium mt-1 block">Full core ledger &amp; packet generation</span>
@@ -1027,14 +1028,14 @@ Receipt + Bank Proof
           </div>
 <div>
 <div className="flex justify-between items-center mb-4">
-<h3 className="text-2xl font-semibold text-on-surface font-lp-serif">Reconciliation + AI</h3>
+<h3 className="text-2xl font-semibold text-on-surface font-lp-serif">{PLANS.reconciliationAi.name}</h3>
 <span className="text-xs font-semibold px-3 py-1 rounded-full bg-brand-100 text-brand-900 border border-brand-200">
                 All Features + AI
               </span>
 </div>
 <div className="mb-6">
 <div className="flex items-baseline gap-2">
-<span className={`text-4xl sm:text-5xl font-semibold font-lp-serif ${GRADIENT_TEXT}`}>$497</span>
+<span className={`text-4xl sm:text-5xl font-semibold font-lp-serif ${GRADIENT_TEXT}`}>{planPrice("reconciliationAi")}</span>
 <span className="text-sm font-medium text-on-surface-variant">/ month</span>
 </div>
 <span className="text-xs text-primary font-semibold mt-1 block">Full Suite + Executive AI Narrative Generator</span>
