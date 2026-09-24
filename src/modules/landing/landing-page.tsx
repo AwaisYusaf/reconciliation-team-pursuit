@@ -210,12 +210,25 @@ export function LandingPage() {
 <span className="w-2 h-2 rounded-full bg-brand-700 animate-pulse"></span> Track &middot; Document &middot; Comply
         </div>
 
-<h1 className="text-3xl sm:text-4xl lg:text-4xl xl:text-5xl font-semibold tracking-tight text-on-surface font-lp-serif leading-[1.15] mb-5">
+{/* One step down at every width. At the old size the two lines ate the top of the hero and
+          pushed the buttons under the fold on a laptop, and the headline is a claim, not a
+          banner. The `leading` stays tight so the two lines still read as one thought. */}
+        <h1 className="text-2xl sm:text-3xl lg:text-3xl xl:text-4xl font-semibold tracking-tight text-on-surface font-lp-serif leading-[1.15] mb-4">
           Getting funded is one thing.{" "}<br /><span className="text-primary italic font-lp-serif">Staying funded means staying ready.<span className="align-super text-[0.28em] not-italic">&trade;</span></span>
 </h1>
 
-<p className="text-xs sm:text-sm lg:text-base text-on-surface-variant leading-relaxed max-w-2xl mb-7">
-          {APP_NAME} is an AI powered funding accountability and readiness platform that helps organizations track expenses, organize documentation, reconcile funding, maintain compliance, and stay prepared throughout the entire funding lifecycle. From budgets and expenses to documentation, reporting, program narratives, reconciliation, and audit readiness, your team gets a 360&deg; view of the funding you&apos;re responsible for managing.
+{/*
+          What it is, then what you do with it. The client's paragraph said both three times
+          over — expenses, documentation, reconciliation and compliance, then budgets,
+          expenses, documentation, reporting, reconciliation and audit readiness, then a
+          360-degree view of the same — so it ran six lines under the headline and pushed the
+          buttons down the page. Every term here is still the client's own; the restatements
+          are what went. `max-w-xl` holds it to roughly two lines beside the screenshot.
+        */}
+        <p className="text-sm lg:text-base text-on-surface-variant leading-relaxed max-w-xl mb-6">
+          {APP_NAME} is an AI powered funding accountability and readiness platform. Track
+          expenses, organize documentation, reconcile funding and stay audit ready across the
+          whole funding lifecycle.
         </p>
 
 <div className="flex flex-wrap items-center gap-4">
@@ -837,8 +850,19 @@ Receipt + Bank Proof
 <h2 className="text-3xl sm:text-4xl lg:text-5xl font-semibold tracking-tight text-on-surface font-lp-serif mb-4">
           Don&apos;t just track the money. Track the story behind it.
         </h2>
-<p className="text-base sm:text-lg text-on-surface-variant leading-relaxed">
-          A financial report tells you what was spent. Funders and organizational leaders often need to understand something else: what did that funding actually support? {APP_NAME} connects financial activity with the work happening behind those expenses. As your team documents activity throughout the month, AI helps organize that information into a monthly funding and program summary, creating an ongoing narrative of the work performed, expenses incurred, and activity supported by the funding. So at the end of the month, you&apos;re not trying to reconstruct the story from memory. That means better internal records, better bookkeeping support, stronger reporting preparation, and a clearer picture of how funding is actually being used.
+{/*
+          Four sentences from six, and roughly a third of the characters. The original made its
+          point in the first two and then made it three more times: an ongoing narrative of the
+          work performed, then not reconstructing from memory, then better records, better
+          bookkeeping support, stronger reporting preparation and a clearer picture. Under a
+          heading that already says "track the story behind it", the restatements were the
+          whole reason this ran eight lines. The client's own terms all survive.
+        */}
+        <p className="text-base text-on-surface-variant leading-relaxed">
+          A financial report tells you what was spent. Funders want to know what it supported.
+          {" "}{APP_NAME} connects the two: as your team documents activity through the month, AI
+          turns it into a monthly funding and program summary, so at the end of the month you
+          are not reconstructing the story from memory.
         </p>
 </div>
 <div className="glass-tile bg-lp-surface-container-lowest/60 backdrop-blur-xl border-2 border-primary/45 rounded-3xl p-6 sm:p-10 shadow-warm-glow ring-1 ring-inset ring-white/30">
