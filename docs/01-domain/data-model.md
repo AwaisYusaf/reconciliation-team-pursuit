@@ -45,6 +45,7 @@ Multi-user per org (D-85). Org creation provisions one `admin`; admins create `m
 | password_hash | text | argon2id; password minimum 12 chars |
 | role | user_role enum | `admin` \| `manager`. No column default — a forgotten role is a type error, not a silent admin (D-85) |
 | last_sign_in_at | timestamptz null | Written from ship date on (Phase 9); null on every account that predates it |
+| deactivated_at | timestamptz null | Set when an admin revokes a manager's access, null while the account is active (migration `0038`, D-120). Revoking deletes the person's sessions in the same transaction, and `resolveSession` filters on this column too, so no cookie made before or after keeps working. Sign-in refuses a revoked account only after the password is checked, so the form never reveals whether an address still has access. Reinstating clears it; the account keeps its own history rather than returning as a new person |
 
 ### sessions (custom auth — D-06, architecture §Auth)
 | Field | Type | Notes |

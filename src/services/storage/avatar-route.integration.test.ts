@@ -356,6 +356,25 @@ describe.skipIf(!hasDatabase)("profile photo route (integration, D-117)", async 
       await expect(storage().get(first!)).rejects.toThrow();
     });
 
+    it("two uploads racing each other leave exactly one stored photo", async () => {
+      signIn(aliceId);
+      const { readdir } = await import("node:fs/promises");
+      const dir = path.join(process.cwd(), ".storage", "org", orgId, "users", aliceId, "avatar");
+
+      // The org upload lock (and the row lock inside it) makes each wait for the one before,
+      // then replace it. With neither, all three read the same previous key and two of the new
+      // objects are left with nothing naming them; this fails every time that way.
+      const results = await Promise.all([
+        POST(upload(await phonePhoto(), "image/jpeg")),
+        POST(upload(await phonePhoto(), "image/jpeg")),
+        POST(upload(await phonePhoto(), "image/jpeg")),
+      ]);
+      expect(results.map((r) => r.status)).toEqual([200, 200, 200]);
+
+      const key = await avatarKeyOf(aliceId);
+      expect(await readdir(dir)).toEqual([key!.slice(key!.lastIndexOf("/") + 1)]);
+    });
+
     it("404s rather than serving a broken image when the object is gone", async () => {
       signIn(aliceId);
       await POST(upload(PNG_1X1, "image/png"));

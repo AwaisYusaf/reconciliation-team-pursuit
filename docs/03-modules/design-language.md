@@ -1,6 +1,6 @@
 # Design Language & Claude Design Preamble
 
-The visual system comes from the client-approved prototype. Every module's UI must read as one product; since each module is generated in Claude Design from a separate prompt, **always paste the preamble below first**, then the module prompt.
+The visual system comes from the client-approved prototype, as restyled by the client's redesign (PR #21, D-121). Every module's UI must read as one product; since each module is generated in Claude Design from a separate prompt, **always paste the preamble below first**, then the module prompt.
 
 Final prompt = `[PREAMBLE]` + blank line + `[module file → "Claude Design prompt" section]`.
 
@@ -8,21 +8,27 @@ Final prompt = `[PREAMBLE]` + blank line + `[module file → "Claude Design prom
 
 | Token | Value | Use |
 |---|---|---|
-| paper | `#FBF9F5` | App background |
-| surface | `#FFFFFF` | Cards, tables, header bar |
+| paper | `#F4F4F3` | App background: a near-neutral grey, so white cards read as raised (was `#FBF9F5`) |
+| surface | `#FFFFFF` | Cards, tables, menus |
 | ink | `#211B16` | Primary text |
 | sub | `#5B5147` | Secondary text, labels |
 | line | `#D8D0C4` | Borders, dividers |
-| accent | `#5B3A29` | Primary buttons, active nav, links |
-| accent-dark | `#3E2719` | Hover |
+| accent | `#5B3A29` | Primary buttons, links, the active tab's text |
+| accent-dark | `#3E2719` | Hover; the nav pill; the dark end of every gradient |
+| plus-light | `#94603F` | The light end of every gradient (white text clears 5.3:1 on it) |
+| primary-fixed | `#FFDBCB` | Focus ring inside a dark container (`surface-dark`) |
 | danger | `#8A2A22` / bg `#F6E7E4` | Errors, missing docs, negative/low budget |
 | success | `#2F4F3E` | Added/complete states |
 | doc-yellow | `#FFFF00` | ONLY inside document-preview tables (mimics the real submission docs) |
 | section-bg | `#F1ECE2` | Table section header rows |
 | autofill | `#F3E9DD` | Autofilled field flash |
-| Headings | Georgia serif | See the responsive scale below |
-| Body | Arial/Helvetica 15–16px | Tables 16px, column headers 13–14px uppercase letterspaced |
-| Controls | min-height 44px (buttons 48px), radius 3–4px | Primary: accent bg/white text; Secondary: white bg/accent border+text |
+| Type | Plus Jakarta Sans, everything on screen | Headings keep the `font-serif` role name (Georgia is only the fallback). Documents and their previews use `--font-document` |
+| Headings | Bold; page titles gradient-set (`GRADIENT_TEXT`) | See the responsive scale below |
+| Body | 15–16px | Tables 15–16px, column headers 13px uppercase letterspaced in white on the header band |
+| Cards | white, 1px `line` border, radius 10px | `Card`; soft shadow only on raised elements (menus, the nav pill) |
+| Table header | `accent-dark` → `plus-light` gradient band, white text | Set once on the header row so it runs as one band across every column |
+| Controls | min-height 44px (buttons 48px), radius 3px | Primary: accent bg/white text; Secondary: white bg/accent border+text. Header selectors are compact pills |
+| Focus | 2px ring, `accent`; `primary-fixed` inside `surface-dark` | Always visible, on every surface |
 
 ## Responsive scale
 
@@ -51,8 +57,10 @@ utilities (see `src/lib/cn.ts`), so a default would collide with callers that se
 
 Layout rules that follow from the scale:
 
-- The primary nav is one horizontally-scrolling row below `lg`, never wrapped. Wrapping put
-  nine links on four rows and made the header two thirds of a phone screen.
+- The primary nav is one dark pill of tabs from `xl`, the active tab reversed out in white. Below
+  `xl` it is a single menu button naming the current screen, which opens the full list; it is
+  never a wrapped or scrolling row of nine tabs. The header has no bar of its own: the mark,
+  the nav, the month and funding-source pills, and the account menu sit on the page.
 - A screen's title, subtext and controls go through `PageHeader`. Putting a control in a
   `justify-between` row with the title makes the subtext wrap below it on a phone, orphaning
   it from the heading it describes.
@@ -96,42 +104,43 @@ non-technical, and some of these words reach the City on signed documents.
 ```
 DESIGN SYSTEM — apply to everything below.
 
-Product: "Stay Funded 360" — a calm, serious internal tool for a small nonprofit
-that prepares monthly grant reimbursement packets for city government reviewers. The aesthetic
-is quiet, paper-like, government-document adjacent. No gradients, no glassmorphism, no
-illustrations, no emoji, no rounded-bubble SaaS styling. It should feel like well-organized
-paperwork: trustworthy, legible, unhurried.
+Product: "Stay Funded 360" — a calm, serious tool for a small nonprofit that prepares
+monthly grant reimbursement packets for city government reviewers. The aesthetic is warm and
+layered but restrained: white cards raised off a light grey page, deep browns, and a
+brown-to-caramel gradient used only in the named places below. No glassmorphism, no
+illustrations, no emoji. It should feel trustworthy, legible and unhurried.
 
-Palette: page background #FBF9F5 (warm paper). Cards/tables/header: #FFFFFF with 1px #D8D0C4
-borders, border-radius 3-4px, no shadows (or a bare minimum). Primary text #211B16, secondary
-#5B5147. Accent (primary buttons, active nav underline, links): deep brown #5B3A29, hover
-#3E2719. Danger/red #8A2A22 with soft background #F6E7E4. Success green #2F4F3E. Pure yellow
-#FFFF00 is reserved exclusively for cells inside document previews that mimic the real
-submission documents (header rows and total cells) — never use it for UI chrome.
+Palette: page background #F4F4F3. Cards: #FFFFFF with 1px #D8D0C4 borders, radius 10px.
+Primary text #211B16, secondary #5B5147. Accent (primary buttons, links): deep brown #5B3A29,
+hover #3E2719. Gradient: #3E2719 to #94603F, used for table header rows (one band across the
+row, white uppercase text), page titles (as text), and a highlighted stat tile — nowhere else.
+Danger/red #8A2A22 with soft background #F6E7E4. Success green #2F4F3E. Pure yellow #FFFF00 is
+reserved exclusively for cells inside document previews that mimic the real submission
+documents (header rows and total cells) — never use it for UI chrome.
 
-Typography: headings in Georgia (serif) — page titles 28px, section titles 20px. Everything
-else Arial/Helvetica — body 15-16px, table text 16px, column headers 13-14px uppercase with
-slight letter-spacing in #5B5147. Money always right-aligned, tabular numerals, formatted
-$1,234.56.
+Typography: Plus Jakarta Sans throughout. Page titles 28px bold, section titles 20px bold,
+body 15-16px, table text 15-16px, column headers 13px uppercase with slight letter-spacing.
+Money always right-aligned, tabular numerals, formatted $1,234.56. Document previews use the
+document's own font (Aptos/Calibri), not the app's.
 
 Components: buttons min-height 48px (primary: brown bg, white bold text; secondary: white bg,
 1px brown border, brown text; quiet text-links in brown, underlined). Inputs/selects: white,
 1px #D8D0C4 border, 12-14px padding, 16px text, min-height 44px, 3px radius, visible labels
-above in 15px semibold. Tables: white background, header row with 2px solid #211B16 bottom
-border, 1px #D8D0C4 row dividers, 14-16px cell padding. Errors: #8A2A22 text on #F6E7E4
+above in 15px semibold. Tables: white card, gradient header row with white text, 1px #D8D0C4
+row dividers, faint alternate-row banding, 12-16px cell padding. Errors: #8A2A22 text on #F6E7E4
 panels with a 2px #8A2A22 border for blocking states. Empty states: dashed 1px #D8D0C4 box
 with centered secondary text.
 
-App chrome (when the prompt includes the shell): white header bar with 1px bottom border —
-left: organisation name in Georgia 24px bold with "Stay Funded 360" in 15px
-#5B5147 beneath; right: quiet "Sign out" secondary button. Below it a "Month" labeled select
-(200px) and a horizontal nav of text tabs: Dashboard, Add Expense, Expenses, Cover Sheets,
-Recurring, Month-End Packet, Contract Summary, Line Items, Settings — active tab: bold #211B16
-with 3px #5B3A29 underline; inactive: #5B5147. Content area: max-width 1100px, centered,
-32px top padding, 24px side padding.
+App chrome (when the prompt includes the shell): no header bar; on the page itself — left:
+the Stay Funded 360 mark; then the nav, a dark #3E2719 pill of tabs: Dashboard, Add Expense,
+Expenses, Cover Sheets, Recurring, Month-End Packet, Contract Summary, Line Items, Settings —
+active tab: white pill with bold #5B3A29 text; inactive: white text at 75%. Right: "Month" and
+"Funding source" as compact white pill selects, then a round avatar opening the account menu
+(Your profile, Sign out). Content area: max-width 1220px, centered, 24px side padding.
 
 Layout is desktop-first but must degrade gracefully to a 390px phone (tables scroll
-horizontally inside their card; nav wraps; touch targets ≥44px). Use realistic data from the
+horizontally inside their card; below 1280px the nav becomes one menu button naming the
+current screen; touch targets ≥44px). Use realistic data from the
 prompt — never lorem ipsum. Interactions should work (tabs switch, forms validate, buttons
 change state) so the client can click through the mockup.
 ```
