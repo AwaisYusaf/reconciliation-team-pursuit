@@ -1,100 +1,23 @@
-"use client";
-
 import Image from "next/image";
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
 
 import { GRADIENT_TEXT } from "@/src/components/ui/surfaces";
 import { APP_NAME } from "@/src/domain/strings";
 
-/**
- * Scroll-triggered fade-and-rise, shared by every card grid on the page.
- *
- * Animates only `opacity`/`transform` — both are compositor-only properties the browser can
- * animate without re-running layout or paint, so this stays smooth even with a dozen of them
- * on screen at once. `once: true` (via `observer.disconnect()`) means each element pays this
- * cost exactly once per page load, not on every scroll back into view. `delayMs` staggers a
- * grid's cards a beat apart instead of having them all pop in on the same frame; `prefers-
- * reduced-motion` (globals.css, `.lp` scope) collapses the transition to instant for anyone
- * who's asked their OS for less motion, which is both an accessibility need and the correct
- * behavior for reduced-motion here — no animation to skip means no work to skip.
- */
-function Reveal({ children, delayMs = 0 }: { children: React.ReactNode; delayMs?: number }) {
-  const ref = useRef<HTMLDivElement>(null);
-  const [visible, setVisible] = useState(false);
-
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting) {
-          setVisible(true);
-          observer.disconnect();
-        }
-      },
-      { threshold: 0.2, rootMargin: "0px 0px -10% 0px" }
-    );
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, []);
-
-  return (
-    <div
-      ref={ref}
-      style={{ transitionDelay: visible ? `${delayMs}ms` : "0ms" }}
-      className={`transition-all duration-700 ease-out will-change-transform ${
-        visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"
-      }`}
-    >
-      {children}
-    </div>
-  );
-}
+import { type Faq, FaqList, LandingNav, type NavLink, Reveal } from "./landing-islands";
 
 /** Kept as the name the 5-step flow section already reads. */
 const FlowStep = Reveal;
 
-const NAV_LINKS = [
+const NAV_LINKS: readonly NavLink[] = [
   { id: "problem", label: "The Problem" },
   { id: "system-features", label: "One System" },
   { id: "ai-narratives", label: "The Story" },
   { id: "pricing", label: "Pricing" },
   { id: "faq", label: "FAQ" },
 ];
-const NAV_SECTION_IDS = NAV_LINKS.map((link) => link.id);
 
-/**
- * Scroll-spy for the header nav: tracks which section is under a thin band near the top
- * of the viewport (below the sticky header) so the matching link can be highlighted.
- */
-function useActiveSection(ids: string[]) {
-  const [activeId, setActiveId] = useState<string | null>(null);
-
-  useEffect(() => {
-    const elements = ids
-      .map((id) => document.getElementById(id))
-      .filter((el): el is HTMLElement => el !== null);
-    if (elements.length === 0) return;
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        const visible = entries.filter((entry) => entry.isIntersecting);
-        if (visible.length > 0) {
-          setActiveId(visible[0].target.id);
-        }
-      },
-      { rootMargin: "-96px 0px -60% 0px", threshold: 0 }
-    );
-
-    elements.forEach((el) => observer.observe(el));
-    return () => observer.disconnect();
-  }, [ids]);
-
-  return activeId;
-}
-
-const FAQS = [
+const FAQS: readonly Faq[] = [
   {
     question: `What is ${APP_NAME}?`,
     answer:
@@ -158,8 +81,6 @@ const FAQS = [
 ];
 
 export function LandingPage() {
-  const [openFaq, setOpenFaq] = useState(0);
-  const activeSection = useActiveSection(NAV_SECTION_IDS);
   return (
     <>
 <header className="sticky top-0 z-50 transition-all duration-200 px-4 sm:px-6 py-3">
@@ -175,17 +96,7 @@ export function LandingPage() {
 <Image src="/brand/stayfunded-wordmark.png" alt={APP_NAME} width={720} height={84} className="h-[15px]" style={{ width: "auto" }} priority />
 </Link>
 
-<nav className="hidden lg:flex items-center space-x-6 text-xs font-medium text-[#edbca5]/85">
-{NAV_LINKS.map((link) => (
-<a
-  key={link.id}
-  href={`#${link.id}`}
-  className={`transition-colors ${activeSection === link.id ? "text-white font-semibold" : "hover:text-white"}`}
->
-  {link.label}
-</a>
-))}
-</nav>
+<LandingNav links={NAV_LINKS} />
 
 <div className="flex items-center space-x-3 sm:space-x-4">
 <a
@@ -1202,58 +1113,7 @@ Receipt + Bank Proof
           Straight answers for grant managers evaluating {APP_NAME} for their team.
         </p>
 </div>
-<div className="lg:col-span-8 flex flex-col gap-3">
-{FAQS.map((faq, index) => {
-  const isOpen = openFaq === index;
-  return (
-    <div
-      key={faq.question}
-      className={
-        isOpen
-          ? "bg-lp-surface-container-lowest border border-primary/30 rounded-2xl shadow-warm-card px-6 py-5 transition-[background-color,border-color,box-shadow,transform] duration-300 ease-out"
-          : "bg-lp-surface-container-low rounded-2xl px-6 py-4 transition-[background-color,border-color,box-shadow,transform] duration-300 ease-out hover:bg-lp-surface-container hover:-translate-y-0.5"
-      }
-    >
-      <button
-        type="button"
-        className="w-full flex items-center justify-between gap-4 text-left cursor-pointer"
-        aria-expanded={isOpen}
-        onClick={() => setOpenFaq(isOpen ? -1 : index)}
-      >
-        <span
-          className={
-            isOpen
-              ? "text-base sm:text-lg font-semibold text-on-surface font-lp-serif transition-colors duration-300"
-              : "text-sm sm:text-base font-medium text-on-surface-variant font-lp-serif transition-colors duration-300"
-          }
-        >
-          {faq.question}
-        </span>
-        <span
-          className={
-            isOpen
-              ? "flex-shrink-0 w-7 h-7 rounded-full bg-primary text-white flex items-center justify-center rotate-45 transition-transform transition-colors duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]"
-              : "flex-shrink-0 w-7 h-7 rounded-full bg-lp-surface-container text-on-surface-variant flex items-center justify-center rotate-0 transition-transform transition-colors duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]"
-          }
-        >
-          <svg viewBox="0 0 12 12" aria-hidden="true" className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M6 1v10M1 6h10" /></svg>
-        </span>
-      </button>
-      <div
-        className={
-          isOpen
-            ? "grid grid-rows-[1fr] opacity-100 transition-[grid-template-rows,opacity] duration-300 ease-out"
-            : "grid grid-rows-[0fr] opacity-0 transition-[grid-template-rows,opacity] duration-300 ease-out"
-        }
-      >
-        <p className="text-sm text-on-surface-variant leading-relaxed overflow-hidden min-h-0 pt-3">
-          {faq.answer}
-        </p>
-      </div>
-    </div>
-  );
-})}
-</div>
+<FaqList faqs={FAQS} />
 </div>
 </div>
 </section>
