@@ -20,6 +20,7 @@ import { emailInUse } from "@/src/modules/auth/emails";
 import { generatePassword, hashPassword, validatePasswordPolicy } from "@/src/services/auth/passwords";
 import { revokeOtherSessions } from "@/src/services/auth/session";
 import { consume } from "@/src/services/rate-limit";
+import { deleteStoredObjects } from "@/src/services/storage/documents";
 
 const emailSchema = z.string().trim().max(320).email();
 
@@ -245,7 +246,12 @@ async function requireManagerTarget(userId: string) {
   if (!isUuid(userId)) return { ok: false as const, denied: fail(NO_SUCH_USER) };
 
   const [target] = await db
-    .select({ id: users.id, role: users.role, deactivatedAt: users.deactivatedAt })
+    .select({
+      id: users.id,
+      role: users.role,
+      deactivatedAt: users.deactivatedAt,
+      avatarKey: users.avatarKey,
+    })
     .from(users)
     .where(and(eq(users.id, userId), eq(users.orgId, current.orgId)))
     .limit(1);
@@ -307,7 +313,7 @@ export async function deleteUserAccountAction(userId: string): Promise<ActionRes
   const guard = await requireManagerTarget(userId);
   if (!guard.ok) return guard.denied;
 
-  return db.transaction(async (tx) => {
+  const result = await db.transaction(async (tx) => {
     const [{ count }] = await tx
       .select({ count: sql<number>`count(*)::int` })
       .from(expenseAuditEvents)
@@ -329,7 +335,17 @@ export async function deleteUserAccountAction(userId: string): Promise<ActionRes
       if (isForeignKeyViolation(error)) return fail(HAS_HISTORY);
       throw error;
     }
-    revalidatePath("/r/settings/users");
     return ok();
   });
+  if (!result.ok) return result;
+
+  // The row was the only pointer to the photo. Removed after the delete has committed, never
+  // before, so a refused delete keeps its photo; a failure here leaves one small object behind
+  // rather than a person's face with nothing that can ever find it again (D-119).
+  if (guard.target.avatarKey) {
+    await deleteStoredObjects(guard.target.avatarKey).catch(() => {});
+  }
+
+  revalidatePath("/r/settings/users");
+  return ok();
 }

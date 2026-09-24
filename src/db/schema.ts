@@ -203,6 +203,11 @@ export const users = pgTable(
      * picture out of the browser cache after a change.
      */
     avatarKey: text("avatar_key"),
+    /**
+     * Stored size of that photo, 0 when none is set (D-119). Counted by `orgStorageBytes`, so
+     * the 5 GB cap and the staff usage figure see profile photos like every other object.
+     */
+    avatarBytes: integer("avatar_bytes").notNull().default(0),
     /** argon2id; password minimum 12 chars (D-06/D-24). */
     passwordHash: text("password_hash").notNull(),
     /** admin = the org-creating account and anyone it promotes; manager = expenses/grants only.
