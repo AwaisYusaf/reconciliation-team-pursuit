@@ -84,38 +84,51 @@
   /* Cover sheet previews match the generated Word document's theme font. */
   --font-document: Aptos, Calibri, "Segoe UI", Arial, sans-serif;
 
-  /* --- Landing page (grant-ledger) tokens below --- */
-  /* `surface*` renamed to `lp-surface*` because this destination's own tokens above
-     already own the bare `surface` name; `on-surface*`/`outline*` don't collide and keep
-     their original names. */
-  --color-primary: #5b3a29;
-  --color-primary-container: #422415;
-  --color-on-primary: #ffffff;
+  /* --- Landing page tokens below --- */
+  /*
+   * The landing page is the same product as the app, so it is now painted from the app's own
+   * palette rather than a warm cream one of its own. These names stay — the page's 1,259 lines
+   * reference them nearly 700 times — and each one is repointed at the token the app already
+   * uses, so the two cannot drift apart again. `lp-surface*` keeps its prefix because the app's
+   * tokens above already own the bare `surface` name.
+   *
+   * What changed in substance: the page background moves from a peach cream (#FFF8F5) to the
+   * app's near-neutral paper, and the surfaces stacked on it become the app's white and its
+   * warm `section` tint. The browns were already the app's accent, so they are unchanged.
+   */
+  --color-primary: var(--color-accent);
+  --color-primary-container: var(--color-accent-dark);
+  --color-on-primary: var(--color-surface);
+  /* The two light browns the page uses on dark panels. Kept as literals: nothing in the app's
+     palette is a tint this light, and inventing app tokens for a marketing gradient would put
+     colours in the design system that no product screen ever uses. */
   --color-primary-fixed: #ffdbcb;
   --color-primary-fixed-dim: #edbca5;
   --color-on-primary-container: #d3a48e;
 
-  --color-secondary: #456553;
-  --color-secondary-container: #c4e8d1;
-  --color-on-secondary: #ffffff;
+  /* The page's two supporting hues, now the app's own success and danger. */
+  --color-secondary: var(--color-success);
+  --color-secondary-container: var(--color-success-bg);
+  --color-on-secondary: var(--color-surface);
 
-  --color-tertiary: #7c2019;
-  --color-tertiary-container: #ffdad5;
-  --color-on-tertiary: #ffffff;
+  --color-tertiary: var(--color-danger);
+  --color-tertiary-container: var(--color-danger-bg);
+  --color-on-tertiary: var(--color-surface);
 
-  --color-lp-surface: #fff8f5;
-  --color-lp-surface-dim: #e4d8cf;
-  --color-lp-surface-bright: #fff8f5;
-  --color-lp-surface-container-lowest: #ffffff;
-  --color-lp-surface-container-low: #fef1e9;
-  --color-lp-surface-container: #f8ebe3;
-  --color-lp-surface-container-high: #f3e6dd;
-  --color-lp-surface-container-highest: #ede0d8;
+  --color-lp-surface: var(--color-paper);
+  --color-lp-surface-dim: var(--color-section);
+  --color-lp-surface-bright: var(--color-surface);
+  --color-lp-surface-container-lowest: var(--color-surface);
+  /* One step off white, mixed rather than picked, so it tracks `paper` if that ever moves. */
+  --color-lp-surface-container-low: color-mix(in srgb, var(--color-paper) 55%, var(--color-surface));
+  --color-lp-surface-container: var(--color-section);
+  --color-lp-surface-container-high: color-mix(in srgb, var(--color-section) 70%, var(--color-line));
+  --color-lp-surface-container-highest: color-mix(in srgb, var(--color-section) 45%, var(--color-line));
 
-  --color-on-surface: #201a15;
-  --color-on-surface-variant: #50443f;
-  --color-outline: #82746e;
-  --color-outline-variant: #d4c3bc;
+  --color-on-surface: var(--color-ink);
+  --color-on-surface-variant: var(--color-sub);
+  --color-outline: var(--color-sub);
+  --color-outline-variant: var(--color-line);
 
   --color-brand-50: #fdf7f3;
   --color-brand-100: #faeee6;
@@ -142,8 +155,11 @@
   --color-bronze-600: #835c27;
   --color-bronze-700: #67461c;
 
-  --font-lp-serif: var(--font-domine), Georgia, serif;
-  --font-lp-sans: var(--font-public-sans), Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  /* The app's typeface here too. The names still say serif and sans because `.lp`'s own CSS
+     addresses them by those names; both now resolve to Plus Jakarta Sans, which is what makes
+     the marketing page and the product read as one thing. */
+  --font-lp-serif: var(--font-jakarta), Georgia, serif;
+  --font-lp-sans: var(--font-jakarta), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   /* Overrides Tailwind's built-in --font-mono default, but the dashboard uses the
      `font-mono` utility zero times (grep-verified), so this is inert outside /. */
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
