@@ -146,7 +146,7 @@ export default async function PacketPage() {
       )}
 
       {readiness.totalRecords === 0 && (
-        <p className="text-[15px] text-muted mb-7">This month has no expenses.</p>
+        <p className="text-[15px] text-sub mb-7">This month has no expenses.</p>
       )}
 
       {/*
@@ -234,7 +234,7 @@ export default async function PacketPage() {
         */}
         <Card className={`${CARD_PADDING} xl:col-start-2 xl:row-start-1`}>
           <SectionTitle className="mb-1">Packet contents</SectionTitle>
-          <p className="text-sm text-muted mb-4">In the order the funder will read them.</p>
+          <p className="text-sm text-sub mb-4">In the order the funder will read them.</p>
 
           <ol className="flex flex-col divide-y divide-line border-t border-line">
             {/*
@@ -263,7 +263,7 @@ export default async function PacketPage() {
               {readiness.totalPages} pages
             </span>
           </div>
-          <p className="text-[13px] text-muted mt-2">
+          <p className="text-[13px] text-sub mt-2">
             Page counts are estimated within about two pages of the final document.
           </p>
 
@@ -332,7 +332,7 @@ function ContentsRow({
       <span className="text-[15px] text-ink">
         {index}. {label}
       </span>
-      <span className="text-[15px] text-muted tabular-nums whitespace-nowrap">
+      <span className="text-[15px] text-sub tabular-nums whitespace-nowrap">
         {pages} {pages === 1 ? "page" : "pages"}
       </span>
     </li>

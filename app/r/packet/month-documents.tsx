@@ -108,7 +108,7 @@ export function MonthDocuments({
     // the card short of its own column's edge.
     <Card className={CARD_PADDING}>
       <SectionTitle className="mb-1">Month documents</SectionTitle>
-      <p className="text-sm text-muted mb-4">
+      <p className="text-sm text-sub mb-4">
         Bank statements, timesheets and the fiduciary invoice for {monthLabel}. These are
         optional and never block a download.
       </p>
@@ -118,12 +118,12 @@ export function MonthDocuments({
       )}
 
       {grouped.length === 0 ? (
-        <p className="text-sm text-muted mb-5">Nothing attached yet.</p>
+        <p className="text-sm text-sub mb-5">Nothing attached yet.</p>
       ) : (
         <div className="flex flex-col gap-4 mb-5">
           {grouped.map((group) => (
             <div key={group.value}>
-              <div className="text-[13px] font-bold uppercase tracking-[0.06em] text-muted mb-1.5">
+              <div className="text-[13px] font-bold uppercase tracking-[0.06em] text-sub mb-1.5">
                 {group.label}
               </div>
               <ul className="flex flex-col divide-y divide-line border border-line rounded-md">
@@ -136,7 +136,7 @@ export function MonthDocuments({
                       {document.title ? `${document.title} · ` : ""}
                       {document.filename}
                       {document.pageCount ? (
-                        <span className="text-muted">
+                        <span className="text-sub">
                           {` · ${document.pageCount} ${document.pageCount === 1 ? "page" : "pages"}`}
                         </span>
                       ) : null}
@@ -168,7 +168,7 @@ export function MonthDocuments({
       )}
 
       {readOnly ? (
-        <p className="text-sm text-muted border-t border-line pt-4">
+        <p className="text-sm text-sub border-t border-line pt-4">
           {lockedMessage ??
             "This funding source is archived. Its documents stay available to open and download, but nothing can be added or removed. Unarchive it in Settings to change them."}
         </p>
@@ -183,7 +183,7 @@ export function MonthDocuments({
         <input type="hidden" name="fundingSourceId" value={fundingSourceId} />
 
         <div className="flex flex-col gap-1.5">
-          <label id="month-doc-category-label" htmlFor="month-doc-category" className="text-[13px] font-medium text-muted">
+          <label id="month-doc-category-label" htmlFor="month-doc-category" className="text-[13px] font-medium text-sub">
             Category
           </label>
           <Select
@@ -204,7 +204,7 @@ export function MonthDocuments({
         </div>
 
         <label className="flex flex-col gap-1.5">
-          <span className="text-[13px] font-medium text-muted">Title (optional)</span>
+          <span className="text-[13px] font-medium text-sub">Title (optional)</span>
           <input
             name="title"
             type="text"
@@ -215,7 +215,7 @@ export function MonthDocuments({
         </label>
 
         <div className="flex flex-col gap-1.5">
-          <label htmlFor="month-doc-file" className="text-[13px] font-medium text-muted">
+          <label htmlFor="month-doc-file" className="text-[13px] font-medium text-sub">
             File
           </label>
           {/* Not wrapped in the label above: the label's implicit click-to-activate would
@@ -247,7 +247,7 @@ export function MonthDocuments({
             >
               Choose file
             </Button>
-            <span className="text-[15px] text-muted truncate max-w-[220px]">
+            <span className="text-[15px] text-sub truncate max-w-[220px]">
               {uploading ? "Uploading…" : (fileName ?? "No file chosen")}
             </span>
           </div>

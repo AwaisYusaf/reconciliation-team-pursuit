@@ -226,7 +226,7 @@ export function SharedLinkRow({
         <span className="font-bold">{kindLabel(link.kind)}</span>
         <span className="text-sub"> · {link.hasPassword ? UI.sharedPasswordProtected : UI.sharedNoPassword}</span>
       </div>
-      <div className="text-sm text-muted mt-0.5">{UI.sharedOn(link.sharedOn, link.sharedBy)}</div>
+      <div className="text-sm text-sub mt-0.5">{UI.sharedOn(link.sharedOn, link.sharedBy)}</div>
 
       <LinkField url={link.url} kind={link.kind} />
 
@@ -240,7 +240,7 @@ export function SharedLinkRow({
         >
           {UI.shareChangePassword}
         </Button>
-        <span aria-hidden className="text-muted">
+        <span aria-hidden className="text-sub">
           ·
         </span>
         <ConfirmButton

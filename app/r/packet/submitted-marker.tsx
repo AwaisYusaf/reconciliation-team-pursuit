@@ -41,7 +41,7 @@ export function SubmittedMarker({
   if (submittedAt) {
     return (
       <div className="flex flex-wrap items-center gap-3 text-sm">
-        <span className="text-muted">Submitted {submittedAt}</span>
+        <span className="text-sub">Submitted {submittedAt}</span>
         {!hideUndo && (
           <ConfirmButton
             variant="quiet"

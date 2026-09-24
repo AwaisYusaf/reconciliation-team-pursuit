@@ -26,7 +26,7 @@ export function LineItemSelect({
 
   return (
     <div className="flex flex-col gap-1.5">
-      <label id="line-item-select-label" htmlFor="line-item-select" className="text-[13px] font-medium text-muted">
+      <label id="line-item-select-label" htmlFor="line-item-select" className="text-[13px] font-medium text-sub">
         Line item
       </label>
       <Select
