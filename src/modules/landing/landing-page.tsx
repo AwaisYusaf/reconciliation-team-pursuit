@@ -118,14 +118,16 @@ export function LandingPage() {
 <div className="text-left">
 
 <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-lp-surface-container-high border border-outline-variant text-xs font-semibold text-brand-800 mb-6 shadow-xs">
-<span className="w-2 h-2 rounded-full bg-brand-700 animate-pulse"></span> Track &middot; Document &middot; Comply
+<span className="w-2 h-2 rounded-full bg-brand-700 motion-safe:animate-pulse"></span> Track &middot; Document &middot; Comply
         </div>
 
 {/* One step down at every width. At the old size the two lines ate the top of the hero and
           pushed the buttons under the fold on a laptop, and the headline is a claim, not a
-          banner. The `leading` stays tight so the two lines still read as one thought. */}
-        <h1 className="text-2xl sm:text-3xl lg:text-3xl xl:text-4xl font-semibold tracking-tight text-on-surface font-lp-serif leading-[1.15] mb-4">
-          Getting funded is one thing.{" "}<br /><span className="text-primary italic font-lp-serif">Staying funded means staying ready.<span className="align-super text-[0.28em] not-italic">&trade;</span></span>
+          banner. The `leading` stays tight so the two lines still read as one thought.
+          `text-balance` and the no-break space keep "ready.™" from landing alone on a line
+          of its own when the second sentence wraps. */}
+        <h1 className="text-2xl sm:text-3xl lg:text-3xl xl:text-4xl font-semibold tracking-tight text-on-surface font-lp-serif leading-[1.15] text-balance mb-4">
+          Getting funded is one thing.{" "}<br /><span className="text-primary italic font-lp-serif">Staying funded means staying&nbsp;ready.<span className="align-super text-[0.28em] not-italic">&trade;</span></span>
 </h1>
 
 {/*
@@ -162,13 +164,16 @@ export function LandingPage() {
 <div className="relative w-full overflow-hidden">
   <div className="relative w-full aspect-[3944/2564] overflow-hidden">
     
-    <div className="absolute z-10 overflow-hidden bg-lp-surface-container-lowest text-left select-none" style={{ top: "9.91%", left: "10.5%", right: "10.55%", bottom: "7.06%" }}>
+    {/* A picture of the app, drawn in markup so it stays sharp at every size. Hidden from
+        assistive tech: the laptop image's own alt text below describes it, and read out it
+        was a second navigation and a table of made-up figures in the middle of the hero. */}
+    <div aria-hidden="true" className="absolute z-10 overflow-hidden bg-lp-surface-container-lowest text-left select-none" style={{ top: "9.91%", left: "10.5%", right: "10.55%", bottom: "7.06%" }}>
       <div className="relative pt-3 px-3 pb-1.5 sm:pt-4 sm:px-4 sm:pb-2 lg:pt-5 lg:px-5 lg:pb-2.5 bg-lp-surface-container-lowest h-full flex flex-col select-none">
 
 
   <div className="border-b border-outline-variant/50 pb-1 sm:pb-1.5 mb-1.5 sm:mb-2">
     {/* The app's own nav: one dark pill, the current tab reversed out of it in white. */}
-    <nav className="flex items-center gap-0.5 overflow-hidden rounded-full bg-accent-dark px-1 py-0.5 text-[6px] sm:text-[7px] font-medium">
+    <div className="flex items-center gap-0.5 overflow-hidden rounded-full bg-accent-dark px-1 py-0.5 text-[6px] sm:text-[7px] font-medium">
         <span className="rounded-full px-1.5 py-0.5 whitespace-nowrap bg-lp-surface-container-lowest text-primary font-semibold">Dashboard</span>
         <span className="rounded-full px-1.5 py-0.5 whitespace-nowrap text-lp-surface-container-lowest/75">Add Expense</span>
         <span className="rounded-full px-1.5 py-0.5 whitespace-nowrap text-lp-surface-container-lowest/75">Expenses</span>
@@ -178,7 +183,7 @@ export function LandingPage() {
         <span className="rounded-full px-1.5 py-0.5 whitespace-nowrap text-lp-surface-container-lowest/75">Contract Summary</span>
         <span className="rounded-full px-1.5 py-0.5 whitespace-nowrap text-lp-surface-container-lowest/75">Line Items</span>
         <span className="rounded-full px-1.5 py-0.5 whitespace-nowrap text-lp-surface-container-lowest/75">Settings</span>
-    </nav>
+    </div>
   </div>
 
   <div className="mb-1.5 sm:mb-2">
@@ -756,7 +761,7 @@ Receipt + Bank Proof
 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
 <div className="max-w-4xl mx-auto text-center mb-16">
 <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-primary text-white text-xs font-semibold uppercase tracking-wider mb-4 shadow-sm">
-<span className="w-2 h-2 rounded-full bg-primary-fixed animate-ping"></span> Tier 2 Enhancement
+<span className="w-2 h-2 rounded-full bg-primary-fixed motion-safe:animate-ping"></span> Tier 2 Enhancement
         </div>
 <h2 className="text-3xl sm:text-4xl lg:text-5xl font-semibold tracking-tight text-on-surface font-lp-serif mb-4">
           Don&apos;t just track the money. Track the story behind it.
