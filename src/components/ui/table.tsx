@@ -202,6 +202,47 @@ export function Td({
   );
 }
 
+/**
+ * A body row that can carry a status tint — an over-budget source, a just-saved recurring item.
+ *
+ * The tint goes through `--row-bg`, not through a `bg-*` class on the row, and that is the
+ * whole point of this component. `TableCard` paints every body row with
+ * `[&_tbody_tr]:bg-[var(--row-bg)]`, a selector carrying one class and two element names; a
+ * `bg-danger-bg` written straight on the `<tr>` carries one class and loses the cascade to it.
+ * The tint simply did not paint, and because the pinned first cell reads `--row-bg` separately
+ * it *did* honour a class written on itself — so an over-budget row rendered as a red name cell
+ * beside untinted figures, the inverse of what was intended.
+ *
+ * Set as an inline custom property rather than a utility class because inline styles are
+ * outside the specificity contest entirely: no arrangement of classes on the row can beat a
+ * descendant selector on the card, so anything class-based here would be re-litigating the bug.
+ * The pinned cells pick the value up for free, since they already fall back through the same
+ * variable, which is what makes the row tint edge to edge.
+ *
+ * The trade: a tinted row no longer lightens on hover, because the inline value also outranks
+ * the hover rule. Deliberate — the tint means something and the hover is decoration, so the
+ * one that carries meaning is the one that survives.
+ */
+const ROW_TONES = {
+  danger: "var(--color-danger-bg)",
+  success: "var(--color-success-bg)",
+} as const;
+
+export function Tr({
+  tone,
+  style,
+  ...props
+}: ComponentProps<"tr"> & { tone?: keyof typeof ROW_TONES }) {
+  return (
+    <tr
+      style={
+        tone ? ({ ...style, "--row-bg": ROW_TONES[tone] } as React.CSSProperties) : style
+      }
+      {...props}
+    />
+  );
+}
+
 /** Full-width section divider row, e.g. BASE on the summary. */
 export function SectionRow({ colSpan, children }: { colSpan: number; children: React.ReactNode }) {
   return (

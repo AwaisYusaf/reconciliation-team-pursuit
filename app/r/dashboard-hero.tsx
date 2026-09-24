@@ -59,10 +59,25 @@ export function HeroCard({
  */
 export function HeroMoney({ cents }: { cents: number }) {
   const { whole, fraction } = splitMoney(cents);
+  // A negative hero figure is an overspend, and that is the one thing on this card that has to
+  // be read as a problem rather than as a number. The gradient cannot say it: its ramp is the
+  // page's own ink-to-accent browns, so an overspent total looked exactly like a healthy one
+  // and "Total remaining" went negative in the same handsome brown it used when it was fine.
+  //
+  // Swapped rather than layered. `GRADIENT_TEXT` paints through `text-transparent` and
+  // `bg-clip-text`, so a `text-danger` sitting beside it would colour nothing at all — the
+  // gradient has to come off for the red to exist (the same rule `SectionTitle` follows when
+  // it drops `text-ink`).
+  const negative = cents < 0;
   return (
     // The cents come out lighter by where they fall in the ramp, which is why they no longer
     // carry a `text-sub` of their own.
-    <div className={cn("font-bold tabular-nums leading-none break-words", GRADIENT_TEXT)}>
+    <div
+      className={cn(
+        "font-bold tabular-nums leading-none break-words",
+        negative ? "text-danger" : GRADIENT_TEXT,
+      )}
+    >
       <span className="text-[28px] sm:text-[34px] lg:text-[38px]">{whole}</span>
       <span className="text-[17px] sm:text-xl">{fraction}</span>
     </div>

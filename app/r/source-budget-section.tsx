@@ -11,7 +11,7 @@ import {
   Subtext,
 } from "@/src/components/ui/surfaces";
 import { cn } from "@/src/lib/cn";
-import { TableCard, Td, Th } from "@/src/components/ui/table";
+import { TableCard, Td, Th, Tr } from "@/src/components/ui/table";
 import type { FundingSource } from "@/src/db/schema";
 import { monthLabel, monthShortLabel, type MonthKey } from "@/src/domain/dates";
 import { formatMoney, formatPercent } from "@/src/domain/format";
@@ -198,6 +198,7 @@ export async function SourceBudgetSection({
           <div className="flex flex-wrap items-center gap-3 mb-6">
             <Link
               href="/r/expenses/new"
+              data-tour="dashboard-add-expense"
               className={buttonClassName(
                 "primary",
                 cn(
@@ -311,22 +312,20 @@ export async function SourceBudgetSection({
             </thead>
             <tbody>
               {positions.map((row, index) => (
-                <tr
+                <Tr
                   key={row.lineItemId}
                   // Nearly exhausted or overspent: the whole row is tinted, not just its last
                   // cell (R3.6). Tinting one cell put a block of colour on the right edge of
                   // the table that belonged to no row in particular.
-                  className={stats[index].isLowBudget ? "bg-danger-bg" : undefined}
+                  tone={stats[index].isLowBudget ? "danger" : undefined}
                 >
                   {/*
-                    The sticky cell carries the tint itself rather than inheriting it. It is
-                    pinned with its own `bg-surface` so the scrolling columns pass underneath
-                    rather than through it, so leaving it transparent on a flagged row would
-                    both break the tint and let the figures show through the name.
+                    The pinned cell needs no tint of its own. It is opaque so the scrolling
+                    columns pass under it rather than through it, and it fills from `--row-bg`,
+                    which `tone` above sets for the whole row — so it matches by construction
+                    instead of by a second copy of the same condition.
                   */}
-                  <Td sticky className={stats[index].isLowBudget ? "bg-danger-bg" : undefined}>
-                    {row.name}
-                  </Td>
+                  <Td sticky>{row.name}</Td>
                   <Td align="right" numeric>
                     {formatMoney(row.openingCents)}
                   </Td>
@@ -340,7 +339,7 @@ export async function SourceBudgetSection({
                   >
                     {formatMoney(row.closingCents)}
                   </Td>
-                </tr>
+                </Tr>
               ))}
             </tbody>
             </TableCard>
