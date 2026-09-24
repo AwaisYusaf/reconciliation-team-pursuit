@@ -174,7 +174,6 @@ export function DraftsSection({
                     )}
                     <Menu
                       label={`Actions for ${row.name}`}
-                      triggerClassName="px-2 py-2.5 text-lg leading-none text-sub hover:text-ink rounded-[2px] focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
                     >
                       <MenuLink href={`/r/expenses/drafts/${row.id}/edit`}>
                         {UI.draftEdit}

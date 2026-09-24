@@ -586,6 +586,13 @@ export function ExpensesTable({
                 // fire on all of them, so anything that is already interactive keeps its own
                 // click and only the gaps between them open the details.
                 if ((event.target as HTMLElement).closest("a, button, [role='menuitem']")) return;
+                // Selecting text in a row is a drag that ends in a click, so without this
+                // every attempt to copy a reference or a narrative out of the table threw the
+                // details dialog open over the text the moment the mouse came up. A plain
+                // click collapses the selection on mousedown, so a collapsed selection here
+                // means a real click and a live one means the person was reading, not opening.
+                const selection = window.getSelection();
+                if (selection && !selection.isCollapsed) return;
                 setDetailsRow(row);
               }}
               className="cursor-pointer hover:bg-section/60 transition-colors"
@@ -647,8 +654,29 @@ export function ExpensesTable({
                 height of the entire table. One line per row is what makes the list scannable;
                 the value is the same on most rows anyway, so it is the column you read least.
               */}
+              {/*
+                200px over two lines, rather than 150px over one.
+
+                150px kept the column to one line by cutting the standard labels mid-word —
+                "Paid by us, reimburse…" — so the row stayed short and the column stopped
+                saying anything. The width is capped at 200 rather than at whatever the longest
+                sentence needs, because this table's floor is already 1160 against a 1220px
+                content cap (see the `TableCard` note below): there are about 60px going spare
+                here, and spending more than that is what makes the whole table scroll
+                sideways at the cap, which m03 does not allow.
+
+                `line-clamp-2`, not `truncate`, is what buys the rest. The objection to
+                wrapping was that these sentences took three lines each and set the height of
+                every row; two is enough for all the built-in labels and is a fixed ceiling, so
+                a long custom one can no longer grow the row without limit. `title` still
+                carries the full text for anything that does reach the clamp.
+              */}
               <Td className="text-[15px] text-sub">
-                <span className="block max-w-[150px] truncate" title={row.paymentSource}>
+                {/* No `block` beside `line-clamp-2`: the clamp works by setting
+                    `display:-webkit-box`, so the two set the same property and which one won
+                    would come down to stylesheet order rather than to anything written here.
+                    The clamp brings its own display. */}
+                <span className="max-w-[200px] line-clamp-2" title={row.paymentSource}>
                   {row.paymentSource}
                 </span>
               </Td>
@@ -695,7 +723,6 @@ export function ExpensesTable({
                 <div className="flex justify-end items-center">
                   <Menu
                     label={`Actions for ${row.reference}`}
-                    triggerClassName="px-2 py-2.5 text-lg leading-none text-sub hover:text-ink rounded-[2px] focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
                     triggerDataTour="expenses-row-menu-trigger"
                     panelDataTour="expenses-row-menu-panel"
                   >

@@ -33,12 +33,21 @@ export const CARD_PADDING = "p-4 sm:p-5 lg:p-6";
  * else a screen puts in that corner has to start below them or it renders underneath and
  * cannot be clicked — which is exactly what happened to the Expenses screen's Trash button.
  *
- * 44px: the selector pill is 36px tall and the layout offsets it 16px from the top of the
- * content column, so this clears it with a little air. Exported rather than repeated, because
- * every screen with corner controls needs the same number and they must move together if the
- * selectors ever change height.
+ * 60px, and it is derived, not chosen: the block in that corner is a 12px label, a 4px gap and
+ * a 36px pill, so it stands 52px tall, and 8px of air past that is 60. It was 44px while the
+ * selectors had no visible label — the pill alone plus the same air — and when the labels came
+ * back this number did not, so "Waiting for review", "Trash", the cover sheet's line-item
+ * picker and the packet's lock controls all rendered underneath the selectors and could not be
+ * clicked.
+ *
+ * That is the whole reason this is one exported constant rather than a number written on each
+ * screen: it has to move whenever the corner block's height moves. If those labels are ever
+ * resized or dropped again, this is the line that changes with them.
+ *
+ * An exact pixel rather than a spacing step, because it is measured against a specific stack of
+ * heights and should not quietly drift if the scale is ever retuned.
  */
-export const ACTION_CLEARANCE = "lg:pt-11";
+export const ACTION_CLEARANCE = "lg:pt-[60px]";
 
 /**
  * One grey block standing in for content that has not arrived yet.
@@ -218,7 +227,22 @@ export function PageHeader({
         className,
       )}
     >
-      <div className="min-w-0">
+      {/*
+        Held back from the content column's top-right corner, where the layout floats the month
+        and funding-source selectors from `lg`.
+
+        `ACTION_CLEARANCE` below only solves this for a screen's *controls*. The title and its
+        subtext sit at the very top of the column, level with the selectors, so a subtext long
+        enough to run the full width passed straight underneath them — on Line Items the
+        sentence ran under both pills and its last line broke in an odd place for no visible
+        reason.
+
+        `--corner-width` comes from the layout, which is the only place that knows whether that
+        corner holds two selectors or just the month (a single-source org has no funding-source
+        pill). The 350px fallback is the two-pill case, so a `PageHeader` rendered outside that
+        layout still errs on the side of keeping clear.
+      */}
+      <div className="min-w-0 lg:max-w-[calc(100%-var(--corner-width,350px)-24px)]">
         <PageTitle className="mb-1.5">{title}</PageTitle>
         {subtext && <Subtext>{subtext}</Subtext>}
       </div>

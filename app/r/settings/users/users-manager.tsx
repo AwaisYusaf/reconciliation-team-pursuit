@@ -177,17 +177,25 @@ export function UsersManager({ users }: { users: OrgUser[] }) {
                     without one. A menu is also the pattern the expenses table already uses for
                     per-row actions.
                   */}
-                  {editingId !== user.id && (
-                    <Menu label={`Actions for ${userDisplay(user.name, user.email)}`}>
-                      <MenuItem
-                        disabled={pending}
-                        onClick={() => {
-                          setEditingId(user.id);
-                          setEditingName(user.name ?? "");
-                        }}
-                      >
-                        Edit name
-                      </MenuItem>
+                  <Menu label={`Actions for ${userDisplay(user.name, user.email)}`}>
+                      {/*
+                        Only this item is withheld while the row's name is being edited, not
+                        the menu around it. Hiding the whole menu took Reset password, Remove
+                        access and Delete account away with it for as long as the name field
+                        was open, and the only way back to them was to cancel the edit — a row
+                        mid-edit had no actions at all.
+                      */}
+                      {editingId !== user.id && (
+                        <MenuItem
+                          disabled={pending}
+                          onClick={() => {
+                            setEditingId(user.id);
+                            setEditingName(user.name ?? "");
+                          }}
+                        >
+                          Edit name
+                        </MenuItem>
+                      )}
 
                       <MenuItem
                         disabled={pending}
@@ -250,8 +258,7 @@ export function UsersManager({ users }: { users: OrgUser[] }) {
                           )}
                         </>
                       )}
-                    </Menu>
-                  )}
+                  </Menu>
                 </Td>
               </tr>
             ))}

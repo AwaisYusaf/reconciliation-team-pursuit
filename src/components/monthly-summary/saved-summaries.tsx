@@ -57,7 +57,14 @@ export function SavedSummaries({
         It scrolls rather than wrapping: a year of saved months would otherwise become four
         ragged rows of chips above the thing you came to read.
       */}
-      <div className="flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      {/*
+        The scrollbar is shown, not hidden. Hiding it left a row that looked like the complete
+        list of saved months while quietly holding more past its right edge — on a trackpad
+        with overlay scrollbars there was nothing on screen to suggest the row moved at all,
+        so older months were simply unreachable to anyone who did not think to try dragging it.
+        Thin rather than default, so the affordance costs a few pixels instead of a band.
+      */}
+      <div className="flex gap-2 overflow-x-auto pb-1 [scrollbar-width:thin]">
         {rows.map((row) => {
           const current = row.month === activeMonth;
           return (

@@ -158,8 +158,8 @@ export default async function PacketPage() {
         Two thirds and one third gives the table a sensible measure and brings the packet
         itself up next to it.
       */}
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)] items-start">
-        <div className="flex flex-col gap-6 min-w-0">
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)] items-start">
+        <div className="min-w-0 xl:col-start-1 xl:row-start-1">
       {readiness.rows.length === 0 ? (
         <EmptyState>
           No line items yet. Set up your budget in{" "}
@@ -213,23 +213,26 @@ export default async function PacketPage() {
         </TableCard>
       )}
 
-        {/* Second in the left column, under the readiness table. On a row of its own it began
-            only after the taller packet card had finished, leaving a screen-high hole beside
-            it. */}
-        <div data-tour="packet-month-documents">
-          <MonthDocuments
-            month={month}
-            fundingSourceId={fundingSourceId}
-            documents={readiness.documents}
-            monthLabel={label}
-            hasBankStatement={readiness.hasBankStatement}
-            readOnly={sourceIsArchived || locked}
-            lockedMessage={locked ? UI.monthLocked(label) : null}
-          />
-        </div>
         </div>
 
-        <Card className={CARD_PADDING}>
+        {/*
+          Explicitly placed rather than left to source order, because the two orders wanted
+          here are different ones.
+
+          Stacked, the packet and its download buttons come before the month's documents:
+          collapsing the columns used to drop the whole documents card in between the readiness
+          table and the buttons, so on a phone or tablet the thing the screen is for sat about a
+          screen below the table explaining why it was disabled — the exact fault the two-column
+          layout was introduced to fix, reappearing at every width below the breakpoint.
+
+          Side by side, the grid puts each back where it belongs: the table and the documents
+          down the left, the packet card up the right beside them.
+
+          The split waits for `xl`. At `lg` the left column is about 640px, which is narrower
+          than this table's 660px floor, so the breakpoint that was meant to give the table a
+          sensible measure was instead the point at which it started scrolling sideways.
+        */}
+        <Card className={`${CARD_PADDING} xl:col-start-2 xl:row-start-1`}>
           <SectionTitle className="mb-1">Packet contents</SectionTitle>
           <p className="text-sm text-muted mb-4">In the order the funder will read them.</p>
 
@@ -274,6 +277,21 @@ export default async function PacketPage() {
             orgCancelled={shared.orgCancelled}
           />
         </Card>
+
+        <div
+          data-tour="packet-month-documents"
+          className="min-w-0 xl:col-start-1 xl:row-start-2"
+        >
+          <MonthDocuments
+            month={month}
+            fundingSourceId={fundingSourceId}
+            documents={readiness.documents}
+            monthLabel={label}
+            hasBankStatement={readiness.hasBankStatement}
+            readOnly={sourceIsArchived || locked}
+            lockedMessage={locked ? UI.monthLocked(label) : null}
+          />
+        </div>
       </div>
 
       {/* ponytail: `MonthlySummarySection` re-derives the month's expenses fingerprint that

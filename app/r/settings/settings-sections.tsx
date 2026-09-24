@@ -413,7 +413,8 @@ export function SettingsSections({
               <Helper>
                 The short walkthroughs across the app show once each and then stay out of the
                 way. Bring them all back if you&apos;d like to see them again, or use the (i)
-                button next to Sign out to replay just the one for the screen you&apos;re on.
+                button at the top of the screen, beside your profile picture, to replay just
+                the one for the screen you&apos;re on.
               </Helper>
               <div className="flex justify-end mt-4">
                 <Button

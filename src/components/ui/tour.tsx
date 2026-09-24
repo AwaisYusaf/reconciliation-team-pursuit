@@ -78,8 +78,33 @@ function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(value, max));
 }
 
+/**
+ * The first node carrying this key that is actually on the screen.
+ *
+ * Not `querySelector`, because a responsive screen renders the same key twice on purpose: a
+ * card list at `lg:hidden` and a table at `hidden lg:block` both carry the row's controls, and
+ * only one of them is displayed at any width. `querySelector` returns whichever comes first in
+ * the document, which on a desktop is the hidden phone copy — a `display:none` element whose
+ * rect is 0×0 at the origin, so the spotlight opened onto an empty box in the corner of the
+ * viewport and the step pointed at nothing.
+ *
+ * Measured rather than inferred from classes: `getClientRects()` is empty for anything
+ * `display:none`, whatever put it there, so this holds for a container hidden three levels up
+ * as well as for the element itself. The dimension check catches the other shape of the same
+ * problem — an element kept in the DOM at zero width to animate, which does report a rect.
+ *
+ * Returning `null` when every copy is hidden is the point: the resolver skips a step whose
+ * target it cannot find, which is the correct outcome for a control that genuinely is not on
+ * this screen, and far better than spotlighting a box nobody can see.
+ */
 function findByDataTour(key: string): HTMLElement | null {
-  return document.querySelector<HTMLElement>(`[data-tour="${key}"]`);
+  const nodes = document.querySelectorAll<HTMLElement>(`[data-tour="${key}"]`);
+  for (const node of nodes) {
+    if (node.getClientRects().length === 0) continue;
+    const { width, height } = node.getBoundingClientRect();
+    if (width > 0 && height > 0) return node;
+  }
+  return null;
 }
 
 export function TourGuide({

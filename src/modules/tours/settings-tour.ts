@@ -64,6 +64,6 @@ export const SETTINGS_TOUR_STEPS: readonly TourStep[] = [
     target: "settings-app-guide",
     autoOpen: "settings-tab-account",
     title: "Show the app guide again",
-    body: "Bring back every walkthrough from here. To replay just the one for the screen you're on, use the (i) button next to Sign out.",
+    body: "Bring back every walkthrough from here. To replay just the one for the screen you're on, use the (i) button at the top of the screen, beside your profile picture.",
   },
 ];

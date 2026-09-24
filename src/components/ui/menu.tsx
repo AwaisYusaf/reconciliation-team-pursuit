@@ -64,6 +64,19 @@ export function MenuLink({ className, ...props }: ComponentProps<typeof Link>) {
 /** Space (px) to check for below the trigger before flipping the panel above it instead. */
 const FLIP_THRESHOLD = 160;
 
+/**
+ * The ⋮ trigger's own look: a quiet glyph that darkens on hover, with a visible focus ring.
+ *
+ * A default rather than something each caller passes. It was neither — the expenses table and
+ * the drafts list each carried an identical copy of this string, and every other `Menu` in the
+ * app got an unstyled browser button, so the users table's ⋮ sat there at default font size
+ * with no hover and no focus ring. A shared control's ordinary appearance belongs to the
+ * control; `triggerClassName` stays for the caller that genuinely needs a different one.
+ */
+const TRIGGER_CLASS =
+  "px-2 py-2.5 text-lg leading-none text-sub hover:text-ink rounded-[2px] " +
+  "focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent";
+
 export function Menu({
   label,
   triggerClassName,
@@ -73,6 +86,7 @@ export function Menu({
 }: {
   /** Accessible name for the trigger button — the row/item this menu acts on. */
   label: string;
+  /** Overrides `TRIGGER_CLASS` for a caller that needs a different-looking trigger. */
   triggerClassName?: string;
   /** `data-tour` anchor for the trigger — what a tour step's `autoOpen` clicks to pop the
    *  menu open (Phase 7, D-95). */
@@ -233,7 +247,7 @@ export function Menu({
           openMenu();
         }}
         data-tour={triggerDataTour}
-        className={triggerClassName}
+        className={triggerClassName ?? TRIGGER_CLASS}
       >
         ⋮
       </button>

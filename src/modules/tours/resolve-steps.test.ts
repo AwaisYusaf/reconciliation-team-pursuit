@@ -165,7 +165,7 @@ describe("countResolvableAfter", () => {
       { target: "month-selector", title: "1", body: "" },
       { target: "funding-source-selector", title: "2", body: "" },
       { target: "dashboard-closing-balance", title: "3", body: "" },
-      { target: "add-expense-nav", title: "4", body: "" },
+      { target: "dashboard-add-expense", title: "4", body: "" },
     ];
     // The selector isn't rendered at all when the org has one source (app/r/layout.tsx).
     const find = (key: string) => (key === "funding-source-selector" ? null : "el");

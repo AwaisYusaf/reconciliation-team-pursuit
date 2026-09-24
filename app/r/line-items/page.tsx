@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 
 import { PickFundingSource } from "@/src/components/app-shell/pick-funding-source";
 import { TourSequenceSkip } from "@/src/components/app-shell/tour-sequence-skip";
-import { PageTitle, Subtext } from "@/src/components/ui/surfaces";
+import { PageHeader } from "@/src/components/ui/surfaces";
 import { TourGuide } from "@/src/components/ui/tour";
 import { pageTitle } from "@/src/domain/strings";
 import { loadSourceContext } from "@/src/modules/funding-sources/queries";
@@ -26,11 +26,15 @@ export default async function LineItemsPage() {
 
   return (
     <div>
-      <PageTitle className="mb-2">Line Items</PageTitle>
-      <Subtext className="mb-[26px] max-w-[75ch]">
-        Budget line items used across the dashboard, expenses, cover sheets, and packet.
-        Order here controls their order in documents.
-      </Subtext>
+      {/* `PageHeader` rather than a title and a subtext of its own, which is what this screen
+          had: the hand-rolled pair carried neither the shared spacing nor the clearance that
+          keeps a subtext out of the floating selectors' corner, so this sentence ran underneath
+          them. `loading.tsx` here already stands in with `PageHeaderSkeleton`, so the two now
+          describe the same header instead of two different ones. */}
+      <PageHeader
+        title="Line Items"
+        subtext="Budget line items used across the dashboard, expenses, cover sheets, and packet. Order here controls their order in documents."
+      />
 
       {selectedId === null ? (
         <>
