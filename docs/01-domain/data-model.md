@@ -207,7 +207,10 @@ it describes is hard-deleted defeats its own purpose. `permanentlyDeleteExpenseA
 `permanently_deleted` event before deleting the expense, so actor/action/timestamp outlive the row.
 Indexed `(expense_id, created_at)` for the per-expense batched lookup, and `(org_id, created_at)`
 (D-88) for `loadOrgAuditHistory`'s org-wide, paginated read — the first index doesn't help a
-query with no `expense_id` filter.
+query with no `expense_id` filter. And `(actor_user_id)` (migration `0040`) for "has this person ever acted on
+an expense?": the Users page asks it per row and account delete asks it first (`hasAuditHistory`,
+an `exists` that stops at the first row), and Postgres asks it again on every user delete to
+enforce this foreign key.
 
 `before_data`/`after_data` (D-87) hold the same field set `toRow()` builds in `actions.ts` —
 name, lineItemId, paymentSource, month, date, description, subtotalCents, taxCents, feesCents,

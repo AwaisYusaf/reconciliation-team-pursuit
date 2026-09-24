@@ -729,6 +729,11 @@ export const expenseAuditEvents = pgTable(
     // without this, that query has no usable index and falls back to a full table scan as
     // the log grows, since the per-expense index above doesn't help it.
     index("expense_audit_events_org_idx").on(t.orgId, t.createdAt),
+    // "Has this person ever acted on an expense?" is asked for every row of the Users page and
+    // before deleting an account (`hasAuditHistory`), and Postgres asks it again itself on
+    // every user delete to enforce the foreign key. Neither index above leads with the actor,
+    // so both were a scan of the whole log.
+    index("expense_audit_events_actor_idx").on(t.actorUserId),
   ],
 );
 

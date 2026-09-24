@@ -281,6 +281,13 @@
       "when": 1790243482372,
       "tag": "0039_users_avatar_bytes",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1790244001328,
+      "tag": "0040_expense_audit_actor_idx",
+      "breakpoints": true
     }
   ]
 }
