@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 
 import { LandingPage } from "@/src/modules/landing/landing-page";
+import { type PlanKey, PLANS } from "@/src/modules/landing/plans";
 import { APP_NAME } from "@/src/domain/strings";
 
 // Ported from grant-ledger app/layout.tsx (lines 18-56) with the site URL swapped to this
@@ -29,12 +30,15 @@ export const metadata: Metadata = {
     siteName: APP_NAME,
     type: "website",
     locale: "en_US",
+    // A real 1200x630 render of the page's own first screen (64 KB). The laptop PNG this used
+    // to name is 3944x2564, 4.5 MB and transparent, so previews either timed out or showed it
+    // on black; its declared 1200x780 was not its size either.
     images: [
       {
-        url: "/macbook-pro-14-front.png",
+        url: "/og-image.jpg",
         width: 1200,
-        height: 780,
-        alt: `${APP_NAME} dashboard shown on a laptop screen`,
+        height: 630,
+        alt: `The ${APP_NAME} home page: the headline beside the dashboard on a laptop screen`,
       },
     ],
   },
@@ -42,7 +46,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title,
     description,
-    images: ["/macbook-pro-14-front.png"],
+    images: ["/og-image.jpg"],
   },
 };
 
@@ -56,8 +60,30 @@ const organizationSchema = {
 };
 
 // The two plans are stated in full on the page, so they belong in structured data too: this is
-// the shape search and answer engines read a price out of. Keep the amounts in step with the
-// pricing section in landing-page.tsx — they are written in both places for a human to read.
+// the shape search and answer engines read a price out of. Names and amounts come from the same
+// `PLANS` the pricing cards print, so the two cannot disagree.
+//
+// The price alone read as a one-off $297. `UnitPriceSpecification` with `MON` (UN/CEFACT's code
+// for a month) is how schema.org says "per month", which is what the page says.
+function planOffer(plan: PlanKey, category: string, description: string) {
+  const price = String(PLANS[plan].monthlyUsd);
+  return {
+    "@type": "Offer",
+    name: PLANS[plan].name,
+    price,
+    priceCurrency: "USD",
+    priceSpecification: {
+      "@type": "UnitPriceSpecification",
+      price,
+      priceCurrency: "USD",
+      unitCode: "MON",
+      referenceQuantity: { "@type": "QuantitativeValue", value: 1, unitCode: "MON" },
+    },
+    category,
+    description,
+  };
+}
+
 const softwareSchema = {
   "@context": "https://schema.org",
   "@type": "SoftwareApplication",
@@ -68,24 +94,16 @@ const softwareSchema = {
   url: siteUrl,
   description,
   offers: [
-    {
-      "@type": "Offer",
-      name: "Reconciliation",
-      price: "297",
-      priceCurrency: "USD",
-      category: "Single funding source",
-      description:
-        "Full core ledger and packet generation for one municipal or state grant contract.",
-    },
-    {
-      "@type": "Offer",
-      name: "Reconciliation + AI",
-      price: "497",
-      priceCurrency: "USD",
-      category: "Multiple funding sources",
-      description:
-        "Everything in Reconciliation, plus multiple contracts and the AI monthly funding and program summary.",
-    },
+    planOffer(
+      "reconciliation",
+      "Single funding source",
+      "Full core ledger and packet generation for one municipal or state grant contract.",
+    ),
+    planOffer(
+      "reconciliationAi",
+      "Multiple funding sources",
+      `Everything in ${PLANS.reconciliation.name}, plus multiple contracts and the AI monthly funding and program summary.`,
+    ),
   ],
 };
 

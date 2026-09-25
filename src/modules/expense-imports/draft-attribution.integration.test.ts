@@ -16,14 +16,14 @@ vi.mock("@/src/lib/action-session", () => ({ actionSession: vi.fn() }));
 config({ path: ".env.local", quiet: true });
 
 import { eq } from "drizzle-orm";
-import { beforeAll, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { v7 as uuidv7 } from "uuid";
 
 const hasDatabase = Boolean(process.env.DATABASE_URL);
 
 describe.skipIf(!hasDatabase)("draft last-saved attribution (integration)", async () => {
   const { db } = await import("@/src/db");
-  const { expenseDrafts, expenseImports, lineItems, paymentSources, users } = await import(
+  const { expenseDrafts, expenseImports, lineItems, organizations, paymentSources, users } = await import(
     "@/src/db/schema"
   );
   const { createTestOrg } = await import("@/src/db/test-org");
@@ -156,6 +156,18 @@ describe.skipIf(!hasDatabase)("draft last-saved attribution (integration)", asyn
 
     authorId = await insertUser("Ada Author");
     reviewerId = await insertUser("Rory Reviewer");
+  });
+
+  // Every row here hangs off this organisation and goes with it; the files under its
+  // storage prefix do not, so those are removed by hand.
+  afterAll(async () => {
+    const { rm } = await import("node:fs/promises");
+    const path = await import("node:path");
+    for (const id of [orgId]) {
+      if (!id) continue;
+      await db.delete(organizations).where(eq(organizations.id, id));
+      await rm(path.join(process.cwd(), ".storage", "org", id), { recursive: true, force: true });
+    }
   });
 
   it("records the editor, not the person who created the draft", async () => {

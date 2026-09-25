@@ -81,19 +81,19 @@ function SummaryTile({
           : "bg-surface hover:bg-section",
       )}
     >
-      <div className="text-[11px] uppercase tracking-[0.08em] font-semibold text-muted leading-none">
+      <div className="text-[11px] uppercase tracking-[0.08em] font-semibold text-sub leading-none">
         {label}
       </div>
       <div
         className={cn(
           "text-[30px] font-bold tabular-nums leading-none mt-2.5",
           // A zero recedes rather than shouting: most of these are zero most of the time.
-          value === 0 && !active ? "text-muted" : "text-ink",
+          value === 0 && !active ? "text-sub" : "text-ink",
         )}
       >
         {value}
       </div>
-      <div className="text-[12px] mt-2.5 text-muted">{caption}</div>
+      <div className="text-[12px] mt-2.5 text-sub">{caption}</div>
     </Link>
   );
 }

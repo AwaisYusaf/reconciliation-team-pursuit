@@ -6,7 +6,7 @@
  * Enforcement lives here, not in the page or nav: server actions are directly invocable,
  * so `requireAdmin()` at the top of every export is the real boundary.
  */
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, type SQL, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
@@ -20,6 +20,8 @@ import { emailInUse } from "@/src/modules/auth/emails";
 import { generatePassword, hashPassword, validatePasswordPolicy } from "@/src/services/auth/passwords";
 import { revokeOtherSessions } from "@/src/services/auth/session";
 import { consume } from "@/src/services/rate-limit";
+import { deleteStoredObjects } from "@/src/services/storage/documents";
+import { keyBelongsToOrg } from "@/src/services/storage/keys";
 
 const emailSchema = z.string().trim().max(320).email();
 
@@ -194,24 +196,34 @@ export async function listOrgUsersAction(): Promise<
       role: users.role,
       createdAt: users.createdAt,
       deactivatedAt: users.deactivatedAt,
-      auditCount: sql<number>`count(${expenseAuditEvents.id})::int`,
+      hasHistory: hasAuditHistory,
     })
     .from(users)
-    // Left, and grouped: a user with no history must still appear, and they are precisely the
-    // ones this count exists to identify.
-    .leftJoin(expenseAuditEvents, eq(expenseAuditEvents.actorUserId, users.id))
     .where(eq(users.orgId, current.orgId))
-    .groupBy(users.id)
     .orderBy(users.createdAt);
 
   return ok(
-    rows.map(({ auditCount, ...row }) => ({
+    rows.map(({ hasHistory, ...row }) => ({
       ...row,
       // Managers only, matching what the actions will accept.
-      deletable: row.role === "manager" && auditCount === 0,
+      deletable: row.role === "manager" && !hasHistory,
     })),
   );
 }
+
+/**
+ * Whether this person has ever acted on an expense.
+ *
+ * `exists`, not a count: the question is only ever yes or no, so Postgres stops at the first
+ * row, found through `expense_audit_events_actor_idx` (migration `0040`). The list used to join
+ * the whole audit log and count it, which read every event the organisation ever recorded to
+ * draw a page of a dozen people.
+ */
+const hasAuditHistory: SQL<boolean> =
+  // `users.id` spelled out with its table: Drizzle renders a column bare in a single-table
+  // select, and a bare `id` inside this subquery is the audit event's own id, which never
+  // matches a user and made every account look deletable.
+  sql<boolean>`exists (select 1 from ${expenseAuditEvents} where ${expenseAuditEvents.actorUserId} = ${users}.${sql.identifier("id")})`;
 
 /**
  * A manager in this admin's own organisation, loaded for a removal action.
@@ -233,8 +245,10 @@ const HAS_HISTORY =
   "This account has a history of changes, so it can't be deleted. Revoke its access instead, which keeps that history readable.";
 
 /** Postgres `foreign_key_violation`. The driver surfaces the SQLSTATE as `code`. */
+/** Postgres foreign_key_violation (23503), raw or wrapped by Drizzle, which keeps the pg error as `cause`. */
 function isForeignKeyViolation(error: unknown): boolean {
-  return typeof error === "object" && error !== null && "code" in error && error.code === "23503";
+  const code = (e: unknown) => (typeof e === "object" && e !== null && "code" in e ? e.code : undefined);
+  return code(error) === "23503" || code((error as { cause?: unknown } | null)?.cause) === "23503";
 }
 
 async function requireManagerTarget(userId: string) {
@@ -245,7 +259,12 @@ async function requireManagerTarget(userId: string) {
   if (!isUuid(userId)) return { ok: false as const, denied: fail(NO_SUCH_USER) };
 
   const [target] = await db
-    .select({ id: users.id, role: users.role, deactivatedAt: users.deactivatedAt })
+    .select({
+      id: users.id,
+      role: users.role,
+      deactivatedAt: users.deactivatedAt,
+      avatarKey: users.avatarKey,
+    })
     .from(users)
     .where(and(eq(users.id, userId), eq(users.orgId, current.orgId)))
     .limit(1);
@@ -298,7 +317,7 @@ export async function reinstateUserAccessAction(userId: string): Promise<ActionR
  * `expense_audit.actor_user_id` is NOT NULL with no cascade, so Postgres refuses to delete
  * anyone who has ever created, edited or deleted an expense — by design, since an audit trail
  * that loses its actor is not one. Rather than let that surface as a foreign-key error, the
- * count is checked first and the refusal is said in words.
+ * history is checked first and the refusal is said in words.
  *
  * The check and the delete share a transaction so an expense saved between them cannot leave
  * an account deleted whose history has just started.
@@ -307,21 +326,20 @@ export async function deleteUserAccountAction(userId: string): Promise<ActionRes
   const guard = await requireManagerTarget(userId);
   if (!guard.ok) return guard.denied;
 
-  return db.transaction(async (tx) => {
-    const [{ count }] = await tx
-      .select({ count: sql<number>`count(*)::int` })
-      .from(expenseAuditEvents)
-      .where(eq(expenseAuditEvents.actorUserId, userId));
-
-    if (count > 0) return fail(HAS_HISTORY);
+  const result = await db.transaction(async (tx) => {
+    const [target] = await tx
+      .select({ hasHistory: hasAuditHistory })
+      .from(users)
+      .where(eq(users.id, userId));
+    if (target?.hasHistory) return fail(HAS_HISTORY);
 
     // `sessions` and `user_tour_progress` cascade from the user; everything else that points
     // at one nulls out, and for an account with no audit history there is nothing to null.
     //
-    // The count above is not quite enough on its own. If this person saves an expense between
-    // the count and this delete, Postgres refuses the delete on `expense_audit`'s foreign key
+    // The check above is not quite enough on its own. If this person saves an expense between
+    // the check and this delete, Postgres refuses the delete on `expense_audit`'s foreign key
     // and would throw where every other refusal here is a sentence. Catching the violation
-    // turns that race into the same answer the count gives, which is also the true one: by the
+    // turns that race into the same answer the check gives, which is also the true one: by the
     // time it fires, they do have a history.
     try {
       await tx.delete(users).where(eq(users.id, userId));
@@ -329,7 +347,20 @@ export async function deleteUserAccountAction(userId: string): Promise<ActionRes
       if (isForeignKeyViolation(error)) return fail(HAS_HISTORY);
       throw error;
     }
-    revalidatePath("/r/settings/users");
     return ok();
   });
+  if (!result.ok) return result;
+
+  // The row was the only pointer to the photo. Removed after the delete has committed, never
+  // before, so a refused delete keeps its photo; a failure here leaves one small object behind
+  // rather than a person's face with nothing that can ever find it again (D-119).
+  // Only a key under this organisation's own prefix, as the avatar route checks: the row is ours,
+  // but the prefix stays an enforced invariant rather than an assumption.
+  const photo = guard.target.avatarKey;
+  if (photo && keyBelongsToOrg(photo, guard.current.orgId)) {
+    await deleteStoredObjects(photo).catch(() => {});
+  }
+
+  revalidatePath("/r/settings/users");
+  return ok();
 }

@@ -21,13 +21,13 @@ import { config } from "dotenv";
 config({ path: ".env.local", quiet: true });
 
 import { eq } from "drizzle-orm";
-import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 const hasDatabase = Boolean(process.env.DATABASE_URL);
 
 describe.skipIf(!hasDatabase)("colleague avatar route (integration)", async () => {
   const { db } = await import("@/src/db");
-  const { users } = await import("@/src/db/schema");
+  const { organizations, users } = await import("@/src/db/schema");
   const { createTestOrg } = await import("@/src/db/test-org");
   const { hashPassword } = await import("@/src/services/auth/passwords");
   const { getSession } = await import("@/src/services/auth/session");
@@ -114,6 +114,18 @@ describe.skipIf(!hasDatabase)("colleague avatar route (integration)", async () =
 
     bobKey = await giveAvatar(orgId, bobId);
     outsiderKey = await giveAvatar(otherOrgId, outsiderId);
+  });
+
+  // Every row here hangs off these organisations and goes with them; the files under their
+  // storage prefix do not, so those are removed by hand.
+  afterAll(async () => {
+    const { rm } = await import("node:fs/promises");
+    const path = await import("node:path");
+    for (const id of [orgId, otherOrgId]) {
+      if (!id) continue;
+      await db.delete(organizations).where(eq(organizations.id, id));
+      await rm(path.join(process.cwd(), ".storage", "org", id), { recursive: true, force: true });
+    }
   });
 
   beforeEach(() => {

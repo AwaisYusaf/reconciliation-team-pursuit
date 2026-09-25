@@ -43,6 +43,8 @@ export function TableCard({
         // whole width, which is what makes it one band. `Th` is transparent so this shows
         // through, and the sticky first cell paints the gradient's own dark start (see `Th`).
         "[&_thead_tr]:bg-[linear-gradient(90deg,var(--color-hero-from)_0%,var(--color-hero-to)_100%)]",
+        // Anything focusable in that band (a select-all box) needs the light ring to be seen.
+        "[&_thead_tr]:[--focus-ring:var(--color-primary-fixed)]",
         // Alternating rows, very faintly, plus a hover. Both answer the same problem — losing
         // your line while reading across seven or more columns — and the stripe is the one
         // that works without a pointer, which is what a keyboard or a printout has. Kept at

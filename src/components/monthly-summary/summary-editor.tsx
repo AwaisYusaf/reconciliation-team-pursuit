@@ -136,7 +136,7 @@ export function SummaryEditor({
           </>
         )}
         {writing && (
-          <p className="mt-2.5 text-[15px] text-muted" role="status" aria-live="polite">
+          <p className="mt-2.5 text-[15px] text-sub" role="status" aria-live="polite">
             {UI.summaryWriting}
           </p>
         )}

@@ -80,13 +80,13 @@ export function AppHeader({
   return (
     <header
       className={cn(
-        // One duration and curve for the bar's padding and for the two blocks collapsing
-        // inside it, so the whole thing reads as a single movement rather than three.
+        // One duration and curve for the bar's padding and for the mark collapsing inside it,
+        // so the whole thing reads as a single movement rather than two.
         "no-print sticky top-0 z-30 px-4 sm:px-6 transition-[padding] duration-300 ease-out",
         // No background, at any width or scroll position. What stays readable over scrolling
-        // content is the tabs' own solid backgrounds, which `AppNav` gives them: one pill
-        // around the whole track on a desktop, and a pill per tab on a phone where the track
-        // would be clipped. The bar itself is never anything but the page.
+        // content is the nav's own solid background, which `AppNav` gives it: one pill around
+        // the whole track from `xl`, and one pill around the menu button below it. The bar
+        // itself is never anything but the page.
         scrolled ? "py-2" : "py-2.5",
       )}
     >
@@ -94,16 +94,16 @@ export function AppHeader({
         {/*
           Collapsed rather than hidden, so the change can be animated.
 
-          `display: none` cannot be transitioned, so these used to blink out and the tabs
+          `display: none` cannot be transitioned, so the mark used to blink out and the tabs
           jumped to fill the space. Animating `max-width` alongside opacity lets them shrink
           out of the row instead, and because the tabs are a flex sibling they slide across as
           that width goes, which is the movement rather than a cut. The negative margin closes
           the row's own `gap` as the element reaches zero width — without it a 12–16px hole
           stays where the mark used to be.
 
-          `inert` while collapsed, not just `pointer-events-none`: these are still in the DOM
-          at zero width, and Sign out sits inside the controls. Without it a keyboard user
-          could tab into an invisible menu.
+          `inert` while collapsed, not just `pointer-events-none`: the mark is a link and stays
+          in the DOM at zero width. Without it a keyboard user could tab onto something they
+          cannot see.
         */}
         <div
           inert={scrolled || undefined}
@@ -117,7 +117,7 @@ export function AppHeader({
 
         {/*
           Beside the mark at every width. `AppNav` collapses to a single menu button below
-          `lg`, so it no longer needs a line of its own down there — it is about as wide as
+          `xl`, so it no longer needs a line of its own down there — it is about as wide as
           the longest screen name rather than as wide as nine tabs.
         */}
         <div className="order-2 min-w-0 xl:flex-1">{nav}</div>
