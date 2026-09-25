@@ -885,7 +885,7 @@ Receipt + Bank Proof
 </li>
 </ul>
 <div className="pt-2">
-<span className="text-xs text-primary font-semibold italic">Included in the Multi-Contract &amp; AI Tier ($497/mo)</span>
+<span className="text-xs text-primary font-semibold italic">Included in Reconciliation + AI ($497/month)</span>
 </div>
 </div>
 
@@ -1121,10 +1121,10 @@ Receipt + Bank Proof
 <span className={`text-4xl sm:text-5xl font-semibold font-lp-serif ${GRADIENT_TEXT}`}>$497</span>
 <span className="text-sm font-medium text-on-surface-variant">/ month</span>
 </div>
-<span className="text-xs text-primary font-semibold mt-1 block">Full Suite + Executive AI Narrative Generator</span>
+<span className="text-xs text-primary font-semibold mt-1 block">Full suite plus AI summaries and receipt reading</span>
 </div>
 <p className="text-xs text-on-surface-variant mb-6 leading-relaxed">
-              For teams requiring fast executive reporting, donor narratives, multi-category insights, and AI programmatic drafts.
+              For teams managing more than one funding source who want AI to draft the monthly summary and read the amounts off every receipt.
             </p>
 <ul className="space-y-3 text-xs text-on-surface mb-8">
 <li className="flex items-center gap-2.5 font-semibold text-primary">
@@ -1133,23 +1133,19 @@ Receipt + Bank Proof
               </li>
 <li className="flex items-center gap-2.5">
 <svg className="w-4 h-4 text-primary flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path clipRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" fillRule="evenodd"></path></svg>
-                Automated AI Monthly Executive &amp; Funder Summaries
+                Multiple funding sources, each with its own budget and packet
               </li>
 <li className="flex items-center gap-2.5">
 <svg className="w-4 h-4 text-primary flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path clipRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" fillRule="evenodd"></path></svg>
-                Programmatic narrative draft generator for city packets
+                AI monthly funding &amp; program summary, drafted for you to edit, in Word or PDF
               </li>
 <li className="flex items-center gap-2.5">
 <svg className="w-4 h-4 text-primary flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path clipRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" fillRule="evenodd"></path></svg>
-                Anomaly detection &amp; budget variance justification notes
+                AI reads subtotal, tax &amp; fees from receipts and checks proof of payment
               </li>
 <li className="flex items-center gap-2.5">
 <svg className="w-4 h-4 text-primary flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path clipRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" fillRule="evenodd"></path></svg>
-                Custom grant contract template customization
-              </li>
-<li className="flex items-center gap-2.5">
-<svg className="w-4 h-4 text-primary flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path clipRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" fillRule="evenodd"></path></svg>
-                Priority phone &amp; video onboarding support
+                Extract from invoice: one multi-line invoice becomes a draft expense per line
               </li>
 </ul>
 </div>

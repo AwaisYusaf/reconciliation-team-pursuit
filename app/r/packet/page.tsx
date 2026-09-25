@@ -231,8 +231,16 @@ export default async function PacketPage() {
           The split waits for `xl`. At `lg` the left column is about 640px, which is narrower
           than this table's 660px floor, so the breakpoint that was meant to give the table a
           sensible measure was instead the point at which it started scrolling sideways.
+
+          `row-span-2` is not decoration. Pinned to row 1 alone, this card — the tallest thing
+          on the screen — set the height of row 1, so the readiness table sat in a row as tall
+          as the card and the month documents below it did not start until the card had
+          finished. That left a screen-high band of empty page down the left, which is the
+          precise fault the left column was a nested flex stack to avoid. Spanning both rows
+          lets each left-hand row size to its own content again, so the documents card follows
+          the table by one `gap-6` and nothing else.
         */}
-        <Card className={`${CARD_PADDING} xl:col-start-2 xl:row-start-1`}>
+        <Card className={`${CARD_PADDING} xl:col-start-2 xl:row-start-1 xl:row-span-2`}>
           <SectionTitle className="mb-1">Packet contents</SectionTitle>
           <p className="text-sm text-muted mb-4">In the order the funder will read them.</p>
 
