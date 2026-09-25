@@ -21,6 +21,7 @@ import { generatePassword, hashPassword, validatePasswordPolicy } from "@/src/se
 import { revokeOtherSessions } from "@/src/services/auth/session";
 import { consume } from "@/src/services/rate-limit";
 import { deleteStoredObjects } from "@/src/services/storage/documents";
+import { keyBelongsToOrg } from "@/src/services/storage/keys";
 
 const emailSchema = z.string().trim().max(320).email();
 
@@ -353,8 +354,11 @@ export async function deleteUserAccountAction(userId: string): Promise<ActionRes
   // The row was the only pointer to the photo. Removed after the delete has committed, never
   // before, so a refused delete keeps its photo; a failure here leaves one small object behind
   // rather than a person's face with nothing that can ever find it again (D-119).
-  if (guard.target.avatarKey) {
-    await deleteStoredObjects(guard.target.avatarKey).catch(() => {});
+  // Only a key under this organisation's own prefix, as the avatar route checks: the row is ours,
+  // but the prefix stays an enforced invariant rather than an assumption.
+  const photo = guard.target.avatarKey;
+  if (photo && keyBelongsToOrg(photo, guard.current.orgId)) {
+    await deleteStoredObjects(photo).catch(() => {});
   }
 
   revalidatePath("/r/settings/users");

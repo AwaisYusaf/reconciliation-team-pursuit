@@ -23,7 +23,8 @@ Final prompt = `[PREAMBLE]` + blank line + `[module file → "Claude Design prom
 | section-bg | `#F1ECE2` | Table section header rows |
 | autofill | `#F3E9DD` | Autofilled field flash |
 | Type | Plus Jakarta Sans, everything on screen | Headings keep the `font-serif` role name (Georgia is only the fallback). Documents and their previews use `--font-document` |
-| Headings | Bold; page titles gradient-set (`GRADIENT_TEXT`) | See the responsive scale below |
+| Headings | Bold, ink | See the responsive scale below. `gradient` on a heading primitive sets it in `GRADIENT_TEXT`; used for the staff pages' titles and the Settings "Organization" title, not for the app's page titles |
+| Gradient text | `GRADIENT_TEXT`, ink → accent → plus-light | Modal titles, quiet button labels, the dashboard hero's heading and figures, the current saved summary |
 | Body | 15–16px | Tables 15–16px, column headers 13px uppercase letterspaced in white on the header band |
 | Cards | white, 1px `line` border, radius 10px | `Card`; soft shadow only on raised elements (menus, the nav pill) |
 | Table header | `accent-dark` → `plus-light` gradient band, white text | Set once on the header row so it runs as one band across every column |
@@ -113,7 +114,8 @@ illustrations, no emoji. It should feel trustworthy, legible and unhurried.
 Palette: page background #F4F4F3. Cards: #FFFFFF with 1px #D8D0C4 borders, radius 10px.
 Primary text #211B16, secondary #5B5147. Accent (primary buttons, links): deep brown #5B3A29,
 hover #3E2719. Gradient: #3E2719 to #94603F, used for table header rows (one band across the
-row, white uppercase text), page titles (as text), and a highlighted stat tile — nowhere else.
+row, white uppercase text), as text on modal titles, quiet text buttons and the dashboard's
+headline figures, and on a highlighted stat tile — nowhere else. Page titles stay ink.
 Danger/red #8A2A22 with soft background #F6E7E4. Success green #2F4F3E. Pure yellow #FFFF00 is
 reserved exclusively for cells inside document previews that mimic the real submission
 documents (header rows and total cells) — never use it for UI chrome.

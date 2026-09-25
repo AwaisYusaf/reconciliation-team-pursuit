@@ -356,6 +356,23 @@ describe.skipIf(!hasDatabase)("profile photo route (integration, D-117)", async 
       await expect(storage().get(first!)).rejects.toThrow();
     });
 
+    it("stores a small or oblong photo as a square, cropped and never enlarged", async () => {
+      signIn(aliceId);
+      for (const [width, height, expected] of [
+        [300, 600, 300],
+        [600, 300, 300],
+        [100, 50, 50],
+        [2000, 700, 512],
+      ] as const) {
+        const photo = await sharp({ create: { width, height, channels: 3, background: "#7a5230" } })
+          .png()
+          .toBuffer();
+        expect((await POST(upload(photo, "image/png"))).status).toBe(200);
+        const meta = await sharp(await storage().get((await avatarKeyOf(aliceId))!)).metadata();
+        expect([meta.width, meta.height], `${width}x${height}`).toEqual([expected, expected]);
+      }
+    });
+
     it("two uploads racing each other leave exactly one stored photo", async () => {
       signIn(aliceId);
       const { readdir } = await import("node:fs/promises");

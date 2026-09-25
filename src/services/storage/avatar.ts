@@ -30,6 +30,7 @@ const MAX_AVATAR_PIXELS = 50_000_000;
 const ALLOWED_FORMATS = new Set(["jpeg", "png", "webp"]);
 
 const WRONG_TYPE = "Profile photos can be PNG, JPG or WebP.";
+const UNREADABLE = "That photo couldn't be read. Choose a PNG, JPG or WebP photo.";
 
 export type NormalisedAvatar =
   | { ok: true; body: Buffer; mimeType: "image/jpeg" }
@@ -37,8 +38,12 @@ export type NormalisedAvatar =
 
 export async function normaliseAvatar(input: Buffer): Promise<NormalisedAvatar> {
   let format: string | undefined;
+  let width = 0;
+  let height = 0;
   try {
-    ({ format } = await sharp(input, { limitInputPixels: MAX_AVATAR_PIXELS }).metadata());
+    ({ format, width = 0, height = 0 } = await sharp(input, {
+      limitInputPixels: MAX_AVATAR_PIXELS,
+    }).metadata());
   } catch (error) {
     return { ok: false, error: decodeError(error) };
   }
@@ -46,11 +51,18 @@ export async function normaliseAvatar(input: Buffer): Promise<NormalisedAvatar> 
   // format, never on the declared one.
   if (!format || !ALLOWED_FORMATS.has(format)) return { ok: false, error: WRONG_TYPE };
 
+  // Always square: the shorter side, capped at `AVATAR_PX`. `withoutEnlargement` alone is not
+  // enough, because it skips the resize entirely for a photo under 512px on either side and a
+  // 300x600 portrait was stored as 300x512. A small photo is cropped, never blown up.
+  const side = Math.min(AVATAR_PX, width, height);
+  if (side < 1) return { ok: false, error: UNREADABLE };
+
   try {
     const body = await sharp(input, { limitInputPixels: MAX_AVATAR_PIXELS })
       // Apply the EXIF orientation before it is dropped, or a portrait photo lands sideways.
+      // Rotating swaps width and height, which leaves the shorter side, and so `side`, unchanged.
       .rotate()
-      .resize(AVATAR_PX, AVATAR_PX, { fit: "cover", withoutEnlargement: true })
+      .resize(side, side, { fit: "cover" })
       // JPEG has no transparency; a see-through PNG would otherwise turn black behind the face.
       .flatten({ background: "#ffffff" })
       .jpeg({ quality: 85 })
@@ -66,5 +78,5 @@ function decodeError(error: unknown): string {
   if (/pixel|limit/i.test(message)) {
     return "That photo is too large to process. Choose a smaller one.";
   }
-  return "That photo couldn't be read. Choose a PNG, JPG or WebP photo.";
+  return UNREADABLE;
 }
