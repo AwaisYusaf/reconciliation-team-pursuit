@@ -4,8 +4,17 @@ import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 
-import { GRADIENT_TEXT } from "@/src/components/ui/surfaces";
 import { APP_NAME } from "@/src/domain/strings";
+import type { PRICES_CENTS } from "@/src/modules/billing/pricing";
+import type { Interval } from "@/src/modules/billing/rules";
+import {
+  PLAN_BUTTON_LIGHT,
+  PLAN_BUTTON_PRIMARY,
+  PLAN_BUTTON_PRIMARY_STYLE,
+  PlanButtonArrow,
+  PlanCards,
+} from "@/src/modules/landing/plan-cards";
+import { DEMO_REQUEST_HREF, getStartedHref, planPriceLabel } from "@/src/modules/landing/plan-links";
 
 /**
  * Scroll-triggered fade-and-rise, shared by every card grid on the page.
@@ -94,7 +103,10 @@ function useActiveSection(ids: string[]) {
   return activeId;
 }
 
-const FAQS = [
+/** A function of `prices` so the FAQ text and its JSON-LD mirror can't drift from the pricing
+ *  section's own amounts (both read `planPriceLabel` off the same `PRICES_CENTS`). */
+function buildFaqs(prices: typeof PRICES_CENTS) {
+  return [
   {
     question: `What is ${APP_NAME}?`,
     answer:
@@ -143,7 +155,7 @@ const FAQS = [
   {
     question: `Can ${APP_NAME} handle multiple grants or funding sources?`,
     answer:
-      "Yes. Each funding source keeps its own budget, guidelines, expenses, documentation, and requirements, while leadership keeps visibility across the whole organization. Multiple contracts are supported on the Reconciliation + AI plan ($497/month), on top of everything in the single-contract Reconciliation plan ($297/month).",
+      `Yes. Each funding source keeps its own budget, guidelines, expenses, documentation, and requirements, while leadership keeps visibility across the whole organization. Multiple contracts are supported on the Reconciliation + AI plan (${planPriceLabel(prices.reconciliation_ai.month)}/month), on top of everything in the single-contract Reconciliation plan (${planPriceLabel(prices.reconciliation.month)}/month).`,
   },
   {
     question: "How long does it take to generate a month-end filing packet?",
@@ -155,11 +167,20 @@ const FAQS = [
     answer:
       "Every change, category assignment, and upload is timestamped and cryptographically logged for 7-year record retention, with a tamper-evident audit seal locking each record against post-filing alterations.",
   },
-];
+  ];
+}
 
-export function LandingPage() {
+export function LandingPage({
+  prices,
+  signupOpen,
+}: {
+  prices: typeof PRICES_CENTS;
+  signupOpen: boolean;
+}) {
   const [openFaq, setOpenFaq] = useState(0);
+  const [billingInterval, setBillingInterval] = useState<Interval>("month");
   const activeSection = useActiveSection(NAV_SECTION_IDS);
+  const faqs = buildFaqs(prices);
   return (
     <>
 <header className="sticky top-0 z-50 transition-all duration-200 px-4 sm:px-6 py-3">
@@ -168,11 +189,11 @@ export function LandingPage() {
 {/* The full logo's own artwork, laid out side by side: its stacked form (mark over wordmark
     over tagline) would be unreadable at nav height. White so the brown logo reads on the pill. */}
 <Link
-  className="flex items-center gap-2 rounded-full bg-white pl-1.5 pr-4 py-1 shadow-sm transition-transform hover:scale-[1.02]"
+  className="flex items-center gap-2 rounded-full bg-white pl-1.5 pr-3 sm:pr-4 py-1 shadow-sm transition-transform hover:scale-[1.02]"
   href="/"
 >
 <Image src="/brand/stayfunded-mark.png" alt="" width={628} height={570} className="h-7" style={{ width: "auto" }} priority />
-<Image src="/brand/stayfunded-wordmark.png" alt={APP_NAME} width={720} height={84} className="h-[15px]" style={{ width: "auto" }} priority />
+<Image src="/brand/stayfunded-wordmark.png" alt={APP_NAME} width={720} height={84} className="h-[13px] sm:h-[15px]" style={{ width: "auto" }} priority />
 </Link>
 
 <nav className="hidden lg:flex items-center space-x-6 text-xs font-medium text-[#edbca5]/85">
@@ -187,10 +208,18 @@ export function LandingPage() {
 ))}
 </nav>
 
-<div className="flex items-center space-x-3 sm:space-x-4">
-<a
-  className="bg-lp-surface-container-lowest/80 backdrop-blur-md border border-outline-variant/65 text-on-surface inline-flex items-center justify-center px-4 sm:px-5 py-1.5 rounded-full text-xs font-semibold shadow-[0_2px_6px_rgba(0,0,0,0.25),inset_0_1px_0_rgba(255,255,255,0.5)]"
+<div className="flex items-center space-x-2 sm:space-x-4">
+{/* Get Started used to be the header's way to /login; now that it follows the sign-up switch,
+    this is the sign-in entry point. No wrapping: at 375px both links sit on one line. */}
+<Link
+  className="whitespace-nowrap text-[#edbca5]/85 hover:text-white text-xs font-medium px-1.5 py-2.5 transition-colors"
   href="/login"
+>
+  Sign in
+</Link>
+<a
+  className="whitespace-nowrap bg-lp-surface-container-lowest/80 backdrop-blur-md border border-outline-variant/65 text-on-surface inline-flex items-center justify-center px-3 sm:px-5 py-1.5 rounded-full text-xs font-semibold shadow-[0_2px_6px_rgba(0,0,0,0.25),inset_0_1px_0_rgba(255,255,255,0.5)]"
+  href={getStartedHref(signupOpen)}
 >
         Get Started
       </a>
@@ -234,7 +263,7 @@ export function LandingPage() {
 <div className="flex flex-wrap items-center gap-4">
 <a
   className="glass-btn glass-btn-primary group inline-flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-semibold"
-  href="/login"
+  href={getStartedHref(signupOpen)}
   style={{ background: "color-mix(in srgb, var(--color-brand-900) 90%, transparent)" }}
 >
             <span>Get Started</span>
@@ -885,7 +914,7 @@ Receipt + Bank Proof
 </li>
 </ul>
 <div className="pt-2">
-<span className="text-xs text-primary font-semibold italic">Included in Reconciliation + AI ($497/month)</span>
+<span className="text-xs text-primary font-semibold italic">Included in Reconciliation + AI ({planPriceLabel(prices.reconciliation_ai.month)}/month)</span>
 </div>
 </div>
 
@@ -1052,118 +1081,57 @@ Receipt + Bank Proof
 <p className="text-base text-on-surface-variant">
           Allowable administrative expense under most municipal and federal grant budgets.
         </p>
-</div>
-<div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-4xl mx-auto">
 
-<div className="glass-tile bg-lp-surface-container-lowest/60 backdrop-blur-xl rounded-3xl p-8 border-2 border-primary/45 shadow-warm-card hover:shadow-warm-card-hover flex flex-col justify-between ring-1 ring-inset ring-white/30">
-<div>
-<div className="flex justify-between items-center mb-4">
-<h3 className="text-2xl font-semibold text-on-surface font-lp-serif">Reconciliation</h3>
-<span className="text-xs font-semibold px-3 py-1 rounded-full bg-lp-surface-container text-on-surface-variant border border-outline-variant/40">
-                Single Contract
-              </span>
-</div>
-<div className="mb-6">
-<div className="flex items-baseline gap-2">
-<span className="text-4xl sm:text-5xl font-semibold text-on-surface font-lp-serif">$297</span>
-<span className="text-sm font-medium text-on-surface-variant">/ month</span>
-</div>
-<span className="text-xs text-on-surface-variant font-medium mt-1 block">Full core ledger &amp; packet generation</span>
-</div>
-<p className="text-xs text-on-surface-variant mb-6 leading-relaxed">
-              Designed for organizations managing one dedicated municipal or state grant contract seeking to replace manual spreadsheets.
-            </p>
-<ul className="space-y-3 text-xs text-on-surface mb-8">
-<li className="flex items-center gap-2.5">
-<svg className="w-4 h-4 text-primary flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path clipRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" fillRule="evenodd"></path></svg>
-                Complete 9-item transaction capture &amp; validation
-              </li>
-<li className="flex items-center gap-2.5">
-<svg className="w-4 h-4 text-primary flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path clipRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" fillRule="evenodd"></path></svg>
-                Hard documentation gate (blocks missing proof)
-              </li>
-<li className="flex items-center gap-2.5">
-<svg className="w-4 h-4 text-primary flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path clipRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" fillRule="evenodd"></path></svg>
-                Word cover sheet &amp; Excel sub-ledger generator
-              </li>
-<li className="flex items-center gap-2.5">
-<svg className="w-4 h-4 text-primary flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path clipRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" fillRule="evenodd"></path></svg>
-                Automated merged &lt;25MB filing PDF compiler
-              </li>
-<li className="flex items-center gap-2.5">
-<svg className="w-4 h-4 text-primary flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path clipRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" fillRule="evenodd"></path></svg>
-                Live category budget depletion alerts
-              </li>
-<li className="flex items-center gap-2.5">
-<svg className="w-4 h-4 text-primary flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path clipRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" fillRule="evenodd"></path></svg>
-                Standard email onboarding &amp; support
-              </li>
-</ul>
-</div>
-<a className="glass-btn glass-btn-light w-full py-3.5 rounded-xl text-center text-xs sm:text-sm font-semibold" href="#schedule-walkthrough">
-            Get Started with Reconciliation
-          </a>
-</div>
-
-<div className="glass-tile relative bg-lp-surface-container-lowest/60 backdrop-blur-xl rounded-3xl p-8 pt-12 border-2 border-primary/70 shadow-warm-glow flex flex-col justify-between ring-1 ring-inset ring-white/20">
-<div className="absolute top-4 right-6 z-[2] px-3.5 py-0.5 rounded-full bg-[linear-gradient(135deg,var(--color-hero-from)_0%,var(--color-hero-to)_100%)] text-white font-semibold text-[11px] uppercase tracking-wider shadow-sm">
-            Recommended for Busy Directors
-          </div>
-<div>
-<div className="flex justify-between items-center mb-4">
-<h3 className="text-2xl font-semibold text-on-surface font-lp-serif">Reconciliation + AI</h3>
-<span className="text-xs font-semibold px-3 py-1 rounded-full bg-brand-100 text-brand-900 border border-brand-200">
-                All Features + AI
-              </span>
-</div>
-<div className="mb-6">
-<div className="flex items-baseline gap-2">
-<span className={`text-4xl sm:text-5xl font-semibold font-lp-serif ${GRADIENT_TEXT}`}>$497</span>
-<span className="text-sm font-medium text-on-surface-variant">/ month</span>
-</div>
-<span className="text-xs text-primary font-semibold mt-1 block">Full suite plus AI summaries and receipt reading</span>
-</div>
-<p className="text-xs text-on-surface-variant mb-6 leading-relaxed">
-              For teams managing more than one funding source who want AI to draft the monthly summary and read the amounts off every receipt.
-            </p>
-<ul className="space-y-3 text-xs text-on-surface mb-8">
-<li className="flex items-center gap-2.5 font-semibold text-primary">
-<svg className="w-4 h-4 text-primary flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path clipRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" fillRule="evenodd"></path></svg>
-                Everything in Reconciliation Package
-              </li>
-<li className="flex items-center gap-2.5">
-<svg className="w-4 h-4 text-primary flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path clipRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" fillRule="evenodd"></path></svg>
-                Multiple funding sources, each with its own budget and packet
-              </li>
-<li className="flex items-center gap-2.5">
-<svg className="w-4 h-4 text-primary flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path clipRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" fillRule="evenodd"></path></svg>
-                AI monthly funding &amp; program summary, drafted for you to edit, in Word or PDF
-              </li>
-<li className="flex items-center gap-2.5">
-<svg className="w-4 h-4 text-primary flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path clipRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" fillRule="evenodd"></path></svg>
-                AI reads subtotal, tax &amp; fees from receipts and checks proof of payment
-              </li>
-<li className="flex items-center gap-2.5">
-<svg className="w-4 h-4 text-primary flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path clipRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" fillRule="evenodd"></path></svg>
-                Extract from invoice: one multi-line invoice becomes a draft expense per line
-              </li>
-</ul>
-</div>
-<a
-  className="glass-btn glass-btn-primary inline-flex w-full items-center justify-center gap-2 py-3.5 rounded-xl text-center text-xs sm:text-sm font-semibold"
-  href="#schedule-walkthrough"
-  style={{
-    background:
-      "linear-gradient(135deg, var(--color-hero-from) 0%, var(--color-hero-to) 100%)",
-  }}
+{/* Monthly/Yearly toggle: a pill group, keyboard-focusable, defaulting to Monthly. Card
+    amounts and the buttons below both read `billingInterval`, so the two stay in step. */}
+<div role="group" aria-label="Billing interval" className="inline-flex items-center gap-1 mt-6 p-1 rounded-full bg-lp-surface-container-high border border-outline-variant">
+{(["month", "year"] as const).map((option) => (
+<button
+  key={option}
+  type="button"
+  aria-pressed={billingInterval === option}
+  onClick={() => setBillingInterval(option)}
+  className={
+    billingInterval === option
+      ? "min-h-11 px-4 rounded-full text-sm font-semibold text-white glass-btn glass-btn-primary"
+      : "min-h-11 px-4 rounded-full text-sm font-semibold text-brand-800 hover:bg-lp-surface-container transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+  }
 >
-            <span>Start with Reconciliation + AI</span>
-            <span className="glass-btn-arrow">
-              <svg className="w-3.5 h-3.5 -rotate-90" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6" strokeLinecap="round" strokeLinejoin="round" strokeWidth="3"></path></svg>
-            </span>
-          </a>
+  {option === "month" ? "Monthly" : "Yearly"}
+</button>
+))}
 </div>
 </div>
+<PlanCards
+  prices={prices}
+  interval={billingInterval}
+  actions={(plan) =>
+    plan === "reconciliation" ? (
+      <>
+        <a className={PLAN_BUTTON_LIGHT} href={getStartedHref(signupOpen, "reconciliation", billingInterval)}>
+          Get Started with Reconciliation
+        </a>
+        <a className={PLAN_BUTTON_LIGHT} href={DEMO_REQUEST_HREF}>
+          Book a demo
+        </a>
+      </>
+    ) : (
+      <>
+        <a
+          className={PLAN_BUTTON_PRIMARY}
+          href={getStartedHref(signupOpen, "reconciliation_ai", billingInterval)}
+          style={PLAN_BUTTON_PRIMARY_STYLE}
+        >
+          <span>Start with Reconciliation + AI</span>
+          <PlanButtonArrow />
+        </a>
+        <a className={PLAN_BUTTON_LIGHT} href={DEMO_REQUEST_HREF}>
+          Book a demo
+        </a>
+      </>
+    )
+  }
+/>
 </div>
 </Reveal>
 </section>
@@ -1174,7 +1142,7 @@ Receipt + Bank Proof
     __html: JSON.stringify({
       "@context": "https://schema.org",
       "@type": "FAQPage",
-      mainEntity: FAQS.map((faq) => ({
+      mainEntity: faqs.map((faq) => ({
         "@type": "Question",
         name: faq.question,
         acceptedAnswer: {
@@ -1199,7 +1167,7 @@ Receipt + Bank Proof
         </p>
 </div>
 <div className="lg:col-span-8 flex flex-col gap-3">
-{FAQS.map((faq, index) => {
+{faqs.map((faq, index) => {
   const isOpen = openFaq === index;
   return (
     <div
@@ -1270,14 +1238,11 @@ Receipt + Bank Proof
 ))}
 </ul>
 <div className="flex flex-wrap items-center justify-center gap-4">
-<a className="glass-btn glass-btn-primary inline-flex items-center gap-2 px-8 py-3.5 rounded-full text-sm font-semibold" href="mailto:tech@teampursuit.org?subject=Stay%20Funded%20360%20demo%20request">
-          <span>Request a demo</span>
+<a className="glass-btn glass-btn-primary inline-flex items-center gap-2 px-8 py-3.5 rounded-full text-sm font-semibold" href={DEMO_REQUEST_HREF}>
+          <span>Book a demo</span>
           <span className="glass-btn-arrow">
               <svg className="w-3.5 h-3.5 -rotate-90" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6" strokeLinecap="round" strokeLinejoin="round" strokeWidth="3"></path></svg>
             </span>
-        </a>
-<a className="glass-btn glass-btn-dark px-8 py-3.5 rounded-full text-sm font-semibold" href="mailto:tech@teampursuit.org?subject=Stay%20Funded%20360%20early%20access">
-          Join early access
         </a>
 </div>
 </div>

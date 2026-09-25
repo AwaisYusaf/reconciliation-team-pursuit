@@ -100,6 +100,9 @@ export async function loadBillingBanner(session: { orgId: string; role: string }
   }
   if (!isAdmin) return null;
   if (view.kind === "subscribed" && view.upgrade) return { kind: "upgradeWaiting", expiresAt: view.upgrade.expiresAt };
-  if (view.kind === "complimentaryAccess" && view.endingSoon && view.until) return { kind: "compEnding", until: view.until };
+  // Not once a plan was bought during the free access: "you'll be asked to choose a plan" would be wrong.
+  if (view.kind === "complimentaryAccess" && view.endingSoon && view.until && !view.upcoming) {
+    return { kind: "compEnding", until: view.until };
+  }
   return null;
 }

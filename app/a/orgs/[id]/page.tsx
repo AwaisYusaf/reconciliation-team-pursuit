@@ -5,10 +5,17 @@ import { Card, PageTitle, SubsectionTitle } from "@/src/components/ui/surfaces";
 import { TableCard, Td, Th } from "@/src/components/ui/table";
 import { cn } from "@/src/lib/cn";
 import { formatDateShort, formatDateTimeShort, monthLabel, todayIso } from "@/src/domain/dates";
-import { formatBytes, ratio } from "@/src/domain/format";
+import { formatBytes, formatMoney, ratio } from "@/src/domain/format";
 import { PLAN_LABELS, UI } from "@/src/domain/strings";
 import { aiCost } from "@/src/modules/admin/ai-cost";
-import { describeAccountEvent, staffBilling, usersFooter } from "@/src/modules/admin/directory";
+import {
+  describeAccountEvent,
+  paymentStatusLabel,
+  staffBilling,
+  usersFooter,
+  type StaffBillingTone,
+} from "@/src/modules/admin/directory";
+import { staffPayments } from "@/src/modules/billing/billing";
 import { billingEnabled } from "@/src/modules/billing/config";
 import { isLive } from "@/src/modules/billing/rules";
 import { requireStaffPage } from "@/src/modules/admin/guard";
@@ -71,6 +78,14 @@ function UsageTile({
 const FIGURE_GRID =
   "grid grid-cols-2 lg:grid-cols-3 gap-px bg-line border border-line rounded-[10px] overflow-hidden";
 
+/** Pill colours by how the billing is doing: paid, needs a look, failed, or just information. */
+const TONE: Record<StaffBillingTone, string> = {
+  good: "bg-emerald-50 text-emerald-800 border-emerald-200",
+  warn: "bg-amber-50 text-amber-800 border-amber-200",
+  bad: "bg-danger-bg text-danger border-danger/30",
+  neutral: "bg-section text-sub border-line",
+};
+
 /** A bare count. Large and tight — on this screen the number is the content. */
 function Figure({ children }: { children: React.ReactNode }) {
   return (
@@ -106,19 +121,21 @@ export default async function OrgPage({
   const rawBack = typeof query.back === "string" ? query.back : "";
   const backHref = rawBack.startsWith("?") ? `/a${rawBack}` : "/a";
 
-  const [users, usage, aiUsage, history] = await Promise.all([
+  const [users, usage, aiUsage, history, payments] = await Promise.all([
     loadOrgUsers(id, showAllUsers),
     loadOrgUsage(id),
     loadOrgAiUsage(id),
     loadOrgHistory(id),
+    staffPayments(id),
   ]);
+  const lastPaid = payments?.find((p) => p.status === "paid") ?? null;
+  const billing = staffBilling(account, lastPaid);
   const footer = usersFooter({
     showAll: showAllUsers,
     shown: users.rows.length,
     total: users.total,
   });
   const today = todayIso();
-  const billing = staffBilling(account);
   // Same test the server applies in `changePlanAction` (P16), so the button never offers what
   // the action would refuse.
   const stripeManaged = billingEnabled() && isLive(account.stripeStatus);
@@ -325,31 +342,95 @@ export default async function OrgPage({
 
       {billing && (
         <Card className="p-4 sm:p-5 lg:p-6">
-          <SubsectionTitle gradient className="mb-3">{UI.staffBillingTitle}</SubsectionTitle>
-          {billing.warnings.map((warning) => (
-            <p key={warning} className="text-[15px] font-semibold text-danger mb-2" role="status">
-              {warning}
-            </p>
-          ))}
-          <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3">
-            {billing.facts.map((fact) => (
-              <div key={fact.label}>
-                <dt className="text-[13px] text-sub">{fact.label}</dt>
-                <dd className="text-[15px] text-ink font-medium">{fact.value}</dd>
+          {/* Has this org paid? Answered first, as a pill and one line; the facts and the
+              invoices follow. */}
+          <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
+            <div>
+              <SubsectionTitle gradient className="mb-2">{UI.staffBillingTitle}</SubsectionTitle>
+              <div className="flex flex-wrap items-center gap-2.5">
+                <span className={cn("inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-semibold border", TONE[billing.headline.tone])}>
+                  <span className="w-2 h-2 rounded-full bg-current" aria-hidden="true" />
+                  {billing.headline.label}
+                </span>
+                {billing.headline.detail && <span className="text-[15px] text-sub">{billing.headline.detail}</span>}
               </div>
-            ))}
-          </dl>
-          {billing.customerUrl && (
-            <p className="mt-4">
+            </div>
+            {billing.customerUrl && (
               <a
                 href={billing.customerUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-[15px] text-accent underline underline-offset-2 hover:no-underline"
+                className="inline-flex items-center min-h-11 px-4 rounded-[3px] border border-line text-[15px] text-accent hover:bg-section"
               >
                 {UI.staffBillingOpenCustomer}
               </a>
+            )}
+          </div>
+
+          {billing.warnings.map((warning) => (
+            <p key={warning} className="text-[15px] font-semibold text-danger mb-3" role="status">
+              {warning}
             </p>
+          ))}
+
+          {billing.facts.length > 0 && (
+            <dl className={cn(FIGURE_GRID, "mb-5")}>
+              {billing.facts.map((fact) => (
+                <UsageTile key={fact.label} label={fact.label}>
+                  <Sentence>{fact.value}</Sentence>
+                </UsageTile>
+              ))}
+            </dl>
+          )}
+
+          <h3 className="text-[13px] uppercase tracking-[0.08em] font-semibold text-muted mb-2">{UI.staffPaymentsTitle}</h3>
+          {payments === null ? (
+            <p className="text-[15px] text-sub">{UI.staffPaymentsUnavailable}</p>
+          ) : payments.length === 0 ? (
+            <p className="text-[15px] text-sub">{UI.staffPaymentsNone}</p>
+          ) : (
+            <TableCard minWidth={480}>
+              <thead>
+                <tr>
+                  <Th>Date</Th>
+                  <Th>Amount</Th>
+                  <Th>Status</Th>
+                  <Th>
+                    <span className="sr-only">Invoice</span>
+                  </Th>
+                </tr>
+              </thead>
+              <tbody>
+                {payments.map((payment) => (
+                  <tr key={payment.id}>
+                    <Td>{formatDateShort(todayIso(payment.at))}</Td>
+                    <Td className="tabular-nums">{formatMoney(payment.amountCents)}</Td>
+                    <Td>
+                      <span
+                        className={cn(
+                          "inline-flex px-2.5 py-0.5 rounded-full text-xs font-semibold border",
+                          TONE[payment.status === "paid" ? "good" : payment.status === "open" ? "warn" : "neutral"],
+                        )}
+                      >
+                        {paymentStatusLabel(payment.status)}
+                      </span>
+                    </Td>
+                    <Td>
+                      {payment.url && (
+                        <a
+                          href={payment.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-accent underline underline-offset-2 hover:no-underline"
+                        >
+                          {UI.staffPaymentsView}
+                        </a>
+                      )}
+                    </Td>
+                  </tr>
+                ))}
+              </tbody>
+            </TableCard>
           )}
         </Card>
       )}

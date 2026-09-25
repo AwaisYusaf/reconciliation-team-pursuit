@@ -13,6 +13,7 @@ import { signInAction } from "@/src/modules/auth/actions";
 export function LoginForm() {
   const [state, setState] = useState(IDLE);
   const [pending, startTransition] = useTransition();
+  const [showPassword, setShowPassword] = useState(false);
   const error = state.ok ? null : state.error;
 
   // A plain onSubmit (rather than a `<form action>`) so a failed sign-in never triggers
@@ -44,11 +45,21 @@ export function LoginForm() {
       </div>
 
       <div className="mb-5">
-        <Label htmlFor="password">Password</Label>
+        <div className="flex items-baseline justify-between gap-2">
+          <Label htmlFor="password">Password</Label>
+          <button
+            type="button"
+            onClick={() => setShowPassword((value) => !value)}
+            aria-pressed={showPassword}
+            className="text-[13px] font-bold text-accent hover:text-accent-dark shrink-0"
+          >
+            {showPassword ? "Hide" : "Show"}
+          </button>
+        </div>
         <Input
           id="password"
           name="password"
-          type="password"
+          type={showPassword ? "text" : "password"}
           autoComplete="current-password"
           className={AUTH_FIELD}
           required

@@ -1,7 +1,10 @@
 import type { Metadata } from "next";
+import { connection } from "next/server";
 
 import { LandingPage } from "@/src/modules/landing/landing-page";
 import { APP_NAME } from "@/src/domain/strings";
+import { PRICES_CENTS } from "@/src/modules/billing/pricing";
+import { signupEnabled } from "@/src/modules/auth/config";
 
 // Ported from grant-ledger app/layout.tsx (lines 18-56) with the site URL swapped to this
 // repo's own convention: APP_URL, not grant-ledger's NEXT_PUBLIC_SITE_URL.
@@ -56,8 +59,26 @@ const organizationSchema = {
 };
 
 // The two plans are stated in full on the page, so they belong in structured data too: this is
-// the shape search and answer engines read a price out of. Keep the amounts in step with the
-// pricing section in landing-page.tsx — they are written in both places for a human to read.
+// the shape search and answer engines read a price out of. Prices come from PRICES_CENTS
+// (src/modules/billing/pricing.ts) — the only place a price literal lives (U-19) — so this and
+// the pricing section in landing-page.tsx can never disagree about the amount, only the wording.
+const OFFER_COPY: Record<
+  keyof typeof PRICES_CENTS,
+  { name: string; category: string; description: string }
+> = {
+  reconciliation: {
+    name: "Reconciliation",
+    category: "Single funding source",
+    description: "Full core ledger and packet generation for one municipal or state grant contract.",
+  },
+  reconciliation_ai: {
+    name: "Reconciliation + AI",
+    category: "Multiple funding sources",
+    description:
+      "Everything in Reconciliation, plus multiple contracts and the AI monthly funding and program summary.",
+  },
+};
+
 const softwareSchema = {
   "@context": "https://schema.org",
   "@type": "SoftwareApplication",
@@ -67,31 +88,29 @@ const softwareSchema = {
   operatingSystem: "Web browser",
   url: siteUrl,
   description,
-  offers: [
-    {
+  offers: Object.entries(PRICES_CENTS).map(([plan, prices]) => {
+    const monthly = (prices.month / 100).toFixed(2);
+    const yearly = (prices.year / 100).toFixed(2);
+    return {
       "@type": "Offer",
-      name: "Reconciliation",
-      price: "297",
+      ...OFFER_COPY[plan as keyof typeof PRICES_CENTS],
+      price: monthly,
       priceCurrency: "USD",
-      category: "Single funding source",
-      description:
-        "Full core ledger and packet generation for one municipal or state grant contract.",
-    },
-    {
-      "@type": "Offer",
-      name: "Reconciliation + AI",
-      price: "497",
-      priceCurrency: "USD",
-      category: "Multiple funding sources",
-      description:
-        "Everything in Reconciliation, plus multiple contracts and the AI monthly funding and program summary.",
-    },
-  ],
+      priceSpecification: [
+        { "@type": "UnitPriceSpecification", price: monthly, priceCurrency: "USD", billingDuration: "P1M", unitCode: "MON" },
+        { "@type": "UnitPriceSpecification", price: yearly, priceCurrency: "USD", billingDuration: "P1Y", unitCode: "ANN" },
+      ],
+    };
+  }),
 };
 
 // Scoped here rather than the root layout: /r and /a are not marketing pages and should not
 // carry the landing's JSON-LD or its marketing type scale (see globals.css's `.lp` scoping).
-export default function Home() {
+export default async function Home() {
+  // Reads SIGNUP_ENABLED at request time, not baked in at build (Phase 7): a deploy that
+  // flips it must not require a rebuild to show up here.
+  await connection();
+
   return (
     <div className="lp bg-lp-surface text-on-surface font-lp-sans antialiased selection:bg-brand-700 selection:text-white">
       <script
@@ -106,7 +125,7 @@ export default function Home() {
           __html: JSON.stringify(softwareSchema).replace(/</g, "\\u003c"),
         }}
       />
-      <LandingPage />
+      <LandingPage prices={PRICES_CENTS} signupOpen={signupEnabled()} />
     </div>
   );
 }

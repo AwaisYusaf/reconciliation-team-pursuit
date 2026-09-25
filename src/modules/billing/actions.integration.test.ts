@@ -100,6 +100,7 @@ describe.skipIf(!hasDatabase)("billing actions (integration, Phase 15)", async (
     "./billing"
   );
   const { PORTAL_TAG } = await import("./pricing");
+  const { dayAfterStart } = await import("./rules");
 
   if (stripeKeyIsLive()) throw new Error("refuse to run this suite against a live-looking Stripe key");
 
@@ -263,12 +264,93 @@ describe.skipIf(!hasDatabase)("billing actions (integration, Phase 15)", async (
   /* --------------------------------------------------------------------- I-1 */
 
   describe("I-1: complimentary org", () => {
-    it("all eight actions refuse billingComplimentaryRefused, and the Stripe client is never called", async () => {
+    it("switching (quote, apply, cancel a queued change) and End plan now refuse billingComplimentaryRefused before any Stripe call", async () => {
       const orgId = await freshOrg({ complimentary: true });
       asAdmin(orgId);
-      const results = await callAll();
-      for (const r of results) expect(r).toEqual(fail(UI.billingComplimentaryRefused));
+      expect(await quoteChangeAction("reconciliation", "month")).toEqual(fail(UI.billingComplimentaryRefused));
+      expect(await applyChangeAction("reconciliation", "month", 1_650_000_000)).toEqual(fail(UI.billingComplimentaryRefused));
+      expect(await cancelPendingChangeAction()).toEqual(fail(UI.billingComplimentaryRefused));
+      expect(await endPlanNowAction()).toEqual(fail(UI.billingComplimentaryRefused));
       noStripeCallsMade();
+    });
+
+    it("cancel, keep and Card and invoices get past the complimentary check (for a plan bought during it); with no customer they answer billingNoPlan, still with no Stripe call", async () => {
+      const orgId = await freshOrg({ complimentary: true });
+      asAdmin(orgId);
+      expect(await cancelPlanAction()).toEqual(fail(UI.billingNoPlan));
+      expect(await resumePlanAction()).toEqual(fail(UI.billingNoPlan));
+      expect(await billingPortalAction()).toEqual(fail(UI.billingNoPlan));
+      noStripeCallsMade();
+    });
+
+    async function compOrg(until: string | null, complimentaryPlan: "reconciliation" | "reconciliation_ai" | null = null) {
+      const orgId = await freshOrg({ complimentary: false });
+      await db
+        .update(organizations)
+        .set({ complimentary: true, complimentaryUntil: until, complimentaryPlan, plan: "reconciliation_ai" })
+        .where(eq(organizations.id, orgId));
+      asAdmin(orgId);
+      return orgId;
+    }
+    const isoIn = (days: number) => todayIso(new Date(Date.now() + days * 86_400_000));
+    const sessionArgs = () => checkoutSessionsCreateMock.mock.calls.at(-1)![0];
+
+    it("Checkout with no end date: charged today, the subscription is marked to end the free access once paid", async () => {
+      await compOrg(null);
+      const result = await startCheckoutAction("reconciliation", "month");
+      expect(result.ok).toBe(true);
+      const args = sessionArgs();
+      expect(args.subscription_data.metadata.endComplimentary).toBe("on_payment");
+      expect(args.subscription_data.trial_end).toBeUndefined();
+      expect(args.custom_text.submit.message).toBe(UI.billingCheckoutEndsComp);
+    });
+
+    it("Checkout with an end date 2+ days away: nothing today, first charge at the start of the next day, no end marker", async () => {
+      const until = isoIn(10);
+      await compOrg(until);
+      const result = await startCheckoutAction("reconciliation", "year");
+      expect(result.ok).toBe(true);
+      const args = sessionArgs();
+      expect(args.subscription_data.trial_end).toBe(Math.floor(dayAfterStart(until).getTime() / 1000));
+      expect(args.subscription_data.metadata.endComplimentary).toBeUndefined();
+    });
+
+    it("Checkout with an end date tomorrow (too soon for Stripe to defer): charged today with the end marker", async () => {
+      await compOrg(isoIn(1));
+      await startCheckoutAction("reconciliation", "month");
+      const args = sessionArgs();
+      expect(args.subscription_data.trial_end).toBeUndefined();
+      expect(args.subscription_data.metadata.endComplimentary).toBe("on_payment");
+    });
+
+    it("pins the free plan before Checkout, so buying Reconciliation during free Reconciliation + AI keeps the AI features until the free access ends", async () => {
+      const orgId = await compOrg(null);
+      await startCheckoutAction("reconciliation", "month");
+      const [row] = await db
+        .select({ complimentaryPlan: organizations.complimentaryPlan })
+        .from(organizations)
+        .where(eq(organizations.id, orgId));
+      expect(row.complimentaryPlan).toBe("reconciliation_ai");
+    });
+
+    it("an already pinned free plan is left as it is", async () => {
+      const orgId = await compOrg(null, "reconciliation");
+      await startCheckoutAction("reconciliation", "month");
+      const [row] = await db
+        .select({ complimentaryPlan: organizations.complimentaryPlan })
+        .from(organizations)
+        .where(eq(organizations.id, orgId));
+      expect(row.complimentaryPlan).toBe("reconciliation");
+    });
+
+    it("a paying org's Checkout is unchanged: no deferral, no end marker, the usual note", async () => {
+      const orgId = await freshOrg({ complimentary: false });
+      asAdmin(orgId);
+      await startCheckoutAction("reconciliation", "month");
+      const args = sessionArgs();
+      expect(args.subscription_data).toEqual({ metadata: { orgId } });
+      expect(args.custom_text.submit.message).toBe(UI.billingCheckoutNote);
+      expect(args.adaptive_pricing).toEqual({ enabled: false });
     });
 
     it("complimentary until today still refuses; until yesterday does not", async () => {
@@ -279,6 +361,7 @@ describe.skipIf(!hasDatabase)("billing actions (integration, Phase 15)", async (
         .where(eq(organizations.id, orgId));
       asAdmin(orgId);
       expect(await cancelPendingChangeAction()).toEqual(fail(UI.billingComplimentaryRefused));
+      noStripeCallsMade();
 
       const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
       await db.update(organizations).set({ complimentaryUntil: yesterday }).where(eq(organizations.id, orgId));

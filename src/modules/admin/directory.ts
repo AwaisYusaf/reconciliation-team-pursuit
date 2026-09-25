@@ -5,6 +5,7 @@
  */
 import type { IsoDate } from "@/src/domain/dates";
 import { formatDateShort, formatDateTimeShort, todayIso } from "@/src/domain/dates";
+import { formatMoney } from "@/src/domain/format";
 import { PLAN_LABELS, STATUS_LABELS, UI } from "@/src/domain/strings";
 import { userDisplay } from "@/src/domain/user-display";
 
@@ -93,35 +94,67 @@ export type BillingCopy = {
   billingFlag: string | null;
 };
 
+export type StaffBillingTone = "good" | "warn" | "bad" | "neutral";
+
 export type StaffBilling = {
+  /** Has this org paid? One pill and one line, answered first. */
+  headline: { tone: StaffBillingTone; label: string; detail: string | null };
   facts: { label: string; value: string }[];
   warnings: string[];
   customerUrl: string | null;
 };
+
+/** The latest paid invoice, from the Payments list (read from Stripe on the page). */
+export type LastPayment = { amountCents: number; at: Date } | null;
 
 const intervalWord = (interval: string | null) =>
   interval === "month" ? "monthly" : interval === "year" ? "yearly" : (interval ?? "");
 
 /**
  * The Billing card on the org page (Phase 15 §4.6), or `null` when Stripe has never seen this
- * org. Reads only our copy (written by `syncOrgBilling`); the Stripe link is for anything more.
+ * org. Reads our copy (written by `syncOrgBilling`) plus the latest paid invoice; the Stripe link
+ * is for anything more.
  */
-export function staffBilling(row: BillingCopy, now: Date = new Date()): StaffBilling | null {
+export function staffBilling(row: BillingCopy, lastPaid: LastPayment = null, now: Date = new Date()): StaffBilling | null {
   if (!row.stripeCustomerId && !row.stripeStatus) return null;
 
   const facts: StaffBilling["facts"] = [];
   const warnings: string[] = [];
   const day = (at: Date) => formatDateShort(todayIso(at));
+  const paidLine = lastPaid ? UI.staffBillingLastPaid(formatMoney(lastPaid.amountCents), day(lastPaid.at)) : null;
+  const periodEnd = row.currentPeriodEnd ? day(row.currentPeriodEnd) : null;
 
-  facts.push({ label: UI.staffBillingStatus, value: row.stripeStatus ?? UI.staffBillingNone });
+  const headline: StaffBilling["headline"] =
+    row.stripeStatus === "past_due" || row.stripeStatus === "unpaid"
+      ? { tone: "bad", label: UI.staffBillingHeadFailed, detail: UI.staffBillingPaymentFailed }
+      : row.stripeStatus === "trialing"
+        ? { tone: "neutral", label: UI.staffBillingHeadNotYet, detail: periodEnd ? UI.staffBillingFirstCharge(periodEnd) : null }
+        : row.stripeStatus === "active" && row.cancelAtPeriodEnd
+          ? { tone: "warn", label: UI.staffBillingHeadCancelling, detail: periodEnd ? UI.staffBillingAccessEnds(periodEnd) : paidLine }
+          : row.stripeStatus === "active"
+            ? { tone: "good", label: UI.staffBillingHeadPaid, detail: paidLine }
+            : row.stripeStatus === "canceled" || row.stripeStatus === "incomplete_expired"
+              ? { tone: "neutral", label: UI.staffBillingHeadCancelled, detail: paidLine }
+              : row.stripeStatus === "incomplete"
+                ? { tone: "warn", label: UI.staffBillingHeadUnfinished, detail: null }
+                : { tone: "neutral", label: row.stripeStatus ?? UI.staffBillingNone, detail: paidLine };
+
   if (row.billingInterval) {
     facts.push({ label: UI.staffBillingInterval, value: intervalWord(row.billingInterval) });
   }
-  if (row.currentPeriodEnd && row.stripeStatus !== "canceled") {
+  if (periodEnd && row.stripeStatus !== "canceled" && row.stripeStatus !== "incomplete_expired") {
     facts.push({
-      label: row.cancelAtPeriodEnd ? UI.staffBillingEnds : UI.staffBillingRenews,
-      value: day(row.currentPeriodEnd),
+      label:
+        row.stripeStatus === "trialing"
+          ? UI.staffBillingFirstChargeLabel
+          : row.cancelAtPeriodEnd
+            ? UI.staffBillingEnds
+            : UI.staffBillingRenews,
+      value: periodEnd,
     });
+  }
+  if (lastPaid) {
+    facts.push({ label: UI.staffBillingLastPaidLabel, value: `${formatMoney(lastPaid.amountCents)} · ${day(lastPaid.at)}` });
   }
   if (row.pendingAt) {
     facts.push({
@@ -133,7 +166,6 @@ export function staffBilling(row: BillingCopy, now: Date = new Date()): StaffBil
     });
   }
 
-  if (row.stripeStatus === "past_due" || row.stripeStatus === "unpaid") warnings.push(UI.staffBillingPaymentFailed);
   if (row.upgradeExpiresAt && row.upgradeExpiresAt > now) {
     warnings.push(UI.staffBillingUpgradeWaiting(formatDateTimeShort(row.upgradeExpiresAt)));
   }
@@ -144,7 +176,25 @@ export function staffBilling(row: BillingCopy, now: Date = new Date()): StaffBil
     ? `https://dashboard.stripe.com/${row.stripeLivemode ? "" : "test/"}customers/${encodeURIComponent(row.stripeCustomerId)}`
     : null;
 
-  return { facts, warnings, customerUrl };
+  return { headline, facts, warnings, customerUrl };
+}
+
+/** A Stripe invoice status in plain words for the Payments card; an unknown one shows as is. */
+export function paymentStatusLabel(status: string): string {
+  switch (status) {
+    case "paid":
+      return UI.staffPaymentPaid;
+    case "open":
+      return UI.staffPaymentOpen;
+    case "void":
+      return UI.staffPaymentVoid;
+    case "uncollectible":
+      return UI.staffPaymentUncollectible;
+    case "draft":
+      return UI.staffPaymentDraft;
+    default:
+      return status;
+  }
 }
 
 /**

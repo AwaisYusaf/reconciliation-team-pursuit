@@ -105,8 +105,56 @@ describe("planBillingView", () => {
   });
 
   it("complimentary wins over a subscription, and shows the complimentary plan", () => {
-    const view = planBillingView(row({ complimentary: true, complimentaryPlan: "reconciliation_ai" }), on);
-    expect(view).toEqual({ kind: "complimentaryAccess", plan: "reconciliation_ai", until: null, endingSoon: false });
+    const view = planBillingView(
+      row({ complimentary: true, complimentaryPlan: "reconciliation_ai", stripeStatus: null }),
+      on,
+    );
+    expect(view).toEqual({
+      kind: "complimentaryAccess",
+      plan: "reconciliation_ai",
+      until: null,
+      endingSoon: false,
+      buy: { kind: "now" },
+      upcoming: null,
+    });
+  });
+
+  it("complimentary with an end date far enough out: buying defers the first charge to the day after it", () => {
+    const view = planBillingView(row({ complimentary: true, complimentaryUntil: "2026-10-10", stripeStatus: null }), on);
+    expect(view).toMatchObject({ buy: { kind: "defer", firstChargeOn: "2026-10-11" }, upcoming: null });
+  });
+
+  it("complimentary ending tomorrow: too soon to defer, buying charges now", () => {
+    const view = planBillingView(row({ complimentary: true, complimentaryUntil: "2026-09-26", stripeStatus: null }), on);
+    expect(view).toMatchObject({ buy: { kind: "now" } });
+  });
+
+  it("a plan bought during complimentary access shows as upcoming, with its start date", () => {
+    const view = planBillingView(
+      row({
+        complimentary: true,
+        complimentaryUntil: "2026-10-10",
+        complimentaryPlan: "reconciliation_ai",
+        plan: "reconciliation",
+        stripeStatus: "trialing",
+        billingInterval: "year",
+        currentPeriodEnd: new Date("2026-10-11T04:00:00Z"),
+      }),
+      on,
+    );
+    expect(view).toMatchObject({
+      kind: "complimentaryAccess",
+      plan: "reconciliation_ai",
+      upcoming: { plan: "reconciliation", interval: "year", startsOn: "2026-10-11", cancelling: false },
+    });
+  });
+
+  it("an upcoming plan that was cancelled is flagged, so the section offers Keep my plan", () => {
+    const view = planBillingView(
+      row({ complimentary: true, stripeStatus: "trialing", cancelAtPeriodEnd: true }),
+      on,
+    );
+    expect(view).toMatchObject({ upcoming: { cancelling: true } });
   });
 
   it(`complimentary ending: warned from ${COMP_WARNING_DAYS} days out, not 15`, () => {
@@ -130,15 +178,27 @@ describe("Plan & billing section renders each state", () => {
 
   it.each([
     ["off", ["UI.billingNotEnabled"]],
-    ["none", ["UI.billingNoPlan", "UI.billingSeePlans", "UI.billingManagerNote"]],
-    ["complimentary", ["UI.billingComplimentaryUntil", "UI.billingComplimentary(", "UI.billingCompEnding", "UI.billingQuestions"]],
+    ["none", ["UI.billingNoPlan", "<SubscribeButton", "UI.billingManagerNote"]],
+    ["complimentary", ["UI.billingComplimentaryUntil", "UI.billingComplimentary(", "UI.billingCompBuyDeferred", "UI.billingCompBuyNow", "UI.billingQuestions"]],
+    ["complimentary with a plan bought", ["UI.billingCompUpcoming(", "UI.billingCompUpcomingCancelled", "UI.billingCancelUpcomingBody"]],
     ["subscribed", ["UI.billingRenews", "UI.billingCancelling", "UI.billingSwitchPlan", "UI.billingPortal", "UI.billingCancelPlan"]],
+    ["plans", ["<PlanCards", "UI.billingPlansTitle", "UI.billingYourPlan"]],
+    ["switch refused", ["UI.billingPaymentFailedRefused", "UI.billingCancelPending", "UI.billingPaymentPending", "UI.billingChangePending"]],
     ["cancelling", ["UI.billingKeepPlan", "resumePlanAction"]],
     ["payment failed", ["UI.billingPaymentFailed", "UI.billingPaymentFailedManager", "UI.billingEndNow", "endPlanNowAction"]],
     ["queued change", ["UI.billingDowngradeQueued", "UI.billingPriceMoveQueued", "UI.billingCancelChange", "cancelPendingChangeAction"]],
     ["upgrade waiting", ["UI.billingUpgradeWaiting", "UI.billingPayNow"]],
   ])("%s", (_state, needles) => {
     for (const needle of needles) expect(source, needle).toContain(needle);
+  });
+
+  it("the complimentary ending warning is the page banner only, never repeated in the section", () => {
+    expect(source).not.toContain("UI.billingCompEnding");
+  });
+
+  it("a manager gets no plan buttons: the card actions stop for anyone but an admin", () => {
+    const fn = source.slice(source.indexOf("function planActions"), source.indexOf("return (", source.indexOf("function planActions") + 400));
+    expect(fn).toContain("if (!isAdmin) return null;");
   });
 
   it("the Cancel this change button is for a downgrade only, never a price move", () => {

@@ -3,6 +3,7 @@ import { TourGuide } from "@/src/components/ui/tour";
 import { pageTitle } from "@/src/domain/strings";
 import { aiAllowedForOrg } from "@/src/modules/ai/access";
 import { loadPlanBilling } from "@/src/modules/billing/plan-view-loader";
+import { loadFundingSourceLimit } from "@/src/modules/funding-sources/limit";
 import { loadSettings } from "@/src/modules/settings/queries";
 import { parseSettingsSection } from "@/src/modules/settings/sections";
 import { pageSession } from "@/src/lib/page-session";
@@ -33,11 +34,12 @@ export default async function SettingsPage({
   // The action itself re-checks the role — this is only what decides whether the Users tab
   // has anything to show, not the security boundary. Skipped entirely for a manager, so
   // there's never a moment where their RSC payload could carry another user's data.
-  const [usersResult, seenSettingsTour, planBilling, aiAllowed] = await Promise.all([
+  const [usersResult, seenSettingsTour, planBilling, aiAllowed, fundingSourceLimit] = await Promise.all([
     isAdmin ? listOrgUsersAction() : Promise.resolve(null),
     hasSeenTour(session.userId, "settings"),
     loadPlanBilling(session),
     aiAllowedForOrg(session.orgId),
+    loadFundingSourceLimit(session.orgId),
   ]);
   const users: OrgUser[] = usersResult?.ok ? usersResult.data : [];
   const usersError = usersResult && !usersResult.ok ? usersResult.error : undefined;
@@ -93,6 +95,7 @@ export default async function SettingsPage({
         isAdmin={isAdmin}
         users={users}
         usersError={usersError}
+        fundingSourceLimit={fundingSourceLimit}
         // Paid and on Reconciliation + AI (Phase 15 §4.2), not the plan label alone.
         readAmounts={aiAllowed ? { enabled: data.readAmountsEnabled } : null}
       />

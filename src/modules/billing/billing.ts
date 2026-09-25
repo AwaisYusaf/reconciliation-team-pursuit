@@ -7,7 +7,9 @@ import "server-only";
  * Rules every exported function follows:
  *  1. Decide from Stripe's live state, never from our copy (which may be a webhook behind).
  *  2. Re-derive the change server-side; nothing from a form is trusted beyond "which plan/interval".
- *  3. Complimentary orgs never touch Stripe while complimentary (P10) — checked before any call.
+ *  3. A complimentary org can't switch plans while complimentary (P10), checked before any call.
+ *     It can buy a plan (the first charge waits for the free access to run out, or ends it once
+ *     paid), and cancel, keep or manage the card of one it bought (decided 2026-09-25).
  *  4. Mutating functions run one at a time per org (`withLock`), so a double-click can't double-act.
  *  5. After Stripe has changed, best-effort refresh our copy and the Stripe customer's email, but
  *     never fail the action because of either: the money already moved.
@@ -18,7 +20,8 @@ import type Stripe from "stripe";
 import { db } from "@/src/db";
 import { fundingSources, organizations } from "@/src/db/schema";
 import { isComplimentaryNow } from "@/src/domain/complimentary";
-import { todayIso, type IsoDate } from "@/src/domain/dates";
+import { formatDateUS, todayIso, type IsoDate } from "@/src/domain/dates";
+import { APP_NAME, UI } from "@/src/domain/strings";
 import { siteOrigin } from "@/src/lib/site-url";
 import { billingEnabled, stripeKeyIsLive } from "@/src/modules/billing/config";
 import { withLock } from "@/src/modules/billing/lock";
@@ -29,6 +32,8 @@ import {
   isInterval,
   isLive,
   isPlanId,
+  complimentaryStart,
+  END_COMPLIMENTARY_KEY,
   pickCurrent,
   type Change,
   type Interval,
@@ -81,6 +86,8 @@ type OrgRow = {
   stripeLivemode: boolean | null;
   complimentary: boolean;
   complimentaryUntil: IsoDate | null;
+  plan: PlanId;
+  complimentaryPlan: PlanId | null;
 };
 
 async function loadOrg(orgId: string): Promise<OrgRow> {
@@ -92,6 +99,8 @@ async function loadOrg(orgId: string): Promise<OrgRow> {
       stripeLivemode: organizations.stripeLivemode,
       complimentary: organizations.complimentary,
       complimentaryUntil: organizations.complimentaryUntil,
+      plan: organizations.plan,
+      complimentaryPlan: organizations.complimentaryPlan,
     })
     .from(organizations)
     .where(eq(organizations.id, orgId))
@@ -309,13 +318,35 @@ async function activePriceFor(price: Stripe.Price): Promise<Stripe.Price> {
 
 // ── New subscription ─────────────────────────────────────────────────────────
 
+/**
+ * Checkout in the app's name and colours. The Stripe account is shared (D1), so the page would
+ * otherwise show that account's business name. The logo is sent only from an https origin:
+ * Stripe fetches it, and it can't reach localhost.
+ */
+function checkoutBranding(origin: string): Pick<Stripe.Checkout.SessionCreateParams, "branding_settings"> {
+  return {
+    branding_settings: {
+      display_name: APP_NAME,
+      background_color: "#f4f4f3",
+      button_color: "#5b3a29",
+      border_style: "rounded",
+      font_family: "inter",
+      ...(origin.startsWith("https://")
+        ? { logo: { type: "url" as const, url: `${origin}/brand/stayfunded-mark.png` } }
+        : {}),
+    },
+  };
+}
+
 /** Returns the Stripe Checkout URL to send the admin to. Access is granted by the webhook /
  *  return sync, never here. */
 export function startCheckout(actor: Actor, plan: unknown, interval: unknown): Promise<string> {
   return orgLock(actor.orgId, async () => {
     const row = await loadOrg(actor.orgId);
-    assertNotComplimentary(row);
     if (!isPlanId(plan) || !isInterval(interval)) throw new BillingError("unknown_plan");
+    // A complimentary org may buy now (decided 2026-09-25): the first charge waits until the
+    // free access runs out, or is taken today and ends the free access once paid.
+    const compStart = isComplimentaryNow(row, todayIso()) ? complimentaryStart(row.complimentaryUntil, new Date()) : null;
     // Reconciliation allows one active funding source (C8, P24) — refused before any Stripe call.
     if (plan === "reconciliation") {
       const n = await activeFundingSourceCount(actor.orgId);
@@ -339,6 +370,16 @@ export function startCheckout(actor: Actor, plan: unknown, interval: unknown): P
     const open = await stripe().checkout.sessions.list({ customer: customerId, status: "open", limit: 10 });
     for (const s of open.data) await stripe().checkout.sessions.expire(s.id);
 
+    // The sync writes `plan` from a live subscription, and a complimentary org's free plan is
+    // `complimentary_plan ?? plan` (P27). Pin it first, so buying Reconciliation during free
+    // Reconciliation + AI never takes the AI features away before the free access ends.
+    if (compStart && row.complimentaryPlan === null) {
+      await db
+        .update(organizations)
+        .set({ complimentaryPlan: row.plan })
+        .where(and(eq(organizations.id, row.id), isNull(organizations.complimentaryPlan)));
+    }
+
     const origin = siteOrigin();
     const session = await stripe().checkout.sessions.create({
       mode: "subscription",
@@ -346,9 +387,26 @@ export function startCheckout(actor: Actor, plan: unknown, interval: unknown): P
       payment_method_types: ["card"],
       client_reference_id: actor.orgId,
       line_items: [{ price: price.id, quantity: 1 }],
-      subscription_data: { metadata: { orgId: actor.orgId } },
+      subscription_data: {
+        metadata: { orgId: actor.orgId, ...(compStart?.kind === "now" ? { [END_COMPLIMENTARY_KEY]: "on_payment" } : {}) },
+        ...(compStart?.kind === "defer" ? { trial_end: Math.floor(compStart.firstChargeAt.getTime() / 1000) } : {}),
+      },
       success_url: `${origin}${BILLING_RETURN_PATH}`,
       cancel_url: `${origin}${PLAN_CANCELLED_PATH}`,
+      // Always the US dollar prices the app shows (§4.9). Without this Stripe's Adaptive
+      // Pricing converts to the visitor's currency, so the page and the charge stop matching.
+      adaptive_pricing: { enabled: false },
+      ...checkoutBranding(origin),
+      custom_text: {
+        submit: {
+          message:
+            compStart?.kind === "defer"
+              ? UI.billingCheckoutDeferred(formatDateUS(todayIso(compStart.firstChargeAt)))
+              : compStart?.kind === "now"
+                ? UI.billingCheckoutEndsComp
+                : UI.billingCheckoutNote,
+        },
+      },
     });
     return assertStripeUrl(session.url);
   });
@@ -524,7 +582,7 @@ export function cancelPendingChange(actor: Actor): Promise<void> {
 export function cancelAtPeriodEnd(actor: Actor): Promise<void> {
   return orgLock(actor.orgId, async () => {
     const row = await loadOrg(actor.orgId);
-    assertNotComplimentary(row);
+    // A complimentary org may already have bought a plan that starts later (2026-09-25).
     const customerId = liveCustomerId(row);
     if (!customerId) throw new BillingError("no_plan");
     await syncEmail(actor, customerId);
@@ -563,7 +621,7 @@ export function endPlanNow(actor: Actor): Promise<void> {
 export function resume(actor: Actor): Promise<void> {
   return orgLock(actor.orgId, async () => {
     const row = await loadOrg(actor.orgId);
-    assertNotComplimentary(row);
+    // A complimentary org may already have bought a plan that starts later (2026-09-25).
     const customerId = liveCustomerId(row);
     if (!customerId) throw new BillingError("no_plan");
     await syncEmail(actor, customerId);
@@ -583,7 +641,7 @@ let portalConfigId: string | undefined;
 /** Stripe's hosted page for updating the card and downloading invoices. Plan changes stay in-app. */
 export async function portalUrl(actor: Actor): Promise<string> {
   const row = await loadOrg(actor.orgId);
-  assertNotComplimentary(row);
+  // A complimentary org may already have bought a plan that starts later (2026-09-25).
   const customerId = liveCustomerId(row);
   if (!customerId) throw new BillingError("no_plan");
   await syncEmail(actor, customerId);
@@ -648,6 +706,50 @@ export async function staffCancelSubscription(orgId: string, when: "now" | "peri
     }
     await refresh(customerId);
   });
+}
+
+// ── Payments, for the staff dashboard ────────────────────────────────────────
+
+export type StaffPayment = {
+  id: string;
+  at: Date;
+  amountCents: number;
+  status: string;
+  /** Stripe's hosted invoice page, only when it really is Stripe's (U-11). */
+  url: string | null;
+};
+
+/**
+ * The org's latest invoices, read from Stripe when the org page opens (nothing is stored). `null`
+ * when Stripe couldn't be reached, so the page says so instead of failing; `[]` when billing is
+ * off or Stripe has never seen the org.
+ */
+export async function staffPayments(orgId: string, limit = 12): Promise<StaffPayment[] | null> {
+  if (!billingEnabled()) return [];
+  const customerId = liveCustomerId(await loadOrg(orgId));
+  if (!customerId) return [];
+  try {
+    const { data } = await stripe().invoices.list({ customer: customerId, limit });
+    return data.map((invoice) => {
+      let url: string | null = null;
+      try {
+        url = invoice.hosted_invoice_url ? assertStripeUrl(invoice.hosted_invoice_url) : null;
+      } catch {
+        url = null;
+      }
+      return {
+        id: invoice.id ?? "",
+        at: new Date(invoice.created * 1000),
+        // What was actually taken for a paid invoice; what is owed for any other.
+        amountCents: invoice.status === "paid" ? invoice.amount_paid : invoice.amount_due,
+        status: invoice.status ?? "draft",
+        url,
+      };
+    });
+  } catch (e) {
+    console.error(`[billing] listing invoices for org ${orgId} failed`, e);
+    return null;
+  }
 }
 
 // ── Queued downgrade to Reconciliation (P24, read by Phase 6's funding-source create) ────────

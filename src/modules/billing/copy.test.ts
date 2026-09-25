@@ -4,7 +4,7 @@
 import type Stripe from "stripe";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { copyOf, currentSubscription, NO_PENDING, NOT_AWAITING, type PendingChange, type AwaitingPayment } from "./sync";
+import { copyOf, currentSubscription, endsComplimentaryAt, NO_PENDING, NOT_AWAITING, type PendingChange, type AwaitingPayment } from "./sync";
 
 type FakeSubOpts = {
   id?: string;
@@ -223,5 +223,23 @@ describe("currentSubscription", () => {
     expect(result?.id).toBe("sub_new");
     expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("ALERT"));
     expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("cus_1"));
+  });
+});
+
+describe("endsComplimentaryAt (bought during complimentary access, charged today)", () => {
+  const marked = (status: string) =>
+    ({ ...fakeSub({ status, created: 1_700_000_000 }), metadata: { endComplimentary: "on_payment" } }) as Stripe.Subscription;
+
+  it("an active, marked subscription ends the free access; returns when it was created", () => {
+    expect(endsComplimentaryAt(marked("active"))).toEqual(new Date(1_700_000_000_000));
+  });
+
+  it.each(["incomplete", "trialing", "past_due", "canceled"])("not paid yet or not live (%s): nothing ends", (status) => {
+    expect(endsComplimentaryAt(marked(status))).toBeNull();
+  });
+
+  it("an unmarked subscription, or none, never ends complimentary access", () => {
+    expect(endsComplimentaryAt(fakeSub({ status: "active" }))).toBeNull();
+    expect(endsComplimentaryAt(undefined)).toBeNull();
   });
 });

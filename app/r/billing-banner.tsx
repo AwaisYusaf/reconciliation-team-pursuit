@@ -34,7 +34,16 @@ export function BillingBanner({ banner }: { banner: Banner | null }) {
       : UI.billingCompEnding(formatDateUS(banner.until as IsoDate));
 
   return (
-    <div className="mb-3 border border-line rounded-[3px] bg-surface px-3 py-2.5 sm:px-4 sm:py-3 flex flex-wrap items-center justify-between gap-3 text-[15px] text-ink">
+    <div
+      // Same wash as the accent StatTile (`stat-tile.tsx`): white at the top edge shading into
+      // `hero-wash` at the foot, so this banner reads as the same material as the emphasised
+      // tile in a grid, rather than the flat `Card` surface.
+      className={
+        "mb-3 border border-line rounded-[6px] " +
+        "bg-[linear-gradient(to_top,var(--color-hero-wash)_0%,var(--color-surface)_70%)] " +
+        "px-3 py-2.5 sm:px-4 sm:py-3 flex flex-wrap items-center justify-between gap-3 text-[15px] text-ink"
+      }
+    >
       <span>{text}</span>
       <Link href={PLAN_SECTION} className={buttonClassName("secondary")}>
         {UI.billingSectionTitle}

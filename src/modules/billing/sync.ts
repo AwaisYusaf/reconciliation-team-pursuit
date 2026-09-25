@@ -11,7 +11,7 @@ import "server-only";
  *
  * Ported from the reference build's `lib/stripe.ts`; the org, not a user, is the customer (P11).
  */
-import { eq } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import type Stripe from "stripe";
 
 import { db } from "@/src/db";
@@ -23,12 +23,15 @@ import {
   type OrgPlan,
   type SubscriptionStatus,
 } from "@/src/db/schema";
+import { complimentaryState } from "@/src/domain/complimentary";
+import { todayIso } from "@/src/domain/dates";
 import { billingEnabled, stripeKeyIsLive } from "@/src/modules/billing/config";
 import { withLock } from "@/src/modules/billing/lock";
 import {
   isInterval,
   isLive,
   isPlanId,
+  END_COMPLIMENTARY_KEY,
   KNOWN_STRIPE_STATUSES,
   pickCurrent,
   type Interval,
@@ -215,7 +218,13 @@ export function syncOrgBilling(customerId: string): Promise<SyncOutcome> {
     const sub = currentSubscription(customerId, subs);
     const [pending, awaiting] = sub ? await Promise.all([pendingChange(sub), awaitingPayment(sub)]) : [NO_PENDING, NOT_AWAITING];
 
-    await writeCopy(org.id, customerId, (previousStatus) => copyOf(sub, pending, awaiting, previousStatus));
+    await writeCopy(
+      org.id,
+      customerId,
+      (previousStatus) => copyOf(sub, pending, awaiting, previousStatus),
+      endsComplimentaryAt(sub),
+      sub?.status === "active",
+    );
     return "synced";
   });
 }
@@ -237,11 +246,31 @@ function snapshot(row: {
 }
 
 /**
+ * A complimentary org that bought a plan with no deferred start pays today, and its free access
+ * ends once that payment has gone through (decided 2026-09-25). Marked on the subscription at
+ * Checkout; returns when that subscription was created, or null when it isn't one of those or
+ * isn't paid yet. Pure, for U-7's style of test.
+ */
+export function endsComplimentaryAt(sub: Stripe.Subscription | undefined): Date | null {
+  if (!sub || sub.status !== "active" || sub.metadata?.[END_COMPLIMENTARY_KEY] !== "on_payment") return null;
+  return new Date(sub.created * 1000);
+}
+
+/**
  * Writes the copy under the org row lock (the one staff actions take), and one History row as
  * "Stripe" when the plan or status actually changed (P15, I-6). No Stripe call happens inside the
- * transaction (P12).
+ * transaction (P12). `endComplimentarySince`: see `endsComplimentaryAt`; only a grant made before
+ * that subscription is ended, so a later staff grant is never undone by it.
  */
-async function writeCopy(orgId: string, customerId: string, build: (previousStatus: string | null) => BillingCopy): Promise<void> {
+async function writeCopy(
+  orgId: string,
+  customerId: string,
+  build: (previousStatus: string | null) => BillingCopy,
+  endComplimentarySince: Date | null = null,
+  /** The subscription is active, so paid: a complimentary grant that has already run out is
+   *  cleared (the deferred path's first charge), so staff no longer see a stale Complimentary. */
+  paid = false,
+): Promise<void> {
   await db.transaction(async (tx) => {
     const row = await lockOrg(tx, orgId, {
       plan: organizations.plan,
@@ -274,6 +303,37 @@ async function writeCopy(orgId: string, customerId: string, build: (previousStat
         action: "plan_changed",
         before,
         after,
+        viaStripe: true,
+      });
+    }
+
+    const grantRanOut = row.complimentary && complimentaryState(row, todayIso()) === "ended";
+    let endGrant = paid && grantRanOut;
+    if (!endGrant && endComplimentarySince && row.complimentary) {
+      const [lastGrant] = await tx
+        .select({ at: orgAccountEvents.createdAt })
+        .from(orgAccountEvents)
+        .where(
+          and(
+            eq(orgAccountEvents.orgId, orgId),
+            inArray(orgAccountEvents.action, ["complimentary_granted", "complimentary_changed"]),
+          ),
+        )
+        .orderBy(desc(orgAccountEvents.createdAt))
+        .limit(1);
+      endGrant = !lastGrant || lastGrant.at <= endComplimentarySince;
+    }
+    if (endGrant) {
+      await tx
+        .update(organizations)
+        .set({ complimentary: false, complimentaryUntil: null, complimentaryPlan: null })
+        .where(eq(organizations.id, orgId));
+      await tx.insert(orgAccountEvents).values({
+        orgId,
+        actorStaffId: null,
+        action: "complimentary_removed",
+        before: after,
+        after: { ...after, complimentary: false, complimentaryUntil: null },
         viaStripe: true,
       });
     }

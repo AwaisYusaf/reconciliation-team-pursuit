@@ -109,6 +109,82 @@ describe.skipIf(!hasDatabase)("billing sync (integration, Phase 15)", async () =
     for (const id of orgIds) await db.delete(organizations).where(eq(organizations.id, id));
   });
 
+  describe("a plan bought during complimentary access, charged today (decided 2026-09-25)", () => {
+    const marked = (status: string, created: number) =>
+      ({ ...fakeSub({ status, created, plan: "reconciliation" }), metadata: { endComplimentary: "on_payment" } }) as Stripe.Subscription;
+
+    async function compOrgWithCustomer(grantAt: Date | null) {
+      const orgId = await freshOrg({ complimentary: false });
+      const customerId = uniqueCustomerId();
+      await withCustomer(orgId, customerId);
+      await db
+        .update(organizations)
+        .set({ complimentary: true, complimentaryUntil: null, complimentaryPlan: "reconciliation_ai" })
+        .where(eq(organizations.id, orgId));
+      if (grantAt) {
+        const snap = { plan: "reconciliation" as const, status: "active" as const, complimentary: true, complimentaryUntil: null, suspended: false };
+        await db.insert(orgAccountEvents).values({ orgId, action: "complimentary_granted", before: snap, after: snap, createdAt: grantAt });
+      }
+      return { orgId, customerId };
+    }
+
+    it("once paid, the free access granted before it ends, recorded as Stripe", async () => {
+      const created = Math.floor(Date.now() / 1000);
+      const { orgId, customerId } = await compOrgWithCustomer(new Date((created - 86_400) * 1000));
+      subscriptionsOfMock.mockResolvedValue([marked("active", created)]);
+      await syncOrgBilling(customerId);
+      const row = await orgRow(orgId);
+      expect(row.complimentary).toBe(false);
+      expect(row.complimentaryUntil).toBeNull();
+      expect(row.complimentaryPlan).toBeNull();
+      expect(row.plan).toBe("reconciliation");
+      const removed = (await eventsFor(orgId)).filter((e) => e.action === "complimentary_removed");
+      expect(removed).toHaveLength(1);
+      expect(removed[0]).toMatchObject({ viaStripe: true, actorStaffId: null });
+    });
+
+    it("a grant with no History row (older data) also ends", async () => {
+      const { orgId, customerId } = await compOrgWithCustomer(null);
+      subscriptionsOfMock.mockResolvedValue([marked("active", Math.floor(Date.now() / 1000))]);
+      await syncOrgBilling(customerId);
+      expect((await orgRow(orgId)).complimentary).toBe(false);
+    });
+
+    it("a staff grant made after the subscription is never undone by it", async () => {
+      const created = Math.floor(Date.now() / 1000) - 7 * 86_400;
+      const { orgId, customerId } = await compOrgWithCustomer(new Date());
+      subscriptionsOfMock.mockResolvedValue([marked("active", created)]);
+      await syncOrgBilling(customerId);
+      const row = await orgRow(orgId);
+      expect(row.complimentary).toBe(true);
+      expect(row.complimentaryPlan).toBe("reconciliation_ai");
+    });
+
+    it("not paid yet (incomplete): the free access stays", async () => {
+      const { orgId, customerId } = await compOrgWithCustomer(null);
+      subscriptionsOfMock.mockResolvedValue([marked("incomplete", Math.floor(Date.now() / 1000))]);
+      await syncOrgBilling(customerId);
+      expect((await orgRow(orgId)).complimentary).toBe(true);
+    });
+
+    it("a deferred plan (trialing, no marker) leaves the free access and its plan alone", async () => {
+      const { orgId, customerId } = await compOrgWithCustomer(null);
+      subscriptionsOfMock.mockResolvedValue([fakeSub({ status: "trialing", plan: "reconciliation" })]);
+      await syncOrgBilling(customerId);
+      const row = await orgRow(orgId);
+      expect(row.complimentary).toBe(true);
+      expect(row.complimentaryPlan).toBe("reconciliation_ai");
+    });
+
+    it("syncing twice ends it once: one History row", async () => {
+      const { orgId, customerId } = await compOrgWithCustomer(null);
+      subscriptionsOfMock.mockResolvedValue([marked("active", Math.floor(Date.now() / 1000))]);
+      await syncOrgBilling(customerId);
+      await syncOrgBilling(customerId);
+      expect((await eventsFor(orgId)).filter((e) => e.action === "complimentary_removed")).toHaveLength(1);
+    });
+  });
+
   describe("unknown customer", () => {
     it("a customer id no org has: 'unknown_customer', zero Stripe calls", async () => {
       const result = await syncOrgBilling(uniqueCustomerId());

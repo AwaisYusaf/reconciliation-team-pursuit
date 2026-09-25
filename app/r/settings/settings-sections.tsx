@@ -179,6 +179,7 @@ export function SettingsSections({
   readAmounts,
   planBilling,
   initialSection,
+  fundingSourceLimit,
 }: {
   email: string;
   /** The signed-in person's own name and photo version, for the Account section's avatar. */
@@ -205,6 +206,9 @@ export function SettingsSections({
   planBilling: PlanBillingData;
   /** From `?section=` (Phase 15 P19), already checked against the known ids on the server. */
   initialSection: SectionId;
+  /** The active-funding-source limit (Phase 6 core, C8). Null means unlimited, which is
+   *  always the case while billing is off. */
+  fundingSourceLimit: number | null;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -341,6 +345,8 @@ export function SettingsSections({
               orgDocName={org.docName}
               pending={pending}
               run={run}
+              limit={fundingSourceLimit}
+              isAdmin={isAdmin}
             />
           </Card>
         )}
@@ -565,6 +571,8 @@ function FundingSourcesSection({
   orgDocName,
   pending,
   run,
+  limit,
+  isAdmin,
 }: {
   fundingSources: FundingSourceRow[];
   orgDocName: string;
@@ -574,6 +582,9 @@ function FundingSourcesSection({
     successMessage: string,
     onDone?: () => void,
   ) => void;
+  /** Null means unlimited (Phase 6 core, C8). */
+  limit: number | null;
+  isAdmin: boolean;
 }) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState(EMPTY_FUNDING_SOURCE_DRAFT);
@@ -619,6 +630,7 @@ function FundingSourcesSection({
 
   const activeCount = fundingSources.filter((s) => !s.archived).length;
   const archivedCount = fundingSources.length - activeCount;
+  const atLimit = limit !== null && activeCount >= limit;
   // Archived sources are finished work, so the list opens on the active ones; the toggle is
   // still one click away because Unarchive lives on the archived rows.
   const [showArchived, setShowArchived] = useState(false);
@@ -690,7 +702,8 @@ function FundingSourcesSection({
               {source.archived ? (
                 <Button
                   variant="quiet"
-                  disabled={pending}
+                  disabled={pending || atLimit}
+                  aria-describedby={atLimit ? "funding-source-limit" : undefined}
                   onClick={() =>
                     run(() => unarchiveFundingSourceAction(source.id), "Funding source unarchived.")
                   }
@@ -748,11 +761,35 @@ function FundingSourcesSection({
           </div>
         </div>
       ) : (
-        // Disabled while a row is being edited: one draft at a time, and starting an add would
-        // silently replace the edit in progress.
-        <Button variant="secondary" disabled={pending || editingId !== null} onClick={startAdd}>
-          Add funding source
-        </Button>
+        <div>
+          {/* Disabled while a row is being edited: one draft at a time, and starting an add would
+              silently replace the edit in progress. Also disabled at the funding-source limit. */}
+          <Button
+            variant="secondary"
+            disabled={pending || editingId !== null || atLimit}
+            aria-describedby={atLimit ? "funding-source-limit" : undefined}
+            onClick={startAdd}
+          >
+            Add funding source
+          </Button>
+          {atLimit && (
+            <Helper id="funding-source-limit">
+              {isAdmin ? (
+                <>
+                  {UI.fundingSourceLimitReached}{" "}
+                  <Link
+                    href="/r/settings?section=plan"
+                    className="inline-flex items-center min-h-11 text-accent underline hover:text-accent-dark focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent rounded-[3px]"
+                  >
+                    {UI.billingSeePlans}
+                  </Link>
+                </>
+              ) : (
+                UI.fundingSourceLimitManager
+              )}
+            </Helper>
+          )}
+        </div>
       )}
     </div>
   );

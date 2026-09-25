@@ -3,8 +3,9 @@
 **Status (2026-09-25): building. Phases 0 to 4 committed** on `implementation/payment-gateway`
 (`15eb0ff` Phases 0 and 1, `d8228b9` Phase 2, `ea055f9` Phase 3, `3c17f64` Phase 4), all behind
 `BILLING_ENABLED`, which stays off. **Phase 5** (the Plan & billing screen and the staff
-dashboard) is built and verified, awaiting commit. **Phases 6 core and 7** are built in a
-separate worktree and are being merged onto Phase 5. Phase 8 (go-live) is last. Phases 4 and 5 were renumbered on 2026-09-25 to follow the
+dashboard) is built and verified, awaiting commit. **Phases 6 core and 7** were built in a
+separate worktree and are merged onto Phase 5 (2026-09-25), awaiting commit; the rest of Phase 6
+(queued-downgrade refusal, archive from the plan page) is still to build. Phase 8 (go-live) is last. Phases 4 and 5 were renumbered on 2026-09-25 to follow the
 build order: "no free use" was Phase 5 in the first draft and the screen was Phase 4.
 
 Written after a working reference build (§12)
@@ -122,6 +123,7 @@ off is the rollback.
 | D2 | **A lapsed Reconciliation + AI org with three funding sources re-subscribes to Reconciliation** | **Decided 2026-09-25:** Reconciliation is refused at Checkout while more than one source is active, and the admin can archive sources from the plan page (archiving is on the paywall's allow-list); they can also choose Reconciliation + AI |
 | D3 | **Staff suspend an org that is paying**: Stripe keeps charging an org that can't sign in | **Decided 2026-09-25:** suspending pauses collection (Stripe `pause_collection`, bills voided) and reinstating resumes it; the interaction with a queued change is settled by a sandbox test (S-30) |
 | D4 | **Usability changes that go beyond the ticket** | **Decided 2026-09-25:** warn admins 14 days before complimentary access ends (yes); the funding-source limit is a disabled button with the reason under it, worded "To add more, try Plus." (the user's wording, a deliberate exception to P18); Plan & billing is a Settings section ("in settings"; placed near the end, Organization stays the default); the landing plan buttons keep **Get started** and each pricing card gets a **Book a demo** button, the "Early access" button goes |
+| D5 | **A complimentary org wants to buy a plan before its free access ends** | **Decided 2026-09-25 (while testing):** allowed. With an end date 2 or more days away (Stripe's minimum for `trial_end`, plus an hour), Checkout saves the card and defers the first charge to local midnight after the last free day; otherwise it charges today and the sync ends the free access once paid (subscription metadata `endComplimentary`, only for a grant older than the subscription, so a later staff grant is never undone). The free plan is pinned in `complimentary_plan` before Checkout, so buying Reconciliation during free Reconciliation + AI keeps the AI features until the free access ends. Switching plan and End plan now stay refused while complimentary; cancel, keep and Card and invoices are allowed for the bought plan |
 
 Adopted without asking (reviewers' recommendations, reversible): an unpaid admin can still change
 their password and remove a departed user; a card dispute changes no access but logs `ALERT` and
@@ -392,7 +394,7 @@ guard) has been mutation-checked.
 - **AC-I3** Suspending a paying org pauses collection; reinstating resumes it. (S-30)
 
 **J. Nothing changes for existing organizations**
-- **AC-J1** Complimentary orgs see no difference except the section, never create a Stripe customer; before billing is switched on, every org with an end date, every unpaid non-complimentary org, and every Reconciliation org with more than one source is listed and resolved. (I-1, B-12, §11 record)
+- **AC-J1** Complimentary orgs see no difference except the section, and create a Stripe customer only when their admin chooses to buy a plan (D5); before billing is switched on, every org with an end date, every unpaid non-complimentary org, and every Reconciliation org with more than one source is listed and resolved. (I-1, B-12, §11 record)
 - **AC-J2** The migration changes no row. (U-1)
 - **AC-J3** The existing suite passes unchanged apart from test orgs becoming complimentary by default. (full suite)
 
@@ -765,16 +767,92 @@ checklist clear.
   deleted customer with a live previous status encoded the bug and was changed.
 - **Not verified:** B-1 to B-12 in a browser (the browser tool was unavailable);
   `staffCancelSubscription` against the Stripe sandbox (mocked in I-7).
+- **Changed after the user's first test run (2026-09-25):** the plan chooser (`/r/plan`) and
+  Plan & billing both show the landing page's pricing cards (`src/modules/landing/plan-cards.tsx`,
+  shared with the landing page, so there is one copy); Plan & billing is a plan summary plus the
+  cards with a Monthly/Yearly toggle, each card carrying its own Switch plan / Continue to payment
+  / Your plan button, and the complimentary ending warning is only the page banner (no repeat in
+  the section). Checkout is branded "Stay Funded 360" in the app's colours, always in USD
+  (`adaptive_pricing` off; Stripe had shown PKR), with a note under the pay button. D5: a
+  complimentary org can buy a plan. Tests: U-14 extended (every complimentary shape), rules
+  (`dayAfterStart` across both clock changes, the 49-hour boundary), `endsComplimentaryAt`,
+  I-1 rewritten for D5, sync integration (paid ends a grant older than the subscription, never a
+  later one, idempotent). Mutation checks: the later-grant guard removed (1 fails), the plan pin
+  removed (1 fails). Sandbox: Stripe accepted the branding and USD settings, and refused a
+  `trial_end` under 48 hours (hence the 49-hour minimum).
 
 ### Phase 6: one funding source on Reconciliation
 - §4.8, the Checkout refusal and archive-from-plan-page (D2).
 
 **Passes when:** I-13 to I-15, S-27 pass; B-17, B-19 done; mutation-checked.
 
+**Results (2026-09-25). Partial: §4.8 core only.**
+- **Built:** `src/modules/funding-sources/limit.ts`: `fundingSourceLimitRefusal` (pure: admin
+  or manager wording, and a `queuedDowngradeAt` branch that nothing passes yet),
+  `lockedOrgEntitlement` (the entitlement read through Phase 1's `lockOrg`, `FOR UPDATE`) and
+  `loadFundingSourceLimit` (an unlocked read, used only to render Settings).
+  `createFundingSourceAction` and `unarchiveFundingSourceAction` now count active sources and
+  write in one transaction under the org lock. Unarchiving a source that is already active returns
+  ok without doing anything. Settings → Funding sources disables **Add funding source** and
+  **Unarchive** at the limit, with the reason under them (`aria-describedby`): admins see
+  `fundingSourceLimitReached` + **See plans** (`/r/settings?section=plan`), managers see
+  `fundingSourceLimitManager`. The four §10 strings were added verbatim and pinned in
+  `strings.test.ts`. Billing off means no limit, so nothing changes today.
+- **Not built (remaining for Phase 6):** the queued-downgrade refusal (I-14; needs Phase 3's
+  schedule read), Reconciliation Checkout refused with more than one source and archive from the
+  plan page (D2, I-15, B-19; need Phases 3 and 4), S-27, and the `/a` warning for an org over the
+  limit.
+- **Tests:** 12 unit (`limit.test.ts`) and 15 integration (I-13: admin and manager refusals, no
+  row written, unarchive refused and left archived, an org already over the limit, 5 concurrent
+  creates and 5 concurrent unarchives each leaving exactly one active, repeated;
+  Reconciliation + AI, complimentary on either plan, billing off unlimited;
+  `loadFundingSourceLimit`). Suite counts are under Phase 7 (same tree).
+- **Mutation checks** (each broke a test and was restored, hash-verified): the org read done
+  without the lock (both concurrency tests fail); the refusal removed from unarchive (3 fail).
+- **Not verified:** B-17 in a browser (the rendered state is covered only by reading the
+  component; no screenshot).
+- **Merged onto Phase 5 (2026-09-25):** three-way merge from the Track C worktree; conflicts only
+  in `strings.ts` (both blocks kept, Track C's duplicate `billingSeePlans` dropped),
+  `settings/page.tsx` and `settings-sections.tsx` (both sides' props kept; `readAmounts` keeps
+  Phase 5's entitlement check). U-20 then caught `limit.ts` listing the billing columns itself;
+  it now uses `ENTITLEMENT_COLUMNS` and `entitlementOf`. (U-20 also caught Phase 5's view state
+  named `"complimentary"`, renamed `"complimentaryAccess"`.) Typecheck and lint clean; 89 test
+  files, 1237 tests across the merged and Phase 5 areas pass.
+
 ### Phase 7: prices and the landing page
 - §4.9, O3 and O5.
 
 **Passes when:** U-19, S-26 pass; B-18 at 1280, 768, 375 px; structured data validates.
+
+**Results (2026-09-25).**
+- **Built:** `src/modules/landing/plan-links.ts`: `planPriceLabel` (never rounds),
+  `yearlySavingCents` (`null` while yearly is 12 × monthly), `DEMO_REQUEST_HREF`, and
+  `getStartedHref` (checks plan and interval against `PRICES_CENTS`, has no return-to
+  parameter). `app/page.tsx` passes `PRICES_CENTS` and `signupEnabled()` (read at request time
+  through `connection()`, so `/` is now dynamic) and builds the JSON-LD offers from the
+  constants, monthly and yearly (`UnitPriceSpecification`). The landing cards, the AI-section
+  price and the FAQ answer (and its FAQPage JSON-LD) all read the constants. There is a
+  Monthly/Yearly toggle (default Monthly, `aria-pressed`); "/ year" shows, with a saving only
+  when there is one. Each card has **Get Started with …** (`/signup?plan=…&interval=…` when
+  sign-up is open) and **Book a demo**. The closing section has **Book a demo** (was "Request
+  a demo") and no "Join early access". The header gains **Sign in** (`/login`), and its
+  **Get Started** follows the sign-up switch.
+- **O5:** settled with no change. The AI section's three claims (milestone synthesis, variance
+  notes, board briefings) keep the client's wording; only the price in "Included in
+  Reconciliation + AI" now comes from the constants.
+- **Tests:** typecheck and lint clean; production build passes; full suite **2267 passed, 9
+  failed, 21 skipped of 2297** (181 files, database `ngo_track_c`). The 9 failures and 21 skips
+  are the same packet and shared-link tests as Phase 1 (`pdftotext -bbox-layout` on xpdf).
+  New: `plan-links.test.ts` (11), `landing-page.render.test.ts` (9),
+  `no-price-literals.test.ts` (U-19, 2).
+- **Mutation check:** `$297` hard-coded in the Reconciliation card fails U-19; restored and
+  hash-verified.
+- **Deviation:** while sign-up is closed, **Get started** goes to `#schedule-walkthrough`, the
+  closing section whose button is the demo request, not straight to the `mailto:`. AC-P4 is met
+  in spirit only; swap to `DEMO_REQUEST_HREF` if the spec is meant literally.
+- **Not verified:** S-26 (needs Phase 2's `billing:setup` and the sandbox); JSON-LD against a
+  structured-data validator; B-18 at 768 and 1280 px, and with sign-up open (only the 375 px
+  header was checked, by the earlier session).
 
 ### Phase 8: go-live
 - §11 in order, each step recorded; deploy with the `TASKS.md` S-row; the prod-release routine.

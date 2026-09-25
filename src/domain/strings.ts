@@ -857,6 +857,24 @@ export const UI = {
   billingChangeDroppedToast: "The scheduled change is cancelled.",
   billingEndedToast: "Your plan has ended. Nothing more will be charged.",
   plusPillLabel: "Plus plan, open Plan & billing",
+  billingPlansTitle: "Plans",
+  billingChangePlan: "Change plan",
+  billingHidePlans: "Hide plans",
+  billingCheckoutNote: "Cancel anytime. You keep access until the end of the period you paid for.",
+  billingCheckoutDeferred: (date: string) =>
+    `Nothing is charged today. Your complimentary access continues, and your first payment is on ${date}. Cancel anytime before then and nothing is charged.`,
+  billingCheckoutEndsComp:
+    "You pay today, and your complimentary access ends once the payment goes through. Cancel anytime. You keep access until the end of the period you paid for.",
+  billingCompBuyDeferred: (date: string) =>
+    `You can choose a plan now. Nothing is charged until your complimentary access ends: your first payment is on ${date}.`,
+  billingCompBuyNow:
+    "You can choose a plan now. You pay today, and your complimentary access ends once the payment goes through.",
+  billingCompUpcoming: (plan: string, interval: string, date: string) =>
+    `Your ${plan} plan, billed ${interval}, starts on ${date}. Nothing is charged before then.`,
+  billingCompUpcomingCancelled: "You cancelled the plan you chose, so it won't start and nothing will be charged.",
+  billingCancelUpcomingBody:
+    "The plan you chose won't start, and nothing will be charged. Your complimentary access continues as before.",
+  billingComplimentaryTag: "Complimentary",
   // Staff dashboard (§4.6)
   historyActorStripe: "Stripe",
   staffBillingTitle: "Billing",
@@ -873,10 +891,38 @@ export const UI = {
   staffBillingPaused: "Collection paused while suspended.",
   staffBillingFlag: (flag: string) => `Stripe flagged this account: ${flag}.`,
   staffBillingOpenCustomer: "Open in Stripe",
+  staffBillingHeadPaid: "Paid",
+  staffBillingHeadFailed: "Payment failed",
+  staffBillingHeadNotYet: "Not charged yet",
+  staffBillingHeadCancelling: "Paid, cancelling",
+  staffBillingHeadCancelled: "Cancelled",
+  staffBillingHeadUnfinished: "Payment not finished",
+  staffBillingLastPaid: (amount: string, date: string) => `Last payment ${amount} on ${date}.`,
+  staffBillingLastPaidLabel: "Last payment",
+  staffBillingFirstCharge: (date: string) => `Card saved. The first payment is on ${date}.`,
+  staffBillingFirstChargeLabel: "First payment on",
+  staffBillingAccessEnds: (date: string) => `Won't renew. Access ends on ${date}.`,
+  staffPaymentsTitle: "Payments",
+  staffPaymentsNone: "No payments yet.",
+  staffPaymentsUnavailable: "Payments can't be loaded from Stripe right now. Reload the page to try again.",
+  staffPaymentsView: "View",
+  staffPaymentPaid: "Paid",
+  staffPaymentOpen: "Due",
+  staffPaymentVoid: "Cancelled",
+  staffPaymentUncollectible: "Not collected",
+  staffPaymentDraft: "Draft",
   staffCompPaying: "This organization pays for a plan. Choose what happens to it.",
   staffCompCancelNow: "Cancel the paid plan now",
   staffCompCancelAtEnd: "Cancel the paid plan at the end of the paid period",
   staffCompCancelRequired: "This organization pays for a plan. Choose whether to cancel it now or at the end of the paid period.",
+
+  // PHASE-15 Track C (landing, funding-source limit)
+  fundingSourceLimitReached:
+    "Reconciliation includes one active funding source. To add more, try Plus.",
+  fundingSourceLimitManager:
+    "Reconciliation includes one active funding source. Ask your admin about upgrading.",
+  fundingSourceLimitQueued: (date: string) =>
+    `Your plan switches to Reconciliation on ${date}, which includes one active funding source. To add another, cancel that switch in Plan & billing.`,
 } as const;
 
 /**

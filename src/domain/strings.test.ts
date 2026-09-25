@@ -574,3 +574,18 @@ describe("sharing copy (PHASE-12, Appendix A verbatim)", () => {
     expect(UI.shareUnavailable).toBe("This link is no longer available. Please ask the sender for a new one.");
   });
 });
+
+describe("funding source limit copy (Phase 15 Track C, C8 verbatim)", () => {
+  it("pins the ticket's wording", () => {
+    expect(UI.fundingSourceLimitReached).toBe(
+      "Reconciliation includes one active funding source. To add more, try Plus.",
+    );
+    expect(UI.fundingSourceLimitManager).toBe(
+      "Reconciliation includes one active funding source. Ask your admin about upgrading.",
+    );
+    expect(UI.fundingSourceLimitQueued("1 Oct 2026")).toBe(
+      "Your plan switches to Reconciliation on 1 Oct 2026, which includes one active funding source. To add another, cancel that switch in Plan & billing.",
+    );
+    expect(UI.billingSeePlans).toBe("See plans");
+  });
+});
