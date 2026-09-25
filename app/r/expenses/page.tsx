@@ -1,6 +1,5 @@
 import { and, asc, eq, inArray } from "drizzle-orm";
 import Link from "next/link";
-import { redirect } from "next/navigation";
 
 import { ButtonLabel, buttonClassName } from "@/src/components/ui/button";
 import { ACTION_CLEARANCE, DangerPanel, PageTitle, Subtext } from "@/src/components/ui/surfaces";
@@ -18,7 +17,7 @@ import { findFundingSource, loadSourceContext } from "@/src/modules/funding-sour
 import { loadLockedMonths } from "@/src/modules/packet/queries";
 import { EXPENSES_TOUR_STEPS } from "@/src/modules/tours/expenses-tour";
 import { hasSeenTour } from "@/src/modules/tours/queries";
-import { getSession } from "@/src/services/auth/session";
+import { pageSession } from "@/src/lib/page-session";
 
 import { DraftsSection, type DraftSectionRow } from "./drafts-section";
 import { ExpensesTable, type ExpenseRow, type RowDocument } from "./expenses-table";
@@ -40,8 +39,7 @@ export default async function ExpensesPage({
 }: {
   searchParams: Promise<{ month?: string; source?: string; view?: string }>;
 }) {
-  const session = await getSession();
-  if (!session) redirect("/login");
+  const session = await pageSession();
 
   // Saving or editing an expense into a month other than the org's active one (R2.2 lets
   // the form's own month field differ from it) used to redirect here regardless, landing on

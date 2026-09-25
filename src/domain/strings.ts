@@ -772,6 +772,23 @@ export const UI = {
     `Reconciliation includes one active funding source, and you have ${n}. Archive the ones you don't use in Funding sources, then switch.`,
   staffStripeManaged: "Billing for this organization is managed in Stripe.",
   billingRateLimited: "Too many billing requests. Wait a minute and try again.",
+
+  // PHASE-15 Track B (no free use)
+  billingChooseFor: (org: string) => `Choose a plan for ${org}`,
+  billingChooseNew: "Choose a plan to get started.",
+  billingEnded: "Your plan has ended. Your records are safe and come back as soon as you choose a plan.",
+  billingCompEnded: (date: string) =>
+    `Your complimentary access ended on ${date}. Your records are safe and come back as soon as you choose a plan.`,
+  billingSubscribe: "Continue to payment",
+  billingOpeningCheckout: "Opening the payment page…",
+  billingUnpaidManager: (names: string) =>
+    `Your organization doesn't have an active plan. Your admin (${names}) can choose one in Plan & billing.`,
+  billingPlanRequired: "Your organization's plan has ended, so this wasn't saved. Reload the page to see your options.",
+  billingChooseDifferent: "Choose a different plan",
+  billingIntervalMonthly: "Monthly",
+  billingIntervalYearly: "Yearly",
+  billingPerMonth: "/month",
+  billingPerYear: "/year",
 } as const;
 
 /**

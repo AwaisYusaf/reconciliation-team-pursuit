@@ -1,12 +1,10 @@
-import { redirect } from "next/navigation";
-
 import { PickFundingSource } from "@/src/components/app-shell/pick-funding-source";
 import { PageHeader } from "@/src/components/ui/surfaces";
 import { PlusBadge } from "@/src/components/ui/plus-badge";
 import { pageTitle, UI } from "@/src/domain/strings";
 import { summariesAccessForOrg } from "@/src/modules/ai/access";
 import { loadSourceContext } from "@/src/modules/funding-sources/queries";
-import { getSession } from "@/src/services/auth/session";
+import { pageSession } from "@/src/lib/page-session";
 
 import { MonthlySummarySection } from "@/src/components/monthly-summary/summary-section";
 
@@ -18,8 +16,7 @@ export const metadata = { title: pageTitle(UI.summaryTitle) };
  * org has nothing to ask a source picker for), then "All", then the real screen.
  */
 export default async function MonthlySummaryPage() {
-  const session = await getSession();
-  if (!session) redirect("/login");
+  const session = await pageSession();
 
   const access = await summariesAccessForOrg(session.orgId);
   if (!access.use) {

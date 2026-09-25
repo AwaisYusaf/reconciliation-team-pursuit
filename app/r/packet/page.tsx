@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { redirect } from "next/navigation";
 
 import { BlockingPanel } from "@/src/components/ui/blocking-panel";
 import { PickFundingSource } from "@/src/components/app-shell/pick-funding-source";
@@ -24,7 +23,7 @@ import { loadLockedMonths, loadLockEvents, loadPacketReadiness } from "@/src/mod
 import { loadSharedLinks } from "@/src/modules/sharing/queries";
 import { PACKET_TOUR_STEPS } from "@/src/modules/tours/packet-tour";
 import { hasSeenTour } from "@/src/modules/tours/queries";
-import { getSession } from "@/src/services/auth/session";
+import { pageSession } from "@/src/lib/page-session";
 
 import { MonthlySummarySection } from "@/src/components/monthly-summary/summary-section";
 import { LockHistory, MonthLockControls } from "./month-lock";
@@ -41,8 +40,7 @@ export const metadata = { title: pageTitle("Month-End Packet") };
  * calibrated against, so the listing describes the file the user actually receives.
  */
 export default async function PacketPage() {
-  const session = await getSession();
-  if (!session) redirect("/login");
+  const session = await pageSession();
 
   const { selectedId: fundingSourceId, activeSources, sources } = await loadSourceContext(
     session.orgId,

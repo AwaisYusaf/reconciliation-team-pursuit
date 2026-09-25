@@ -1,5 +1,5 @@
 import { and, eq, isNotNull } from "drizzle-orm";
-import { notFound, redirect } from "next/navigation";
+import { notFound } from "next/navigation";
 
 import { PageTitle, Subtext } from "@/src/components/ui/surfaces";
 import { db } from "@/src/db";
@@ -15,7 +15,7 @@ import { ExpenseForm } from "@/src/modules/expenses/expense-form";
 import { loadExpense, loadExpenseFormOptions } from "@/src/modules/expenses/queries";
 import { loadSourceContext } from "@/src/modules/funding-sources/queries";
 import { loadLockedMonths } from "@/src/modules/packet/queries";
-import { getSession } from "@/src/services/auth/session";
+import { pageSession } from "@/src/lib/page-session";
 
 export const metadata = { title: pageTitle("Edit expense") };
 
@@ -24,8 +24,7 @@ export default async function EditExpensePage({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  const session = await getSession();
-  if (!session) redirect("/login");
+  const session = await pageSession();
 
   const { id } = await params;
   const expense = await loadExpense(session.orgId, id);

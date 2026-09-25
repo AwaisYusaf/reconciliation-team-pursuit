@@ -4,15 +4,14 @@ import { redirect } from "next/navigation";
 import { PageHeader } from "@/src/components/ui/surfaces";
 import { pageTitle } from "@/src/domain/strings";
 import { listOrgUsersAction } from "@/src/modules/users/actions";
-import { getSession } from "@/src/services/auth/session";
+import { pageSession } from "@/src/lib/page-session";
 
 import { UsersManager } from "./users-manager";
 
 export const metadata = { title: pageTitle("Users") };
 
 export default async function UsersPage() {
-  const session = await getSession();
-  if (!session) redirect("/login");
+  const session = await pageSession();
   // The action itself re-checks this — this redirect is UI-hiding only, not the security
   // boundary. A manager who reaches this URL directly never sees the page at all.
   if (session.role !== "admin") redirect("/r/settings");

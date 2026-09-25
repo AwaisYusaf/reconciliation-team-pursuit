@@ -14,7 +14,7 @@ import { db } from "@/src/db";
 import { expenseAuditEvents, sessions, users, type UserRole } from "@/src/db/schema";
 import { nameSchema } from "@/src/domain/name";
 import { fail, ok, type ActionResult } from "@/src/lib/action-result";
-import { requireAdmin } from "@/src/lib/action-session";
+import { requireAdmin, requireAdminAnyPlan, type AdminSession } from "@/src/lib/action-session";
 import { isUuid } from "@/src/lib/ids";
 import { emailInUse } from "@/src/modules/auth/emails";
 import { generatePassword, hashPassword, validatePasswordPolicy } from "@/src/services/auth/passwords";
@@ -183,7 +183,8 @@ export async function listOrgUsersAction(): Promise<
     }>
   >
 > {
-  const current = await requireAdmin();
+  // Allow-listed (Phase 15 §4.7): Settings' Users tab must still show who to ask to pay.
+  const current = await requireAdminAnyPlan();
   if ("denied" in current) return current.denied;
 
   const rows = await db
@@ -237,8 +238,8 @@ function isForeignKeyViolation(error: unknown): boolean {
   return typeof error === "object" && error !== null && "code" in error && error.code === "23503";
 }
 
-async function requireManagerTarget(userId: string) {
-  const current = await requireAdmin();
+async function requireManagerTarget(userId: string, admin: () => Promise<AdminSession> = requireAdmin) {
+  const current = await admin();
   // An explicit `ok` discriminant rather than testing for a `denied` key: the success branch
   // has no such key, so `"denied" in guard` leaves its type optional at every call site.
   if ("denied" in current) return { ok: false as const, denied: current.denied };
@@ -269,7 +270,8 @@ async function requireManagerTarget(userId: string) {
  * window and no path.
  */
 export async function revokeUserAccessAction(userId: string): Promise<ActionResult> {
-  const guard = await requireManagerTarget(userId);
+  // Allow-listed (Phase 15 §4.7): an unpaid admin can still remove a departed user.
+  const guard = await requireManagerTarget(userId, requireAdminAnyPlan);
   if (!guard.ok) return guard.denied;
 
   await db.transaction(async (tx) => {

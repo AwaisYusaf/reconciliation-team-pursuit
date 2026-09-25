@@ -17,9 +17,7 @@ import { eq } from "drizzle-orm";
 
 import { db } from "@/src/db";
 import { organizations, type OrgPlan } from "@/src/db/schema";
-import { todayIso } from "@/src/domain/dates";
-import { billingEnabled } from "@/src/modules/billing/config";
-import { orgEntitlement, type EntitlementOrg } from "@/src/modules/billing/entitlement";
+import { ENTITLEMENT_COLUMNS, entitlementOf } from "@/src/services/auth/entitlement";
 
 /** Both an OpenAI key and a model must be set on the server, or the feature stays hidden as if
  *  the Settings switch were off. */
@@ -54,19 +52,10 @@ export function canWriteSummaries(org: { plan: OrgPlan }): boolean {
   );
 }
 
-/** Every field `orgEntitlement` needs, common to all three loaders below (Phase 15, U-20: the
- *  one place `plan`/`complimentary*`/`stripeStatus` are read together to decide AI access). */
-const ENTITLEMENT_FIELDS = {
-  plan: organizations.plan,
-  complimentary: organizations.complimentary,
-  complimentaryUntil: organizations.complimentaryUntil,
-  complimentaryPlan: organizations.complimentaryPlan,
-  stripeStatus: organizations.stripeStatus,
-};
-
-function entitlementOf(org: EntitlementOrg) {
-  return orgEntitlement(org, todayIso(), billingEnabled());
-}
+/** The billing columns and the paid-or-not decision come from the one shared place
+ *  (`src/services/auth/entitlement.ts`, Phase 15 U-20), so AI access can't drift from the
+ *  paywall's answer. */
+const ENTITLEMENT_FIELDS = ENTITLEMENT_COLUMNS;
 
 /** Loads the org's plan and billing state fresh from the database and applies
  *  `canUseSummaries`/`canWriteSummaries`, gated by `orgEntitlement` (Phase 15 §4.2): a cancelled

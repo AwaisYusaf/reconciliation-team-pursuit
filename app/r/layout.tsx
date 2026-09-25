@@ -20,6 +20,7 @@ import { signOutAction } from "@/src/modules/auth/actions";
 import { loadSourceContext } from "@/src/modules/funding-sources/queries";
 import { avatarVersionOf } from "@/src/services/storage/keys";
 import { getSession } from "@/src/services/auth/session";
+import { hasPaidAccess } from "@/src/services/auth/entitlement";
 
 /**
  * The authenticated shell every feature screen renders inside (m00).
@@ -30,6 +31,47 @@ import { getSession } from "@/src/services/auth/session";
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const session = await getSession();
   if (!session) redirect("/login");
+
+  // Not the gate (`pageSession()` on every page is): but it must never send org data to an
+  // unpaid organization, and it must not loop — no onboarding redirect here, since an unpaid,
+  // not-yet-onboarded org would otherwise bounce between this and `/r/plan` (Phase 15 §4.7).
+  if (!hasPaidAccess(session)) {
+    return (
+      <div className="min-h-screen bg-paper">
+        <AppHeader
+          logo={
+            <Link href="/r" aria-label={APP_NAME}>
+              <Image
+                src="/brand/stayfunded-mark.png"
+                alt=""
+                width={628}
+                height={570}
+                className="h-8 w-auto"
+                style={{ width: "auto" }}
+              />
+            </Link>
+          }
+          nav={null}
+          controls={null}
+          account={
+            <ProfileMenu
+              name={session.userName ?? null}
+              email={session.email}
+              photoUrl={
+                session.avatarKey ? `/api/me/avatar?v=${avatarVersionOf(session.avatarKey)}` : null
+              }
+              signOut={signOutAction}
+            />
+          }
+        />
+        <main className="relative max-w-[1220px] mx-auto px-4 sm:px-6 pt-3 sm:pt-4 pb-12 sm:pb-16">
+          {children}
+        </main>
+        <AppToaster />
+      </div>
+    );
+  }
+
   if (!session.onboarded) redirect("/onboarding/line-items");
 
   const { sources, selectedId, single } = await loadSourceContext(

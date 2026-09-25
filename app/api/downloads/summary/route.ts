@@ -9,7 +9,7 @@ import {
   prepareMonthOutput,
   resolveMonthOutput,
 } from "@/src/modules/packet/month-output";
-import { getSession } from "@/src/services/auth/session";
+import { routeSession } from "@/src/lib/route-session";
 import { consume } from "@/src/services/rate-limit";
 import { SESSION_EXPIRED } from "@/src/lib/action-result";
 
@@ -24,8 +24,9 @@ export const dynamic = "force-dynamic";
  * product's core promise, and a promise enforced only in the browser is not enforced.
  */
 export async function GET(request: Request) {
-  const session = await getSession();
+  const session = await routeSession("text");
   if (!session) return new NextResponse(SESSION_EXPIRED, { status: 401 });
+  if ("denied" in session) return session.denied;
 
   // Generating an artifact writes to storage and records a permanent, pinned row, so it
   // must not be reachable by a cross-site navigation. The session cookie is SameSite=Lax,

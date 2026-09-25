@@ -650,19 +650,71 @@ pass; §8.4 mutations done.
   (private in `billing.ts` today). The route-level 403 of I-4 is covered through the shared
   loaders, not by a route test.
 
-### Phase 4: Plan & billing UI, Plus pill, banners, staff dashboard
-- §4.3 to §4.6, the Settings tour step (8 → 9 steps, test updated), m09 and m10 docs.
+### Phase 4: no free use, sign-up, complimentary end
 
-**Passes when:** U-14, U-16, I-7 pass; B-1 to B-12 in Chrome at 1280, 768, 375 px; usability
-checklist clear.
-
-### Phase 5: no free use, sign-up, complimentary end
+Numbered 5 in the first draft of this plan; renumbered 2026-09-25 to follow the build order (it
+was built and committed before the Plan & billing screen).
 - §4.7 in full: `pageSession`, guarded `actionSession`/`requireAdmin`, `routeSession`, sharing,
   allow-list, `/r/plan`, sign-up and sign-in order, `complimentary_until` enforced, the static
   guard test.
 
 **Passes when:** U-17, U-18, U-20, I-9 to I-12, I-16 pass; removing any one guard fails U-18;
 B-13 to B-16, B-20 done.
+
+**Results (2026-09-25).**
+- **Built:** `src/services/auth/entitlement.ts` (`entitlementOf`, `sharesAllowed`, `hasPaidAccess`
+  failing closed when billing is on and a session has no entitlement, `ENTITLEMENT_COLUMNS`);
+  `resolveSession` attaches the entitlement. `src/lib/page-session.ts` (`pageSession`,
+  `planPageSession`, never loops), `src/lib/route-session.ts` (`routeSession` 403 JSON or text,
+  `routeSessionAnyPlan`), guarded `actionSession`/`requireAdmin` plus `actionSessionAnyPlan`/
+  `requireAdminAnyPlan`; `readSignedInJson` guarded. All 18 `app/r` and onboarding pages, all 11
+  direct-session routes, every server action. `/r` layout renders only the header for an unpaid org
+  (no org data, no onboarding redirect). Sharing (`public.ts`, `queries.ts`, `actions.ts`) uses
+  `sharesAllowed`. Sign-in and sign-up send an unpaid org to `/r/plan` (sign-up keeps a valid
+  `plan`/`interval`). `/r/plan` page: chooser, reason headline, manager notice naming the admins.
+- **Allow-list as built:** actions `signInAction`, `signOutAction`, `signUpAction`,
+  `changePasswordAction`, `listOrgUsersAction`, `revokeUserAccessAction`,
+  `archiveFundingSourceAction`, `src/modules/billing/actions.ts#*`; routes `/api/me/avatar`,
+  `app/r/billing/`, `app/api/stripe/`, `app/s/` (via `loadPublicShare`). Staff `/a` uses
+  `requireStaff`.
+- **Deviations:** the unpaid refusal from `actionSession` reuses the `expired` key (about 70 callers
+  already stop on it) rather than `denied`; `requireAdmin` returns `denied` as specified.
+  `archiveFundingSourceAction` is on the list but still calls the guarded `actionSession()`
+  (`funding-sources/` is outside this track): D2 archiving from the plan page needs it switched to
+  `actionSessionAnyPlan()` in Phase 6. The Subscribe button on `/r/plan` is disabled until
+  `startCheckoutAction` exists.
+- **Tests:** U-17 (`page-session`, `route-session`, `action-session-billing`), U-18
+  (`guard-coverage`, TypeScript AST over every `"use server"` export, page and route method), U-20
+  (`access-columns`), I-9 to I-12 and I-16 (`no-free-use.integration`, real Postgres; I-9 covers one
+  action per module, all four download routes, a files route, a `readSignedInJson` route, a page
+  and a shared link; I-11 checksums all 25 org-scoped tables). U-21's entitlement part stays in
+  `billing/entitlement.test.ts`.
+- **Mutations** (each failed, then restored): a page back to `getSession` (U-18); an action to
+  `actionSessionAnyPlan` in settings and in recurring (U-18); the packet route to
+  `routeSessionAnyPlan` (U-18, I-9); `complimentary_until` ignored (I-10); the billing-off branch
+  in `hasPaidAccess` and `sharesAllowed` (I-16).
+- **Checks:** typecheck and lint clean; `next build` passes; full suite 2302 passed, 21 skipped,
+  9 failed, all 9 the known `pdftotext -bbox-layout` failures on this machine (packet download
+  routes 1, sharing actions 3, public shared-link routes 5), which fail the same way alone.
+- **Not verified:** B-13 to B-16 and B-20 in a browser; the real Checkout path (Track A).
+- **Merged onto Phase 3 and reviewed (2026-09-25):** the billing actions used the guarded
+  `actionSession()`, so an unpaid admin's Subscribe would have been refused and nobody could pay;
+  they now use `actionSessionAnyPlan()` (the file is allow-listed; each action still checks admin
+  itself). `/r/plan`'s Subscribe is wired to `startCheckoutAction` (`subscribe-button.tsx`, label
+  "Opening the payment page…" while it works). `src/modules/ai/access.ts` had its own copy of the
+  entitlement columns and helper, which `access-columns.test.ts` (U-20) caught; it now reuses
+  `ENTITLEMENT_COLUMNS` and `entitlementOf`. Checks after the merge: typecheck clean; 447 of 447
+  tests in `src/lib`, `src/services/auth`, `src/modules/billing`, `src/modules/ai` and the string
+  tests. Left for Phase 5: the "Payment wasn't finished" note on `/r/plan?checkout=cancelled`.
+
+### Phase 5: Plan & billing UI, Plus pill, banners, staff dashboard
+
+Numbered 4 in the first draft of this plan (see Phase 4).
+
+- §4.3 to §4.6, the Settings tour step (8 → 9 steps, test updated), m09 and m10 docs.
+
+**Passes when:** U-14, U-16, I-7 pass; B-1 to B-12 in Chrome at 1280, 768, 375 px; usability
+checklist clear.
 
 ### Phase 6: one funding source on Reconciliation
 - §4.8, the Checkout refusal and archive-from-plan-page (D2).

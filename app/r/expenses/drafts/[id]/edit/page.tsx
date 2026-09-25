@@ -1,4 +1,4 @@
-import { notFound, redirect } from "next/navigation";
+import { notFound } from "next/navigation";
 
 import { PageTitle, Subtext } from "@/src/components/ui/surfaces";
 import { cn } from "@/src/lib/cn";
@@ -21,7 +21,7 @@ import { db } from "@/src/db";
 import { expenseImports } from "@/src/db/schema";
 import { inlineSrc } from "@/src/services/storage/preview";
 import { loadSourceContext } from "@/src/modules/funding-sources/queries";
-import { getSession } from "@/src/services/auth/session";
+import { pageSession } from "@/src/lib/page-session";
 
 export const metadata = { title: pageTitle("Edit draft") };
 
@@ -30,8 +30,7 @@ export default async function EditDraftPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  const session = await getSession();
-  if (!session) redirect("/login");
+  const session = await pageSession();
 
   const { id } = await params;
   const draft = await loadDraftById(session.orgId, id);

@@ -8,8 +8,9 @@
  * core call. `BillingError` maps to its UI string; a Stripe error is logged and turned into
  * `billingStripeError`; anything else rethrows (a real 500).
  *
- * Phase 5 moves these onto the any-plan session (allow-list, §4.7): an org with no paid plan
- * must still be able to subscribe.
+ * These use the any-plan session (allow-list, Phase 4 §4.7): an org with no paid plan must
+ * still be able to subscribe, so the billing check is skipped here and the admin check below is
+ * this file's own. `guard-coverage.test.ts` allow-lists this whole file for exactly that reason.
  */
 import Stripe from "stripe";
 
@@ -17,7 +18,7 @@ import * as billing from "@/src/modules/billing/billing";
 import { billingEnabled } from "@/src/modules/billing/config";
 import { UI } from "@/src/domain/strings";
 import { fail, ok, type ActionResult } from "@/src/lib/action-result";
-import { actionSession } from "@/src/lib/action-session";
+import { actionSessionAnyPlan } from "@/src/lib/action-session";
 import { consume } from "@/src/services/rate-limit";
 
 const ERROR_MESSAGE: Record<billing.BillingErrorCode, (e: billing.BillingError) => string> = {
@@ -41,7 +42,7 @@ type Guarded = { actor: billing.Actor };
 
 /** The five checks every billing action opens with. */
 async function guard(): Promise<Guarded | { result: ActionResult<never> }> {
-  const session = await actionSession();
+  const session = await actionSessionAnyPlan();
   if ("expired" in session) return { result: session.expired };
   if (!billingEnabled()) return { result: fail(UI.billingNotEnabled) };
   if (session.role !== "admin") return { result: fail(UI.billingNotAdmin) };

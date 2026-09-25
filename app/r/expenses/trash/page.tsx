@@ -1,12 +1,10 @@
-import { redirect } from "next/navigation";
-
 import { PageTitle, Subtext } from "@/src/components/ui/surfaces";
 import { formatDateUS, monthLabel, todayIso } from "@/src/domain/dates";
 import { pageTitle } from "@/src/domain/strings";
 import { loadTrashedExpenses } from "@/src/modules/expenses/queries";
 import { findFundingSource, loadSourceContext } from "@/src/modules/funding-sources/queries";
 import { loadLockedMonths } from "@/src/modules/packet/queries";
-import { getSession } from "@/src/services/auth/session";
+import { pageSession } from "@/src/lib/page-session";
 
 import { TrashTable, type TrashRow } from "./trash-table";
 
@@ -17,8 +15,7 @@ export default async function ExpenseTrashPage({
 }: {
   searchParams: Promise<{ source?: string }>;
 }) {
-  const session = await getSession();
-  if (!session) redirect("/login");
+  const session = await pageSession();
 
   const { source: requestedSource } = await searchParams;
 

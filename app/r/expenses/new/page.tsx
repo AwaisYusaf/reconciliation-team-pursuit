@@ -1,5 +1,3 @@
-import { redirect } from "next/navigation";
-
 import { PickFundingSource } from "@/src/components/app-shell/pick-funding-source";
 import { PageTitle, Subtext } from "@/src/components/ui/surfaces";
 import { TourGuide } from "@/src/components/ui/tour";
@@ -15,15 +13,14 @@ import { loadSourceContext } from "@/src/modules/funding-sources/queries";
 import { loadLockedMonths } from "@/src/modules/packet/queries";
 import { addExpenseTourSteps } from "@/src/modules/tours/add-expense-tour";
 import { hasSeenTour } from "@/src/modules/tours/queries";
-import { getSession } from "@/src/services/auth/session";
+import { pageSession } from "@/src/lib/page-session";
 
 import { InvoiceExtract } from "./from-invoice/invoice-upload-screen";
 
 export const metadata = { title: pageTitle("Add Expense") };
 
 export default async function NewExpensePage() {
-  const session = await getSession();
-  if (!session) redirect("/login");
+  const session = await pageSession();
 
   const { selectedId, activeSources } = await loadSourceContext(
     session.orgId,

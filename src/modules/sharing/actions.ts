@@ -37,6 +37,7 @@ import {
   type PreparedMonthOutput,
 } from "@/src/modules/packet/month-output";
 import { hashPassword } from "@/src/services/auth/passwords";
+import { ENTITLEMENT_COLUMNS, sharesAllowed } from "@/src/services/auth/entitlement";
 import { consume } from "@/src/services/rate-limit";
 
 import { shareUrl } from "./queries";
@@ -286,11 +287,11 @@ function invalid(error: z.ZodError): ActionResult<never> {
 
 async function orgCancelled(orgId: string): Promise<boolean> {
   const [org] = await db
-    .select({ status: organizations.subscriptionStatus })
+    .select({ ...ENTITLEMENT_COLUMNS })
     .from(organizations)
     .where(eq(organizations.id, orgId))
     .limit(1);
-  return org?.status === "cancelled";
+  return org ? !sharesAllowed(org) : false;
 }
 
 /** One active share of this organisation. Every lookup by id goes through this scope. */

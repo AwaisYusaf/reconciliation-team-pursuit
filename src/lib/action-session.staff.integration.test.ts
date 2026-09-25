@@ -176,7 +176,7 @@ describe.skipIf(!hasDatabase)("staff action/page guards (integration)", async ()
     it("signup page redirects a staff session to /a", async () => {
       await startStaffSession(staffId);
       const SignupPage = (await import("@/app/(auth)/signup/page")).default;
-      await expect(SignupPage()).rejects.toThrow("NEXT_REDIRECT:/a");
+      await expect(SignupPage({ searchParams: Promise.resolve({}) })).rejects.toThrow("NEXT_REDIRECT:/a");
       await endSession();
     });
   });

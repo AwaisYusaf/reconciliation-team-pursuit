@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { redirect } from "next/navigation";
 
 import { PickFundingSource } from "@/src/components/app-shell/pick-funding-source";
 import { TourSequenceSkip } from "@/src/components/app-shell/tour-sequence-skip";
@@ -22,7 +21,7 @@ import { loadSourceContext } from "@/src/modules/funding-sources/queries";
 import { loadReportingPeriods, type LockEventRow, type ReportingPeriod } from "@/src/modules/packet/queries";
 import { CONTRACT_SUMMARY_TOUR_STEPS } from "@/src/modules/tours/contract-summary-tour";
 import { hasSeenTour } from "@/src/modules/tours/queries";
-import { getSession } from "@/src/services/auth/session";
+import { pageSession } from "@/src/lib/page-session";
 import { inlineSrc } from "@/src/services/storage/preview";
 import { and, eq } from "drizzle-orm";
 
@@ -37,8 +36,7 @@ const COLUMNS = 7;
  * the file the City receives cannot disagree (R10.2).
  */
 export default async function ContractSummaryPage() {
-  const session = await getSession();
-  if (!session) redirect("/login");
+  const session = await pageSession();
 
   const { selectedId: fundingSourceId, activeSources, sources } = await loadSourceContext(
     session.orgId,

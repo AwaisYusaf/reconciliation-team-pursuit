@@ -5,7 +5,7 @@ import { v7 as uuidv7 } from "uuid";
 import { db } from "@/src/db";
 import { users } from "@/src/db/schema";
 import { INLINE_DISPOSITION } from "@/src/lib/http";
-import { getSession } from "@/src/services/auth/session";
+import { routeSessionAnyPlan } from "@/src/lib/route-session";
 import { storage } from "@/src/services/storage/driver";
 import {
   avatarKey,
@@ -38,7 +38,7 @@ function contentTypeFor(key: string): string {
 }
 
 export async function GET() {
-  const session = await getSession();
+  const session = await routeSessionAnyPlan();
   if (!session) return new NextResponse(SIGNED_OUT, { status: 401 });
 
   const [row] = await db
@@ -78,7 +78,7 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  const session = await getSession();
+  const session = await routeSessionAnyPlan();
   if (!session) return NextResponse.json({ ok: false, error: SIGNED_OUT }, { status: 401 });
 
   const form = await request.formData();
@@ -133,7 +133,7 @@ export async function POST(request: Request) {
 }
 
 export async function DELETE() {
-  const session = await getSession();
+  const session = await routeSessionAnyPlan();
   if (!session) return NextResponse.json({ ok: false, error: SIGNED_OUT }, { status: 401 });
 
   const [previous] = await db

@@ -11,7 +11,7 @@ import {
 } from "@/src/db/schema";
 import { attachmentHeader, INLINE_DISPOSITION } from "@/src/lib/http";
 import { isUuid } from "@/src/lib/ids";
-import { getSession } from "@/src/services/auth/session";
+import { routeSession } from "@/src/lib/route-session";
 import { storage } from "@/src/services/storage/driver";
 import { keyBelongsToOrg, thumbnailKey } from "@/src/services/storage/keys";
 import { canPreviewInline } from "@/src/services/storage/preview";
@@ -33,8 +33,9 @@ export async function GET(
   request: Request,
   context: { params: Promise<{ id: string }> },
 ) {
-  const session = await getSession();
+  const session = await routeSession("text");
   if (!session) return new NextResponse("You've been signed out. Sign in and open the file again.", { status: 401 });
+  if ("denied" in session) return session.denied;
 
   const { id } = await context.params;
   // A malformed id would raise a Postgres 22P02 out of an unguarded handler; the intent

@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { redirect } from "next/navigation";
 
 import { BlockingPanel } from "@/src/components/ui/blocking-panel";
 import { PickFundingSource } from "@/src/components/app-shell/pick-funding-source";
@@ -20,7 +19,7 @@ import { loadMonthExpenses, type ExpenseDetail } from "@/src/modules/expenses/qu
 import { loadSourceContext } from "@/src/modules/funding-sources/queries";
 import { COVER_SHEETS_TOUR_STEPS } from "@/src/modules/tours/cover-sheets-tour";
 import { hasSeenTour } from "@/src/modules/tours/queries";
-import { getSession } from "@/src/services/auth/session";
+import { pageSession } from "@/src/lib/page-session";
 
 import { CoverSheetPreview, type PreviewRow } from "./cover-sheet-preview";
 import { ALL_LINE_ITEMS } from "./constants";
@@ -39,8 +38,7 @@ export default async function CoverSheetsPage({
 }: {
   searchParams: Promise<{ lineItem?: string }>;
 }) {
-  const session = await getSession();
-  if (!session) redirect("/login");
+  const session = await pageSession();
 
   const { selectedId: fundingSourceId, activeSources, sources } = await loadSourceContext(
     session.orgId,

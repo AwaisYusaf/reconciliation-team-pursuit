@@ -1,11 +1,9 @@
-import { redirect } from "next/navigation";
-
 import { PageTitle } from "@/src/components/ui/surfaces";
 import { TourGuide } from "@/src/components/ui/tour";
 import { pageTitle } from "@/src/domain/strings";
 import { aiPlanAllowed } from "@/src/modules/ai/access";
 import { loadSettings } from "@/src/modules/settings/queries";
-import { getSession } from "@/src/services/auth/session";
+import { pageSession } from "@/src/lib/page-session";
 import { listOrgUsersAction } from "@/src/modules/users/actions";
 import { SETTINGS_TOUR_STEPS } from "@/src/modules/tours/settings-tour";
 import { hasSeenTour } from "@/src/modules/tours/queries";
@@ -17,8 +15,7 @@ import { SettingsSections } from "./settings-sections";
 export const metadata = { title: pageTitle("Settings") };
 
 export default async function SettingsPage() {
-  const session = await getSession();
-  if (!session) redirect("/login");
+  const session = await pageSession();
 
   const isAdmin = session.role === "admin";
 

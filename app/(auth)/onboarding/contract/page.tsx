@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 
-import { getSession } from "@/src/services/auth/session";
+import { pageSession } from "@/src/lib/page-session";
 import { pageTitle } from "@/src/domain/strings";
 
 import { OnboardingContractForm } from "./contract-form";
@@ -11,8 +11,7 @@ import { Eyebrow } from "@/src/components/ui/surfaces";
 export const metadata = { title: pageTitle("Your contract") };
 
 export default async function OnboardingContractPage() {
-  const session = await getSession();
-  if (!session) redirect("/login");
+  const session = await pageSession();
   if (session.onboarded) redirect("/r");
 
   return (

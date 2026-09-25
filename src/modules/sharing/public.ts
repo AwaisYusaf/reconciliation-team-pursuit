@@ -9,7 +9,7 @@ import "server-only";
  * them. Nothing in this file may import a generator or `resolveArtifact`: opening a link never
  * builds a file (`public-isolation.test.ts`).
  */
-import { and, eq, isNull, ne } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 
 import { db } from "@/src/db";
 import { generatedArtifacts, organizations, sharedLinks } from "@/src/db/schema";
@@ -19,6 +19,7 @@ import {
   sharedFileKindOf,
   type SharedFileKind,
 } from "@/src/domain/shared-links";
+import { ENTITLEMENT_COLUMNS, sharesAllowed } from "@/src/services/auth/entitlement";
 import { verifyPassword } from "@/src/services/auth/passwords";
 import { rateLimitSubject } from "@/src/services/client-ip";
 import { consume, reset } from "@/src/services/rate-limit";
@@ -39,8 +40,8 @@ export type PublicShare = {
 
 /**
  * The share behind a token, or null when there is nothing to serve: an unknown or malformed
- * token, a stopped link, or an organisation that is paused (`suspended_at`) or cancelled
- * (PHASE-12 C4). All of these look the same from outside (Appendix A §5).
+ * token, a stopped link, an organisation that is paused (`suspended_at`), or one `sharesAllowed`
+ * refuses (PHASE-12 C4, PHASE-15 §4.7). All of these look the same from outside (Appendix A §5).
  */
 export async function loadPublicShare(token: string): Promise<PublicShare | null> {
   if (!isShareToken(token)) return null;
@@ -55,6 +56,7 @@ export async function loadPublicShare(token: string): Promise<PublicShare | null
       artifactType: sharedLinks.artifactType,
       s3Key: generatedArtifacts.s3Key,
       sizeBytes: generatedArtifacts.sizeBytes,
+      ...ENTITLEMENT_COLUMNS,
     })
     .from(sharedLinks)
     // The five-column FK already makes this the share's own file; joining on the org as well
@@ -69,14 +71,14 @@ export async function loadPublicShare(token: string): Promise<PublicShare | null
         eq(sharedLinks.token, token),
         isNull(sharedLinks.revokedAt),
         isNull(organizations.suspendedAt),
-        ne(organizations.subscriptionStatus, "cancelled"),
       ),
     )
     .limit(1);
 
+  if (!row || !sharesAllowed(row)) return null;
   // P20: the key comes from the database, but a check that costs nothing makes a future bug
   // fail closed rather than serve another organisation's object.
-  if (!row || !keyBelongsToOrg(row.s3Key, row.orgId)) return null;
+  if (!keyBelongsToOrg(row.s3Key, row.orgId)) return null;
   const kind = sharedFileKindOf(row.artifactType);
   if (!kind) return null;
 

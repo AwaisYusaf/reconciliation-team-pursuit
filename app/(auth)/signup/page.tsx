@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 
 import { pageTitle, UI } from "@/src/domain/strings";
 import { signupEnabled } from "@/src/modules/auth/config";
+import { isInterval, isPlanId } from "@/src/modules/billing/rules";
 import { getSession, getStaffSession } from "@/src/services/auth/session";
 
 import { AuthCard } from "@/src/components/ui/auth-card";
@@ -12,10 +13,18 @@ import { SignupForm } from "./signup-form";
 
 export const metadata = { title: pageTitle("Create your organization") };
 
-export default async function SignupPage() {
+export default async function SignupPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ plan?: string; interval?: string }>;
+}) {
   const session = await getSession();
   if (session) redirect(session.onboarded ? "/r" : "/onboarding/line-items");
   if (await getStaffSession()) redirect("/a");
+
+  const params = await searchParams;
+  const plan = isPlanId(params.plan) ? params.plan : null;
+  const interval = isInterval(params.interval) ? params.interval : null;
 
   if (!signupEnabled()) {
     return (
@@ -61,7 +70,7 @@ export default async function SignupPage() {
           </>
         }
       >
-        <SignupForm />
+        <SignupForm plan={plan} interval={interval} />
       </AuthCard>
     </AuthSplit>
   );

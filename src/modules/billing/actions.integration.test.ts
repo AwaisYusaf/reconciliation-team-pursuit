@@ -14,7 +14,7 @@ import { config } from "dotenv";
 import type Stripe from "stripe";
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("@/src/lib/action-session", () => ({ actionSession: vi.fn() }));
+vi.mock("@/src/lib/action-session", () => ({ actionSessionAnyPlan: vi.fn() }));
 vi.mock("@/src/modules/billing/sync", () => ({
   syncOrgBilling: vi.fn().mockRejectedValue(new Error("sync down (test double)")),
 }));
@@ -83,7 +83,7 @@ describe.skipIf(!hasDatabase)("billing actions (integration, Phase 15)", async (
   const { v7: uuidv7 } = await import("uuid");
   const { UI } = await import("@/src/domain/strings");
   const { fail } = await import("@/src/lib/action-result");
-  const { actionSession } = await import("@/src/lib/action-session");
+  const { actionSessionAnyPlan } = await import("@/src/lib/action-session");
   const { todayIso } = await import("@/src/domain/dates");
   const { stripeKeyIsLive } = await import("@/src/modules/billing/config");
   const {
@@ -103,7 +103,7 @@ describe.skipIf(!hasDatabase)("billing actions (integration, Phase 15)", async (
 
   if (stripeKeyIsLive()) throw new Error("refuse to run this suite against a live-looking Stripe key");
 
-  const actionSessionMock = vi.mocked(actionSession);
+  const actionSessionMock = vi.mocked(actionSessionAnyPlan);
   const orgIds: string[] = [];
   let counter = 0;
 

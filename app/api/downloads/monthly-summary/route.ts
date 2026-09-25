@@ -8,7 +8,7 @@ import { attachmentHeader } from "@/src/lib/http";
 import { findFundingSource, loadSourceContext } from "@/src/modules/funding-sources/queries";
 import { summariesAccessForOrg } from "@/src/modules/ai/access";
 import { loadSummaryForDownload } from "@/src/modules/monthly-summary/queries";
-import { getSession } from "@/src/services/auth/session";
+import { routeSession } from "@/src/lib/route-session";
 import { consume } from "@/src/services/rate-limit";
 import { SESSION_EXPIRED } from "@/src/lib/action-result";
 
@@ -23,8 +23,9 @@ export const dynamic = "force-dynamic";
  * check (P8/P9): summaries work regardless, same as the rest of this feature.
  */
 export async function GET(request: Request) {
-  const session = await getSession();
+  const session = await routeSession("text");
   if (!session) return new NextResponse(SESSION_EXPIRED, { status: 401 });
+  if ("denied" in session) return session.denied;
 
   // Same reasoning as the cover sheet download (`app/api/downloads/cover-sheet/route.ts`):
   // generation must not be reachable by a cross-site navigation carrying the session cookie.

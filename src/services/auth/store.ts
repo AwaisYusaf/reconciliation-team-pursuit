@@ -12,6 +12,8 @@ import { and, eq, isNull, lt, ne } from "drizzle-orm";
 import { db } from "@/src/db";
 import { organizations, sessions, staffSessions, staffUsers, users } from "@/src/db/schema";
 import type { OrgPlan, UserRole } from "@/src/db/schema";
+import { ENTITLEMENT_COLUMNS, entitlementOf } from "@/src/services/auth/entitlement";
+import type { Entitlement } from "@/src/modules/billing/entitlement";
 
 import {
   exceedsMaxAge,
@@ -49,6 +51,12 @@ export type SessionContext = {
   activeFundingSourceId: string | null;
   onboarded: boolean;
   welcomeDismissed: boolean;
+  /**
+   * Whether the org has paid access (Phase 15). Always set by `resolveSession`; optional only so
+   * the many test fixtures that build a `SessionContext` literal directly still compile. Readers
+   * never check `plan` or a billing column here directly — call `hasPaidAccess(session)`.
+   */
+  entitlement?: Entitlement;
 };
 
 export type ResolvedSession = {
@@ -110,12 +118,12 @@ export async function resolveSession(
       role: users.role,
       orgId: organizations.id,
       orgName: organizations.name,
-      plan: organizations.plan,
       docName: organizations.docName,
       activeMonth: organizations.activeMonth,
       activeFundingSourceId: organizations.activeFundingSourceId,
       onboardedAt: organizations.onboardedAt,
       welcomeDismissedAt: organizations.welcomeDismissedAt,
+      ...ENTITLEMENT_COLUMNS,
     })
     .from(sessions)
     .innerJoin(users, eq(users.id, sessions.userId))
@@ -164,6 +172,7 @@ export async function resolveSession(
       activeFundingSourceId: row.activeFundingSourceId,
       onboarded: row.onboardedAt !== null,
       welcomeDismissed: row.welcomeDismissedAt !== null,
+      entitlement: entitlementOf(row),
     },
   };
 }
