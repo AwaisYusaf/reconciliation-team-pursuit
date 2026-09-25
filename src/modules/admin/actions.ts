@@ -30,7 +30,7 @@ import { requireStaff } from "@/src/lib/action-session";
 import { isUuid } from "@/src/lib/ids";
 import { billingEnabled } from "@/src/modules/billing/config";
 import { isLive } from "@/src/modules/billing/rules";
-import { setCollectionPaused } from "@/src/modules/billing/billing";
+import { setCollectionPaused, staffCancelSubscription } from "@/src/modules/billing/billing";
 import { alert } from "@/src/modules/billing/sync";
 
 type OrgRow = {
@@ -154,6 +154,7 @@ export async function setComplimentaryAction(
   enabled: boolean,
   until: string,
   note: string,
+  cancelPaid: "now" | "period_end" | null = null,
 ): Promise<ActionResult> {
   const staff = await requireStaff();
   if ("denied" in staff) return staff.denied;
@@ -166,6 +167,25 @@ export async function setComplimentaryAction(
 
   const parsedNote = parseNote(note);
   if ("refusal" in parsedNote) return parsedNote.refusal;
+
+  // Granting free access to a paying org ends the paid plan in the same step (§4.6), so it is
+  // never billed for access it now gets free. Stripe first and outside the row lock: the sync
+  // this triggers writes the same row, and a Stripe failure then leaves nothing half done.
+  if (enabled && billingEnabled() && isUuid(orgId)) {
+    const [current] = await db
+      .select({ complimentary: organizations.complimentary, stripeStatus: organizations.stripeStatus })
+      .from(organizations)
+      .where(eq(organizations.id, orgId));
+    if (current && !current.complimentary && isLive(current.stripeStatus)) {
+      if (cancelPaid !== "now" && cancelPaid !== "period_end") return fail(UI.staffCompCancelRequired);
+      try {
+        await staffCancelSubscription(orgId, cancelPaid);
+      } catch (e) {
+        console.error(`[admin] cancelling org ${orgId}'s subscription for a complimentary grant failed`, e);
+        return fail(UI.billingStripeError);
+      }
+    }
+  }
 
   return withLockedOrg(orgId, async (row, tx) => {
     if (!enabled) {

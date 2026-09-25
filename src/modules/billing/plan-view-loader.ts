@@ -1,0 +1,105 @@
+import "server-only";
+
+/**
+ * Loads what Settings → Plan & billing shows (Phase 15 §4.3), always for the signed-in session's
+ * own organization. Re-syncs from Stripe first when our copy looks overdue (the stale safety net,
+ * P13), so opening the section repairs a lost webhook; a Stripe failure just shows the last copy.
+ */
+import { and, count, eq, isNull } from "drizzle-orm";
+
+import { db } from "@/src/db";
+import { fundingSources, organizations, users } from "@/src/db/schema";
+import { userDisplay } from "@/src/domain/user-display";
+import { billingEnabled } from "@/src/modules/billing/config";
+import { planBillingView, type PlanBillingView } from "@/src/modules/billing/plan-view";
+import { refreshOrgBilling } from "@/src/modules/billing/sync";
+
+export type PlanBillingData = {
+  view: PlanBillingView;
+  isAdmin: boolean;
+  /** "Name, Name" of the org's active admins, for a manager's notices. */
+  adminNames: string;
+  /** Active funding sources: Reconciliation allows one (C8), so the switch cards need it. */
+  activeSources: number;
+};
+
+/** The org's active admins, as they're shown to a manager ("Your admin (…) can …"). */
+export async function activeAdminNames(orgId: string): Promise<string> {
+  const admins = await db
+    .select({ name: users.name, email: users.email })
+    .from(users)
+    .where(and(eq(users.orgId, orgId), eq(users.role, "admin"), isNull(users.deactivatedAt)));
+  return admins.map((admin) => userDisplay(admin.name, admin.email)).join(", ");
+}
+
+async function loadBillingRow(orgId: string) {
+  const [row] = await db
+    .select({
+      plan: organizations.plan,
+      complimentary: organizations.complimentary,
+      complimentaryUntil: organizations.complimentaryUntil,
+      complimentaryPlan: organizations.complimentaryPlan,
+      stripeStatus: organizations.stripeStatus,
+      billingInterval: organizations.billingInterval,
+      currentPeriodEnd: organizations.currentPeriodEnd,
+      cancelAtPeriodEnd: organizations.cancelAtPeriodEnd,
+      pendingPlan: organizations.pendingPlan,
+      pendingInterval: organizations.pendingInterval,
+      pendingAt: organizations.pendingAt,
+      pendingReason: organizations.pendingReason,
+      upgradePayUrl: organizations.upgradePayUrl,
+      upgradeExpiresAt: organizations.upgradeExpiresAt,
+    })
+    .from(organizations)
+    .where(eq(organizations.id, orgId))
+    .limit(1);
+  return row;
+}
+
+export async function loadPlanBilling(session: { orgId: string; role: string }): Promise<PlanBillingData> {
+  const billingOn = billingEnabled();
+  if (billingOn) await refreshOrgBilling(session.orgId, "stale"); // throttled, never throws
+
+  const row = await loadBillingRow(session.orgId);
+  const [sources] = await db
+    .select({ total: count() })
+    .from(fundingSources)
+    .where(and(eq(fundingSources.orgId, session.orgId), isNull(fundingSources.archivedAt)));
+
+  const isAdmin = session.role === "admin";
+  return {
+    view: row ? planBillingView(row, { billingOn, now: new Date() }) : { kind: "none" },
+    isAdmin,
+    adminNames: isAdmin ? "" : await activeAdminNames(session.orgId),
+    activeSources: sources?.total ?? 0,
+  };
+}
+
+/** The one billing banner the app shell shows under the header, if any (Phase 15 §4.5). */
+export type BillingBanner =
+  | { kind: "paymentFailed"; isAdmin: boolean; adminNames: string }
+  | { kind: "upgradeWaiting"; expiresAt: Date }
+  | { kind: "compEnding"; until: string };
+
+/**
+ * At most one banner, and only when action is needed: a failed payment (everyone, since the
+ * app will stop working when Stripe gives up), an upgrade waiting for payment, or complimentary
+ * access ending within 14 days (both admin only: only an admin can act on them). Also the
+ * "any page" lost-webhook net (P13): an overdue copy is re-synced first, throttled.
+ */
+export async function loadBillingBanner(session: { orgId: string; role: string }): Promise<BillingBanner | null> {
+  if (!billingEnabled()) return null;
+  await refreshOrgBilling(session.orgId, "stale"); // throttled, never throws
+  const row = await loadBillingRow(session.orgId);
+  if (!row) return null;
+
+  const view = planBillingView(row, { billingOn: true, now: new Date() });
+  const isAdmin = session.role === "admin";
+  if (view.kind === "subscribed" && view.paymentFailed) {
+    return { kind: "paymentFailed", isAdmin, adminNames: isAdmin ? "" : await activeAdminNames(session.orgId) };
+  }
+  if (!isAdmin) return null;
+  if (view.kind === "subscribed" && view.upgrade) return { kind: "upgradeWaiting", expiresAt: view.upgrade.expiresAt };
+  if (view.kind === "complimentaryAccess" && view.endingSoon && view.until) return { kind: "compEnding", until: view.until };
+  return null;
+}

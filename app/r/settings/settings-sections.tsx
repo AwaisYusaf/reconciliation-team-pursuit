@@ -32,27 +32,22 @@ import {
   setReadAmountsEnabledAction,
   updateOrganisationAction,
 } from "@/src/modules/settings/actions";
+import type { PlanBillingData } from "@/src/modules/billing/plan-view-loader";
+import { SECTION_IDS, type SectionId } from "@/src/modules/settings/sections";
+import { PlanBillingSection } from "./plan-billing-section";
 import { VendorTable, type LabelRow, type Vendor } from "./vendor-table";
 import { UsersManager, type OrgUser } from "./users/users-manager";
 
 /** One entry per sidebar item — a settings screen used to be a long scroll of cards; this is
- *  the same content, just one section shown at a time instead of stacked. */
-const SECTION_IDS = [
-  "organization",
-  "fundingSources",
-  "labels",
-  "vendors",
-  "users",
-  "account",
-] as const;
-type SectionId = (typeof SECTION_IDS)[number];
-
+ *  the same content, just one section shown at a time instead of stacked. The list and the
+ *  `?section=` parsing live in `src/modules/settings/sections.ts` (Phase 15 P19). */
 const SECTION_LABELS: Record<SectionId, string> = {
   organization: "Organization",
   fundingSources: "Funding sources",
   labels: "Lists",
   vendors: "Vendor library",
   users: "Users",
+  plan: UI.billingSectionTitle,
   account: "Account",
 };
 
@@ -137,6 +132,12 @@ function SectionIcon({ id }: { id: SectionId }) {
         <path d="M13 12.2c1.9.3 3.5 1.6 3.5 3.8" />
       </>
     ),
+    plan: (
+      <>
+        <rect x="3" y="5" width="14" height="10" rx="1.5" />
+        <path d="M3 8.5h14M6 12h3" />
+      </>
+    ),
     account: (
       <>
         <circle cx="10" cy="7" r="3" />
@@ -176,6 +177,8 @@ export function SettingsSections({
   users,
   usersError,
   readAmounts,
+  planBilling,
+  initialSection,
 }: {
   email: string;
   /** The signed-in person's own name and photo version, for the Account section's avatar. */
@@ -198,10 +201,14 @@ export function SettingsSections({
   /** Null when the organisation's plan doesn't offer this feature (Phase 10, D-105) — the
    *  switch is hidden entirely, not shown disabled. */
   readAmounts: { enabled: boolean } | null;
+  /** Settings → Plan & billing (Phase 15 §4.3), loaded on the server for this org only. */
+  planBilling: PlanBillingData;
+  /** From `?section=` (Phase 15 P19), already checked against the known ids on the server. */
+  initialSection: SectionId;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
-  const [active, setActive] = useState<SectionId>("organization");
+  const [active, setActive] = useState<SectionId>(initialSection);
 
   const [org, setOrg] = useState(organisation);
   const [readAmountsEnabled, setReadAmountsEnabled] = useState(readAmounts?.enabled ?? false);
@@ -394,6 +401,8 @@ export function SettingsSections({
             )}
           </div>
         )}
+
+        {active === "plan" && <PlanBillingSection data={planBilling} />}
 
         {active === "account" && (
           <>

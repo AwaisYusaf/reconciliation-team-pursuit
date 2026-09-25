@@ -110,6 +110,9 @@ export function copyOf(
       ...NO_PENDING,
       ...NOT_AWAITING,
       collectionPaused: false,
+      // The customer (or every subscription) was deleted in Stripe while one was live: that is a
+      // cancellation, written once like any live-to-dead move, so `/a` stops saying "Active".
+      ...(isLive(previousStatus) ? { subscriptionStatus: "cancelled" as const } : {}),
     };
   }
 

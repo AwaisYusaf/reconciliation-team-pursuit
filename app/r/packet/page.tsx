@@ -24,6 +24,7 @@ import { loadSharedLinks } from "@/src/modules/sharing/queries";
 import { PACKET_TOUR_STEPS } from "@/src/modules/tours/packet-tour";
 import { hasSeenTour } from "@/src/modules/tours/queries";
 import { pageSession } from "@/src/lib/page-session";
+import { SeePlansLink } from "../see-plans-link";
 
 import { MonthlySummarySection } from "@/src/components/monthly-summary/summary-section";
 import { LockHistory, MonthLockControls } from "./month-lock";
@@ -317,7 +318,10 @@ export default async function PacketPage() {
             month={month}
           />
         ) : (
-          <p className="text-[15px] text-ink mt-2">{UI.summaryPlanNote}</p>
+          <div className="mt-2 space-y-1">
+            <p className="text-[15px] text-ink">{UI.summaryPlanNote}</p>
+            <SeePlansLink isAdmin={session.role === "admin"} />
+          </div>
         )}
       </div>
     </div>

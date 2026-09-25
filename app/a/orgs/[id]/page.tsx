@@ -8,7 +8,9 @@ import { formatDateShort, formatDateTimeShort, monthLabel, todayIso } from "@/sr
 import { formatBytes, ratio } from "@/src/domain/format";
 import { PLAN_LABELS, UI } from "@/src/domain/strings";
 import { aiCost } from "@/src/modules/admin/ai-cost";
-import { describeAccountEvent, usersFooter } from "@/src/modules/admin/directory";
+import { describeAccountEvent, staffBilling, usersFooter } from "@/src/modules/admin/directory";
+import { billingEnabled } from "@/src/modules/billing/config";
+import { isLive } from "@/src/modules/billing/rules";
 import { requireStaffPage } from "@/src/modules/admin/guard";
 import {
   loadOrgAccount,
@@ -116,6 +118,10 @@ export default async function OrgPage({
     total: users.total,
   });
   const today = todayIso();
+  const billing = staffBilling(account);
+  // Same test the server applies in `changePlanAction` (P16), so the button never offers what
+  // the action would refuse.
+  const stripeManaged = billingEnabled() && isLive(account.stripeStatus);
   const storageRatio = ratio(usage.storageBytes, usage.storageLimitBytes);
   const storagePercent = Math.min(100, storageRatio * 100);
   const storageSentence = UI.usageStorage(
@@ -317,9 +323,40 @@ export default async function OrgPage({
         </dl>
       </Card>
 
+      {billing && (
+        <Card className="p-4 sm:p-5 lg:p-6">
+          <SubsectionTitle gradient className="mb-3">{UI.staffBillingTitle}</SubsectionTitle>
+          {billing.warnings.map((warning) => (
+            <p key={warning} className="text-[15px] font-semibold text-danger mb-2" role="status">
+              {warning}
+            </p>
+          ))}
+          <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3">
+            {billing.facts.map((fact) => (
+              <div key={fact.label}>
+                <dt className="text-[13px] text-sub">{fact.label}</dt>
+                <dd className="text-[15px] text-ink font-medium">{fact.value}</dd>
+              </div>
+            ))}
+          </dl>
+          {billing.customerUrl && (
+            <p className="mt-4">
+              <a
+                href={billing.customerUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-[15px] text-accent underline underline-offset-2 hover:no-underline"
+              >
+                {UI.staffBillingOpenCustomer}
+              </a>
+            </p>
+          )}
+        </Card>
+      )}
+
       <Card className="p-4 sm:p-5 lg:p-6">
         <SubsectionTitle gradient className="mb-3">Actions</SubsectionTitle>
-        <AccountActions org={account} />
+        <AccountActions org={account} stripeManaged={stripeManaged} customerUrl={billing?.customerUrl ?? null} />
       </Card>
 
       <Card className="p-4 sm:p-5 lg:p-6">

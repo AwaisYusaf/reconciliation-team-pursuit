@@ -1,15 +1,15 @@
 import Link from "next/link";
-import { and, eq, isNull } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 
 import { Card, CARD_PADDING, PageTitle, SectionTitle, Subtext } from "@/src/components/ui/surfaces";
 import { db } from "@/src/db";
-import { organizations, users } from "@/src/db/schema";
+import { organizations } from "@/src/db/schema";
 import { formatDateUS } from "@/src/domain/dates";
 import { formatMoney } from "@/src/domain/format";
 import { pageTitle, PLAN_LABELS, UI } from "@/src/domain/strings";
-import { userDisplay } from "@/src/domain/user-display";
 import { planPageSession } from "@/src/lib/page-session";
 import { complimentaryEndedOn, ENTITLEMENT_COLUMNS } from "@/src/services/auth/entitlement";
+import { activeAdminNames } from "@/src/modules/billing/plan-view-loader";
 import { priceCents } from "@/src/modules/billing/pricing";
 import { INTERVALS, isInterval, isPlanId, type Interval, type PlanId } from "@/src/modules/billing/rules";
 
@@ -28,7 +28,7 @@ function planHref(interval: Interval, plan: PlanId | null): string {
 export default async function PlanPage({
   searchParams,
 }: {
-  searchParams: Promise<{ plan?: string; interval?: string }>;
+  searchParams: Promise<{ plan?: string; interval?: string; checkout?: string }>;
 }) {
   // The gate: never redirects a paid org back here (that would loop), sends everyone else
   // straight to sign in (Phase 15 §4.7).
@@ -61,12 +61,20 @@ export default async function PlanPage({
         : UI.billingEnded;
 
   const plansToShow = preselected ? [preselected] : PLAN_IDS;
-  const managerNoticeNames = isAdmin ? "" : managerNames(await activeAdmins(session.orgId));
+  const managerNoticeNames = isAdmin ? "" : await activeAdminNames(session.orgId);
 
   return (
     <div>
       <PageTitle className="mb-1.5">{UI.billingChooseFor(orgName)}</PageTitle>
       <Subtext className="mb-6">{headline}</Subtext>
+
+      {/* Stripe sends an admin who backed out of Checkout here (`PLAN_CANCELLED_PATH`). A calm
+          note, not an error: nothing happened and nothing was charged. */}
+      {params.checkout === "cancelled" && isAdmin && (
+        <Card className={`${CARD_PADDING} mb-6`}>
+          <p className="text-[15px] text-ink">{UI.billingCheckoutAbandoned}</p>
+        </Card>
+      )}
 
       {!isAdmin ? (
         <Card className={CARD_PADDING}>
@@ -117,15 +125,4 @@ export default async function PlanPage({
       )}
     </div>
   );
-}
-
-async function activeAdmins(orgId: string): Promise<Array<{ name: string | null; email: string }>> {
-  return db
-    .select({ name: users.name, email: users.email })
-    .from(users)
-    .where(and(eq(users.orgId, orgId), eq(users.role, "admin"), isNull(users.deactivatedAt)));
-}
-
-function managerNames(admins: Array<{ name: string | null; email: string }>): string {
-  return admins.map((admin) => userDisplay(admin.name, admin.email)).join(", ");
 }

@@ -5,6 +5,7 @@ import { pageTitle, UI } from "@/src/domain/strings";
 import { summariesAccessForOrg } from "@/src/modules/ai/access";
 import { loadSourceContext } from "@/src/modules/funding-sources/queries";
 import { pageSession } from "@/src/lib/page-session";
+import { SeePlansLink } from "../see-plans-link";
 
 import { MonthlySummarySection } from "@/src/components/monthly-summary/summary-section";
 
@@ -24,6 +25,9 @@ export default async function MonthlySummaryPage() {
       <div>
         <PageHeader title={<Titled showBadge={false} />} />
         <p className="text-[15px] text-ink">{UI.summaryPlanNote}</p>
+        <div className="mt-2">
+          <SeePlansLink isAdmin={session.role === "admin"} />
+        </div>
       </div>
     );
   }

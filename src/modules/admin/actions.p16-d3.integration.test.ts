@@ -15,8 +15,10 @@ vi.mock("@/src/lib/action-session", () => ({
 }));
 
 const setCollectionPausedMock = vi.fn().mockResolvedValue(undefined);
+const staffCancelMock = vi.fn().mockResolvedValue(undefined);
 vi.mock("@/src/modules/billing/billing", () => ({
   setCollectionPaused: (...args: unknown[]) => setCollectionPausedMock(...args),
+  staffCancelSubscription: (...args: unknown[]) => staffCancelMock(...args),
 }));
 
 const alertMock = vi.fn();
@@ -84,6 +86,7 @@ describe.skipIf(!hasDatabase)("P16 (staff-managed while live) and D3 (collection
   beforeEach(() => {
     vi.stubEnv("BILLING_ENABLED", "true");
     setCollectionPausedMock.mockReset().mockResolvedValue(undefined);
+    staffCancelMock.mockReset().mockResolvedValue(undefined);
     alertMock.mockReset();
     asStaff();
   });
@@ -122,7 +125,7 @@ describe.skipIf(!hasDatabase)("P16 (staff-managed while live) and D3 (collection
     it("complimentary access still works on an org with a live subscription", async () => {
       const orgId = await freshOrg({ complimentary: false });
       await setStripeStatus(orgId, "active");
-      const result = await setComplimentaryAction(orgId, true, "", "");
+      const result = await setComplimentaryAction(orgId, true, "", "", "period_end");
       expect(result.ok).toBe(true);
     });
 
@@ -131,6 +134,66 @@ describe.skipIf(!hasDatabase)("P16 (staff-managed while live) and D3 (collection
       await setStripeStatus(orgId, "active");
       const result = await suspendOrgAction(orgId, "for the test");
       expect(result.ok).toBe(true);
+    });
+  });
+
+  describe("I-7: complimentary for a paying org ends the paid plan in the same step", () => {
+    async function complimentary(orgId: string) {
+      const [row] = await db
+        .select({ complimentary: organizations.complimentary })
+        .from(organizations)
+        .where(eq(organizations.id, orgId));
+      return row.complimentary;
+    }
+
+    it.each([null, "later" as never])("no valid choice (%s) → refused, nothing written, Stripe untouched", async (choice) => {
+      const orgId = await freshOrg({ complimentary: false });
+      await setStripeStatus(orgId, "active");
+      const result = await setComplimentaryAction(orgId, true, "", "", choice);
+      expect(result).toEqual(fail(UI.staffCompCancelRequired));
+      expect(staffCancelMock).not.toHaveBeenCalled();
+      expect(await complimentary(orgId)).toBe(false);
+      expect(await eventsFor(orgId)).toHaveLength(0);
+    });
+
+    it.each(["now", "period_end"] as const)("choice %s → Stripe cancelled that way, then access granted", async (choice) => {
+      const orgId = await freshOrg({ complimentary: false });
+      await setStripeStatus(orgId, "past_due");
+      const result = await setComplimentaryAction(orgId, true, "", "", choice);
+      expect(result.ok).toBe(true);
+      expect(staffCancelMock).toHaveBeenCalledExactlyOnceWith(orgId, choice);
+      expect(await complimentary(orgId)).toBe(true);
+    });
+
+    it("Stripe failing → refused with the payment-service message, access not granted", async () => {
+      const orgId = await freshOrg({ complimentary: false });
+      await setStripeStatus(orgId, "active");
+      staffCancelMock.mockRejectedValueOnce(new Error("Stripe is down"));
+      const result = await setComplimentaryAction(orgId, true, "", "", "now");
+      expect(result).toEqual(fail(UI.billingStripeError));
+      expect(await complimentary(orgId)).toBe(false);
+      expect(await eventsFor(orgId)).toHaveLength(0);
+    });
+
+    it.each([
+      ["no live subscription", "canceled", true, false],
+      ["billing off", "active", false, false],
+      ["already complimentary (changing the end date)", "active", true, true],
+    ])("%s → no choice needed, Stripe untouched", async (_name, status, billingOn, alreadyComp) => {
+      if (!billingOn) vi.stubEnv("BILLING_ENABLED", "false");
+      const orgId = await freshOrg({ complimentary: alreadyComp });
+      await setStripeStatus(orgId, status);
+      const result = await setComplimentaryAction(orgId, true, "2027-01-31", "");
+      expect(result.ok).toBe(true);
+      expect(staffCancelMock).not.toHaveBeenCalled();
+    });
+
+    it("removing complimentary never touches Stripe", async () => {
+      const orgId = await freshOrg({ complimentary: true });
+      await setStripeStatus(orgId, "active");
+      const result = await setComplimentaryAction(orgId, false, "", "");
+      expect(result.ok).toBe(true);
+      expect(staffCancelMock).not.toHaveBeenCalled();
     });
   });
 

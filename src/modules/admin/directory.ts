@@ -4,7 +4,7 @@
  * no `server-only` — this module is also used by a client component (Phase 4).
  */
 import type { IsoDate } from "@/src/domain/dates";
-import { formatDateShort } from "@/src/domain/dates";
+import { formatDateShort, formatDateTimeShort, todayIso } from "@/src/domain/dates";
 import { PLAN_LABELS, STATUS_LABELS, UI } from "@/src/domain/strings";
 import { userDisplay } from "@/src/domain/user-display";
 
@@ -72,14 +72,91 @@ export type AccountEvent = {
   after: { plan: OrgPlan; status: SubscriptionStatus; complimentaryUntil: IsoDate | null };
   actorName: string | null;
   actorEmail: string | null;
+  /** Written by Stripe's sync, not a staff action (Phase 15 P15). */
+  viaStripe?: boolean;
 };
+
+/** The org page's copy of Stripe's state — structurally typed, like `AccountEvent`. */
+export type BillingCopy = {
+  stripeCustomerId: string | null;
+  stripeLivemode: boolean | null;
+  stripeStatus: string | null;
+  billingInterval: string | null;
+  currentPeriodEnd: Date | null;
+  cancelAtPeriodEnd: boolean;
+  pendingPlan: OrgPlan | null;
+  pendingInterval: string | null;
+  pendingAt: Date | null;
+  pendingReason: string | null;
+  upgradeExpiresAt: Date | null;
+  collectionPaused: boolean;
+  billingFlag: string | null;
+};
+
+export type StaffBilling = {
+  facts: { label: string; value: string }[];
+  warnings: string[];
+  customerUrl: string | null;
+};
+
+const intervalWord = (interval: string | null) =>
+  interval === "month" ? "monthly" : interval === "year" ? "yearly" : (interval ?? "");
+
+/**
+ * The Billing card on the org page (Phase 15 §4.6), or `null` when Stripe has never seen this
+ * org. Reads only our copy (written by `syncOrgBilling`); the Stripe link is for anything more.
+ */
+export function staffBilling(row: BillingCopy, now: Date = new Date()): StaffBilling | null {
+  if (!row.stripeCustomerId && !row.stripeStatus) return null;
+
+  const facts: StaffBilling["facts"] = [];
+  const warnings: string[] = [];
+  const day = (at: Date) => formatDateShort(todayIso(at));
+
+  facts.push({ label: UI.staffBillingStatus, value: row.stripeStatus ?? UI.staffBillingNone });
+  if (row.billingInterval) {
+    facts.push({ label: UI.staffBillingInterval, value: intervalWord(row.billingInterval) });
+  }
+  if (row.currentPeriodEnd && row.stripeStatus !== "canceled") {
+    facts.push({
+      label: row.cancelAtPeriodEnd ? UI.staffBillingEnds : UI.staffBillingRenews,
+      value: day(row.currentPeriodEnd),
+    });
+  }
+  if (row.pendingAt) {
+    facts.push({
+      label: UI.staffBillingQueued,
+      value:
+        row.pendingReason === "price_move" || !row.pendingPlan
+          ? UI.staffBillingPriceMove(day(row.pendingAt))
+          : UI.staffBillingQueuedValue(PLAN_LABELS[row.pendingPlan], intervalWord(row.pendingInterval), day(row.pendingAt)),
+    });
+  }
+
+  if (row.stripeStatus === "past_due" || row.stripeStatus === "unpaid") warnings.push(UI.staffBillingPaymentFailed);
+  if (row.upgradeExpiresAt && row.upgradeExpiresAt > now) {
+    warnings.push(UI.staffBillingUpgradeWaiting(formatDateTimeShort(row.upgradeExpiresAt)));
+  }
+  if (row.collectionPaused) warnings.push(UI.staffBillingPaused);
+  if (row.billingFlag) warnings.push(UI.staffBillingFlag(row.billingFlag));
+
+  const customerUrl = row.stripeCustomerId
+    ? `https://dashboard.stripe.com/${row.stripeLivemode ? "" : "test/"}customers/${encodeURIComponent(row.stripeCustomerId)}`
+    : null;
+
+  return { facts, warnings, customerUrl };
+}
 
 /**
  * The History sentence for one event, without the leading timestamp or the trailing note
  * (Phase 4 joins `formatDateTimeShort(createdAt)`, this, and the note with `" – "`).
  */
 export function describeAccountEvent(event: AccountEvent): string {
-  const actor = event.actorEmail ? userDisplay(event.actorName, event.actorEmail) : "Unknown";
+  const actor = event.viaStripe
+    ? UI.historyActorStripe
+    : event.actorEmail
+      ? userDisplay(event.actorName, event.actorEmail)
+      : "Unknown";
 
   switch (event.action) {
     case "plan_changed": {

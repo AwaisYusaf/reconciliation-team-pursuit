@@ -46,7 +46,22 @@ export type OrgDirectoryRow = OrgAccountFields & {
   lastSignInAt: Date | null;
 };
 
-export type OrgAccountRow = OrgAccountFields;
+/** The org page also shows our copy of Stripe's billing state (Phase 15 §4.6). */
+export type OrgAccountRow = OrgAccountFields & {
+  stripeCustomerId: string | null;
+  stripeLivemode: boolean | null;
+  stripeStatus: string | null;
+  billingInterval: string | null;
+  currentPeriodEnd: Date | null;
+  cancelAtPeriodEnd: boolean;
+  pendingPlan: OrgPlan | null;
+  pendingInterval: string | null;
+  pendingAt: Date | null;
+  pendingReason: string | null;
+  upgradeExpiresAt: Date | null;
+  collectionPaused: boolean;
+  billingFlag: string | null;
+};
 
 const ORG_ACCOUNT_COLUMNS = {
   id: organizations.id,
@@ -216,7 +231,22 @@ export async function loadOrgAccount(orgId: string): Promise<OrgAccountRow | nul
   if (!isUuid(orgId)) return null;
 
   const [row] = await db
-    .select(ORG_ACCOUNT_COLUMNS)
+    .select({
+      ...ORG_ACCOUNT_COLUMNS,
+      stripeCustomerId: organizations.stripeCustomerId,
+      stripeLivemode: organizations.stripeLivemode,
+      stripeStatus: organizations.stripeStatus,
+      billingInterval: organizations.billingInterval,
+      currentPeriodEnd: organizations.currentPeriodEnd,
+      cancelAtPeriodEnd: organizations.cancelAtPeriodEnd,
+      pendingPlan: organizations.pendingPlan,
+      pendingInterval: organizations.pendingInterval,
+      pendingAt: organizations.pendingAt,
+      pendingReason: organizations.pendingReason,
+      upgradeExpiresAt: organizations.upgradeExpiresAt,
+      collectionPaused: organizations.collectionPaused,
+      billingFlag: organizations.billingFlag,
+    })
     .from(organizations)
     .where(eq(organizations.id, orgId))
     .limit(1);
@@ -380,6 +410,7 @@ export type OrgAccountEventRow = {
   note: string | null;
   actorName: string | null;
   actorEmail: string | null;
+  viaStripe: boolean;
 };
 
 /**
@@ -403,6 +434,7 @@ export async function loadOrgHistory(orgId: string): Promise<OrgAccountEventRow[
       note: orgAccountEvents.note,
       actorName: staffUsers.name,
       actorEmail: staffUsers.email,
+      viaStripe: orgAccountEvents.viaStripe,
     })
     .from(orgAccountEvents)
     .leftJoin(staffUsers, eq(staffUsers.id, orgAccountEvents.actorStaffId))

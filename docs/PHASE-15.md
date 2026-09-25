@@ -1,6 +1,13 @@
 # Phase 15: Paying for a plan with Stripe
 
-**Status (2026-09-25): plan, reviewed, not started.** Written after a working reference build (§12)
+**Status (2026-09-25): building. Phases 0 to 4 committed** on `implementation/payment-gateway`
+(`15eb0ff` Phases 0 and 1, `d8228b9` Phase 2, `ea055f9` Phase 3, `3c17f64` Phase 4), all behind
+`BILLING_ENABLED`, which stays off. **Phase 5** (the Plan & billing screen and the staff
+dashboard) is built and verified, awaiting commit. **Phases 6 core and 7** are built in a
+separate worktree and are being merged onto Phase 5. Phase 8 (go-live) is last. Phases 4 and 5 were renumbered on 2026-09-25 to follow the
+build order: "no free use" was Phase 5 in the first draft and the screen was Phase 4.
+
+Written after a working reference build (§12)
 was tested against a real Stripe sandbox; everything marked **Proven** was observed there, not
 assumed. The user answered the product questions on 2026-09-25 (§2.4, §2.5). The plan was then
 reviewed against the codebase through five lenses (database, security, feasibility, usability,
@@ -712,9 +719,52 @@ B-13 to B-16, B-20 done.
 Numbered 4 in the first draft of this plan (see Phase 4).
 
 - §4.3 to §4.6, the Settings tour step (8 → 9 steps, test updated), m09 and m10 docs.
+- Carried in from Phases 2 to 4:
+  - the header Plus pill (`app/r/layout.tsx`) and `app/r/settings/page.tsx` still decide AI from
+    the plan label; both switch to the entitlement (paid, on Reconciliation + AI);
+  - "Payment wasn't finished. Nothing was charged." on `/r/plan?checkout=cancelled`;
+  - the stale re-sync (`refreshOrgBilling(orgId, "stale")`) called from the Plan & billing section
+    so a lost webhook is repaired when an admin opens it;
+  - `/a`: plan and status controls disabled with `staffStripeManaged` for an org with a live
+    subscription (the server already refuses, Phase 3), "Stripe" as the actor on `via_stripe`
+    History rows, billing interval and renewal date, a queued change or failed payment, the
+    `dispute` flag, and the complimentary-on-a-paying-org choice (cancel now or at period end);
+  - after a customer is deleted in Stripe, `/a` should not keep showing "Active" (Phase 2 review).
 
 **Passes when:** U-14, U-16, I-7 pass; B-1 to B-12 in Chrome at 1280, 768, 375 px; usability
 checklist clear.
+
+**Results (2026-09-25).**
+- **Built:** `src/modules/billing/plan-view.ts` (pure `planBillingView`, every §4.3 state) and
+  `plan-view-loader.ts` (`loadPlanBilling`, `loadBillingBanner`, `activeAdminNames`; both call the
+  stale re-sync); `app/r/settings/plan-billing-section.tsx` (states, switch with Stripe's quote in
+  a dialog, cancel, keep, end now, cancel a queued change, Card and invoices, Reconciliation
+  disabled with more than one active source); `src/modules/settings/sections.ts` (`?section=`);
+  `app/r/billing-banner.tsx`; `app/r/see-plans-link.tsx` beside the Plus notes; the header Plus
+  pill and `settings/page.tsx` read the entitlement; `PlusBadge` takes an `href`, only the header
+  passes one; `/r/plan?checkout=cancelled` note. Staff `/a`: Billing card (`staffBilling()` in
+  `admin/directory.ts`) with status, interval, renewal or end, queued change, warnings for failed
+  payment, upgrade waiting, paused collection and `billing_flag`, and an "Open in Stripe" link;
+  Change plan disabled with `staffStripeManaged` while live; History shows "Stripe" on
+  `via_stripe` rows; complimentary for a paying org asks to cancel now or at period end
+  (`staffCancelSubscription` in `billing.ts`, Stripe first, outside the row lock, a failure grants
+  nothing). Sync: when the customer or every subscription is gone and the stored status was
+  live, `copyOf` writes `subscription_status = cancelled` once, so `/a` stops showing "Active".
+  Settings tour 8 → 9 steps (`settings-plan`). m09 and m10 docs.
+- **Tests:** U-13 (`settings/sections.test.ts`), U-14 (`billing/plan-view.test.ts`, every state
+  plus a source check of each state's text and actions), U-16 (`ui/plus-badge.test.ts`), I-7
+  (`admin/actions.p16-d3.integration.test.ts`, 25 tests), `staffBilling` and the "Stripe" actor
+  in `admin/directory.test.ts`, the deleted-customer cases in `billing/copy.test.ts`. Affected
+  files: 48 files, 772 tests passed.
+- **Mutation checks:** the deleted-customer write removed (5 `copy.test.ts` cases fail); the
+  complimentary cancel check bypassed (5 I-7 cases fail). Both restored.
+- **Deviations:** the banner stays visible while Plan & billing is open (the layout can't read
+  `searchParams`); "Renews on {date}." has no amount; the upgrade-waiting notice doesn't name the
+  target plan (it isn't stored). Staff "cancel now" gives no refund for the unused period and
+  voids open invoices. The existing `copy.test.ts` case that expected no status write for a
+  deleted customer with a live previous status encoded the bug and was changed.
+- **Not verified:** B-1 to B-12 in a browser (the browser tool was unavailable);
+  `staffCancelSubscription` against the Stripe sandbox (mocked in I-7).
 
 ### Phase 6: one funding source on Reconciliation
 - §4.8, the Checkout refusal and archive-from-plan-page (D2).

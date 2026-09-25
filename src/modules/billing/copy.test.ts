@@ -168,7 +168,7 @@ describe("copyOf: pause_collection", () => {
 
 describe("copyOf: undefined subscription", () => {
   it("returns an all-null/false copy, and never touches pending/awaiting inputs' identity", () => {
-    const copy = copyOf(undefined, NP, NA, "active");
+    const copy = copyOf(undefined, NP, NA, null);
     expect(copy).toEqual({
       stripeSubscriptionId: null,
       stripeStatus: null,
@@ -186,6 +186,22 @@ describe("copyOf: undefined subscription", () => {
     expect(copy.plan).toBeUndefined();
     expect(copy.subscriptionStatus).toBeUndefined();
   });
+
+  it.each(["active", "trialing", "past_due", "unpaid", "paused"])(
+    "customer deleted while %s: writes subscriptionStatus cancelled once, never plan",
+    (previous) => {
+      const copy = copyOf(undefined, NP, NA, previous);
+      expect(copy.subscriptionStatus).toBe("cancelled");
+      expect(copy.plan).toBeUndefined();
+    },
+  );
+
+  it.each([null, "canceled", "incomplete", "incomplete_expired"])(
+    "already not live (%s): leaves subscriptionStatus alone, so a staff edit after it lapsed stays",
+    (previous) => {
+      expect(copyOf(undefined, NP, NA, previous).subscriptionStatus).toBeUndefined();
+    },
+  );
 });
 
 describe("currentSubscription", () => {

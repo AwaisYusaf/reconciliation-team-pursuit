@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 import { PLAN_LABELS, UI } from "@/src/domain/strings";
 import { cn } from "@/src/lib/cn";
 
@@ -84,7 +86,34 @@ const PLUS_BADGE_EDGE = [
  * rather than another brown control. Shared by the header and every Plus-only surface (Phase 10)
  * so the tier looks the same wherever it appears.
  */
-export function PlusBadge({ size = "md", className }: { size?: "sm" | "md"; className?: string }) {
+export function PlusBadge({
+  size = "md",
+  className,
+  href,
+}: {
+  size?: "sm" | "md";
+  className?: string;
+  /**
+   * Only the header passes this (Phase 15 §4.4): it opens Plan & billing. Everywhere else the
+   * pill stays decorative, so it's never a surprise link inside a form.
+   */
+  href?: string;
+}) {
+  const pill = <PlusPill size={size} className={className} />;
+  if (!href) return pill;
+  return (
+    <Link
+      href={href}
+      aria-label={UI.plusPillLabel}
+      // A 44px tap target around a ~26px pill, without changing how the pill looks.
+      className="inline-flex items-center min-h-11 px-1 -mx-1 rounded-full hover:brightness-110 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+    >
+      {pill}
+    </Link>
+  );
+}
+
+function PlusPill({ size, className }: { size: "sm" | "md"; className?: string }) {
   return (
     <span
       title={PLAN_LABELS.reconciliation_ai}

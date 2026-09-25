@@ -624,6 +624,32 @@ export async function setCollectionPaused(orgId: string, paused: boolean): Promi
   });
 }
 
+/**
+ * Staff granting complimentary access to a paying org (§4.6) end the paid plan in the same step,
+ * so the org is never billed for access it now gets free. `now` cancels without a refund or a
+ * final invoice (the unused time is not credited); `period_end` lets the paid period run out.
+ * No-op when billing is off, there is no customer for this mode, or nothing is live.
+ */
+export async function staffCancelSubscription(orgId: string, when: "now" | "period_end"): Promise<void> {
+  await orgLock(orgId, async () => {
+    if (!billingEnabled()) return;
+    const customerId = liveCustomerId(await loadOrg(orgId));
+    if (!customerId) return;
+    const sub = pickCurrent(await subscriptionsOf(customerId));
+    if (!sub || !isLive(sub.status)) return;
+    if (sub.schedule) await stripe().subscriptionSchedules.release(idOf(sub.schedule));
+    if (when === "now") {
+      await stripe().subscriptions.cancel(sub.id, { invoice_now: false, prorate: false });
+      // Same as endPlanNow: an unpaid renewal must not be collected later for a plan that ended.
+      const open = await stripe().invoices.list({ subscription: sub.id, status: "open", limit: 20 });
+      for (const invoice of open.data) await stripe().invoices.voidInvoice(invoice.id);
+    } else {
+      await stripe().subscriptions.update(sub.id, { cancel_at_period_end: true });
+    }
+    await refresh(customerId);
+  });
+}
+
 // ── Queued downgrade to Reconciliation (P24, read by Phase 6's funding-source create) ────────
 
 /**

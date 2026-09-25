@@ -17,6 +17,8 @@ import { PlusBadge } from "@/src/components/ui/plus-badge";
 import { APP_NAME } from "@/src/domain/strings";
 import { aiPlanAllowed } from "@/src/modules/ai/access";
 import { signOutAction } from "@/src/modules/auth/actions";
+import { loadBillingBanner } from "@/src/modules/billing/plan-view-loader";
+import { BillingBanner } from "./billing-banner";
 import { loadSourceContext } from "@/src/modules/funding-sources/queries";
 import { avatarVersionOf } from "@/src/services/storage/keys";
 import { getSession } from "@/src/services/auth/session";
@@ -84,6 +86,14 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const months = await loadSelectableMonths(session.orgId, selectedId, [session.activeMonth]);
   const activeMonth = session.activeMonth;
 
+  // The Plus pill follows what the org has paid for, not the plan label alone (Phase 15 §4.2):
+  // `entitlement.plan` is the complimentary plan for a complimentary org, and a cancelled Plus
+  // org loses the pill with the features. `resolveSession` always sets it; the fallback only
+  // covers a hand-built session.
+  const ent = session.entitlement;
+  const showPlus = ent ? ent.paid && aiPlanAllowed(ent.plan) : aiPlanAllowed(session.plan);
+  const banner = await loadBillingBanner(session);
+
   return (
     <div className="min-h-screen bg-paper">
       {/*
@@ -117,7 +127,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           <>
             {/* Only the AI plan gets a badge: on the plain plan a badge saying so would be
                 noise on every page, forever (Phase 9). */}
-            {aiPlanAllowed(session.plan) && <PlusBadge />}
+            {showPlus && <PlusBadge href="/r/settings?section=plan" />}
             <TourReplayButton />
           </>
         }
@@ -136,6 +146,14 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           />
         }
       />
+
+      {/* The one billing notice, if any (Phase 15 §4.5). Above `main`, not inside it, so the
+          floating month and funding-source selectors (absolute in `main`'s corner) never sit on it. */}
+      {banner && (
+        <div className="max-w-[1220px] mx-auto px-4 sm:px-6 pt-3 sm:pt-4">
+          <BillingBanner banner={banner} />
+        </div>
+      )}
 
       {/* Tight against the header: the bar has its own bottom padding, so a large top padding
           here stacked on it and left a band of empty page above every screen's first line. */}

@@ -4,8 +4,10 @@ import {
   describeAccountEvent,
   parsePlanFilter,
   parseStatusFilter,
+  staffBilling,
   usersFooter,
   type AccountEvent,
+  type BillingCopy,
   type DirectoryOrg,
 } from "./directory";
 
@@ -13,12 +15,110 @@ import {
 // assignable to `directory.ts`'s own re-declared types, or the two silently drift apart.
 // `import type` is erased at runtime (isolatedModules), so this never drags `server-only`
 // into this unit test.
-import type { OrgAccountEventRow, OrgDirectoryRow } from "./queries";
+import type { OrgAccountEventRow, OrgAccountRow, OrgDirectoryRow } from "./queries";
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 const _directoryRowCheck: DirectoryOrg = {} as OrgDirectoryRow;
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 const _accountEventCheck: AccountEvent = {} as OrgAccountEventRow;
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+const _billingCopyCheck: BillingCopy = {} as OrgAccountRow;
+
+describe("staffBilling: the org page's Billing card (Phase 15 §4.6)", () => {
+  const NOW = new Date("2026-09-25T16:00:00Z");
+  const none: BillingCopy = {
+    stripeCustomerId: null,
+    stripeLivemode: null,
+    stripeStatus: null,
+    billingInterval: null,
+    currentPeriodEnd: null,
+    cancelAtPeriodEnd: false,
+    pendingPlan: null,
+    pendingInterval: null,
+    pendingAt: null,
+    pendingReason: null,
+    upgradeExpiresAt: null,
+    collectionPaused: false,
+    billingFlag: null,
+  };
+  const paying: BillingCopy = {
+    ...none,
+    stripeCustomerId: "cus_123",
+    stripeLivemode: false,
+    stripeStatus: "active",
+    billingInterval: "month",
+    currentPeriodEnd: new Date("2026-10-25T16:00:00Z"),
+  };
+
+  it("nothing when Stripe has never seen the org", () => {
+    expect(staffBilling(none, NOW)).toBeNull();
+  });
+
+  it("a healthy subscription: status, interval, renewal, a test-mode customer link, no warnings", () => {
+    expect(staffBilling(paying, NOW)).toEqual({
+      facts: [
+        { label: "Stripe status", value: "active" },
+        { label: "Billed", value: "monthly" },
+        { label: "Renews on", value: expect.stringContaining("2026") },
+      ],
+      warnings: [],
+      customerUrl: "https://dashboard.stripe.com/test/customers/cus_123",
+    });
+  });
+
+  it("a live-mode customer links without /test/", () => {
+    expect(staffBilling({ ...paying, stripeLivemode: true }, NOW)?.customerUrl).toBe(
+      "https://dashboard.stripe.com/customers/cus_123",
+    );
+  });
+
+  it("cancelling says Ends on; a cancelled one shows no date", () => {
+    expect(staffBilling({ ...paying, cancelAtPeriodEnd: true }, NOW)?.facts.map((f) => f.label)).toContain("Ends on");
+    const labels = staffBilling({ ...paying, stripeStatus: "canceled" }, NOW)?.facts.map((f) => f.label);
+    expect(labels).not.toContain("Renews on");
+    expect(labels).not.toContain("Ends on");
+  });
+
+  it("a queued downgrade and a queued price move read differently", () => {
+    const at = new Date("2026-10-25T16:00:00Z");
+    const down = staffBilling(
+      { ...paying, pendingPlan: "reconciliation", pendingInterval: "year", pendingAt: at, pendingReason: "downgrade" },
+      NOW,
+    );
+    expect(down?.facts.at(-1)?.value).toMatch(/^Reconciliation, billed yearly, on /);
+    const move = staffBilling({ ...paying, pendingPlan: "reconciliation", pendingInterval: "month", pendingAt: at, pendingReason: "price_move" }, NOW);
+    expect(move?.facts.at(-1)?.value).toMatch(/^Price change on /);
+  });
+
+  it("failed payment, upgrade waiting, paused collection and a dispute flag are warnings", () => {
+    const b = staffBilling(
+      {
+        ...paying,
+        stripeStatus: "past_due",
+        upgradeExpiresAt: new Date(NOW.getTime() + 3600_000),
+        collectionPaused: true,
+        billingFlag: "dispute",
+      },
+      NOW,
+    );
+    expect(b?.warnings).toEqual([
+      "Last payment failed. Stripe is retrying the card.",
+      expect.stringMatching(/^Upgrade waiting for payment until /),
+      "Collection paused while suspended.",
+      "Stripe flagged this account: dispute.",
+    ]);
+  });
+
+  it("an expired upgrade is not a warning", () => {
+    expect(staffBilling({ ...paying, upgradeExpiresAt: new Date(NOW.getTime() - 1) }, NOW)?.warnings).toEqual([]);
+  });
+
+  it("the customer id is encoded into the link", () => {
+    expect(staffBilling({ ...paying, stripeCustomerId: "cus_a/../b" }, NOW)?.customerUrl).toBe(
+      "https://dashboard.stripe.com/test/customers/cus_a%2F..%2Fb",
+    );
+  });
+});
 
 describe("parsePlanFilter / parseStatusFilter (Phase 9 §6)", () => {
   it("accepts the real values", () => {
@@ -78,6 +178,17 @@ describe("describeAccountEvent (Phase 9 §5)", () => {
   function event(overrides: Partial<AccountEvent>): AccountEvent {
     return { action: "plan_changed", ...base, ...overrides } as AccountEvent;
   }
+
+  it("a row Stripe's sync wrote names Stripe, not Unknown (Phase 15 P15)", () => {
+    const e = event({
+      actorName: null,
+      actorEmail: null,
+      viaStripe: true,
+      after: { ...base.after, status: "active" },
+    });
+    expect(describeAccountEvent(e)).toBe("Stripe changed status from Trial to Active");
+    expect(describeAccountEvent({ ...e, viaStripe: false })).toBe("Unknown changed status from Trial to Active");
+  });
 
   it("plan_changed: plan only", () => {
     const e = event({
