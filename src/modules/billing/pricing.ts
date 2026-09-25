@@ -11,7 +11,14 @@ export const PRICES_CENTS = {
   reconciliation_ai: { month: 49_700, year: 596_400 },
 } as const satisfies Record<PlanId, Record<Interval, number>>;
 
-/** The key `billing:setup` tags each Stripe Price with, so no price id is hard-coded. */
-export const lookupKey = (plan: PlanId, interval: Interval): string => `${plan}_${interval}`;
+/**
+ * The key `billing:setup` tags each Stripe Price with, so no price id is hard-coded. Prefixed
+ * because the Stripe account is shared (D1): the reference build already holds the bare
+ * `reconciliation_month` keys in the same sandbox, and a lookup key is unique per account.
+ */
+export const lookupKey = (plan: PlanId, interval: Interval): string => `sf360_${plan}_${interval}`;
+
+/** `metadata.app` on the Customer Portal configuration `billing:setup` creates (P14). */
+export const PORTAL_TAG = "stay-funded-360";
 
 export const priceCents = (plan: PlanId, interval: Interval): number => PRICES_CENTS[plan][interval];

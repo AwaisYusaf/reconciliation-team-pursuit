@@ -21,7 +21,10 @@
     "db:create-staff": "tsx --conditions=react-server src/db/create-staff.ts",
     "db:backup-upload": "tsx --conditions=react-server src/db/backup-upload.ts",
     "db:backup-fetch": "tsx --conditions=react-server src/db/backup-fetch.ts",
-    "db:preflight-funding-sources": "tsx --conditions=react-server src/db/preflight-funding-sources.ts"
+    "db:preflight-funding-sources": "tsx --conditions=react-server src/db/preflight-funding-sources.ts",
+    "billing:setup": "tsx --conditions=react-server src/modules/billing/scripts/setup.ts",
+    "billing:reconcile": "tsx --conditions=react-server src/modules/billing/scripts/reconcile.ts",
+    "billing:listen": "tsx --conditions=react-server src/modules/billing/scripts/listen.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1111.0",

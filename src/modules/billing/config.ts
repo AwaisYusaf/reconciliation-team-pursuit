@@ -18,6 +18,14 @@ export function billingEnabled(): boolean {
 const STRIPE_SECRET_KEY_RE = /^(sk|rk)_(test|live)_[A-Za-z0-9]+$/;
 
 /**
+ * Whether the configured key is a live one (P11, P17): the webhook refuses events from the other
+ * mode, and a customer id stored in the other mode is treated as absent.
+ */
+export function stripeKeyIsLive(env: Record<string, string | undefined> = process.env): boolean {
+  return /^(sk|rk)_live_/.test(env.STRIPE_SECRET_KEY?.trim() ?? "");
+}
+
+/**
  * Every problem with the billing environment, collected at once rather than reported one at a
  * time (P25). Returns `[]` when billing is off — a deployment with no Stripe keys at all must
  * still boot. Messages name the variable only, never its value: this runs from

@@ -557,6 +557,41 @@ skipped), plus its checks; plan → review → implement → review → browser 
 **Passes when:** U-6, U-7, U-9, I-3, I-6, I-8, S-24, S-25, S-26 pass; a sandbox payment through the
 CLI listener updates the org within seconds.
 
+**Results (2026-09-25).**
+- **Built:** `src/modules/billing/stripe.ts` (client built on first use, never at import, so the app
+  starts without keys; pinned API version; `maxNetworkRetries: 2`; shared helpers `idOf`,
+  `isMissing`, `subscriptionsOf`, `futurePhase`, `stripeNow`); `lock.ts` (`withLock`, in-process,
+  ported unchanged); `sync.ts` (`syncOrgBilling`, the only writer of billing columns, per-customer
+  lock, org found by `stripe_customer_id` only and the other mode treated as absent, pure `copyOf`,
+  writes under `lockOrg` with no Stripe call inside the transaction, one `via_stripe` History row per
+  plan or status change; `refreshOrgBilling(orgId, "stale" | "return")` for the two in-app nets;
+  `flagDispute`; `alert()` for every `ALERT`); `webhook.ts` (`handleWebhook`, framework-free,
+  `HANDLED_EVENTS`); `app/api/stripe/webhook/route.ts` (503 while off, `readCappedText` 1 MB, 413,
+  never parsed before the signature); scripts `billing:setup` (products, prices by lookup key with
+  `transfer_lookup_key`, portal configuration: card, invoices, billing details only),
+  `billing:reconcile` (exits 1 on any failure), `billing:listen` (dev only, `--api-key`);
+  `stripeKeyIsLive()` in `config.ts`; `STRIPE_CLI` in `.env.example`.
+- **Tests:** unit `webhook.test.ts`, `copy.test.ts`, `lock.test.ts`, `route.test.ts` (U-6, U-7, U-9)
+  and integration `sync.integration.test.ts` (I-3, I-6, I-8, P27, disputes, unknown and other-mode
+  customers): 81 + 13 passed. Sandbox `billing.stripe.test.ts`: S-24, S-25, S-26, lost webhook,
+  other-mode customer, all passing (`npm run test:stripe` 6 of 6 with the harness test). Typecheck
+  and lint clean. Full suite: the only failures are environmental and predate this phase: the
+  packet tests that need Poppler's `pdftotext -bbox-layout` (this machine has xpdf), and the
+  create-staff and approve-concurrency integration tests timing out under full-parallel load
+  (both pass alone).
+- **Mutation checks** (each broke a test, then restored): the webhook livemode check removed (2
+  failures, U-6); signature verification replaced by `JSON.parse` (6 failures, U-6 and the route
+  test); the per-customer sync lock removed (I-3 fails).
+- **Deviations:** Stripe lookup keys are `sf360_{plan}_{interval}`, not `{plan}_{interval}`: the
+  account is shared (D1) and the reference build already owns the bare keys in the same sandbox,
+  and a lookup key is unique per account. **Awaiting the user's approval.** Products are
+  `sf360_{plan}`; `PORTAL_TAG` lives in `pricing.ts`. `STRIPE_CLI` is in `.env.example` only, not
+  `.env.production.example`, because the listener is development only. `refreshOrgBilling("stale")`
+  exists and is tested but nothing calls it yet: the page and layout that should call it belong to
+  Phases 4 and 5.
+- **Not verified:** a sandbox payment through the CLI listener (no Stripe CLI on this machine);
+  the packet tests on a machine with Poppler.
+
 ### Phase 3: billing actions
 - §4.1 actions, entitlement wired into every AI gate and the header pill, `/r/billing/return`,
   portal configuration, `billing:move-subscribers`.

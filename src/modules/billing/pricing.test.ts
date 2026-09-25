@@ -4,8 +4,8 @@ import { lookupKey, priceCents, PRICES_CENTS } from "./pricing";
 
 describe("lookupKey", () => {
   it("matches what billing:setup creates", () => {
-    expect(lookupKey("reconciliation_ai", "year")).toBe("reconciliation_ai_year");
-    expect(lookupKey("reconciliation", "month")).toBe("reconciliation_month");
+    expect(lookupKey("reconciliation_ai", "year")).toBe("sf360_reconciliation_ai_year");
+    expect(lookupKey("reconciliation", "month")).toBe("sf360_reconciliation_month");
   });
 });
 
@@ -45,7 +45,7 @@ describe("lookupKey: all 4 plan/interval combinations", () => {
       }
     }
     expect(keys).toEqual(
-      new Set(["reconciliation_month", "reconciliation_year", "reconciliation_ai_month", "reconciliation_ai_year"]),
+      new Set(["sf360_reconciliation_month", "sf360_reconciliation_year", "sf360_reconciliation_ai_month", "sf360_reconciliation_ai_year"]),
     );
   });
 });
