@@ -60,22 +60,6 @@ export function usersFooter({
   return showAll ? "capped" : "view-all";
 }
 
-export type ComplimentaryState = "none" | "active" | "ended";
-
-/**
- * Whether an org's complimentary access is off, active, or ended (Phase 9 §7 Q6). An end date
- * of today is still active — it ends *after* that day, so only a strictly earlier date counts
- * as ended.
- */
-export function complimentaryState(
-  org: { complimentary: boolean; complimentaryUntil: IsoDate | null },
-  today: IsoDate,
-): ComplimentaryState {
-  if (!org.complimentary) return "none";
-  if (org.complimentaryUntil === null) return "active";
-  return org.complimentaryUntil < today ? "ended" : "active";
-}
-
 // Searching, filtering, counting and paging used to live here as pure functions over an
 // already-fetched array. They are gone: the directory now narrows in SQL (`queries.ts`), so a
 // search covers every organization rather than whichever page the browser happened to hold.

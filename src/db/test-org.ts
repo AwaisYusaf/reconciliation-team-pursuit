@@ -7,6 +7,10 @@
  *
  * Import it the same way the test files already import the schema — `await import(...)`
  * inside the `describe` body — so nothing loads when `DATABASE_URL` is absent.
+ *
+ * Complimentary by default (Phase 15, P28): otherwise every integration test that exercises a
+ * feature would first have to pay for a plan. Billing tests that need an unpaid org pass
+ * `complimentary: false`.
  */
 import { v7 as uuidv7 } from "uuid";
 
@@ -24,6 +28,8 @@ export type TestOrgOverrides = {
   /** Explicit funding source id — same reason as `id` above. */
   fundingSourceId?: string;
   fundingSourceName?: string;
+  /** Defaults to `true` (P28). Set `false` for a test that needs an unpaid org. */
+  complimentary?: boolean;
 };
 
 export type TestOrg = { orgId: string; fundingSourceId: string };
@@ -37,6 +43,7 @@ export async function createTestOrg(overrides: TestOrgOverrides = {}): Promise<T
       name: overrides.name ?? "Test Org",
       docName: overrides.docName ?? overrides.name ?? "Test Org",
       activeMonth: overrides.activeMonth ?? currentMonthKey(),
+      complimentary: overrides.complimentary ?? true,
     })
     .returning({ id: organizations.id });
 

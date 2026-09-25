@@ -10,7 +10,7 @@
  */
 import { eq, inArray } from "drizzle-orm";
 
-import { db, type Database } from "@/src/db";
+import { db } from "@/src/db";
 import {
   orgAccountEvents,
   organizations,
@@ -22,14 +22,12 @@ import {
   type OrgPlan,
   type SubscriptionStatus,
 } from "@/src/db/schema";
+import { lockOrg, type Executor } from "@/src/db/org-lock";
 import { isValidIsoDate } from "@/src/domain/dates";
 import { ACCOUNT_NOTE_MAX_LENGTH, UI } from "@/src/domain/strings";
 import { fail, ok, type ActionResult } from "@/src/lib/action-result";
 import { requireStaff } from "@/src/lib/action-session";
 import { isUuid } from "@/src/lib/ids";
-
-/** Either the pooled handle or an open transaction's — same trick as `funding-sources/queries.ts`. */
-type Executor = Database | Parameters<Parameters<Database["transaction"]>[0]>[0];
 
 type OrgRow = {
   id: string;
@@ -79,18 +77,14 @@ async function withLockedOrg(
   if (!isUuid(orgId)) return fail(UI.orgNoLongerExists);
 
   return db.transaction(async (tx) => {
-    const [row] = await tx
-      .select({
-        id: organizations.id,
-        plan: organizations.plan,
-        subscriptionStatus: organizations.subscriptionStatus,
-        complimentary: organizations.complimentary,
-        complimentaryUntil: organizations.complimentaryUntil,
-        suspendedAt: organizations.suspendedAt,
-      })
-      .from(organizations)
-      .where(eq(organizations.id, orgId))
-      .for("update");
+    const row = await lockOrg(tx, orgId, {
+      id: organizations.id,
+      plan: organizations.plan,
+      subscriptionStatus: organizations.subscriptionStatus,
+      complimentary: organizations.complimentary,
+      complimentaryUntil: organizations.complimentaryUntil,
+      suspendedAt: organizations.suspendedAt,
+    });
 
     if (!row) return fail(UI.orgNoLongerExists);
     return fn(row, tx);

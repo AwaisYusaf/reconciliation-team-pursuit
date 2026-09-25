@@ -53,8 +53,11 @@ describe.skipIf(!hasDatabase)("admin account actions (integration, Phase 9 part 
     requireStaffMock.mockResolvedValue({ denied: fail(error) });
   }
 
-  async function freshOrg() {
-    const org = await createTestOrg({ name: `Admin Actions Org ${Date.now()}-${Math.random()}` });
+  async function freshOrg(overrides: { complimentary?: boolean } = {}) {
+    const org = await createTestOrg({
+      name: `Admin Actions Org ${Date.now()}-${Math.random()}`,
+      ...overrides,
+    });
     orgIds.push(org.orgId);
     return org.orgId;
   }
@@ -124,7 +127,9 @@ describe.skipIf(!hasDatabase)("admin account actions (integration, Phase 9 part 
 
   it("changePlanAction on a suspended org leaves suspended_at set and unchanged, and never touches complimentary", async () => {
     asStaff();
-    const orgId = await freshOrg();
+    // complimentary: false — createTestOrg defaults to true (P28); this test asserts the
+    // action leaves it untouched, which only proves something starting from false.
+    const orgId = await freshOrg({ complimentary: false });
     const suspend = await suspendOrgAction(orgId, "for the test");
     expect(suspend.ok).toBe(true);
     const beforeChange = await orgRow(orgId);
@@ -144,7 +149,8 @@ describe.skipIf(!hasDatabase)("admin account actions (integration, Phase 9 part 
 
   it("invalid until is refused; empty/whitespace until is accepted as null", async () => {
     asStaff();
-    const orgId = await freshOrg();
+    // complimentary: false — the final call below must be a real grant, not a same-value no-op.
+    const orgId = await freshOrg({ complimentary: false });
 
     expect(await setComplimentaryAction(orgId, true, "2026-13-40", "")).toEqual(
       fail(UI.complimentaryUntilInvalid),
@@ -286,7 +292,8 @@ describe.skipIf(!hasDatabase)("admin account actions (integration, Phase 9 part 
 
   it("a save that changes nothing is refused rather than reported as saved, and writes no event — even with a note", async () => {
     asStaff();
-    const orgId = await freshOrg();
+    // complimentary: false — the test needs it starting off, to exercise "disabling again".
+    const orgId = await freshOrg({ complimentary: false });
 
     // A note on its own has nowhere to go: there is no "note only" event action, so History
     // would stay empty while the dialog said "updated". The staff member is told instead.
@@ -321,7 +328,8 @@ describe.skipIf(!hasDatabase)("admin account actions (integration, Phase 9 part 
 
   it("changing the end date writes complimentary_changed; turning it off writes complimentary_removed and clears the date", async () => {
     asStaff();
-    const orgId = await freshOrg();
+    // complimentary: false — the first setComplimentaryAction call below must be the grant.
+    const orgId = await freshOrg({ complimentary: false });
 
     expect((await setComplimentaryAction(orgId, true, "2027-01-01", "pilot")).ok).toBe(true);
     expect((await setComplimentaryAction(orgId, true, "2027-06-30", "extended")).ok).toBe(true);
@@ -351,7 +359,8 @@ describe.skipIf(!hasDatabase)("admin account actions (integration, Phase 9 part 
 
   it("every event row carries the right actorStaffId, action, before/after snapshots with the flipped fields, and a trimmed note (empty stored as null)", async () => {
     asStaff();
-    const orgId = await freshOrg();
+    // complimentary: false — asserted directly in the before/after snapshots below.
+    const orgId = await freshOrg({ complimentary: false });
 
     const changed = await changePlanAction(orgId, "reconciliation_ai", "active", "  a note  ");
     expect(changed.ok).toBe(true);

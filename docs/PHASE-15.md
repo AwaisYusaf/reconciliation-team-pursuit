@@ -468,6 +468,26 @@ skipped), plus its checks; plan → review → implement → review → browser 
 
 **Passes when:** `npm audit` shows no critical advisory; the app runs unchanged.
 
+**Results (2026-09-25).**
+- **Built:** `next` and `eslint-config-next` 16.3.1 → 16.3.6, still pinned exactly. The lockfile
+  otherwise moved only Next's own dependencies (`@next/*`, `sharp` 0.35.4 and its binaries, three
+  small packages now listed explicitly, `fastq` patch) and dropped 26 orphaned `@esbuild/*` entries
+  under `vitest` that had no parent before or after.
+- **Audit:** critical 0 (was 2). Left for separate work, all present before: 8 moderate and 1 high in
+  dev tooling (drizzle-kit/esbuild, vitest, js-yaml) and, at runtime, `exceljs` → `uuid` (the only
+  offered fix downgrades exceljs a major version).
+- **Tests:** typecheck and lint clean; production build passes; full suite **2171 passed of 2171**
+  (170 files, database running, none skipped).
+- **Found and fixed on the way:** `src/modules/sharing/public-isolation.test.ts` resolved relative
+  imports with `path.relative`, which returns backslashes on Windows, while its forbidden-import
+  patterns use `/`. On Windows, a relative import of the session module into a public shared-link
+  file passed the "imports no a session" check. **Mutation-proved:** with such an import added, the
+  old test passed that check and the fixed one fails it; restored.
+- **Browser smoke:** dev server; `/`, `/login`, `/robots.txt`, `/sitemap.xml` 200, `/r` 307 to sign
+  in; the landing pricing card shows the new features; no server errors.
+- **Not verified:** a signed-in walk through the app in a real browser (HTTP only); Linux `npm ci`
+  with the new lockfile (the deploy does it).
+
 ### Phase 1: foundations
 - `stripe` (pinned), `BILLING_ENABLED`, startup check (only when on), migration `0039` + test +
   rehearsed rollback, `pricing.ts`, `rules.ts`, `entitlement.ts`, `complimentaryState` moved to
@@ -475,6 +495,60 @@ skipped), plus its checks; plan → review → implement → review → browser 
   `vitest.stripe.config.mts` and `test:stripe`.
 
 **Passes when:** U-1 to U-5, U-13, U-15, U-21 pass; the full suite passes (AC-J3).
+
+**Results (2026-09-25).**
+- **Built:** `stripe` 22.6.2 pinned exactly; `src/modules/billing/config.ts` (`billingEnabled()`,
+  `billingConfigProblems(env)`, `STRIPE_API_VERSION` 2026-08-26.dahlia; no `server-only` because
+  `instrumentation.ts` imports it); `instrumentation.ts` runs the billing check first, in every
+  environment, only when `BILLING_ENABLED` is exactly `"true"`, and reports every problem in one
+  error that names variables, never values; `pricing.ts` (`PRICES_CENTS`, `lookupKey`,
+  `priceCents`); `rules.ts` (intervals, plan rank, AI features per plan keyed by
+  `ai_usage_feature`, funding-source limit per plan, known and paid Stripe statuses, `isLive`,
+  `pickCurrent`, `classifyChange`, `changeBlockedReason`); `entitlement.ts` (`orgEntitlement`,
+  `activeFundingSourceLimit`); `complimentaryState` moved to `src/domain/complimentary.ts` with
+  `isComplimentaryNow` (its tests moved unchanged); `src/db/org-lock.ts` `lockOrg(tx, orgId,
+  fields)`, used by the staff actions' `withLockedOrg`, transaction only, typed result;
+  `createTestOrg` and `seed.ts` complimentary by default (`dev-fixture.ts` only reuses the seeded
+  org, so no change); `.env.example` and `.env.production.example`; `vitest.stripe.config.mts`,
+  `npm run test:stripe`, `harness.stripe.test.ts`. Nothing on a request path reads the new code
+  yet except `/a` badges (same function, new import) and the staff actions (same lock).
+- **Strings:** none added. No Phase 1 code shows text to a user; §10 lands with Phases 3 to 6.
+- **Tests:** typecheck and lint clean; production build passes; full suite **2217 passed, 9
+  failed, 21 skipped of 2247** (177 files). All 9 failures and all 21 skips (one suite that errors
+  in setup) come from packet generation running `pdftotext -bbox-layout`, which this machine's
+  xpdf builds (Git for Windows, MiKTeX) reject. No Poppler is installed here. None of them touches
+  billing code. Phase 0's 2171/2171 must have run where Poppler was on the PATH.
+  `npm run test:stripe`: fails loudly with no `sk_test_` key; passes (1 test, `livemode` false)
+  with the sandbox key supplied through the environment only.
+- **Mutation checks** (each broke a test, was restored, and hash-verified): entitlement ignoring
+  `stripe_status` (5 failures); ignoring `complimentary_until` (6); billing-off branch removed (2);
+  `classifyChange` mixed case (Reconciliation yearly to Reconciliation + AI monthly) returning
+  `now` (U-2 fails); the https rule skipped for a live key (config and instrumentation tests
+  fail); `ALTER TYPE` or `UPDATE` appended to `0039` (U-1 fails); `.for("update")` removed from `lockOrg` (2 staff
+  concurrency tests fail); a field dropped from the `lockOrg` selection (typecheck fails).
+- **Migration:** `0039_stripe_billing.sql`: 18 nullable or defaulted `ADD COLUMN`s, one unique
+  index, four CHECKs compared on `text` only; no `ALTER TYPE`, `UPDATE`, `DROP` or `ALTER COLUMN`.
+  Applied locally. **Rollback rehearsed** on throwaway databases: drop the four CHECKs, the index,
+  the 17 `organizations` columns and `org_account_events.via_stripe`, delete the `0039` row from
+  `drizzle.__drizzle_migrations`. The schema dump then differs from a fully migrated database by
+  exactly the `0039` objects, an existing row survives, and migrating again re-applies `0039` to a
+  schema identical to a fresh one.
+- **Deviations:** `orgEntitlement(org, today, enabled)` takes the switch as an argument so it
+  stays pure. Reasons are `billing_off`, `complimentary`, `subscription` (paid) and `new`,
+  `ended`, `complimentary_ended`, `unknown_status` (not paid; `incomplete` and
+  `incomplete_expired` count as `new`). `unknown_status` is its own reason so later phases can log
+  `ALERT` for it. `activeFundingSourceLimit` takes the entitlement, as P23 says, so billing off
+  means no limit. The per-plan number lives in `rules.ts`. There is no `stripe-client.ts` yet
+  (Phase 2). Five staff-action tests now pass `complimentary: false` because they assert on or
+  grant complimentary access.
+- **Security pass:** hostile configs (live key over http, a `javascript:` URL, a key with a newline
+  inside it, publishable keys) are refused, and no message contains a value. The sandbox
+  key is in no repo file and no build output. Nothing new is exported from a `"use server"` file.
+  `stripe` adds no dependencies and no advisory. For Phase 2: validation trims the key, so the
+  client must be built from the same trimmed value. A value like `" true"` leaves billing off, the
+  same as `SIGNUP_ENABLED`.
+- **Not verified:** the 9 packet tests on a machine with Poppler; `next start` booting with billing
+  on (the check is covered by unit tests of `register()` only); Linux `npm ci`.
 
 ### Phase 2: sync, webhook, safety nets
 - `syncOrgBilling`, webhook route, stale re-sync, `billing:reconcile`, `billing:setup`, listener

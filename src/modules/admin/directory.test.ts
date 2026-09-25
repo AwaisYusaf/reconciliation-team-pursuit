@@ -1,7 +1,6 @@
 ﻿import { describe, expect, it } from "vitest";
 
 import {
-  complimentaryState,
   describeAccountEvent,
   parsePlanFilter,
   parseStatusFilter,
@@ -65,44 +64,8 @@ describe("usersFooter (Phase 9 §6)", () => {
   });
 });
 
-describe("complimentaryState (Phase 9 §7 Q6)", () => {
-  const today = "2027-01-01";
-
-  it("is 'none' when complimentary is off, even with a date set", () => {
-    expect(complimentaryState({ complimentary: false, complimentaryUntil: null }, today)).toBe("none");
-    expect(complimentaryState({ complimentary: false, complimentaryUntil: "2099-01-01" }, today)).toBe(
-      "none",
-    );
-  });
-
-  it("is 'active' with no end date", () => {
-    expect(complimentaryState({ complimentary: true, complimentaryUntil: null }, today)).toBe("active");
-  });
-
-  it("an end date of exactly today is still active (Q6)", () => {
-    expect(complimentaryState({ complimentary: true, complimentaryUntil: today }, today)).toBe("active");
-  });
-
-  it("an end date of yesterday has ended", () => {
-    expect(complimentaryState({ complimentary: true, complimentaryUntil: "2026-12-31" }, today)).toBe(
-      "ended",
-    );
-  });
-
-  it("an end date far in the future is active", () => {
-    expect(complimentaryState({ complimentary: true, complimentaryUntil: "2030-06-01" }, today)).toBe(
-      "active",
-    );
-  });
-
-  it("compares safely across a year/month rollover, not lexically within one field", () => {
-    // 2026-12-31 < 2027-01-01 as ISO strings, but a naive "same year" or "same month" compare
-    // would get this wrong; the plain string comparison the implementation uses is exercised here.
-    expect(complimentaryState({ complimentary: true, complimentaryUntil: "2026-12-31" }, "2027-01-01")).toBe(
-      "ended",
-    );
-  });
-});
+// complimentaryState moved to src/domain/complimentary.ts (Phase 15, P10); its tests moved to
+// src/domain/complimentary.test.ts.
 
 describe("describeAccountEvent (Phase 9 §5)", () => {
   const base = {

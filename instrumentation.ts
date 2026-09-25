@@ -10,9 +10,14 @@
  *
  * Development is left alone deliberately — the whole point of the local storage driver and
  * the fallback session secret is that the app runs with no configuration at all.
+ *
+ * The billing check below runs before that early return, and before the production check too
+ * (Phase 15, P25): `BILLING_ENABLED` can be flipped on in development, and a broken Stripe key
+ * there must fail exactly the same way it would in production.
  */
 
 import { appUrlProblem } from "@/src/lib/site-url";
+import { billingConfigProblems } from "@/src/modules/billing/config";
 
 /** Settings that must be present before production serves a single request. */
 const REQUIRED_IN_PRODUCTION: Array<{ name: string; why: string }> = [
@@ -43,6 +48,14 @@ const REQUIRED_IN_PRODUCTION: Array<{ name: string; why: string }> = [
 ];
 
 export async function register(): Promise<void> {
+  const billingProblems = billingConfigProblems(process.env);
+  if (billingProblems.length > 0) {
+    const detail = billingProblems.map((p) => `  ${p}`).join("\n");
+    throw new Error(
+      `Refusing to start: ${billingProblems.length} billing setting${billingProblems.length === 1 ? " is" : "s are"} wrong.\n${detail}`,
+    );
+  }
+
   if (process.env.NODE_ENV !== "production") return;
 
   const missing = REQUIRED_IN_PRODUCTION.filter(({ name }) => !process.env[name]);
