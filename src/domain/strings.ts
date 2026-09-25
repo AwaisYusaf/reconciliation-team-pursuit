@@ -751,6 +751,27 @@ export const UI = {
   shareOpenFailed: "This file can't be opened right now. Please try again in a few minutes.",
   /** Wording to review: past the per-address open limit (`shareOpen`). */
   shareTooManyOpens: "Too many files opened in a short time. Please wait a few minutes and try again.",
+
+  // PHASE-15 Track A (billing actions)
+  billingNotEnabled: "Plan and billing will be available here soon.",
+  billingNotAdmin: "Only an admin can change the plan or billing.",
+  billingComplimentaryRefused: "Your organization has complimentary access, so there's nothing to pay.",
+  billingAlreadySubscribed: "Your organization already has a plan. Use Switch plan to change it.",
+  billingPaymentProcessing: "Your last payment is still going through. Try again once it's done.",
+  billingUnknownPlan: "That plan isn't available right now.",
+  billingNoPlan: "Your organization doesn't have a plan yet.",
+  billingPaymentFailedRefused: "Your last payment didn't go through. Update your card before changing plans.",
+  billingCancelPending: "Your plan is cancelled. Press Keep my plan before switching.",
+  billingPaymentPending: "A switch is waiting for payment. Pay for it or let it expire before making another change.",
+  billingChangePending: "A switch is already scheduled. Cancel it first.",
+  billingSamePlan: "That's your current plan.",
+  billingQuoteExpired: "The price has changed since you opened this. Open it again to see the new figures.",
+  billingPortalNotSetUp: `Card and invoices aren't available yet. Email ${SUPPORT_EMAIL}.`,
+  billingStripeError: "The payment service didn't respond. Check your plan below before trying again.",
+  billingDowngradeTooManySources: (n: number) =>
+    `Reconciliation includes one active funding source, and you have ${n}. Archive the ones you don't use in Funding sources, then switch.`,
+  staffStripeManaged: "Billing for this organization is managed in Stripe.",
+  billingRateLimited: "Too many billing requests. Wait a minute and try again.",
 } as const;
 
 /**

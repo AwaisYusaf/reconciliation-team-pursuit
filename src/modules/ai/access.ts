@@ -17,6 +17,10 @@ import { eq } from "drizzle-orm";
 
 import { db } from "@/src/db";
 import { organizations, type OrgPlan } from "@/src/db/schema";
+import { todayIso } from "@/src/domain/dates";
+import { billingEnabled } from "@/src/modules/billing/config";
+import { orgEntitlement, type EntitlementOrg } from "@/src/modules/billing/entitlement";
+
 /** Both an OpenAI key and a model must be set on the server, or the feature stays hidden as if
  *  the Settings switch were off. */
 export function openAiConfigured(): boolean {
@@ -50,29 +54,55 @@ export function canWriteSummaries(org: { plan: OrgPlan }): boolean {
   );
 }
 
-/** Loads the org's plan fresh from the database and applies `canUseSummaries`/`canWriteSummaries`.
- *  Missing org → both false. */
+/** Every field `orgEntitlement` needs, common to all three loaders below (Phase 15, U-20: the
+ *  one place `plan`/`complimentary*`/`stripeStatus` are read together to decide AI access). */
+const ENTITLEMENT_FIELDS = {
+  plan: organizations.plan,
+  complimentary: organizations.complimentary,
+  complimentaryUntil: organizations.complimentaryUntil,
+  complimentaryPlan: organizations.complimentaryPlan,
+  stripeStatus: organizations.stripeStatus,
+};
+
+function entitlementOf(org: EntitlementOrg) {
+  return orgEntitlement(org, todayIso(), billingEnabled());
+}
+
+/** Loads the org's plan and billing state fresh from the database and applies
+ *  `canUseSummaries`/`canWriteSummaries`, gated by `orgEntitlement` (Phase 15 §4.2): a cancelled
+ *  or unpaid Reconciliation + AI org loses AI just like every other AI gate. Missing org → both
+ *  false. */
 export async function summariesAccessForOrg(
   orgId: string,
 ): Promise<{ use: boolean; write: boolean }> {
-  const [org] = await db
-    .select({ plan: organizations.plan })
-    .from(organizations)
-    .where(eq(organizations.id, orgId))
-    .limit(1);
+  const [org] = await db.select(ENTITLEMENT_FIELDS).from(organizations).where(eq(organizations.id, orgId)).limit(1);
   if (!org) return { use: false, write: false };
-  return { use: canUseSummaries(org), write: canWriteSummaries(org) };
+  const ent = entitlementOf(org);
+  const planOnly = { plan: ent.plan };
+  return { use: ent.paid && canUseSummaries(planOnly), write: ent.paid && canWriteSummaries(planOnly) };
 }
 
-/** Loads the two org fields fresh from the database and applies `canReadAmounts`. Every
- *  surface — new/edit pages, the read route, the tour — calls this rather than keeping its
- *  own copy of the organisation's plan/switch state. */
+/** Loads the org's plan, billing state and Settings switch fresh from the database and applies
+ *  `canReadAmounts`, gated by `orgEntitlement` (Phase 15 §4.2). Every surface — new/edit pages,
+ *  the read route, the tour — calls this rather than keeping its own copy of the organisation's
+ *  plan/switch state. */
 export async function readAmountsAllowedForOrg(orgId: string): Promise<boolean> {
   const [org] = await db
-    .select({ plan: organizations.plan, readAmountsEnabled: organizations.readAmountsEnabled })
+    .select({ ...ENTITLEMENT_FIELDS, readAmountsEnabled: organizations.readAmountsEnabled })
     .from(organizations)
     .where(eq(organizations.id, orgId))
     .limit(1);
   if (!org) return false;
-  return canReadAmounts(org);
+  const ent = entitlementOf(org);
+  return ent.paid && canReadAmounts({ plan: ent.plan, readAmountsEnabled: org.readAmountsEnabled });
+}
+
+/** Whether the org may use any AI feature at all (Phase 15): plan and billing state only, no
+ *  Settings switch or OpenAI configuration. For the header pill and the Settings page, which
+ *  show the plan's entitlement rather than whether a particular feature is wired up today. */
+export async function aiAllowedForOrg(orgId: string): Promise<boolean> {
+  const [org] = await db.select(ENTITLEMENT_FIELDS).from(organizations).where(eq(organizations.id, orgId)).limit(1);
+  if (!org) return false;
+  const ent = entitlementOf(org);
+  return ent.paid && aiPlanAllowed(ent.plan);
 }

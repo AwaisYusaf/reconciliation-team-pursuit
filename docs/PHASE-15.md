@@ -599,6 +599,57 @@ CLI listener updates the org within seconds.
 **Passes when:** S-1 to S-23, S-28 to S-30 pass with the paid-through check; I-2, I-4, I-5, I-17
 pass; §8.4 mutations done.
 
+**Results (2026-09-25).**
+- **Built:** `src/modules/billing/billing.ts` (every rule, ported from the reference build and keyed
+  by organization: `startCheckout`, `quoteChange`, `applyChange`, `cancelPendingChange`,
+  `cancelAtPeriodEnd`, `endPlanNow`, `resume`, `portalUrl`, `setCollectionPaused` (D3),
+  `planPriceMoves` (P21), `queuedDowngradeToReconciliation` (P24, reads Stripe live, for Phase 6));
+  `src/modules/billing/actions.ts` (the eight §4.1 actions: session, billing switch, admin check
+  and a per-user `billing` rate limit inside each, then `BillingError` to its `UI` string and a
+  Stripe error to `billingStripeError`); `app/r/billing/return/route.ts` (ignores the query,
+  re-syncs the org's own customer, redirects to `/r/settings?section=plan`);
+  `billing:move-subscribers` (dry run by default, `--apply`, `--live` for a live key). Entitlement
+  in every AI gate: `summariesAccessForOrg`, `readAmountsAllowedForOrg` and a new `aiAllowedForOrg`
+  in `src/modules/ai/access.ts` load the billing columns fresh and apply `orgEntitlement`; every AI
+  page, action and route already goes through them. Staff actions: `changePlanAction` refuses
+  `staffStripeManaged` while billing is on and a subscription is live (P16); suspend and reinstate
+  pause and resume collection after their transaction commits, a Stripe failure logs `ALERT` and
+  never undoes the suspension (D3). P24: a Reconciliation Checkout, quote or downgrade is refused
+  with more than one active funding source before anything is created in Stripe. Strings: one
+  `// PHASE-15 Track A (billing actions)` block with the §10 wording.
+- **Tests:** unit and integration `billing/actions.integration.test.ts` (I-1, I-2, U-8, U-10,
+  U-11, U-21, rate limit, P24), `ai/access.integration.test.ts` (I-4, I-5),
+  `admin/actions.p16-d3.integration.test.ts` (P16 part of I-7, D3 wiring): 59 passed. Sandbox
+  `npm run test:stripe` **35 of 35** (S-1 to S-30 except S-24 to S-26 already there, plus I-17 and
+  the portal), paid-through check after every money step. Typecheck and lint clean; production build passes;
+  full suite **2370 passed, 9 failed, 21 skipped of 2400** (185 files), every failure the packet
+  generation that needs Poppler's `pdftotext -bbox-layout` (this machine has xpdf), as in Phases 1
+  and 2.
+- **Mutation checks** (each broke its test, was restored and hash-verified): `create_prorations`
+  instead of `always_invoice` (S-2, S-3 fail); no `phase_start` (S-20: the year never billed); no
+  `pending_if_incomplete` (S-4: a declined card still switched the plan); no queued-downgrade
+  refusal (S-9); no quote-age check (S-14); no `pending_update` refusal (S-4); no P24 count on a
+  downgrade (S-27); no admin check (I-2); no complimentary refusal (I-1); no P16 check (I-7).
+- **Deviations:** `billingRateLimited` is a new string not in §10. S-23 (retries exhausted) is
+  simulated by cancelling in Stripe and syncing: the sandbox's dashboard retry rule can't be read
+  from the API, so Stripe's own exhaustion path is not proven. S-28 and S-29 use throwaway prices
+  on their own product, so the real `sf360_*` lookup keys are never moved during a concurrent run.
+  S-30 (the UNSURE case): pausing and resuming collection leaves a queued downgrade in place;
+  what happens when the switch date arrives while paused is not tested. P16 reads our copy of
+  `stripe_status` and applies only while billing is on, so staff can still set plans after a
+  rollback. A Stripe URL that isn't https `*.stripe.com` throws (a 500), not an `ActionResult`.
+- **Fixed in review (2026-09-25):** `planPriceMoves` re-tagged a queued price move as a downgrade
+  when prices changed twice before a renewal, which would have blocked that org's upgrades; it now
+  keeps the queued phase's own reason. **Not covered by a sandbox test yet** (an S-29 variant with
+  two price changes).
+- **Left for later phases:** the header Plus pill (`app/r/layout.tsx:78`) and
+  `app/r/settings/page.tsx:85` still use `aiPlanAllowed(plan)` and must switch to
+  `aiAllowedForOrg`; the billing actions and `/r/billing/return` must go on the unpaid allow-list
+  (§4.7); Phase 6's funding-source create and unarchive must call
+  `queuedDowngradeToReconciliation` and take the same in-process `org:{id}` lock the actions use
+  (private in `billing.ts` today). The route-level 403 of I-4 is covered through the shared
+  loaders, not by a route test.
+
 ### Phase 4: Plan & billing UI, Plus pill, banners, staff dashboard
 - §4.3 to §4.6, the Settings tour step (8 → 9 steps, test updated), m09 and m10 docs.
 

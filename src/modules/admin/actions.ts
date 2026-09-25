@@ -28,6 +28,10 @@ import { ACCOUNT_NOTE_MAX_LENGTH, UI } from "@/src/domain/strings";
 import { fail, ok, type ActionResult } from "@/src/lib/action-result";
 import { requireStaff } from "@/src/lib/action-session";
 import { isUuid } from "@/src/lib/ids";
+import { billingEnabled } from "@/src/modules/billing/config";
+import { isLive } from "@/src/modules/billing/rules";
+import { setCollectionPaused } from "@/src/modules/billing/billing";
+import { alert } from "@/src/modules/billing/sync";
 
 type OrgRow = {
   id: string;
@@ -36,6 +40,7 @@ type OrgRow = {
   complimentary: boolean;
   complimentaryUntil: string | null;
   suspendedAt: Date | null;
+  stripeStatus: string | null;
 };
 
 function isOrgPlan(value: string): value is OrgPlan {
@@ -84,6 +89,7 @@ async function withLockedOrg(
       complimentary: organizations.complimentary,
       complimentaryUntil: organizations.complimentaryUntil,
       suspendedAt: organizations.suspendedAt,
+      stripeStatus: organizations.stripeStatus,
     });
 
     if (!row) return fail(UI.orgNoLongerExists);
@@ -109,6 +115,12 @@ export async function changePlanAction(
   if ("refusal" in parsedNote) return parsedNote.refusal;
 
   return withLockedOrg(orgId, async (row, tx) => {
+    // Stripe is the one writer of plan/status while a subscription is live (P16); staff can act
+    // again once it lapses.
+    if (billingEnabled() && isLive(row.stripeStatus)) {
+      return fail(UI.staffStripeManaged);
+    }
+
     // Changing plan or status never touches suspension, complimentary access, or each other.
     // A save that changes nothing is refused rather than reported as saved: there is no event
     // action for "note only", so History would stay silent while the dialog said "updated".
@@ -225,7 +237,7 @@ export async function suspendOrgAction(orgId: string, reason: string): Promise<A
     return fail(UI.accountNoteTooLong(ACCOUNT_NOTE_MAX_LENGTH));
   }
 
-  return withLockedOrg(orgId, async (row, tx) => {
+  const result = await withLockedOrg(orgId, async (row, tx) => {
     if (row.suspendedAt !== null) return fail(UI.orgAlreadySuspended);
 
     const before = snapshot(row);
@@ -253,6 +265,17 @@ export async function suspendOrgAction(orgId: string, reason: string): Promise<A
     });
     return ok();
   });
+
+  // Outside the transaction, and never lets a Stripe failure undo a suspension that already
+  // committed (D3): the org is suspended either way, the card is just left charging.
+  if (result.ok) {
+    try {
+      await setCollectionPaused(orgId, true);
+    } catch (e) {
+      alert(`org ${orgId} suspended but its Stripe collection could not be paused; pause it by hand: ${e}`);
+    }
+  }
+  return result;
 }
 
 export async function reinstateOrgAction(orgId: string, note: string): Promise<ActionResult> {
@@ -262,7 +285,7 @@ export async function reinstateOrgAction(orgId: string, note: string): Promise<A
   const parsedNote = parseNote(note);
   if ("refusal" in parsedNote) return parsedNote.refusal;
 
-  return withLockedOrg(orgId, async (row, tx) => {
+  const result = await withLockedOrg(orgId, async (row, tx) => {
     if (row.suspendedAt === null) return fail(UI.orgNotSuspended);
 
     const before = snapshot(row);
@@ -279,4 +302,15 @@ export async function reinstateOrgAction(orgId: string, note: string): Promise<A
     });
     return ok();
   });
+
+  // Outside the transaction, same reasoning as suspend (D3): the reinstatement already
+  // committed either way.
+  if (result.ok) {
+    try {
+      await setCollectionPaused(orgId, false);
+    } catch (e) {
+      alert(`org ${orgId} reinstated but its Stripe collection could not be resumed; resume it by hand: ${e}`);
+    }
+  }
+  return result;
 }
