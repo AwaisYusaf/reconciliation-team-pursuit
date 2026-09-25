@@ -1,6 +1,6 @@
 /**
  * The only place outside `src/modules/billing/` that turns an organization's billing columns
- * into a yes-or-no access decision (Phase 15 §4.7, U-20). Every reader elsewhere calls
+ * into a yes-or-no access decision (Phase 16 §4.7, U-20). Every reader elsewhere calls
  * `entitlementOf`, `sharesAllowed` or `hasPaidAccess` rather than reading `stripe_status`,
  * `complimentary` or `subscription_status` itself.
  *

@@ -1,6 +1,6 @@
 /**
  * U-16: only the header's Plus pill is a link (to Plan & billing); every other pill stays
- * decorative (Phase 15 AC-H2). Source-reading, like the other UI wiring tests.
+ * decorative (Phase 16 AC-H2). Source-reading, like the other UI wiring tests.
  */
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";

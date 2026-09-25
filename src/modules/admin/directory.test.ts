@@ -25,7 +25,7 @@ const _accountEventCheck: AccountEvent = {} as OrgAccountEventRow;
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 const _billingCopyCheck: BillingCopy = {} as OrgAccountRow;
 
-describe("staffBilling: the org page's Billing card (Phase 15 §4.6)", () => {
+describe("staffBilling: the org page's Billing card (Phase 16 §4.6)", () => {
   const NOW = new Date("2026-09-25T16:00:00Z");
   const none: BillingCopy = {
     stripeCustomerId: null,
@@ -224,7 +224,7 @@ describe("usersFooter (Phase 9 §6)", () => {
   });
 });
 
-// complimentaryState moved to src/domain/complimentary.ts (Phase 15, P10); its tests moved to
+// complimentaryState moved to src/domain/complimentary.ts (Phase 16, P10); its tests moved to
 // src/domain/complimentary.test.ts.
 
 describe("describeAccountEvent (Phase 9 §5)", () => {
@@ -239,7 +239,7 @@ describe("describeAccountEvent (Phase 9 §5)", () => {
     return { action: "plan_changed", ...base, ...overrides } as AccountEvent;
   }
 
-  it("a row Stripe's sync wrote names Stripe, not Unknown (Phase 15 P15)", () => {
+  it("a row Stripe's sync wrote names Stripe, not Unknown (Phase 16 P15)", () => {
     const e = event({
       actorName: null,
       actorEmail: null,

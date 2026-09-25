@@ -446,7 +446,7 @@ describe.skipIf(!hasDatabase)("funding source management actions (integration)",
     });
   });
 
-  describe("one active funding source limit on Reconciliation (Phase 15 Track C, C8, I-13)", () => {
+  describe("one active funding source limit on Reconciliation (Phase 16 Track C, C8, I-13)", () => {
     const originalBillingEnabled = process.env.BILLING_ENABLED;
 
     beforeEach(() => {

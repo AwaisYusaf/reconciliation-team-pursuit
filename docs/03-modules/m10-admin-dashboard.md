@@ -62,7 +62,7 @@ either screen renders more rows than it asks for: ten organizations per page
 - **The four actions**: each opens an overlay (two `Modal`s, two `Dialog`s), shows a refusal
   inside the overlay rather than as a toast, and on success calls `reportResult` +
   `router.refresh()` — the same pattern as `month-lock.tsx`'s lock/unlock dialogs.
-- **Billing (Phase 15 §4.6)**: once Stripe has seen an organization, a Billing card between AI
+- **Billing (Phase 16 §4.6)**: once Stripe has seen an organization, a Billing card between AI
   usage and Actions shows our copy of its state (`staffBilling()` in `directory.ts`): Stripe
   status, billed monthly/yearly, "Renews on" or "Ends on", a scheduled change, and warnings for
   a failed payment, an upgrade waiting for payment, collection paused, and a `billing_flag`

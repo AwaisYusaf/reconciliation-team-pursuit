@@ -1,5 +1,5 @@
 /**
- * Every pure billing rule (Phase 15, ported from the reference build's `lib/plans.ts`, P1 to
+ * Every pure billing rule (Phase 16, ported from the reference build's `lib/plans.ts`, P1 to
  * P9). No I/O, no `server-only` — unit-tested directly, and safe to import from a client
  * component if a future phase needs to. Plan names live in `PLAN_LABELS`
  * (`src/domain/strings.ts`), prices in `src/modules/billing/pricing.ts`; this file has neither.

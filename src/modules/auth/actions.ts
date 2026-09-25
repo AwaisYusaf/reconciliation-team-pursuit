@@ -161,7 +161,7 @@ export async function signInAction(
   await db.update(users).set({ lastSignInAt: new Date() }).where(eq(users.id, user.id));
   await startSession(user.id);
 
-  // No free use (Phase 15, C6): an unpaid org reaches only the plan chooser, before onboarding.
+  // No free use (Phase 16, C6): an unpaid org reaches only the plan chooser, before onboarding.
   if (!entitlementOf(user).paid) redirect("/r/plan");
 
   // Onboarding is resumable: an abandoned signup lands back here until it completes.
@@ -281,7 +281,7 @@ export async function signUpAction(
 
   await startSession(userId);
 
-  // No free use (Phase 15, C6): a new organization has never paid, so it always lands on the
+  // No free use (Phase 16, C6): a new organization has never paid, so it always lands on the
   // plan chooser rather than onboarding — `entitlementOf` still covers billing-off and
   // complimentary-by-default test orgs (P28), so this is never true in either of those cases.
   if (!entitlementOf(org).paid) {

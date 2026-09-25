@@ -1,7 +1,7 @@
 import "server-only";
 
 /**
- * The session an `app/api/*` route handler starts with (Phase 15 §4.7).
+ * The session an `app/api/*` route handler starts with (Phase 16 §4.7).
  *
  * `null` means signed out — each route already has its own 401 line, kept unchanged, so this
  * never writes one itself. An unpaid org gets a ready-made 403 response instead: JSON for the

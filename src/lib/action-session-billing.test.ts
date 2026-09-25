@@ -1,5 +1,5 @@
 /**
- * PHASE-15 U-17 (unit): `actionSession()` and `requireAdmin()` refuse an unpaid organization
+ * PHASE-16 U-17 (unit): `actionSession()` and `requireAdmin()` refuse an unpaid organization
  * (§4.7), and their `*AnyPlan` counterparts don't. `requireSession`/`getStaffSession`/
  * `getSession` are mocked so every combination of signed-in state × role × paid state is
  * reachable without a database; `UnauthenticatedError` is imported from the real module so

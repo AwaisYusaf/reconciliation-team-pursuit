@@ -1,5 +1,5 @@
 /**
- * Billing gating (Phase 15, P25) and startup validation. Pure — no `server-only` import,
+ * Billing gating (Phase 16, P25) and startup validation. Pure — no `server-only` import,
  * unlike `src/modules/auth/config.ts`'s `signupEnabled`: `instrumentation.ts` runs before any
  * request and needs to call `billingConfigProblems` from outside the `react-server` condition.
  */

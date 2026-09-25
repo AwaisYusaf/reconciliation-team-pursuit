@@ -1,5 +1,5 @@
 /**
- * `orgEntitlement` (Phase 15, P9): the one access function every AI gate, the paywall, the
+ * `orgEntitlement` (Phase 16, P9): the one access function every AI gate, the paywall, the
  * funding-source limit, shared links and the header pill read (U-20 checks nothing else reads
  * `stripe_status`/`complimentary`/`subscription_status` to decide access). Pure, no `db` import
  * — `resolveSession` (a later phase) loads the row and calls this once per request.

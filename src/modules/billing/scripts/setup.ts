@@ -1,5 +1,5 @@
 /**
- * `npm run billing:setup` (Phase 15 P20, §11 step 8). Makes Stripe match `pricing.ts`, in
+ * `npm run billing:setup` (Phase 16 P20, §11 step 8). Makes Stripe match `pricing.ts`, in
  * whichever mode the key belongs to:
  *  - one Product per plan (`sf360_{plan}`) and one Price per interval, found by lookup key;
  *  - a Price whose amount, currency, interval, product or `metadata.plan` differs from the

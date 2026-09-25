@@ -3,7 +3,7 @@
  * from it. `instrumentation.ts` sits at the repo root, outside vitest's `src/**` include, so it is
  * exercised from here.
  *
- * The `register (billing)` block below (Phase 15, P25) covers the billing check that runs
+ * The `register (billing)` block below (Phase 16, P25) covers the billing check that runs
  * BEFORE both the NODE_ENV early return and the checks above: a broken Stripe key must fail
  * startup the same way in development as it would in production.
  */
@@ -41,7 +41,7 @@ describe("register (production)", () => {
   });
 });
 
-describe("register (billing, Phase 15 P25)", () => {
+describe("register (billing, Phase 16 P25)", () => {
   it("BILLING_ENABLED unset, NODE_ENV test (the ambient state): resolves", async () => {
     vi.stubEnv("BILLING_ENABLED", undefined);
     vi.stubEnv("STRIPE_SECRET_KEY", undefined);

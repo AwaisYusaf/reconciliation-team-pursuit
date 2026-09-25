@@ -56,11 +56,11 @@ function UsageTile({
     // and no radius here: the rules between cells come from the grid's gaps, so a cell that
     // drew its own would double every line.
     <div className={cn("bg-surface px-4 py-4 sm:px-5 sm:py-[18px]", className)}>
-      <dt className="text-[11px] uppercase tracking-[0.08em] font-semibold text-muted leading-none">
+      <dt className="text-[11px] uppercase tracking-[0.08em] font-semibold text-sub leading-none">
         {label}
       </dt>
       <dd className="mt-2.5">{children}</dd>
-      {caption && <p className="text-[12px] text-muted mt-2.5 leading-snug">{caption}</p>}
+      {caption && <p className="text-[12px] text-sub mt-2.5 leading-snug">{caption}</p>}
     </div>
   );
 }

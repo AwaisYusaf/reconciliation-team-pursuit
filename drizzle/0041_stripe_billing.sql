@@ -1,3 +1,10 @@
+-- Phase 16 (D-123): the Stripe billing columns. Every one is nullable or has a constant
+-- default, so each ADD COLUMN is metadata-only; none is an enum change (D-115).
+--
+-- ADD COLUMN still takes ACCESS EXCLUSIVE on `organizations`, which every signed-in request
+-- reads. Fail fast rather than queue: a deploy that cannot get the lock within 5 s aborts with
+-- the old app still serving, and is simply re-run (same as 0039 and 0040).
+SET LOCAL lock_timeout = '5s';--> statement-breakpoint
 ALTER TABLE "org_account_events" ADD COLUMN "via_stripe" boolean DEFAULT false NOT NULL;--> statement-breakpoint
 ALTER TABLE "organizations" ADD COLUMN "stripe_customer_id" text;--> statement-breakpoint
 ALTER TABLE "organizations" ADD COLUMN "stripe_livemode" boolean;--> statement-breakpoint

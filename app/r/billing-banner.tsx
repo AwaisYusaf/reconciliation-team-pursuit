@@ -9,7 +9,7 @@ import type { BillingBanner as Banner } from "@/src/modules/billing/plan-view-lo
 const PLAN_SECTION = "/r/settings?section=plan";
 
 /**
- * The single billing notice under the header (Phase 15 §4.5). Each has one next step, which
+ * The single billing notice under the header (Phase 16 §4.5). Each has one next step, which
  * goes to Plan & billing, where the real buttons are. Nothing renders for a healthy org.
  */
 export function BillingBanner({ banner }: { banner: Banner | null }) {

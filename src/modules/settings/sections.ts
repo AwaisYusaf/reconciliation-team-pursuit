@@ -1,5 +1,5 @@
 /**
- * The Settings sidebar's sections, in order, and how a `?section=` link picks one (Phase 15 P19,
+ * The Settings sidebar's sections, in order, and how a `?section=` link picks one (Phase 16 P19,
  * U-13). Pure, so both the server page and the client component use the same list and the
  * parsing is unit-tested.
  */

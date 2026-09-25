@@ -222,7 +222,7 @@ export default async function ContractSummaryPage() {
       <div className="mt-8">
         <SectionTitle className="mb-3">{UI.reportingPeriodsTitle}</SectionTitle>
         {reportingPeriods.length === 0 ? (
-          <p className="text-[15px] text-muted">No reporting periods yet.</p>
+          <p className="text-[15px] text-sub">No reporting periods yet.</p>
         ) : (
           // No `minWidth` — three columns with `break-words` cells already fit a phone without
           // forcing the horizontal scroll `TableCard` offers wider tables (judgment call: the
@@ -287,7 +287,7 @@ function ReportingPeriodRows({ period }: { period: ReportingPeriod }) {
       {hasHistory && (
         <tr>
           <td colSpan={3} className="px-3 sm:px-4 py-2 border-b border-line bg-section">
-            <ul className="flex flex-col gap-1 text-sm text-muted">
+            <ul className="flex flex-col gap-1 text-sm text-sub">
               {period.events.map((event, index) => (
                 <EventLine key={event.id} event={event} index={index} events={period.events} />
               ))}
@@ -374,7 +374,7 @@ function ReconciliationRow({
     <div
       className={`flex items-baseline justify-between gap-6 px-4 py-3 ${last ? "" : "border-b border-line"}`}
     >
-      <span className="text-[15px] text-muted">{label}</span>
+      <span className="text-[15px] text-sub">{label}</span>
       <span className="text-[15px] font-semibold tabular-nums text-ink">{value}</span>
     </div>
   );

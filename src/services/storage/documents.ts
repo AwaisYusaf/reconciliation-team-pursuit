@@ -169,7 +169,7 @@ export async function orgStorageBytes(tx: Queryable, orgId: string): Promise<num
       // spend the cap can never see.
       //
       // Counted PER OBJECT, not per row, which is why this is a union grouped by key rather
-      // than five sums added together. One stored file is now pointed at by several rows on
+      // than one sum per table added together. One stored file is now pointed at by several rows on
       // purpose: the invoice an import owns becomes the receipt on every expense that invoice
       // produced, and a draft's own files are re-pointed onto the expense at approval, both
       // keeping the same `s3_key` instead of storing the bytes again. Adding the rows up would
@@ -194,6 +194,9 @@ export async function orgStorageBytes(tx: Queryable, orgId: string): Promise<num
               union all
               select s3_key, coalesce(size_bytes, 0)
                 from month_lock_events where org_id = ${orgId} and s3_key is not null
+              union all
+              select avatar_key, avatar_bytes
+                from users where org_id = ${orgId} and avatar_key is not null
             ) every_row
             group by s3_key
           ) per_object
@@ -621,7 +624,7 @@ export async function deleteStoredObjects(key: string): Promise<void> {
  * but not there is billed for after it is deleted, and one counted there but not here can have
  * its file deleted while a row still names it. `month_lock_events` was in that second state:
  * counted, unchecked. Nothing shares a signed-packet key today, which is exactly why it would
- * have gone unnoticed until something did.
+ * have gone unnoticed until something did. Profile photos joined both lists together (D-119).
  */
 async function objectStillReferenced(key: string): Promise<boolean> {
   const [row] = await db
@@ -632,6 +635,7 @@ async function objectStillReferenced(key: string): Promise<boolean> {
         or exists (select 1 from expense_imports where s3_key = ${key})
         or exists (select 1 from month_documents where s3_key = ${key})
         or exists (select 1 from month_lock_events where s3_key = ${key})
+        or exists (select 1 from users where avatar_key = ${key})
       `,
     })
     .from(organizations)

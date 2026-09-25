@@ -181,10 +181,21 @@ body {
   color: var(--color-placeholder);
 }
 
-/* Keyboard focus stays visible everywhere; the design has no focus styling of its own. */
+/*
+ * Keyboard focus stays visible everywhere; the design has no focus styling of its own.
+ *
+ * The ring is the accent brown, which is invisible on the brown surfaces the redesign added
+ * (1.4:1 on the nav pill). A dark container marks itself `surface-dark` and every ring inside it
+ * turns the light peach instead, 11:1 on `accent-dark`. A variable rather than a second rule,
+ * so a focusable anywhere inside the container inherits it without being named.
+ */
 :focus-visible {
-  outline: 2px solid var(--color-accent);
+  outline: 2px solid var(--focus-ring, var(--color-accent));
   outline-offset: 2px;
+}
+
+.surface-dark {
+  --focus-ring: var(--color-primary-fixed);
 }
 
 @media print {
@@ -280,7 +291,13 @@ body {
    and must not inherit the marketing type scale or the horizontal clip. */
 /* overflow-x only on html, not body — giving body a non-visible overflow breaks
    position: sticky for its descendants in Chromium. */
-html:has(.lp) { scroll-behavior: smooth; overflow-x: hidden; }
+html:has(.lp) { overflow-x: hidden; }
+
+/* The in-page links glide, unless the reader asked for less motion: a smooth scroll across
+   eleven thousand pixels is exactly the movement that setting exists to stop. */
+@media (prefers-reduced-motion: no-preference) {
+  html:has(.lp) { scroll-behavior: smooth; }
+}
 
 .lp :is(h1, h2, h3, h4),
 .lp .font-serif-heading { font-family: var(--font-lp-serif); }
@@ -294,6 +311,9 @@ html:has(.lp) { scroll-behavior: smooth; overflow-x: hidden; }
   .lp *, .lp *::before, .lp *::after {
     transition-duration: 0.001ms !important;
     animation-duration: 0.001ms !important;
+    /* A looping animation cut to 0.001ms does not stop; it strobes. One pass, then rest. The
+       status dots also use `motion-safe:`, so this is the backstop for anything added later. */
+    animation-iteration-count: 1 !important;
   }
 }
 

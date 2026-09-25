@@ -1,7 +1,7 @@
 import "server-only";
 
 /**
- * Every billing action that moves money or changes a subscription (Phase 15 §4.1, ported from
+ * Every billing action that moves money or changes a subscription (Phase 16 §4.1, ported from
  * the reference build's `lib/billing.ts`, keyed by organization instead of user).
  *
  * Rules every exported function follows:

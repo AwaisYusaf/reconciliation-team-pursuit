@@ -1,5 +1,5 @@
 /**
- * PHASE-15 U-17 (unit): `routeSession()` and `routeSessionAnyPlan()` (§4.7).
+ * PHASE-16 U-17 (unit): `routeSession()` and `routeSessionAnyPlan()` (§4.7).
  *
  * `getSession()` is mocked; no database, no Next request context needed since neither
  * function reads the request itself.

@@ -41,7 +41,7 @@ export type PublicShare = {
 /**
  * The share behind a token, or null when there is nothing to serve: an unknown or malformed
  * token, a stopped link, an organisation that is paused (`suspended_at`), or one `sharesAllowed`
- * refuses (PHASE-12 C4, PHASE-15 §4.7). All of these look the same from outside (Appendix A §5).
+ * refuses (PHASE-12 C4, PHASE-16 §4.7). All of these look the same from outside (Appendix A §5).
  */
 export async function loadPublicShare(token: string): Promise<PublicShare | null> {
   if (!isShareToken(token)) return null;

@@ -1,5 +1,5 @@
 /**
- * PHASE-15 U-18: no free use, guarded by default (§4.7, P22).
+ * PHASE-16 U-18: no free use, guarded by default (§4.7, P22).
  *
  * Source-reading, in the repo's style for wiring checks (`domain/no-dashes.test.ts`): every
  * `"use server"` export, every `app/r` and onboarding page and every route method is found by

@@ -1,4 +1,4 @@
-/** U-13: which Settings section a `?section=` link opens (Phase 15 P19). */
+/** U-13: which Settings section a `?section=` link opens (Phase 16 P19). */
 import { describe, expect, it } from "vitest";
 
 import { DEFAULT_SECTION, parseSettingsSection, SECTION_IDS } from "./sections";

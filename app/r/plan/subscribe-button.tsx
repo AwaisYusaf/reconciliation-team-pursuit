@@ -15,7 +15,7 @@ import {
 } from "@/src/modules/landing/plan-cards";
 
 /**
- * Sends the admin to Stripe Checkout for this plan and interval (Phase 15 §4.7). The action
+ * Sends the admin to Stripe Checkout for this plan and interval (Phase 16 §4.7). The action
  * checks everything on the server (admin, one open Checkout, funding-source limit) and returns
  * only a URL it has already verified is Stripe's; a refusal shows as the usual error toast.
  * While it works the label says so, per the no-spinner rule. Styled like the pricing card's own

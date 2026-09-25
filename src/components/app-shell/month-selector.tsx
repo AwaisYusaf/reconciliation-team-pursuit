@@ -81,8 +81,10 @@ export function MonthSelector({
           apply(value);
         }}
         // Full width of its share of the row on a phone, fixed from `sm`. The header gives the
-        // two compact selectors one line between them at every width.
-        className={compact ? "w-full sm:w-[150px]" : "w-[200px]"}
+        // two compact selectors one line between them at every width. Sized for the longest
+        // label, "September 2026": 114px of text plus padding, gap, chevron and border is 164px,
+        // and 150 cut every month from July on to "November 2…".
+        className={compact ? "w-full sm:w-[172px]" : "w-[200px]"}
       >
         {monthsByYear(months).map((group) => (
           <optgroup key={group.year} label={group.year}>

@@ -52,7 +52,7 @@ export type SessionContext = {
   onboarded: boolean;
   welcomeDismissed: boolean;
   /**
-   * Whether the org has paid access (Phase 15). Always set by `resolveSession`; optional only so
+   * Whether the org has paid access (Phase 16). Always set by `resolveSession`; optional only so
    * the many test fixtures that build a `SessionContext` literal directly still compile. Readers
    * never check `plan` or a billing column here directly — call `hasPaidAccess(session)`.
    */

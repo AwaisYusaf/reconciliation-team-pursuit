@@ -94,7 +94,7 @@ export function PlusBadge({
   size?: "sm" | "md";
   className?: string;
   /**
-   * Only the header passes this (Phase 15 §4.4): it opens Plan & billing. Everywhere else the
+   * Only the header passes this (Phase 16 §4.4): it opens Plan & billing. Everywhere else the
    * pill stays decorative, so it's never a surprise link inside a form.
    */
   href?: string;

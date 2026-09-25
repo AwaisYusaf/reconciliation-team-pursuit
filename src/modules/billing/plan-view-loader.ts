@@ -1,7 +1,7 @@
 import "server-only";
 
 /**
- * Loads what Settings → Plan & billing shows (Phase 15 §4.3), always for the signed-in session's
+ * Loads what Settings → Plan & billing shows (Phase 16 §4.3), always for the signed-in session's
  * own organization. Re-syncs from Stripe first when our copy looks overdue (the stale safety net,
  * P13), so opening the section repairs a lost webhook; a Stripe failure just shows the last copy.
  */
@@ -75,7 +75,7 @@ export async function loadPlanBilling(session: { orgId: string; role: string }):
   };
 }
 
-/** The one billing banner the app shell shows under the header, if any (Phase 15 §4.5). */
+/** The one billing banner the app shell shows under the header, if any (Phase 16 §4.5). */
 export type BillingBanner =
   | { kind: "paymentFailed"; isAdmin: boolean; adminNames: string }
   | { kind: "upgradeWaiting"; expiresAt: Date }

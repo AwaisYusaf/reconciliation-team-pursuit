@@ -2,7 +2,7 @@ import { fileURLToPath } from "node:url";
 
 import { defineConfig } from "vitest/config";
 
-// Stripe sandbox suite (Phase 15 §8.3): `npm run test:stripe`. Same alias/env setup as
+// Stripe sandbox suite (Phase 16 §8.3): `npm run test:stripe`. Same alias/env setup as
 // vitest.config.mts; separate config because these tests hit a real Stripe sandbox and a real
 // Postgres database, run for minutes rather than seconds, and must never run inside the normal
 // `npm test` pass.

@@ -100,7 +100,7 @@ async function main() {
         docName: "Team Pursuit",
         activeMonth: currentMonthKey(),
         onboardedAt: new Date(),
-        // Complimentary by default (Phase 15, P28) — this is the dev/seed org, not a paying one.
+        // Complimentary by default (Phase 16, P28) — this is the dev/seed org, not a paying one.
         complimentary: true,
       });
       await db.insert(schema.users).values({

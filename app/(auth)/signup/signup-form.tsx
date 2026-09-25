@@ -14,7 +14,7 @@ export function SignupForm({
   plan,
   interval,
 }: {
-  /** From the landing page's plan links, already validated by the page (Phase 15, §4.9). */
+  /** From the landing page's plan links, already validated by the page (Phase 16, §4.9). */
   plan?: PlanId | null;
   interval?: Interval | null;
 }) {

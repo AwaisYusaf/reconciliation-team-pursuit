@@ -53,12 +53,12 @@ export function canWriteSummaries(org: { plan: OrgPlan }): boolean {
 }
 
 /** The billing columns and the paid-or-not decision come from the one shared place
- *  (`src/services/auth/entitlement.ts`, Phase 15 U-20), so AI access can't drift from the
+ *  (`src/services/auth/entitlement.ts`, Phase 16 U-20), so AI access can't drift from the
  *  paywall's answer. */
 const ENTITLEMENT_FIELDS = ENTITLEMENT_COLUMNS;
 
 /** Loads the org's plan and billing state fresh from the database and applies
- *  `canUseSummaries`/`canWriteSummaries`, gated by `orgEntitlement` (Phase 15 §4.2): a cancelled
+ *  `canUseSummaries`/`canWriteSummaries`, gated by `orgEntitlement` (Phase 16 §4.2): a cancelled
  *  or unpaid Reconciliation + AI org loses AI just like every other AI gate. Missing org → both
  *  false. */
 export async function summariesAccessForOrg(
@@ -72,7 +72,7 @@ export async function summariesAccessForOrg(
 }
 
 /** Loads the org's plan, billing state and Settings switch fresh from the database and applies
- *  `canReadAmounts`, gated by `orgEntitlement` (Phase 15 §4.2). Every surface — new/edit pages,
+ *  `canReadAmounts`, gated by `orgEntitlement` (Phase 16 §4.2). Every surface — new/edit pages,
  *  the read route, the tour — calls this rather than keeping its own copy of the organisation's
  *  plan/switch state. */
 export async function readAmountsAllowedForOrg(orgId: string): Promise<boolean> {
@@ -86,7 +86,7 @@ export async function readAmountsAllowedForOrg(orgId: string): Promise<boolean> 
   return ent.paid && canReadAmounts({ plan: ent.plan, readAmountsEnabled: org.readAmountsEnabled });
 }
 
-/** Whether the org may use any AI feature at all (Phase 15): plan and billing state only, no
+/** Whether the org may use any AI feature at all (Phase 16): plan and billing state only, no
  *  Settings switch or OpenAI configuration. For the header pill and the Settings page, which
  *  show the plan's entitlement rather than whether a particular feature is wired up today. */
 export async function aiAllowedForOrg(orgId: string): Promise<boolean> {

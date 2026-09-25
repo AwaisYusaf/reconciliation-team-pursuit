@@ -25,7 +25,7 @@ export default async function SettingsPage({
   const session = await pageSession();
 
   const isAdmin = session.role === "admin";
-  // `?section=plan` from the Plus pill and billing banners (Phase 15 P19); unknown → Organization.
+  // `?section=plan` from the Plus pill and billing banners (Phase 16 P19); unknown → Organization.
   const section = parseSettingsSection((await searchParams).section, isAdmin);
 
   // The organisation always comes from the session, never from the request.
@@ -96,7 +96,7 @@ export default async function SettingsPage({
         users={users}
         usersError={usersError}
         fundingSourceLimit={fundingSourceLimit}
-        // Paid and on Reconciliation + AI (Phase 15 §4.2), not the plan label alone.
+        // Paid and on Reconciliation + AI (Phase 16 §4.2), not the plan label alone.
         readAmounts={aiAllowed ? { enabled: data.readAmountsEnabled } : null}
       />
     </div>

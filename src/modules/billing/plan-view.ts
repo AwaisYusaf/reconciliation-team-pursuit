@@ -1,6 +1,6 @@
 /**
  * What the Settings → Plan & billing section shows, as a pure function of the org's billing
- * columns (Phase 15 §4.3, U-14). No database and no browser, so every state is unit-tested; the
+ * columns (Phase 16 §4.3, U-14). No database and no browser, so every state is unit-tested; the
  * server loader (`plan-view-loader.ts`) reads the row and calls this, the client section renders
  * the result.
  */

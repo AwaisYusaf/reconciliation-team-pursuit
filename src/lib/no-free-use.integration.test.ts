@@ -1,5 +1,5 @@
 /**
- * PHASE-15 I-9 / I-16 (integration, real Postgres): no free use at every entry point (§4.7).
+ * PHASE-16 I-9 / I-16 (integration, real Postgres): no free use at every entry point (§4.7).
  *
  * I-9 (billing on, unpaid org): an action from several modules, every download route and a
  * files route, a page render, and a shared link all refuse; allow-listed entries still work.

@@ -1,4 +1,4 @@
-// U-6 (Phase 15 §8.1): `handleWebhook` signature/mode/dispatch rules. Pure — signed with a local
+// U-6 (Phase 16 §8.1): `handleWebhook` signature/mode/dispatch rules. Pure — signed with a local
 // Stripe client (`constructEvent` never calls the API), no server and no database.
 import Stripe from "stripe";
 import { describe, expect, it, vi } from "vitest";

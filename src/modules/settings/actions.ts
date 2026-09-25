@@ -225,7 +225,7 @@ export async function changePasswordAction(input: {
   newPassword: string;
   confirmPassword: string;
 }): Promise<ActionResult> {
-  // Allow-listed (Phase 15 §4.7): an unpaid admin can still change their password.
+  // Allow-listed (Phase 16 §4.7): an unpaid admin can still change their password.
   const current = await actionSessionAnyPlan();
   if ("expired" in current) return current.expired;
 

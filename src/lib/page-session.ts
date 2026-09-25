@@ -1,7 +1,7 @@
 import "server-only";
 
 /**
- * The session every `app/r/**` and onboarding page starts with (Phase 15 §4.7).
+ * The session every `app/r/**` and onboarding page starts with (Phase 16 §4.7).
  *
  * Guarded by default: a page that calls `pageSession()` never renders for a signed-out or
  * unpaid organization, and never sends its data to the browser in the first place — a layout

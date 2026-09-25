@@ -1,6 +1,6 @@
 /**
  * `SELECT ... FOR UPDATE` on `organizations`, shared by every writer that needs to serialise
- * itself per org (Phase 15, P12): staff account actions (`src/modules/admin/actions.ts`,
+ * itself per org (Phase 16, P12): staff account actions (`src/modules/admin/actions.ts`,
  * originally a private `withLockedOrg`) and, from Phase 3 and 6 on, funding-source create and
  * unarchive and the billing actions. Not `"use server"`: this is a database helper, and every
  * export of a `"use server"` file is a public endpoint.

@@ -121,7 +121,7 @@ export function MonthLockControls({
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2 justify-end">
           <span className="text-sm">
             <span className="font-bold text-ink">{UI.reconciledLabel}</span>
-            <span className="text-muted"> · {UI.lockedOnBy(lockedEvent.date, lockedEvent.name)}</span>
+            <span className="text-sub"> · {UI.lockedOnBy(lockedEvent.date, lockedEvent.name)}</span>
           </span>
           {/* A link styled as a button, not a <button>: it opens the stored PDF in a new tab. */}
           <a

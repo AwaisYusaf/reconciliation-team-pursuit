@@ -36,7 +36,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   // Not the gate (`pageSession()` on every page is): but it must never send org data to an
   // unpaid organization, and it must not loop — no onboarding redirect here, since an unpaid,
-  // not-yet-onboarded org would otherwise bounce between this and `/r/plan` (Phase 15 §4.7).
+  // not-yet-onboarded org would otherwise bounce between this and `/r/plan` (Phase 16 §4.7).
   if (!hasPaidAccess(session)) {
     return (
       <div className="min-h-screen bg-paper">
@@ -86,7 +86,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const months = await loadSelectableMonths(session.orgId, selectedId, [session.activeMonth]);
   const activeMonth = session.activeMonth;
 
-  // The Plus pill follows what the org has paid for, not the plan label alone (Phase 15 §4.2):
+  // The Plus pill follows what the org has paid for, not the plan label alone (Phase 16 §4.2):
   // `entitlement.plan` is the complimentary plan for a complimentary org, and a cancelled Plus
   // org loses the pill with the features. `resolveSession` always sets it; the fallback only
   // covers a hand-built session.
@@ -147,7 +147,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         }
       />
 
-      {/* The one billing notice, if any (Phase 15 §4.5). Above `main`, not inside it, so the
+      {/* The one billing notice, if any (Phase 16 §4.5). Above `main`, not inside it, so the
           floating month and funding-source selectors (absolute in `main`'s corner) never sit on it. */}
       {banner && (
         <div className="max-w-[1220px] mx-auto px-4 sm:px-6 pt-3 sm:pt-4">

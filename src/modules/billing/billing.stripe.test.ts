@@ -1,5 +1,5 @@
 /**
- * Billing against the REAL Stripe sandbox, with test clocks to fast-forward time (Phase 15 §8.3).
+ * Billing against the REAL Stripe sandbox, with test clocks to fast-forward time (Phase 16 §8.3).
  * Proves what Stripe actually charges, to the cent, rather than what we assume. Ported from the
  * reference build's `tests/billing.test.ts` (node:test on SQLite) to vitest on Postgres orgs.
  *
@@ -188,7 +188,7 @@ async function rejects(p: Promise<unknown>, code: billing.BillingErrorCode): Pro
   await expect(p).rejects.toMatchObject({ code });
 }
 
-/** `orgEntitlement`'s verdict, plus the AI gate, for the org's row right now (Phase 15, §4.2). */
+/** `orgEntitlement`'s verdict, plus the AI gate, for the org's row right now (Phase 16, §4.2). */
 async function access(f: Fixture): Promise<{ paid: boolean; ai: boolean }> {
   const row = await org(f);
   const ent = orgEntitlement(

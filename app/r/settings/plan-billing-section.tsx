@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Settings → Plan & billing (Phase 15 §4.3). Every state comes from `planBillingView` (pure,
+ * Settings → Plan & billing (Phase 16 §4.3). Every state comes from `planBillingView` (pure,
  * unit-tested); this component only renders it and calls the billing actions, which re-check
  * everything on the server (admin, Stripe's live state, the funding-source limit).
  */

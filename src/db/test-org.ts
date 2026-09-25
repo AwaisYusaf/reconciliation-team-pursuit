@@ -8,7 +8,7 @@
  * Import it the same way the test files already import the schema — `await import(...)`
  * inside the `describe` body — so nothing loads when `DATABASE_URL` is absent.
  *
- * Complimentary by default (Phase 15, P28): otherwise every integration test that exercises a
+ * Complimentary by default (Phase 16, P28): otherwise every integration test that exercises a
  * feature would first have to pay for a plan. Billing tests that need an unpaid org pass
  * `complimentary: false`.
  */

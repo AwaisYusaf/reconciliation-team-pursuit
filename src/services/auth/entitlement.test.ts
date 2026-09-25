@@ -1,5 +1,5 @@
 /**
- * PHASE-15 U-17/U-20 (unit): `sharesAllowed`, `hasPaidAccess` and `complimentaryEndedOn`
+ * PHASE-16 U-17/U-20 (unit): `sharesAllowed`, `hasPaidAccess` and `complimentaryEndedOn`
  * — pure, no database. `orgEntitlement` itself is exhaustively covered by
  * `src/modules/billing/entitlement.test.ts` (U-4/U-21); this file covers the three readers
  * layered on top of it in `src/services/auth/entitlement.ts`.

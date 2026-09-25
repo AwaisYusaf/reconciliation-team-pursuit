@@ -1,5 +1,5 @@
 /**
- * `syncOrgBilling`, `refreshOrgBilling` and `flagDispute` against real Postgres (Phase 15, P1,
+ * `syncOrgBilling`, `refreshOrgBilling` and `flagDispute` against real Postgres (Phase 16, P1,
  * P13, §2.6). `@/src/modules/billing/stripe` is mocked so no real Stripe call happens — only
  * `subscriptionsOf` and `stripe()` (for `flagDispute`'s `charges.retrieve`) are exercised, with
  * fake `Stripe.Subscription`/`Stripe.Charge` shapes the same way `copy.test.ts` builds them.
@@ -29,7 +29,7 @@ config({ path: ".env.local", quiet: true });
 
 const hasDatabase = Boolean(process.env.DATABASE_URL);
 
-describe.skipIf(!hasDatabase)("billing sync (integration, Phase 15)", async () => {
+describe.skipIf(!hasDatabase)("billing sync (integration, Phase 16)", async () => {
   const { eq } = await import("drizzle-orm");
   const { db } = await import("@/src/db");
   const { organizations, orgAccountEvents } = await import("@/src/db/schema");

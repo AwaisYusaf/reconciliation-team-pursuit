@@ -1,112 +1,25 @@
-"use client";
-
 import Image from "next/image";
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
 
 import { APP_NAME } from "@/src/domain/strings";
-import type { PRICES_CENTS } from "@/src/modules/billing/pricing";
-import type { Interval } from "@/src/modules/billing/rules";
-import {
-  PLAN_BUTTON_LIGHT,
-  PLAN_BUTTON_PRIMARY,
-  PLAN_BUTTON_PRIMARY_STYLE,
-  PlanButtonArrow,
-  PlanCards,
-} from "@/src/modules/landing/plan-cards";
-import { DEMO_REQUEST_HREF, getStartedHref, planPriceLabel } from "@/src/modules/landing/plan-links";
 
-/**
- * Scroll-triggered fade-and-rise, shared by every card grid on the page.
- *
- * Animates only `opacity`/`transform` — both are compositor-only properties the browser can
- * animate without re-running layout or paint, so this stays smooth even with a dozen of them
- * on screen at once. `once: true` (via `observer.disconnect()`) means each element pays this
- * cost exactly once per page load, not on every scroll back into view. `delayMs` staggers a
- * grid's cards a beat apart instead of having them all pop in on the same frame; `prefers-
- * reduced-motion` (globals.css, `.lp` scope) collapses the transition to instant for anyone
- * who's asked their OS for less motion, which is both an accessibility need and the correct
- * behavior for reduced-motion here — no animation to skip means no work to skip.
- */
-function Reveal({ children, delayMs = 0 }: { children: React.ReactNode; delayMs?: number }) {
-  const ref = useRef<HTMLDivElement>(null);
-  const [visible, setVisible] = useState(false);
-
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting) {
-          setVisible(true);
-          observer.disconnect();
-        }
-      },
-      { threshold: 0.2, rootMargin: "0px 0px -10% 0px" }
-    );
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, []);
-
-  return (
-    <div
-      ref={ref}
-      style={{ transitionDelay: visible ? `${delayMs}ms` : "0ms" }}
-      className={`transition-all duration-700 ease-out will-change-transform ${
-        visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"
-      }`}
-    >
-      {children}
-    </div>
-  );
-}
+import { type Faq, FaqList, LandingNav, type NavLink, Reveal } from "./landing-islands";
+import { DEMO_REQUEST_HREF, getStartedHref } from "./plan-links";
+import { planPrice, PLANS } from "./plans";
+import { PricingPlans } from "./pricing-plans";
 
 /** Kept as the name the 5-step flow section already reads. */
 const FlowStep = Reveal;
 
-const NAV_LINKS = [
+const NAV_LINKS: readonly NavLink[] = [
   { id: "problem", label: "The Problem" },
   { id: "system-features", label: "One System" },
   { id: "ai-narratives", label: "The Story" },
   { id: "pricing", label: "Pricing" },
   { id: "faq", label: "FAQ" },
 ];
-const NAV_SECTION_IDS = NAV_LINKS.map((link) => link.id);
 
-/**
- * Scroll-spy for the header nav: tracks which section is under a thin band near the top
- * of the viewport (below the sticky header) so the matching link can be highlighted.
- */
-function useActiveSection(ids: string[]) {
-  const [activeId, setActiveId] = useState<string | null>(null);
-
-  useEffect(() => {
-    const elements = ids
-      .map((id) => document.getElementById(id))
-      .filter((el): el is HTMLElement => el !== null);
-    if (elements.length === 0) return;
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        const visible = entries.filter((entry) => entry.isIntersecting);
-        if (visible.length > 0) {
-          setActiveId(visible[0].target.id);
-        }
-      },
-      { rootMargin: "-96px 0px -60% 0px", threshold: 0 }
-    );
-
-    elements.forEach((el) => observer.observe(el));
-    return () => observer.disconnect();
-  }, [ids]);
-
-  return activeId;
-}
-
-/** A function of `prices` so the FAQ text and its JSON-LD mirror can't drift from the pricing
- *  section's own amounts (both read `planPriceLabel` off the same `PRICES_CENTS`). */
-function buildFaqs(prices: typeof PRICES_CENTS) {
-  return [
+const FAQS: readonly Faq[] = [
   {
     question: `What is ${APP_NAME}?`,
     answer:
@@ -155,7 +68,7 @@ function buildFaqs(prices: typeof PRICES_CENTS) {
   {
     question: `Can ${APP_NAME} handle multiple grants or funding sources?`,
     answer:
-      `Yes. Each funding source keeps its own budget, guidelines, expenses, documentation, and requirements, while leadership keeps visibility across the whole organization. Multiple contracts are supported on the Reconciliation + AI plan (${planPriceLabel(prices.reconciliation_ai.month)}/month), on top of everything in the single-contract Reconciliation plan (${planPriceLabel(prices.reconciliation.month)}/month).`,
+      `Yes. Each funding source keeps its own budget, guidelines, expenses, documentation, and requirements, while leadership keeps visibility across the whole organization. Multiple contracts are supported on the ${PLANS.reconciliationAi.name} plan (${planPrice("reconciliationAi")}/month), on top of everything in the single-contract ${PLANS.reconciliation.name} plan (${planPrice("reconciliation")}/month).`,
   },
   {
     question: "How long does it take to generate a month-end filing packet?",
@@ -167,24 +80,14 @@ function buildFaqs(prices: typeof PRICES_CENTS) {
     answer:
       "Every change, category assignment, and upload is timestamped and cryptographically logged for 7-year record retention, with a tamper-evident audit seal locking each record against post-filing alterations.",
   },
-  ];
-}
+];
 
-export function LandingPage({
-  prices,
-  signupOpen,
-}: {
-  prices: typeof PRICES_CENTS;
-  signupOpen: boolean;
-}) {
-  const [openFaq, setOpenFaq] = useState(0);
-  const [billingInterval, setBillingInterval] = useState<Interval>("month");
-  const activeSection = useActiveSection(NAV_SECTION_IDS);
-  const faqs = buildFaqs(prices);
+/** `signupOpen`: read at request time by `app/page.tsx`; every Get Started follows it. */
+export function LandingPage({ signupOpen }: { signupOpen: boolean }) {
   return (
     <>
 <header className="sticky top-0 z-50 transition-all duration-200 px-4 sm:px-6 py-3">
-<div className="max-w-3xl mx-auto rounded-full bg-[#38231a] border border-[#5b3a29] shadow-xl shadow-black/40 pl-2.5 sm:pl-3 pr-2.5 sm:pr-3 py-2 flex items-center justify-between">
+<div className="surface-dark max-w-3xl mx-auto rounded-full bg-[#38231a] border border-[#5b3a29] shadow-xl shadow-black/40 pl-2.5 sm:pl-3 pr-2.5 sm:pr-3 py-2 flex items-center justify-between">
 
 {/* The full logo's own artwork, laid out side by side: its stacked form (mark over wordmark
     over tagline) would be unreadable at nav height. White so the brown logo reads on the pill. */}
@@ -192,33 +95,24 @@ export function LandingPage({
   className="flex items-center gap-2 rounded-full bg-white pl-1.5 pr-3 sm:pr-4 py-1 shadow-sm transition-transform hover:scale-[1.02]"
   href="/"
 >
-<Image src="/brand/stayfunded-mark.png" alt="" width={628} height={570} className="h-7" style={{ width: "auto" }} priority />
-<Image src="/brand/stayfunded-wordmark.png" alt={APP_NAME} width={720} height={84} className="h-[13px] sm:h-[15px]" style={{ width: "auto" }} priority />
+<Image src="/brand/stayfunded-mark.png" alt="" width={628} height={570} className="h-7" style={{ width: "auto" }} loading="eager" />
+<Image src="/brand/stayfunded-wordmark.png" alt={APP_NAME} width={720} height={84} className="h-[13px] sm:h-[15px]" style={{ width: "auto" }} loading="eager" />
 </Link>
 
-<nav className="hidden lg:flex items-center space-x-6 text-xs font-medium text-[#edbca5]/85">
-{NAV_LINKS.map((link) => (
-<a
-  key={link.id}
-  href={`#${link.id}`}
-  className={`transition-colors ${activeSection === link.id ? "text-white font-semibold" : "hover:text-white"}`}
->
-  {link.label}
-</a>
-))}
-</nav>
+<LandingNav links={NAV_LINKS} />
 
 <div className="flex items-center space-x-2 sm:space-x-4">
 {/* Get Started used to be the header's way to /login; now that it follows the sign-up switch,
     this is the sign-in entry point. No wrapping: at 375px both links sit on one line. */}
 <Link
-  className="whitespace-nowrap text-[#edbca5]/85 hover:text-white text-xs font-medium px-1.5 py-2.5 transition-colors"
+  className="whitespace-nowrap inline-flex items-center min-h-11 text-[#edbca5]/85 hover:text-white text-xs font-medium px-1.5 transition-colors"
   href="/login"
 >
   Sign in
 </Link>
 <a
-  className="whitespace-nowrap bg-lp-surface-container-lowest/80 backdrop-blur-md border border-outline-variant/65 text-on-surface inline-flex items-center justify-center px-3 sm:px-5 py-1.5 rounded-full text-xs font-semibold shadow-[0_2px_6px_rgba(0,0,0,0.25),inset_0_1px_0_rgba(255,255,255,0.5)]"
+  // The pill stays its size; the invisible ::before stretches what a thumb can hit to 44px.
+  className="relative whitespace-nowrap before:absolute before:inset-x-0 before:-inset-y-2 before:content-[''] bg-lp-surface-container-lowest/80 backdrop-blur-md border border-outline-variant/65 text-on-surface inline-flex items-center justify-center px-3 sm:px-5 py-1.5 rounded-full text-xs font-semibold shadow-[0_2px_6px_rgba(0,0,0,0.25),inset_0_1px_0_rgba(255,255,255,0.5)]"
   href={getStartedHref(signupOpen)}
 >
         Get Started
@@ -236,14 +130,16 @@ export function LandingPage({
 <div className="text-left">
 
 <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-lp-surface-container-high border border-outline-variant text-xs font-semibold text-brand-800 mb-6 shadow-xs">
-<span className="w-2 h-2 rounded-full bg-brand-700 animate-pulse"></span> Track &middot; Document &middot; Comply
+<span className="w-2 h-2 rounded-full bg-brand-700 motion-safe:animate-pulse"></span> Track &middot; Document &middot; Comply
         </div>
 
 {/* One step down at every width. At the old size the two lines ate the top of the hero and
           pushed the buttons under the fold on a laptop, and the headline is a claim, not a
-          banner. The `leading` stays tight so the two lines still read as one thought. */}
-        <h1 className="text-2xl sm:text-3xl lg:text-3xl xl:text-4xl font-semibold tracking-tight text-on-surface font-lp-serif leading-[1.15] mb-4">
-          Getting funded is one thing.{" "}<br /><span className="text-primary italic font-lp-serif">Staying funded means staying ready.<span className="align-super text-[0.28em] not-italic">&trade;</span></span>
+          banner. The `leading` stays tight so the two lines still read as one thought.
+          `text-balance` and the no-break space keep "ready.™" from landing alone on a line
+          of its own when the second sentence wraps. */}
+        <h1 className="text-2xl sm:text-3xl lg:text-3xl xl:text-4xl font-semibold tracking-tight text-on-surface font-lp-serif leading-[1.15] text-balance mb-4">
+          Getting funded is one thing.{" "}<br /><span className="text-primary italic font-lp-serif">Staying funded means staying&nbsp;ready.<span className="align-super text-[0.28em] not-italic">&trade;</span></span>
 </h1>
 
 {/*
@@ -262,7 +158,7 @@ export function LandingPage({
 
 <div className="flex flex-wrap items-center gap-4">
 <a
-  className="glass-btn glass-btn-primary group inline-flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-semibold"
+  className="glass-btn glass-btn-primary group inline-flex items-center gap-2 min-h-11 px-5 py-2.5 rounded-full text-sm font-semibold"
   href={getStartedHref(signupOpen)}
   style={{ background: "color-mix(in srgb, var(--color-brand-900) 90%, transparent)" }}
 >
@@ -271,7 +167,7 @@ export function LandingPage({
               <svg className="w-3.5 h-3.5 -rotate-90" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6" strokeLinecap="round" strokeLinejoin="round" strokeWidth="3"></path></svg>
             </span>
           </a>
-<a className="glass-btn glass-btn-light px-5 py-2.5 rounded-full text-sm font-semibold" href="#pricing">
+<a className="glass-btn glass-btn-light inline-flex items-center min-h-11 px-5 py-2.5 rounded-full text-sm font-semibold" href="#pricing">
             See how it works
           </a>
 </div>
@@ -280,13 +176,16 @@ export function LandingPage({
 <div className="relative w-full overflow-hidden">
   <div className="relative w-full aspect-[3944/2564] overflow-hidden">
     
-    <div className="absolute z-10 overflow-hidden bg-lp-surface-container-lowest text-left select-none" style={{ top: "9.91%", left: "10.5%", right: "10.55%", bottom: "7.06%" }}>
+    {/* A picture of the app, drawn in markup so it stays sharp at every size. Hidden from
+        assistive tech: the laptop image's own alt text below describes it, and read out it
+        was a second navigation and a table of made-up figures in the middle of the hero. */}
+    <div aria-hidden="true" className="absolute z-10 overflow-hidden bg-lp-surface-container-lowest text-left select-none" style={{ top: "9.91%", left: "10.5%", right: "10.55%", bottom: "7.06%" }}>
       <div className="relative pt-3 px-3 pb-1.5 sm:pt-4 sm:px-4 sm:pb-2 lg:pt-5 lg:px-5 lg:pb-2.5 bg-lp-surface-container-lowest h-full flex flex-col select-none">
 
 
   <div className="border-b border-outline-variant/50 pb-1 sm:pb-1.5 mb-1.5 sm:mb-2">
     {/* The app's own nav: one dark pill, the current tab reversed out of it in white. */}
-    <nav className="flex items-center gap-0.5 overflow-hidden rounded-full bg-accent-dark px-1 py-0.5 text-[6px] sm:text-[7px] font-medium">
+    <div className="flex items-center gap-0.5 overflow-hidden rounded-full bg-accent-dark px-1 py-0.5 text-[6px] sm:text-[7px] font-medium">
         <span className="rounded-full px-1.5 py-0.5 whitespace-nowrap bg-lp-surface-container-lowest text-primary font-semibold">Dashboard</span>
         <span className="rounded-full px-1.5 py-0.5 whitespace-nowrap text-lp-surface-container-lowest/75">Add Expense</span>
         <span className="rounded-full px-1.5 py-0.5 whitespace-nowrap text-lp-surface-container-lowest/75">Expenses</span>
@@ -296,7 +195,7 @@ export function LandingPage({
         <span className="rounded-full px-1.5 py-0.5 whitespace-nowrap text-lp-surface-container-lowest/75">Contract Summary</span>
         <span className="rounded-full px-1.5 py-0.5 whitespace-nowrap text-lp-surface-container-lowest/75">Line Items</span>
         <span className="rounded-full px-1.5 py-0.5 whitespace-nowrap text-lp-surface-container-lowest/75">Settings</span>
-    </nav>
+    </div>
   </div>
 
   <div className="mb-1.5 sm:mb-2">
@@ -388,8 +287,15 @@ export function LandingPage({
       alt="The Stay Funded 360 dashboard on a laptop, showing the remaining balance, spending by month, and each budget line's opening and closing balance"
       src="/macbook-pro-14-front.png"
       fill
-      priority
-      sizes="(min-width: 1024px) 1024px, 100vw"
+      // The hero is the largest thing painted on arrival, so it is fetched first. Not
+      // `priority`, which Next 16 deprecates, nor `preload`, which its docs reserve for when
+      // neither of these is set.
+      loading="eager"
+      fetchPriority="high"
+      // The column it actually fills: half of the 7xl container from `lg`, the full width
+      // below. The old `1024px` at `lg` asked for twice the pixels the column shows, so every
+      // desktop downloaded the 2048w file for a picture drawn about 580px wide.
+      sizes="(min-width: 1280px) 584px, (min-width: 1024px) 45vw, 100vw"
       className="pointer-events-none z-20 select-none object-contain"
     />
   </div>
@@ -397,7 +303,7 @@ export function LandingPage({
 </div>
 
 <div className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-3 text-sm text-on-surface-variant">
-<div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-lp-surface-container border border-outline-variant/50 text-[11px] text-on-surface-variant">
+<div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-lp-surface-container border border-outline-variant/50 text-xs text-on-surface-variant">
 <span className="w-1.5 h-1.5 rounded-full bg-secondary"></span>
 <span className="">From award to audit, know where your funding stands. Field-tested with <strong className="text-on-surface font-semibold">Team Pursuit Global</strong> in Detroit.</span>
 </div>
@@ -438,11 +344,11 @@ export function LandingPage({
 <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
                 Staples Office Pack
               </span>
-<span className="font-semibold text-[10px] bg-tertiary-container text-tertiary px-2 py-0.5 rounded">Missing Proof of Pay</span>
+<span className="font-semibold text-xs bg-tertiary-container text-tertiary px-2 py-0.5 rounded">Missing Proof of Pay</span>
 </div>
-<div className="flex items-center justify-between text-xs p-2.5 rounded-lg bg-lp-surface-container-lowest/70 backdrop-blur-md border border-outline-variant/50 text-on-surface-variant">
+<div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-0.5 text-xs p-2.5 rounded-lg bg-lp-surface-container-lowest/70 backdrop-blur-md border border-outline-variant/50 text-on-surface-variant">
 <span className="">Youth Workshop Refreshments</span>
-<span className="text-[11px] text-on-surface-variant/70 italic">Unattached receipt PDF</span>
+<span className="text-xs text-on-surface-variant/70 italic">Unattached receipt PDF</span>
 </div>
 </div>
 </div>
@@ -461,14 +367,14 @@ export function LandingPage({
             </p>
 </div>
 <div className="glass-tile w-full bg-lp-surface-container/60 backdrop-blur-lg rounded-2xl p-4 border-2 border-primary/18 ring-1 ring-inset ring-white/25">
-<div className="flex justify-between items-center text-xs mb-2">
+<div className="flex flex-wrap justify-between items-center gap-x-2 gap-y-0.5 text-xs mb-2">
 <span className="font-semibold text-on-surface">Participant Support Line</span>
-<span className="font-semibold text-tertiary text-[11px]">104% Overcommitted</span>
+<span className="font-semibold text-tertiary text-xs">104% Overcommitted</span>
 </div>
 <div className="w-full bg-lp-surface-container-highest rounded-full h-2.5 overflow-hidden mb-2">
 <div className="bg-tertiary h-2.5 rounded-full" style={{ width: "100%" }}></div>
 </div>
-<p className="text-[11px] text-on-surface-variant">Discovered 22 days after spending occurred.</p>
+<p className="text-xs text-on-surface-variant">Discovered 22 days after spending occurred.</p>
 </div>
 </div>
 
@@ -486,15 +392,15 @@ export function LandingPage({
             </p>
 </div>
 <div className="glass-tile w-full bg-lp-surface-container/60 backdrop-blur-lg rounded-2xl p-4 flex flex-col gap-2 border-2 border-primary/18 ring-1 ring-inset ring-white/25">
-<div className="flex items-center justify-between text-xs">
+<div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-0.5 text-xs">
 <span className="text-on-surface-variant">Municipal Reviewer Portal</span>
 <span className="font-semibold text-tertiary">Status: REJECTED</span>
 </div>
-<div className="flex items-center justify-between text-xs">
+<div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-0.5 text-xs">
 <span className="text-on-surface-variant">Cover Sheet vs Ledger</span>
-<span className="font-semibold text-tertiary text-[11px]">Variance $180.00</span>
+<span className="font-semibold text-tertiary text-xs">Variance $180.00</span>
 </div>
-<div className="text-[11px] text-brand-900 bg-brand-100/75 backdrop-blur-md p-2 rounded-lg border border-brand-200/60 mt-1">
+<div className="text-xs text-brand-900 bg-brand-100/75 backdrop-blur-md p-2 rounded-lg border border-brand-200/60 mt-1">
               &quot;Filing returned. Contract reimbursement held pending resubmission.&quot;
             </div>
 </div>
@@ -574,7 +480,7 @@ export function LandingPage({
 <p className="text-sm sm:text-base text-on-surface-variant leading-relaxed mb-2">
               See funding, budgets, expenses, documentation, requirements, and readiness in one place.
             </p>
-<span className="text-[10px] font-mono text-secondary font-semibold uppercase tracking-wide">One place</span>
+<span className="text-xs font-mono text-secondary font-semibold uppercase tracking-wide">One place</span>
 </div>
 </div>
 </FlowStep>
@@ -590,7 +496,7 @@ export function LandingPage({
 <p className="text-sm sm:text-base text-on-surface-variant leading-relaxed mb-2">
               Identify missing documentation, incomplete records, approaching requirements, and items that need attention.
             </p>
-<span className="text-[10px] font-mono text-terracotta-700 font-semibold uppercase tracking-wide">Nothing missed</span>
+<span className="text-xs font-mono text-terracotta-700 font-semibold uppercase tracking-wide">Nothing missed</span>
 </div>
 </div>
 </FlowStep>
@@ -606,7 +512,7 @@ export function LandingPage({
 <p className="text-sm sm:text-base text-on-surface-variant leading-relaxed mb-2">
               Review your funding records before reconciliation, reporting, monitoring, or audit.
             </p>
-<span className="text-[10px] font-mono text-brand-800 font-semibold uppercase tracking-wide">Before it matters</span>
+<span className="text-xs font-mono text-brand-800 font-semibold uppercase tracking-wide">Before it matters</span>
 </div>
 </div>
 </FlowStep>
@@ -622,7 +528,7 @@ export function LandingPage({
 <p className="text-sm sm:text-base text-on-surface-variant leading-relaxed mb-2">
               Turn monthly expenses and documented program activity into an organized narrative of how funding supported the work.
             </p>
-<span className="text-[10px] font-mono text-secondary font-semibold uppercase tracking-wide">Numbers and narrative</span>
+<span className="text-xs font-mono text-secondary font-semibold uppercase tracking-wide">Numbers and narrative</span>
 </div>
 </div>
 </FlowStep>
@@ -637,7 +543,7 @@ export function LandingPage({
 <p className="text-sm sm:text-base text-on-surface-variant leading-relaxed mb-2">
               Follow the connection from funding to expense to documentation to reconciliation.
             </p>
-<span className="text-[10px] font-mono text-secondary font-semibold uppercase tracking-wide">End to end</span>
+<span className="text-xs font-mono text-secondary font-semibold uppercase tracking-wide">End to end</span>
 </div>
 </div>
 </FlowStep>
@@ -686,7 +592,7 @@ export function LandingPage({
 
 <div className="flex items-center justify-between border-b border-outline-variant/40 pb-5 mb-2">
 <div>
-<span className="text-[10px] font-mono uppercase tracking-widest text-on-surface-variant">Record #EXP-2026-084</span>
+<span className="text-xs font-mono uppercase tracking-widest text-on-surface-variant">Record #EXP-2026-084</span>
 <h3 className="text-lg sm:text-xl font-semibold text-on-surface font-lp-serif mt-0.5">Youth Mentorship Safe Passage Transit</h3>
 </div>
 <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-secondary-container text-[#002113] text-xs font-semibold border border-secondary/30 flex-shrink-0">
@@ -730,8 +636,8 @@ Receipt + Bank Proof
 </div>
 
 <div className="mt-5 p-3 rounded-xl bg-brand-50/70 backdrop-blur-md border border-brand-200/60 flex items-center justify-between text-xs">
-<span className="font-mono text-brand-900 font-semibold uppercase text-[10px]">Audit Seal</span>
-<span className="text-brand-950 font-mono font-medium text-[11px]">STAMPED • ZERO DRIFT</span>
+<span className="font-mono text-brand-900 font-semibold uppercase text-xs">Audit Seal</span>
+<span className="text-brand-950 font-mono font-medium text-xs">STAMPED • ZERO DRIFT</span>
 </div>
 </div>
 
@@ -792,7 +698,7 @@ Receipt + Bank Proof
 </div>
 
 <div className="glass-tile lg:col-span-7 bg-lp-surface-container-lowest/60 backdrop-blur-xl rounded-2xl p-6 border-2 border-primary/45 shadow-warm-glow ring-1 ring-inset ring-white/30">
-<div className="flex items-center justify-between pb-4 border-b border-outline-variant/40">
+<div className="flex flex-wrap items-center justify-between gap-2 pb-4 border-b border-outline-variant/40">
 <div>
 <span className="text-xs text-on-surface-variant font-medium">Current Grant Fiscal Year (Month 2 of 12)</span>
 <div className="text-2xl font-semibold text-on-surface font-lp-serif mt-0.5">$25,000.00 <span className="text-xs font-normal text-on-surface-variant font-lp-sans">spent of $500,000.00</span></div>
@@ -835,7 +741,7 @@ Receipt + Bank Proof
 <p className="text-xs text-on-surface-variant mb-4 leading-relaxed">
               Funding requirements get handled while the work is happening, not in the few days before a deadline lands.
           </p>
-<div className="bg-lp-surface-container/60 backdrop-blur-md rounded-xl p-3 border border-primary/15 text-[11px] font-mono text-on-surface-variant flex items-center justify-between">
+<div className="bg-lp-surface-container/60 backdrop-blur-md rounded-xl p-3 border border-primary/15 text-xs font-mono text-on-surface-variant flex items-center justify-between">
 <span className="">Handled as it happens</span>
 <span className="text-secondary font-semibold">In the moment</span>
 </div>
@@ -848,7 +754,7 @@ Receipt + Bank Proof
 <p className="text-xs text-on-surface-variant mb-4 leading-relaxed">
               Expenses arrive already documented, categorized, and connected to a funding source, so reconciliation confirms what is already there.
           </p>
-<div className="bg-lp-surface-container/60 backdrop-blur-md rounded-xl p-3 border border-primary/15 text-[11px] font-mono text-on-surface-variant flex items-center justify-between">
+<div className="bg-lp-surface-container/60 backdrop-blur-md rounded-xl p-3 border border-primary/15 text-xs font-mono text-on-surface-variant flex items-center justify-between">
 <span className="">Already documented</span>
 <span className="text-secondary font-semibold">Confirm, don&apos;t rebuild</span>
 </div>
@@ -861,7 +767,7 @@ Receipt + Bank Proof
 <p className="text-xs text-on-surface-variant mb-4 leading-relaxed">
               Records stay ready throughout the funding period, so a monitoring request or an audit isn&apos;t a scramble through old folders.
           </p>
-<div className="bg-lp-surface-container/60 backdrop-blur-md rounded-xl p-3 border border-primary/15 text-[11px] font-mono text-on-surface-variant flex items-center justify-between">
+<div className="bg-lp-surface-container/60 backdrop-blur-md rounded-xl p-3 border border-primary/15 text-xs font-mono text-on-surface-variant flex items-center justify-between">
 <span className="">Ready the whole time</span>
 <span className="text-secondary font-semibold">No scramble</span>
 </div>
@@ -874,7 +780,7 @@ Receipt + Bank Proof
 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
 <div className="max-w-4xl mx-auto text-center mb-16">
 <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-primary text-white text-xs font-semibold uppercase tracking-wider mb-4 shadow-sm">
-<span className="w-2 h-2 rounded-full bg-primary-fixed animate-ping"></span> Tier 2 Enhancement
+<span className="w-2 h-2 rounded-full bg-primary-fixed motion-safe:animate-ping"></span> Tier 2 Enhancement
         </div>
 <h2 className="text-3xl sm:text-4xl lg:text-5xl font-semibold tracking-tight text-on-surface font-lp-serif mb-4">
           Don&apos;t just track the money. Track the story behind it.
@@ -914,7 +820,7 @@ Receipt + Bank Proof
 </li>
 </ul>
 <div className="pt-2">
-<span className="text-xs text-primary font-semibold italic">Included in Reconciliation + AI ({planPriceLabel(prices.reconciliation_ai.month)}/month)</span>
+<span className="text-xs text-primary font-semibold italic">Included in {PLANS.reconciliationAi.name} ({planPrice("reconciliationAi")}/month)</span>
 </div>
 </div>
 
@@ -924,7 +830,7 @@ Receipt + Bank Proof
 <span className="w-2.5 h-2.5 rounded-full bg-secondary"></span>
 <span className="text-xs font-semibold text-on-surface uppercase tracking-wider font-mono">Generated Funder Narrative Memo</span>
 </div>
-<span className="text-[11px] font-mono text-primary font-semibold bg-primary-fixed/40 px-2.5 py-0.5 rounded-full">AI Output • Ready to Insert</span>
+<span className="text-xs font-mono text-primary font-semibold bg-primary-fixed/40 px-2.5 py-0.5 rounded-full">AI Output • Ready to Insert</span>
 </div>
 <div className="glass-tile bg-lp-surface-container-lowest/70 backdrop-blur-md rounded-xl p-4 sm:p-5 border-2 border-primary/15 ring-1 ring-inset ring-white/25 space-y-3 text-xs leading-relaxed text-on-surface">
 <p className="font-lp-serif italic text-primary-container text-sm">
@@ -936,7 +842,7 @@ Receipt + Bank Proof
 <p className="">
                 Expenditures totaled <strong>$25,000.00</strong> across three authorized categories: $15,000.00 in personnel wages for 4 dedicated outreach coordinators; $6,000.00 in supplies for workshop materials; and $4,000.00 in participant support and round-trip transport.
               </p>
-<div className="glass-tile p-2.5 rounded-lg bg-brand-50/70 backdrop-blur-md border border-brand-200/40 text-brand-950 text-[11px]">
+<div className="glass-tile p-2.5 rounded-lg bg-brand-50/70 backdrop-blur-md border border-brand-200/40 text-brand-950 text-xs">
 <strong>Variance Note:</strong> Participant transportation rose by 12% due to increased engagement at the west-side facility; total grant burn remains 4.8% below initial projection with zero unallowable costs.
               </div>
 </div>
@@ -1081,57 +987,8 @@ Receipt + Bank Proof
 <p className="text-base text-on-surface-variant">
           Allowable administrative expense under most municipal and federal grant budgets.
         </p>
-
-{/* Monthly/Yearly toggle: a pill group, keyboard-focusable, defaulting to Monthly. Card
-    amounts and the buttons below both read `billingInterval`, so the two stay in step. */}
-<div role="group" aria-label="Billing interval" className="inline-flex items-center gap-1 mt-6 p-1 rounded-full bg-lp-surface-container-high border border-outline-variant">
-{(["month", "year"] as const).map((option) => (
-<button
-  key={option}
-  type="button"
-  aria-pressed={billingInterval === option}
-  onClick={() => setBillingInterval(option)}
-  className={
-    billingInterval === option
-      ? "min-h-11 px-4 rounded-full text-sm font-semibold text-white glass-btn glass-btn-primary"
-      : "min-h-11 px-4 rounded-full text-sm font-semibold text-brand-800 hover:bg-lp-surface-container transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-  }
->
-  {option === "month" ? "Monthly" : "Yearly"}
-</button>
-))}
 </div>
-</div>
-<PlanCards
-  prices={prices}
-  interval={billingInterval}
-  actions={(plan) =>
-    plan === "reconciliation" ? (
-      <>
-        <a className={PLAN_BUTTON_LIGHT} href={getStartedHref(signupOpen, "reconciliation", billingInterval)}>
-          Get Started with Reconciliation
-        </a>
-        <a className={PLAN_BUTTON_LIGHT} href={DEMO_REQUEST_HREF}>
-          Book a demo
-        </a>
-      </>
-    ) : (
-      <>
-        <a
-          className={PLAN_BUTTON_PRIMARY}
-          href={getStartedHref(signupOpen, "reconciliation_ai", billingInterval)}
-          style={PLAN_BUTTON_PRIMARY_STYLE}
-        >
-          <span>Start with Reconciliation + AI</span>
-          <PlanButtonArrow />
-        </a>
-        <a className={PLAN_BUTTON_LIGHT} href={DEMO_REQUEST_HREF}>
-          Book a demo
-        </a>
-      </>
-    )
-  }
-/>
+<PricingPlans signupOpen={signupOpen} />
 </div>
 </Reveal>
 </section>
@@ -1142,7 +999,7 @@ Receipt + Bank Proof
     __html: JSON.stringify({
       "@context": "https://schema.org",
       "@type": "FAQPage",
-      mainEntity: faqs.map((faq) => ({
+      mainEntity: FAQS.map((faq) => ({
         "@type": "Question",
         name: faq.question,
         acceptedAnswer: {
@@ -1166,62 +1023,11 @@ Receipt + Bank Proof
           Straight answers for grant managers evaluating {APP_NAME} for their team.
         </p>
 </div>
-<div className="lg:col-span-8 flex flex-col gap-3">
-{faqs.map((faq, index) => {
-  const isOpen = openFaq === index;
-  return (
-    <div
-      key={faq.question}
-      className={
-        isOpen
-          ? "bg-lp-surface-container-lowest border border-primary/30 rounded-2xl shadow-warm-card px-6 py-5 transition-[background-color,border-color,box-shadow,transform] duration-300 ease-out"
-          : "bg-lp-surface-container-low rounded-2xl px-6 py-4 transition-[background-color,border-color,box-shadow,transform] duration-300 ease-out hover:bg-lp-surface-container hover:-translate-y-0.5"
-      }
-    >
-      <button
-        type="button"
-        className="w-full flex items-center justify-between gap-4 text-left cursor-pointer"
-        aria-expanded={isOpen}
-        onClick={() => setOpenFaq(isOpen ? -1 : index)}
-      >
-        <span
-          className={
-            isOpen
-              ? "text-base sm:text-lg font-semibold text-on-surface font-lp-serif transition-colors duration-300"
-              : "text-sm sm:text-base font-medium text-on-surface-variant font-lp-serif transition-colors duration-300"
-          }
-        >
-          {faq.question}
-        </span>
-        <span
-          className={
-            isOpen
-              ? "flex-shrink-0 w-7 h-7 rounded-full bg-primary text-white flex items-center justify-center rotate-45 transition-transform transition-colors duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]"
-              : "flex-shrink-0 w-7 h-7 rounded-full bg-lp-surface-container text-on-surface-variant flex items-center justify-center rotate-0 transition-transform transition-colors duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]"
-          }
-        >
-          <svg viewBox="0 0 12 12" aria-hidden="true" className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M6 1v10M1 6h10" /></svg>
-        </span>
-      </button>
-      <div
-        className={
-          isOpen
-            ? "grid grid-rows-[1fr] opacity-100 transition-[grid-template-rows,opacity] duration-300 ease-out"
-            : "grid grid-rows-[0fr] opacity-0 transition-[grid-template-rows,opacity] duration-300 ease-out"
-        }
-      >
-        <p className="text-sm text-on-surface-variant leading-relaxed overflow-hidden min-h-0 pt-3">
-          {faq.answer}
-        </p>
-      </div>
-    </div>
-  );
-})}
-</div>
+<FaqList faqs={FAQS} />
 </div>
 </div>
 </section>
-<section className="relative py-20 bg-[#201a15] text-white overflow-hidden" data-purpose="cta-banner" id="schedule-walkthrough">
+<section className="surface-dark relative py-20 bg-[#201a15] text-white overflow-hidden" data-purpose="cta-banner" id="schedule-walkthrough">
 
 <div className="absolute -top-24 -left-24 w-96 h-96 bg-brand-600/30 rounded-full blur-3xl pointer-events-none"></div>
 <div className="absolute -bottom-24 -right-24 w-96 h-96 bg-terracotta-500/25 rounded-full blur-3xl pointer-events-none"></div>
@@ -1248,7 +1054,7 @@ Receipt + Bank Proof
 </div>
 </section>
 </main>
-<footer className="bg-[#201a15] py-12 text-[#edbca5]/80 text-xs">
+<footer className="surface-dark bg-[#201a15] py-12 text-[#edbca5]/80 text-xs">
 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col lg:flex-row items-center justify-between gap-4 lg:gap-6">
 <div className="flex items-center gap-3 flex-shrink-0">
 {/* Same white capsule as the nav: the brown logo would vanish on the dark footer. */}
@@ -1259,11 +1065,11 @@ Receipt + Bank Proof
 <span className="hidden 2xl:inline text-[#edbca5]/80 whitespace-nowrap">• Funding Accountability &amp; Readiness Platform</span>
 </div>
 <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2 lg:flex-nowrap lg:whitespace-nowrap">
-<a className="hover:text-white transition-colors" href="#problem">The Problem</a>
-<a className="hover:text-white transition-colors" href="#system-features">One System</a>
-<a className="hover:text-white transition-colors" href="#ai-narratives">The Story</a>
-<a className="hover:text-white transition-colors" href="#pricing">Pricing</a>
-<a className="hover:text-white transition-colors" href="#faq">FAQ</a>
+<a className="inline-flex items-center min-h-11 lg:min-h-0 hover:text-white transition-colors" href="#problem">The Problem</a>
+<a className="inline-flex items-center min-h-11 lg:min-h-0 hover:text-white transition-colors" href="#system-features">One System</a>
+<a className="inline-flex items-center min-h-11 lg:min-h-0 hover:text-white transition-colors" href="#ai-narratives">The Story</a>
+<a className="inline-flex items-center min-h-11 lg:min-h-0 hover:text-white transition-colors" href="#pricing">Pricing</a>
+<a className="inline-flex items-center min-h-11 lg:min-h-0 hover:text-white transition-colors" href="#faq">FAQ</a>
 </div>
 <div className="text-[#edbca5]/80 flex-shrink-0 text-center md:text-right">© 2026 {APP_NAME}. Built for frontline teams. All rights reserved.</div>
 </div>

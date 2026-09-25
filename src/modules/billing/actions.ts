@@ -1,7 +1,7 @@
 "use server";
 
 /**
- * Thin server-action adapters over `billing.ts`, which holds every rule (Phase 15 §4.1).
+ * Thin server-action adapters over `billing.ts`, which holds every rule (Phase 16 §4.1).
  *
  * Every action: `actionSession()` (expired → return it), `billingEnabled()` off →
  * `billingNotEnabled`, non-admin → `billingNotAdmin`, then the per-user rate limit, then the

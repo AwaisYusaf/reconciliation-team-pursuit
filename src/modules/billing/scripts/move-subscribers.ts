@@ -1,5 +1,5 @@
 /**
- * `npm run billing:move-subscribers` (Phase 15 P21, O4, §11 step 8). Moves subscribers whose
+ * `npm run billing:move-subscribers` (Phase 16 P21, O4, §11 step 8). Moves subscribers whose
  * price no longer matches `pricing.ts` onto the active price, at their next renewal, via a
  * subscription schedule phase tagged `metadata.reason=price_move`. A queued downgrade is
  * rewritten in place, kept as a downgrade. Dry run by default; nothing in Stripe changes

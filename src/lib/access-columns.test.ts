@@ -1,5 +1,5 @@
 /**
- * PHASE-15 U-20 (AC-F1): `orgEntitlement` is the only place billing state becomes a yes or no.
+ * PHASE-16 U-20 (AC-F1): `orgEntitlement` is the only place billing state becomes a yes or no.
  *
  * Source-reading, like `guard-coverage.test.ts`: every non-test file is parsed and any reference
  * to the columns that decide access (`subscription_status`, `stripe_status`, `complimentary`,

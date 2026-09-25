@@ -21,7 +21,7 @@ export type ActionSession = SessionContext | { expired: ActionResult<never> };
  * An expired session is a normal outcome — the cookie has a 30-day sliding window and the
  * tab may have been open longer — so it is answered with a message rather than an exception.
  *
- * This does **not** check billing (Phase 15): it is the base every action, paid or not,
+ * This does **not** check billing (Phase 16): it is the base every action, paid or not,
  * eventually goes through. Use it directly only for an allow-listed entry (§4.7); everything
  * else calls the guarded `actionSession()` below.
  */
@@ -35,7 +35,7 @@ export async function actionSessionAnyPlan(): Promise<ActionSession> {
 }
 
 /**
- * `actionSessionAnyPlan()`, refused for an organization without paid access (Phase 15, C6).
+ * `actionSessionAnyPlan()`, refused for an organization without paid access (Phase 16, C6).
  *
  * The refusal reuses the `expired` key rather than a new one: about 70 call sites across the
  * app check `"expired" in session`, and giving unpaid orgs their own key would mean editing
@@ -54,7 +54,7 @@ export const FORBIDDEN = "You do not have permission to do that.";
 export type AdminSession = SessionContext | { denied: ActionResult<never> };
 
 /**
- * Admin-only variant of `actionSessionAnyPlan()` — no billing check (Phase 15 §4.7 allow-list).
+ * Admin-only variant of `actionSessionAnyPlan()` — no billing check (Phase 16 §4.7 allow-list).
  *
  * A manager reaching a user-management action is answered with a typed failure, not a thrown
  * error: server actions are directly invocable, so this is the real enforcement point and it
@@ -71,7 +71,7 @@ export async function requireAdminAnyPlan(): Promise<AdminSession> {
 }
 
 /**
- * `requireAdminAnyPlan()`, also refused for an organization without paid access (Phase 15). The
+ * `requireAdminAnyPlan()`, also refused for an organization without paid access (Phase 16). The
  * plan check runs first: an unpaid manager and an unpaid admin see the same billing message,
  * rather than the admin-only one that would otherwise leak nothing but is still the wrong reason.
  */

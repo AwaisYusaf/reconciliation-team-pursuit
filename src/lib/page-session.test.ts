@@ -1,5 +1,5 @@
 /**
- * PHASE-15 U-17 (unit): `pageSession()` and `planPageSession()` (§4.7).
+ * PHASE-16 U-17 (unit): `pageSession()` and `planPageSession()` (§4.7).
  *
  * `getSession()` is mocked so every branch — signed out, unpaid, paid, and a session built
  * without an `entitlement` field at all (the shape most test fixtures elsewhere use) — is

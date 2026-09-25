@@ -53,6 +53,12 @@ export const LIMITS = {
    * from the app. It remains as a backstop against a script.
    */
   presign: { limit: 400, windowMs: 60 * 1000 },
+  /**
+   * Profile photo uploads, per person (D-119). A photo is changed a handful of times a year; 30
+   * an hour is room for someone trying several crops while still stopping a script from turning
+   * the route into a decode-and-store loop.
+   */
+  avatarUpload: { limit: 30, windowMs: 60 * 60 * 1000 },
   /** Document generation, per organisation. */
   generate: { limit: 6, windowMs: 60 * 1000 },
   /**
@@ -130,7 +136,7 @@ export const LIMITS = {
    * sign-in uses, the same reasoning as `userProvisioning`.
    */
   sharePasswordSet: { limit: 20, windowMs: 60 * 60 * 1000 },
-  /** Billing actions (PHASE-15), per user: enough for normal use, bounds a scripted Stripe hammer. */
+  /** Billing actions (PHASE-16), per user: enough for normal use, bounds a scripted Stripe hammer. */
   billing: { limit: 20, windowMs: 60 * 1000 },
 } as const;
 

@@ -41,7 +41,7 @@ describe("complimentaryState (Phase 9 §7 Q6)", () => {
   });
 });
 
-describe("isComplimentaryNow (Phase 15, P10)", () => {
+describe("isComplimentaryNow (Phase 16, P10)", () => {
   const today = "2027-01-01";
 
   it("is true only while complimentaryState is 'active'", () => {

@@ -25,7 +25,7 @@ vi.mock("@/src/services/auth/session", () => ({
 config({ path: ".env.local", quiet: true });
 
 import { eq } from "drizzle-orm";
-import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 const hasDatabase = Boolean(process.env.DATABASE_URL);
 
@@ -39,6 +39,10 @@ describe.skipIf(!hasDatabase)("manager access actions (integration)", async () =
     "@/src/services/auth/tokens"
   );
   const { resolveSession } = await import("@/src/services/auth/store");
+  const { storage } = await import("@/src/services/storage/driver");
+  const { avatarKey } = await import("@/src/services/storage/keys");
+  const { rm } = await import("node:fs/promises");
+  const path = await import("node:path");
   const {
     revokeUserAccessAction,
     reinstateUserAccessAction,
@@ -125,9 +129,25 @@ describe.skipIf(!hasDatabase)("manager access actions (integration)", async () =
     adminBId = await insertUser(orgBId, "admin");
   });
 
+  afterAll(async () => {
+    for (const id of [orgAId, orgBId]) {
+      if (!id) continue;
+      await db.delete(organizations).where(eq(organizations.id, id));
+      await rm(path.join(process.cwd(), ".storage", "org", id), { recursive: true, force: true });
+    }
+  });
+
   beforeEach(() => {
     signedInAs(adminAId, orgAId, "admin");
   });
+
+  /** A stored photo on the person's row, as the upload route leaves it. */
+  async function givePhoto(userId: string): Promise<string> {
+    const key = avatarKey({ orgId: orgAId, userId, uploadId: crypto.randomUUID(), mimeType: "image/jpeg" });
+    await storage().put({ key, body: Buffer.from("photo"), contentType: "image/jpeg" });
+    await db.update(users).set({ avatarKey: key, avatarBytes: 5 }).where(eq(users.id, userId));
+    return key;
+  }
 
   describe("revoking", () => {
     it("ends every live session the moment it is revoked, and only that person's", async () => {
@@ -242,6 +262,25 @@ describe.skipIf(!hasDatabase)("manager access actions (integration)", async () =
       expect(row).toBeUndefined();
       // `sessions` cascades from the user, so nothing is left behind pointing at a gone row.
       expect(await sessionCountFor(target)).toBe(0);
+    });
+
+    it("removes the person's photo from storage with the account (D-119)", async () => {
+      const target = await insertUser(orgAId, "manager");
+      const key = await givePhoto(target);
+
+      expect(await deleteUserAccountAction(target)).toEqual({ ok: true });
+
+      // The row was the only thing that could ever find this object again.
+      await expect(storage().get(key)).rejects.toThrow();
+    });
+
+    it("keeps the photo when the delete is refused", async () => {
+      const target = await insertUser(orgAId, "manager");
+      const key = await givePhoto(target);
+      await db.insert(expenseAuditEvents).values({ orgId: orgAId, actorUserId: target, action: "created" });
+
+      expect((await deleteUserAccountAction(target)).ok).toBe(false);
+      await expect(storage().get(key)).resolves.toBeInstanceOf(Buffer);
     });
 
     it("refuses one who has touched an expense, in words rather than a database error", async () => {

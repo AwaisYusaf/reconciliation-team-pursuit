@@ -40,7 +40,7 @@ import { UsersManager, type OrgUser } from "./users/users-manager";
 
 /** One entry per sidebar item — a settings screen used to be a long scroll of cards; this is
  *  the same content, just one section shown at a time instead of stacked. The list and the
- *  `?section=` parsing live in `src/modules/settings/sections.ts` (Phase 15 P19). */
+ *  `?section=` parsing live in `src/modules/settings/sections.ts` (Phase 16 P19). */
 const SECTION_LABELS: Record<SectionId, string> = {
   organization: "Organization",
   fundingSources: "Funding sources",
@@ -202,9 +202,9 @@ export function SettingsSections({
   /** Null when the organisation's plan doesn't offer this feature (Phase 10, D-105) — the
    *  switch is hidden entirely, not shown disabled. */
   readAmounts: { enabled: boolean } | null;
-  /** Settings → Plan & billing (Phase 15 §4.3), loaded on the server for this org only. */
+  /** Settings → Plan & billing (Phase 16 §4.3), loaded on the server for this org only. */
   planBilling: PlanBillingData;
-  /** From `?section=` (Phase 15 P19), already checked against the known ids on the server. */
+  /** From `?section=` (Phase 16 P19), already checked against the known ids on the server. */
   initialSection: SectionId;
   /** The active-funding-source limit (Phase 6 core, C8). Null means unlimited, which is
    *  always the case while billing is off. */

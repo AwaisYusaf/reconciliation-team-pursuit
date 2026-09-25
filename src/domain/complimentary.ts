@@ -1,6 +1,6 @@
 /**
  * Whether an organisation's complimentary access is off, active or ended (Phase 9 §7 Q6).
- * Moved here from `src/modules/admin/directory.ts` (Phase 15, P10) so `orgEntitlement`
+ * Moved here from `src/modules/admin/directory.ts` (Phase 16, P10) so `orgEntitlement`
  * (`src/modules/billing/entitlement.ts`) can share it without importing the admin module.
  */
 import type { IsoDate } from "@/src/domain/dates";

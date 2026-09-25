@@ -1,5 +1,5 @@
 /**
- * U-14: every Plan & billing state (Phase 15 §4.3), as the pure view, plus a source check that
+ * U-14: every Plan & billing state (Phase 16 §4.3), as the pure view, plus a source check that
  * the section renders each state's text and actions.
  */
 import { readFileSync } from "node:fs";

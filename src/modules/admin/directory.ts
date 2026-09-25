@@ -73,7 +73,7 @@ export type AccountEvent = {
   after: { plan: OrgPlan; status: SubscriptionStatus; complimentaryUntil: IsoDate | null };
   actorName: string | null;
   actorEmail: string | null;
-  /** Written by Stripe's sync, not a staff action (Phase 15 P15). */
+  /** Written by Stripe's sync, not a staff action (Phase 16 P15). */
   viaStripe?: boolean;
 };
 
@@ -111,7 +111,7 @@ const intervalWord = (interval: string | null) =>
   interval === "month" ? "monthly" : interval === "year" ? "yearly" : (interval ?? "");
 
 /**
- * The Billing card on the org page (Phase 15 §4.6), or `null` when Stripe has never seen this
+ * The Billing card on the org page (Phase 16 §4.6), or `null` when Stripe has never seen this
  * org. Reads our copy (written by `syncOrgBilling`) plus the latest paid invoice; the Stripe link
  * is for anything more.
  */

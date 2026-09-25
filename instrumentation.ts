@@ -12,7 +12,7 @@
  * the fallback session secret is that the app runs with no configuration at all.
  *
  * The billing check below runs before that early return, and before the production check too
- * (Phase 15, P25): `BILLING_ENABLED` can be flipped on in development, and a broken Stripe key
+ * (Phase 16, P25): `BILLING_ENABLED` can be flipped on in development, and a broken Stripe key
  * there must fail exactly the same way it would in production.
  */
 

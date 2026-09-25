@@ -1,4 +1,4 @@
-// U-7/U-9 (Phase 15 §3, §8.1): `copyOf` and `currentSubscription` are pure — no DB, no Stripe
+// U-7/U-9 (Phase 16 §3, §8.1): `copyOf` and `currentSubscription` are pure — no DB, no Stripe
 // call — so they're tested with minimal hand-built fake `Stripe.Subscription` objects, cast
 // through `as unknown as Stripe.Subscription` the way the task brief specifies.
 import type Stripe from "stripe";

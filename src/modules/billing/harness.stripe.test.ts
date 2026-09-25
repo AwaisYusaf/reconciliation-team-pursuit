@@ -1,5 +1,5 @@
 /**
- * Proves the Stripe sandbox suite can actually reach Stripe (Phase 15 §8.3): a pinned SDK
+ * Proves the Stripe sandbox suite can actually reach Stripe (Phase 16 §8.3): a pinned SDK
  * client can retrieve the sandbox balance, and it is genuinely test mode. Every later
  * `*.stripe.test.ts` file in Phases 2-3 builds on the same client.
  *

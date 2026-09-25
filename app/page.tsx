@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { connection } from "next/server";
 
 import { LandingPage } from "@/src/modules/landing/landing-page";
+import { type PlanKey, PLANS } from "@/src/modules/landing/plans";
 import { APP_NAME } from "@/src/domain/strings";
 import { PRICES_CENTS } from "@/src/modules/billing/pricing";
 import { signupEnabled } from "@/src/modules/auth/config";
@@ -32,12 +33,15 @@ export const metadata: Metadata = {
     siteName: APP_NAME,
     type: "website",
     locale: "en_US",
+    // A real 1200x630 render of the page's own first screen (64 KB). The laptop PNG this used
+    // to name is 3944x2564, 4.5 MB and transparent, so previews either timed out or showed it
+    // on black; its declared 1200x780 was not its size either.
     images: [
       {
-        url: "/macbook-pro-14-front.png",
+        url: "/og-image.jpg",
         width: 1200,
-        height: 780,
-        alt: `${APP_NAME} dashboard shown on a laptop screen`,
+        height: 630,
+        alt: `The ${APP_NAME} home page: the headline beside the dashboard on a laptop screen`,
       },
     ],
   },
@@ -45,7 +49,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title,
     description,
-    images: ["/macbook-pro-14-front.png"],
+    images: ["/og-image.jpg"],
   },
 };
 
@@ -59,25 +63,43 @@ const organizationSchema = {
 };
 
 // The two plans are stated in full on the page, so they belong in structured data too: this is
-// the shape search and answer engines read a price out of. Prices come from PRICES_CENTS
-// (src/modules/billing/pricing.ts) — the only place a price literal lives (U-19) — so this and
-// the pricing section in landing-page.tsx can never disagree about the amount, only the wording.
-const OFFER_COPY: Record<
-  keyof typeof PRICES_CENTS,
-  { name: string; category: string; description: string }
-> = {
-  reconciliation: {
-    name: "Reconciliation",
-    category: "Single funding source",
-    description: "Full core ledger and packet generation for one municipal or state grant contract.",
-  },
-  reconciliation_ai: {
-    name: "Reconciliation + AI",
-    category: "Multiple funding sources",
-    description:
-      "Everything in Reconciliation, plus multiple contracts and the AI monthly funding and program summary.",
-  },
-};
+// the shape search and answer engines read a price out of. Names and amounts come from the same
+// `PLANS` the pricing cards print, so the two cannot disagree.
+//
+// The price alone read as a one-off payment. `UnitPriceSpecification` with `MON` (UN/CEFACT's code
+// for a month) is how schema.org says "per month", which is what the page says; the yearly
+// price the page's toggle shows is a second specification, `ANN` for a year. Both amounts come
+// from PRICES_CENTS, the one place a price is written (U-19).
+const CENTS_KEY = { reconciliation: "reconciliation", reconciliationAi: "reconciliation_ai" } as const;
+
+function planOffer(plan: PlanKey, category: string, description: string) {
+  const price = String(PLANS[plan].monthlyUsd);
+  const yearly = String(PRICES_CENTS[CENTS_KEY[plan]].year / 100);
+  return {
+    "@type": "Offer",
+    name: PLANS[plan].name,
+    price,
+    priceCurrency: "USD",
+    priceSpecification: [
+      {
+        "@type": "UnitPriceSpecification",
+        price,
+        priceCurrency: "USD",
+        unitCode: "MON",
+        referenceQuantity: { "@type": "QuantitativeValue", value: 1, unitCode: "MON" },
+      },
+      {
+        "@type": "UnitPriceSpecification",
+        price: yearly,
+        priceCurrency: "USD",
+        unitCode: "ANN",
+        referenceQuantity: { "@type": "QuantitativeValue", value: 1, unitCode: "ANN" },
+      },
+    ],
+    category,
+    description,
+  };
+}
 
 const softwareSchema = {
   "@context": "https://schema.org",
@@ -88,20 +110,18 @@ const softwareSchema = {
   operatingSystem: "Web browser",
   url: siteUrl,
   description,
-  offers: Object.entries(PRICES_CENTS).map(([plan, prices]) => {
-    const monthly = (prices.month / 100).toFixed(2);
-    const yearly = (prices.year / 100).toFixed(2);
-    return {
-      "@type": "Offer",
-      ...OFFER_COPY[plan as keyof typeof PRICES_CENTS],
-      price: monthly,
-      priceCurrency: "USD",
-      priceSpecification: [
-        { "@type": "UnitPriceSpecification", price: monthly, priceCurrency: "USD", billingDuration: "P1M", unitCode: "MON" },
-        { "@type": "UnitPriceSpecification", price: yearly, priceCurrency: "USD", billingDuration: "P1Y", unitCode: "ANN" },
-      ],
-    };
-  }),
+  offers: [
+    planOffer(
+      "reconciliation",
+      "Single funding source",
+      "Full core ledger and packet generation for one municipal or state grant contract.",
+    ),
+    planOffer(
+      "reconciliationAi",
+      "Multiple funding sources",
+      `Everything in ${PLANS.reconciliation.name}, plus multiple contracts and the AI monthly funding and program summary.`,
+    ),
+  ],
 };
 
 // Scoped here rather than the root layout: /r and /a are not marketing pages and should not
@@ -125,7 +145,7 @@ export default async function Home() {
           __html: JSON.stringify(softwareSchema).replace(/</g, "\\u003c"),
         }}
       />
-      <LandingPage prices={PRICES_CENTS} signupOpen={signupEnabled()} />
+      <LandingPage signupOpen={signupEnabled()} />
     </div>
   );
 }

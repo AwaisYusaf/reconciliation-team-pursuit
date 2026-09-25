@@ -752,7 +752,7 @@ export const UI = {
   /** Wording to review: past the per-address open limit (`shareOpen`). */
   shareTooManyOpens: "Too many files opened in a short time. Please wait a few minutes and try again.",
 
-  // PHASE-15 Track A (billing actions)
+  // PHASE-16 Track A (billing actions)
   billingNotEnabled: "Plan and billing will be available here soon.",
   billingNotAdmin: "Only an admin can change the plan or billing.",
   billingComplimentaryRefused: "Your organization has complimentary access, so there's nothing to pay.",
@@ -773,7 +773,7 @@ export const UI = {
   staffStripeManaged: "Billing for this organization is managed in Stripe.",
   billingRateLimited: "Too many billing requests. Wait a minute and try again.",
 
-  // PHASE-15 Track B (no free use)
+  // PHASE-16 Track B (no free use)
   billingChooseFor: (org: string) => `Choose a plan for ${org}`,
   billingChooseNew: "Choose a plan to get started.",
   billingEnded: "Your plan has ended. Your records are safe and come back as soon as you choose a plan.",
@@ -790,7 +790,7 @@ export const UI = {
   billingPerMonth: "/month",
   billingPerYear: "/year",
 
-  // PHASE-15 Phase 5 (Plan & billing section, banners, Plus pill)
+  // PHASE-16 Phase 5 (Plan & billing section, banners, Plus pill)
   billingSectionTitle: "Plan & billing",
   billingComplimentary: (plan: string) => `Your organization has complimentary access to ${plan}.`,
   billingComplimentaryUntil: (plan: string, date: string) =>
@@ -916,7 +916,7 @@ export const UI = {
   staffCompCancelAtEnd: "Cancel the paid plan at the end of the paid period",
   staffCompCancelRequired: "This organization pays for a plan. Choose whether to cancel it now or at the end of the paid period.",
 
-  // PHASE-15 Track C (landing, funding-source limit)
+  // PHASE-16 Track C (landing, funding-source limit)
   fundingSourceLimitReached:
     "Reconciliation includes one active funding source. To add more, try Plus.",
   fundingSourceLimitManager:

@@ -14,7 +14,7 @@ import { PRICES_CENTS } from "@/src/modules/billing/pricing";
 import { LandingPage } from "@/src/modules/landing/landing-page";
 
 function render(signupOpen: boolean): string {
-  return renderToStaticMarkup(createElement(LandingPage, { prices: PRICES_CENTS, signupOpen }));
+  return renderToStaticMarkup(createElement(LandingPage, { signupOpen }));
 }
 
 describe("LandingPage render (signupOpen true)", () => {

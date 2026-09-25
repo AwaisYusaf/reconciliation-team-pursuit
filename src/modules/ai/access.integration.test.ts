@@ -1,6 +1,6 @@
 /**
  * `summariesAccessForOrg`/`readAmountsAllowedForOrg`/`aiAllowedForOrg` against real Postgres
- * (Phase 15, I-4, I-5, §4.2). These three loaders read the billing columns fresh and gate on
+ * (Phase 16, I-4, I-5, §4.2). These three loaders read the billing columns fresh and gate on
  * `orgEntitlement`, unlike `access.test.ts`'s pure combinators — that file still covers
  * `canReadAmounts`/`canUseSummaries`/`canWriteSummaries` alone.
  *
@@ -13,7 +13,7 @@ config({ path: ".env.local", quiet: true });
 
 const hasDatabase = Boolean(process.env.DATABASE_URL);
 
-describe.skipIf(!hasDatabase)("AI access loaders (integration, Phase 15)", async () => {
+describe.skipIf(!hasDatabase)("AI access loaders (integration, Phase 16)", async () => {
   const { eq } = await import("drizzle-orm");
   const { db } = await import("@/src/db");
   const { organizations } = await import("@/src/db/schema");

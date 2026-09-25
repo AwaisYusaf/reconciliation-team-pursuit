@@ -46,7 +46,7 @@ export type OrgDirectoryRow = OrgAccountFields & {
   lastSignInAt: Date | null;
 };
 
-/** The org page also shows our copy of Stripe's billing state (Phase 15 §4.6). */
+/** The org page also shows our copy of Stripe's billing state (Phase 16 §4.6). */
 export type OrgAccountRow = OrgAccountFields & {
   stripeCustomerId: string | null;
   stripeLivemode: boolean | null;

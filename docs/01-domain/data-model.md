@@ -39,11 +39,13 @@ Multi-user per org (D-85). Org creation provisions one `admin`; admins create `m
 | id | uuid PK | |
 | org_id | uuid FK | |
 | name | text null | Display name for "who did this" (D-89). Null for an account that predates this column; falls back to email at render (`userDisplay`) rather than a guess |
-| avatar_key | text null | Storage key of the profile photo, null when none is set (D-117). Carries a uuid rather than being derived from the user id, so replacing a photo writes a new object and a new URL instead of serving the old picture out of the browser cache. Under the same `org/{orgId}/…` prefix as every other object, so `keyBelongsToOrg` guards it unchanged. **Not counted by `orgStorageBytes`** — it has no size column and there is at most one small square per user, so the 5 GB cap does not see it |
+| avatar_key | text null | Storage key of the profile photo, null when none is set (D-117). Carries a uuid rather than being derived from the user id, so replacing a photo writes a new object and a new URL instead of serving the old picture out of the browser cache. Under the same `org/{orgId}/…` prefix as every other object, so `keyBelongsToOrg` guards it unchanged. Always a `.jpg`: the upload is decoded and re-encoded (`normaliseAvatar`, D-119), so older `.png`/`.webp` keys exist only from before that |
+| avatar_bytes | integer, default 0 | Stored size of that photo, 0 when none is set (migration `0039`, D-119). Counted by `orgStorageBytes` and named by `objectStillReferenced`, so the 5 GB cap, the staff usage figure and the shared-object delete guard all see profile photos. Photos stored before `0039` read 0 until they are next replaced |
 | email | text, unique index on `lower(email)` | Login identity. Postgres has no `citext` extension here; the case-insensitive uniqueness is the functional index `users_email_lower_uq` |
 | password_hash | text | argon2id; password minimum 12 chars |
 | role | user_role enum | `admin` \| `manager`. No column default — a forgotten role is a type error, not a silent admin (D-85) |
 | last_sign_in_at | timestamptz null | Written from ship date on (Phase 9); null on every account that predates it |
+| deactivated_at | timestamptz null | Set when an admin revokes a manager's access, null while the account is active (migration `0038`, D-120). Revoking deletes the person's sessions in the same transaction, and `resolveSession` filters on this column too, so no cookie made before or after keeps working. Sign-in refuses a revoked account only after the password is checked, so the form never reveals whether an address still has access. Reinstating clears it; the account keeps its own history rather than returning as a new person |
 
 ### sessions (custom auth — D-06, architecture §Auth)
 | Field | Type | Notes |
@@ -206,7 +208,10 @@ it describes is hard-deleted defeats its own purpose. `permanentlyDeleteExpenseA
 `permanently_deleted` event before deleting the expense, so actor/action/timestamp outlive the row.
 Indexed `(expense_id, created_at)` for the per-expense batched lookup, and `(org_id, created_at)`
 (D-88) for `loadOrgAuditHistory`'s org-wide, paginated read — the first index doesn't help a
-query with no `expense_id` filter.
+query with no `expense_id` filter. And `(actor_user_id)` (migration `0040`) for "has this person ever acted on
+an expense?": the Users page asks it per row and account delete asks it first (`hasAuditHistory`,
+an `exists` that stops at the first row), and Postgres asks it again on every user delete to
+enforce this foreign key.
 
 `before_data`/`after_data` (D-87) hold the same field set `toRow()` builds in `actions.ts` —
 name, lineItemId, paymentSource, month, date, description, subtotalCents, taxCents, feesCents,

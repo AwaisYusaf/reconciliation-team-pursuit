@@ -1,7 +1,7 @@
 import "server-only";
 
 /**
- * The Stripe client and the small Stripe-shaped helpers the sync and the actions share (Phase 15
+ * The Stripe client and the small Stripe-shaped helpers the sync and the actions share (Phase 16
  * §4.1, ported from the reference build's `lib/stripe.ts`).
  *
  * The client is built on first use, never at import: with `BILLING_ENABLED` off the app starts

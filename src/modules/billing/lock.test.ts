@@ -1,4 +1,4 @@
-// U-6/P12 sibling: `withLock` itself (Phase 15 §4.1). Pure, no I/O.
+// U-6/P12 sibling: `withLock` itself (Phase 16 §4.1). Pure, no I/O.
 import { describe, expect, it } from "vitest";
 
 import { withLock } from "./lock";

@@ -1,5 +1,5 @@
 /**
- * Stripe webhook handling, framework-free so it is unit-tested without a server (Phase 15 §4.1,
+ * Stripe webhook handling, framework-free so it is unit-tested without a server (Phase 16 §4.1,
  * U-6). Ported from the reference build's `lib/webhook.ts`. The route
  * (`app/api/stripe/webhook/route.ts`) only reads the body and passes the pieces in.
  */

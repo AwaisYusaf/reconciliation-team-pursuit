@@ -1,5 +1,5 @@
 /**
- * Unit checks on migration 0039 (Phase 15, §3): the Stripe billing columns. No database —
+ * Unit checks on migration 0041 (Phase 16, §3): the Stripe billing columns. No database —
  * this only reads the SQL file and the schema's enum exports, in the style of
  * `src/db/migration-0031.test.ts`.
  *
@@ -14,19 +14,30 @@ import { describe, expect, it } from "vitest";
 
 import * as schema from "./schema";
 
-const sql = readFileSync(path.join(__dirname, "..", "..", "drizzle", "0039_stripe_billing.sql"), "utf8");
+const sql = readFileSync(path.join(__dirname, "..", "..", "drizzle", "0041_stripe_billing.sql"), "utf8");
 const statements = sql
   .split("--> statement-breakpoint")
-  .map((s) => s.trim())
+  .map((s) =>
+    s
+      .split(/\r?\n/)
+      .filter((line) => !line.trim().startsWith("--"))
+      .join("\n")
+      .trim(),
+  )
   .filter(Boolean);
+const LOCK_TIMEOUT = /^SET LOCAL lock_timeout = '\d+s';$/;
 
-describe("migration 0039: Stripe billing columns", () => {
+describe("migration 0041: Stripe billing columns", () => {
   it("has at least one statement", () => {
     expect(statements.length).toBeGreaterThan(0);
   });
 
-  it("is only ALTER TABLE ... ADD COLUMN/ADD CONSTRAINT, or CREATE UNIQUE INDEX", () => {
-    for (const statement of statements) {
+  it("starts by giving up on the table lock after a few seconds rather than queueing requests behind it", () => {
+    expect(statements[0]).toMatch(LOCK_TIMEOUT);
+  });
+
+  it("is only ALTER TABLE ... ADD COLUMN/ADD CONSTRAINT, or CREATE UNIQUE INDEX, after the lock timeout", () => {
+    for (const statement of statements.slice(1)) {
       const isAddColumn = /^ALTER TABLE "\w+" ADD COLUMN /.test(statement);
       const isAddConstraint = /^ALTER TABLE "\w+" ADD CONSTRAINT /.test(statement);
       const isUniqueIndex = /^CREATE UNIQUE INDEX /.test(statement);
@@ -140,8 +151,8 @@ describe("migration 0039: Stripe billing columns", () => {
   it("is the newest entry in the migration journal", () => {
     const journalPath = path.join(__dirname, "..", "..", "drizzle", "meta", "_journal.json");
     const journal = JSON.parse(readFileSync(journalPath, "utf8")) as { entries: Array<{ idx: number; tag: string }> };
-    const entry = journal.entries.find((e) => e.tag === "0039_stripe_billing");
+    const entry = journal.entries.find((e) => e.tag === "0041_stripe_billing");
     expect(entry).toBeDefined();
-    expect(entry?.idx).toBe(39);
+    expect(entry?.idx).toBe(41);
   });
 });

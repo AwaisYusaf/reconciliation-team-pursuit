@@ -1,5 +1,5 @@
 /**
- * `src/modules/billing/actions.ts` against real Postgres (Phase 15 §4.1, §8.1, §8.2): the eight
+ * `src/modules/billing/actions.ts` against real Postgres (Phase 16 §4.1, §8.1, §8.2): the eight
  * `"use server"` adapters, their shared `guard()`/`run()`, and the rules of `billing.ts` they
  * front. Follows `sync.integration.test.ts`'s pattern: `@/src/modules/billing/stripe` is mocked
  * (no real Stripe call is possible), `@/src/lib/action-session` is mocked the way
@@ -74,7 +74,7 @@ config({ path: ".env.local", quiet: true });
 
 const hasDatabase = Boolean(process.env.DATABASE_URL);
 
-describe.skipIf(!hasDatabase)("billing actions (integration, Phase 15)", async () => {
+describe.skipIf(!hasDatabase)("billing actions (integration, Phase 16)", async () => {
   const { eq, and, isNull } = await import("drizzle-orm");
   const { db } = await import("@/src/db");
   const { organizations, fundingSources } = await import("@/src/db/schema");

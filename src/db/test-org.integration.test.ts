@@ -1,5 +1,5 @@
 /**
- * `createTestOrg` (Phase 15, P28): every existing integration org insert now needs to be
+ * `createTestOrg` (Phase 16, P28): every existing integration org insert now needs to be
  * complimentary by default, or it hits the paywall once billing is wired into `resolveSession`.
  * This proves the default itself, not just individual callers' assumptions about it.
  *

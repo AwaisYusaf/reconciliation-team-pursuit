@@ -13,7 +13,7 @@ const text = (status: number, body: string) =>
   new Response(body, { status, headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" } });
 
 /**
- * `POST /api/stripe/webhook` (Phase 15 §4.1). Called by Stripe, so no session and no origin
+ * `POST /api/stripe/webhook` (Phase 16 §4.1). Called by Stripe, so no session and no origin
  * check: `readJsonBody`'s same-origin check would refuse every event. The signature is the
  * authentication, and it covers the raw bytes, so the body is read as text and never parsed
  * before it is verified. Not rate limited: Stripe's retries must always get through.

@@ -177,7 +177,7 @@ export const organizations = pgTable(
      *  whether the feature is available. */
     readAmountsEnabled: boolean("read_amounts_enabled").notNull().default(true),
 
-    // ---- Stripe billing (Phase 15, §3). Every column below is nullable or defaulted, written
+    // ---- Stripe billing (Phase 16, §3). Every column below is nullable or defaulted, written
     // only by `syncOrgBilling` (P1) and the billing actions, never by a migration (AC-J2).
 
     /** Set once the first Checkout starts (`WHERE stripe_customer_id IS NULL`); the UNIQUE index
@@ -262,6 +262,11 @@ export const users = pgTable(
      * picture out of the browser cache after a change.
      */
     avatarKey: text("avatar_key"),
+    /**
+     * Stored size of that photo, 0 when none is set (D-119). Counted by `orgStorageBytes`, so
+     * the 5 GB cap and the staff usage figure see profile photos like every other object.
+     */
+    avatarBytes: integer("avatar_bytes").notNull().default(0),
     /** argon2id; password minimum 12 chars (D-06/D-24). */
     passwordHash: text("password_hash").notNull(),
     /** admin = the org-creating account and anyone it promotes; manager = expenses/grants only.
@@ -384,7 +389,7 @@ export const orgAccountEvents = pgTable(
     before: jsonb("before").$type<OrgAccountSnapshot>().notNull(),
     after: jsonb("after").$type<OrgAccountSnapshot>().notNull(),
     note: text(),
-    /** True when Stripe's sync wrote this row rather than a staff action (Phase 15, P15); shown
+    /** True when Stripe's sync wrote this row rather than a staff action (Phase 16, P15); shown
      *  as "Stripe" in History, reusing `plan_changed` rather than a new enum value. */
     viaStripe: boolean("via_stripe").notNull().default(false),
     createdAt: createdAt(),
@@ -786,6 +791,11 @@ export const expenseAuditEvents = pgTable(
     // without this, that query has no usable index and falls back to a full table scan as
     // the log grows, since the per-expense index above doesn't help it.
     index("expense_audit_events_org_idx").on(t.orgId, t.createdAt),
+    // "Has this person ever acted on an expense?" is asked for every row of the Users page and
+    // before deleting an account (`hasAuditHistory`), and Postgres asks it again itself on
+    // every user delete to enforce the foreign key. Neither index above leads with the actor,
+    // so both were a scan of the whole log.
+    index("expense_audit_events_actor_idx").on(t.actorUserId),
   ],
 );
 

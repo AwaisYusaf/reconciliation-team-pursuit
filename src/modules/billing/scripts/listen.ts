@@ -1,5 +1,5 @@
 /**
- * `npm run billing:listen` (Phase 15 §9). Development only: forwards Stripe's webhook calls to
+ * `npm run billing:listen` (Phase 16 §9). Development only: forwards Stripe's webhook calls to
  * the local app with the Stripe CLI, for exactly the events the app handles. Uses `--api-key`
  * rather than `stripe login`, which needs CLI permission on the account. It prints the
  * `whsec_...` signing secret to put in `.env.local` as `STRIPE_WEBHOOK_SECRET`. Production has a

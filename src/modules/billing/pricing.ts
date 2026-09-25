@@ -1,5 +1,5 @@
 /**
- * Prices, in cents, as constants (Phase 15 §4.9, C7). Stripe is made to match these, not the
+ * Prices, in cents, as constants (Phase 16 §4.9, C7). Stripe is made to match these, not the
  * other way round: `billing:setup` (Phase 2) creates or moves a Price whenever one of these
  * changes. Read by the landing cards, the in-app chooser, the switch dialog and `billing:setup`
  * — nothing outside this file holds a price literal (U-19).

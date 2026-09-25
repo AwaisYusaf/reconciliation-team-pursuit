@@ -1,5 +1,5 @@
 /**
- * `npm run billing:reconcile` (Phase 15 P13, the third net for a lost webhook). Re-copies every
+ * `npm run billing:reconcile` (Phase 16 P13, the third net for a lost webhook). Re-copies every
  * org's subscription from Stripe, whatever the webhooks did: catches anything missed while the
  * server was down for longer than Stripe's three days of retries. Run nightly from the host
  * crontab (§11 step 9). Exits 1 when any org failed, so the log shows it.

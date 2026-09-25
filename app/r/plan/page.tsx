@@ -29,7 +29,7 @@ export default async function PlanPage({
   searchParams: Promise<{ plan?: string; interval?: string; checkout?: string }>;
 }) {
   // The gate: never redirects a paid org back here (that would loop), sends everyone else
-  // straight to sign in (Phase 15 §4.7).
+  // straight to sign in (Phase 16 §4.7).
   const session = await planPageSession();
 
   const params = await searchParams;

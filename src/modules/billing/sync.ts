@@ -1,7 +1,7 @@
 import "server-only";
 
 /**
- * `syncOrgBilling` (Phase 15, P1): the only writer of an organization's billing columns.
+ * `syncOrgBilling` (Phase 16, P1): the only writer of an organization's billing columns.
  *
  * It deliberately ignores which event triggered it. Stripe delivers events twice, late and out of
  * order, so instead of applying "what the event says" it re-reads the customer's subscriptions

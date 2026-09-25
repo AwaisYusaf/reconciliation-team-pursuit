@@ -1,4 +1,4 @@
-// Ported from the reference build's lib/plans.test.ts (Phase 15 §12), node:test/SQLite → vitest.
+// Ported from the reference build's lib/plans.test.ts (Phase 16 §12), node:test/SQLite → vitest.
 // `hasAccess` there combined plan + feature + status; here that split is `orgEntitlement`
 // (paid + plan) then `planIncludes` (plan + feature) — each tested at its own layer.
 import { describe, expect, it } from "vitest";

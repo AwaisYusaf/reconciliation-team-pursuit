@@ -1,5 +1,5 @@
 /**
- * `app/api/stripe/webhook/route.ts` (Phase 15 §4.1). The route's own guards (billing off,
+ * `app/api/stripe/webhook/route.ts` (Phase 16 §4.1). The route's own guards (billing off,
  * missing secret, body cap) plus that a valid signed event reaches the real `handleWebhook`.
  * Follows the request-construction style of `src/modules/monthly-summary/write-route.test.ts`,
  * but the route imports `@/src/modules/billing/sync` directly (not an action), so that module is

@@ -1,4 +1,4 @@
-// Ported from the reference build's lib/small.test.ts config section (Phase 15 §12),
+// Ported from the reference build's lib/small.test.ts config section (Phase 16 §12),
 // node:test → vitest; `readConfig`'s single throw becomes `billingConfigProblems`'s array, and
 // billing off returning `[]` is new (P25: a deployment with no Stripe keys must still boot).
 import { describe, expect, it } from "vitest";
