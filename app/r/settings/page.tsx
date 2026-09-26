@@ -2,6 +2,7 @@ import { PageTitle } from "@/src/components/ui/surfaces";
 import { TourGuide } from "@/src/components/ui/tour";
 import { pageTitle } from "@/src/domain/strings";
 import { aiAllowedForOrg } from "@/src/modules/ai/access";
+import { billingEnabled } from "@/src/modules/billing/config";
 import { loadPlanBilling } from "@/src/modules/billing/plan-view-loader";
 import { loadFundingSourceLimit } from "@/src/modules/funding-sources/limit";
 import { loadSettings } from "@/src/modules/settings/queries";
@@ -26,7 +27,9 @@ export default async function SettingsPage({
 
   const isAdmin = session.role === "admin";
   // `?section=plan` from the Plus pill and billing banners (Phase 16 P19); unknown → Organization.
-  const section = parseSettingsSection((await searchParams).section, isAdmin);
+  // Plan & billing exists only once billing is on: until then there is nothing to show there.
+  const billingOn = billingEnabled();
+  const section = parseSettingsSection((await searchParams).section, isAdmin, billingOn);
 
   // The organisation always comes from the session, never from the request.
   const data = await loadSettings(session.orgId);
@@ -37,7 +40,7 @@ export default async function SettingsPage({
   const [usersResult, seenSettingsTour, planBilling, aiAllowed, fundingSourceLimit] = await Promise.all([
     isAdmin ? listOrgUsersAction() : Promise.resolve(null),
     hasSeenTour(session.userId, "settings"),
-    loadPlanBilling(session),
+    billingOn ? loadPlanBilling(session) : Promise.resolve(null),
     aiAllowedForOrg(session.orgId),
     loadFundingSourceLimit(session.orgId),
   ]);

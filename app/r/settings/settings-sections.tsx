@@ -203,7 +203,8 @@ export function SettingsSections({
    *  switch is hidden entirely, not shown disabled. */
   readAmounts: { enabled: boolean } | null;
   /** Settings → Plan & billing (Phase 16 §4.3), loaded on the server for this org only. */
-  planBilling: PlanBillingData;
+  /** Null while billing is off: the section isn't shown at all. */
+  planBilling: PlanBillingData | null;
   /** From `?section=` (Phase 16 P19), already checked against the known ids on the server. */
   initialSection: SectionId;
   /** The active-funding-source limit (Phase 6 core, C8). Null means unlimited, which is
@@ -232,7 +233,9 @@ export function SettingsSections({
 
   // "Users" is the only item a manager never sees — same rule D-85 already established for
   // the nav and the old /settings/users route: identity/user-management is admin-only.
-  const visibleSections = SECTION_IDS.filter((id) => id !== "users" || isAdmin);
+  const visibleSections = SECTION_IDS.filter(
+    (id) => (id !== "users" || isAdmin) && (id !== "plan" || planBilling !== null),
+  );
 
   /** Toggles immediately (optimistic), reverting only if the action itself refuses — a manager
    *  never reaches this (the switch renders `disabled`), so the only realistic failure is a
@@ -408,7 +411,7 @@ export function SettingsSections({
           </div>
         )}
 
-        {active === "plan" && <PlanBillingSection data={planBilling} />}
+        {active === "plan" && planBilling && <PlanBillingSection data={planBilling} />}
 
         {active === "account" && (
           <>

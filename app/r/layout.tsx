@@ -19,6 +19,7 @@ import { APP_NAME } from "@/src/domain/strings";
 import { aiPlanAllowed } from "@/src/modules/ai/access";
 import { signOutAction } from "@/src/modules/auth/actions";
 import { loadBillingBanner } from "@/src/modules/billing/plan-view-loader";
+import { billingEnabled } from "@/src/modules/billing/config";
 import { refreshOrgBilling } from "@/src/modules/billing/sync";
 import { BillingBanner } from "./billing-banner";
 import { loadSourceContext } from "@/src/modules/funding-sources/queries";
@@ -134,7 +135,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           <>
             {/* Only the AI plan gets a badge: on the plain plan a badge saying so would be
                 noise on every page, forever (Phase 9). */}
-            {showPlus && <PlusBadge href="/r/settings?section=plan" />}
+            {/* A link only once billing is on: until then there is no Plan & billing to open. */}
+            {showPlus && <PlusBadge href={billingEnabled() ? "/r/settings?section=plan" : undefined} />}
             <TourReplayButton />
           </>
         }

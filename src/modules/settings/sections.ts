@@ -21,10 +21,13 @@ export const DEFAULT_SECTION: SectionId = "organization";
 /**
  * The section a `?section=` value opens. Only known ids are accepted; anything else (missing,
  * misspelled, an array from a repeated parameter) opens Organization. "users" is admin-only
- * (D-85), so a manager asking for it also gets Organization.
+ * (D-85), so a manager asking for it also gets Organization; "plan" exists only while billing is
+ * on, so an old link to it opens Organization while it is off.
  */
-export function parseSettingsSection(value: unknown, isAdmin: boolean): SectionId {
+export function parseSettingsSection(value: unknown, isAdmin: boolean, billingOn: boolean): SectionId {
   if (typeof value !== "string") return DEFAULT_SECTION;
   const id = (SECTION_IDS as readonly string[]).includes(value) ? (value as SectionId) : DEFAULT_SECTION;
-  return id === "users" && !isAdmin ? DEFAULT_SECTION : id;
+  if (id === "users" && !isAdmin) return DEFAULT_SECTION;
+  if (id === "plan" && !billingOn) return DEFAULT_SECTION;
+  return id;
 }

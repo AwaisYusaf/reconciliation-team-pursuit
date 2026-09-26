@@ -31,9 +31,11 @@ describe("PlusBadge links", () => {
     expect(uses.length).toBeGreaterThan(2);
   });
 
-  it("only the header pill in app/r/layout.tsx has an href, and it opens Plan & billing", () => {
+  it("only the header pill in app/r/layout.tsx has an href, and it opens Plan & billing, once billing is on", () => {
     const linked = uses.filter((u) => /\bhref=/.test(u.tag));
-    expect(linked).toEqual([{ file: "app/r/layout.tsx", tag: '<PlusBadge href="/r/settings?section=plan" />' }]);
+    expect(linked).toEqual([
+      { file: "app/r/layout.tsx", tag: '<PlusBadge href={billingEnabled() ? "/r/settings?section=plan" : undefined} />' },
+    ]);
   });
 
   it("the linked pill has an accessible name and a 44px target", () => {

@@ -262,7 +262,9 @@ Every Stripe step says it is working: "Opening the payment page…", "Opening St
 
 ### 4.4 The Plus pill
 
-`PlusBadge` gains an optional `href`; only the header passes it (`/r/settings?section=plan`), with a
+`PlusBadge` gains an optional `href`; only the header passes it (`/r/settings?section=plan`), and
+only while billing is on (until then Settings has no Plan & billing section, and an old
+`?section=plan` link opens Organization; PR #23 review), with a
 44px tap area, hover and focus ring, and `aria-label` "Plus plan, open Plan & billing". The pills in
 upload fields, the suggestion panel and the summary title stay decorative. The header pill shows only
 when the entitlement is paid on Reconciliation + AI. **See plans** for base-plan admins is a
