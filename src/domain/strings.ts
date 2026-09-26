@@ -932,7 +932,6 @@ export const UI = {
     "Reconciliation includes one active funding source. To add more, try Plus.",
   fundingSourceLimitManager:
     "Reconciliation includes one active funding source. Ask your admin about upgrading.",
-  fundingSourceStripeUnavailable: "The payment service didn't respond, so this wasn't saved. Try again in a minute.",
   fundingSourceLimitQueued: (date: string) =>
     `Your plan switches to Reconciliation on ${date}, which includes one active funding source. To add another, cancel that switch in Plan & billing.`,
 } as const;

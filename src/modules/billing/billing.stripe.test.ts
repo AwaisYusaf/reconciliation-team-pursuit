@@ -807,7 +807,7 @@ describe.concurrent("billing against the Stripe sandbox: Phase 3's billing actio
     expect((await access(f)).paid).toBe(false);
   });
 
-  it("S-27: downgrade or checkout to Reconciliation refused with two active funding sources (P24); queuedDowngradeToReconciliation", async () => {
+  it("S-27: downgrade or checkout to Reconciliation refused with two active funding sources (P24); the queued downgrade in the copy", async () => {
     const f = await fixture(); // already has 1 funding source from createTestOrg
     const actor = actorOf(f);
     await addFundingSource(f.orgId); // now 2 active sources
@@ -817,20 +817,21 @@ describe.concurrent("billing against the Stripe sandbox: Phase 3's billing actio
     await rejects(billing.quoteChange(actor, "reconciliation", "month"), "too_many_sources");
     await rejects(billing.applyChange(actor, "reconciliation", "month", 0), "too_many_sources");
     expect((await currentSub(f)).schedule, "refused before any schedule exists").toBeNull();
-    expect(await billing.queuedDowngradeToReconciliation(f.orgId)).toBeNull();
+    expect((await org(f)).pendingPlan).toBeNull();
 
-    // A single-source org can queue the same downgrade normally, and the date is reported back.
+    // A single-source org can queue the same downgrade normally, and the copy the source limit
+    // reads (P24) says when it starts.
     const g = await fixture();
     const gActor = actorOf(g);
     await subscribe(g, "reconciliation_ai", "month");
     const periodEnd = (await org(g)).currentPeriodEnd!.getTime();
     await billing.applyChange(gActor, "reconciliation", "month", 0);
-    const queuedAt = await billing.queuedDowngradeToReconciliation(g.orgId);
-    expect(queuedAt).not.toBeNull();
-    expect(queuedAt!.getTime()).toBe(periodEnd);
+    const queued = await org(g);
+    expect(queued).toMatchObject({ pendingPlan: "reconciliation", pendingReason: "downgrade" });
+    expect(queued.pendingAt!.getTime()).toBe(periodEnd);
 
     await billing.cancelPendingChange(gActor);
-    expect(await billing.queuedDowngradeToReconciliation(g.orgId)).toBeNull();
+    expect((await org(g)).pendingPlan).toBeNull();
   });
 
   it("S-29: planPriceMoves — dry run changes nothing and lists skipped; a real run applies at next renewal; a queued downgrade is rewritten; cancelling keeps the price move", async () => {
@@ -920,7 +921,7 @@ describe.concurrent("billing against the Stripe sandbox: Phase 3's billing actio
     const activeAi = await price("reconciliation_ai", "month");
     expect((cancelFuture.items[0]?.price as Stripe.Price).id, "moves to the current plan's active price").toBe(activeAi.id);
     expect(cancelFuture.metadata?.reason).toBe("price_move");
-    expect(await billing.queuedDowngradeToReconciliation(cancelQueued.orgId), "a price move is not a downgrade").toBeNull();
+    expect((await org(cancelQueued)).pendingReason, "a price move is not a downgrade").toBe("price_move");
   });
 
   it("S-30: setCollectionPaused(true) pauses collection, false resumes it — with a queued downgrade too", async () => {

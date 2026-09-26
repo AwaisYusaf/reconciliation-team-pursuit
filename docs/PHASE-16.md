@@ -489,7 +489,7 @@ guard) has been mutation-checked.
 | Stripe down | Webhook 500 (retry), action `billingStripeError`, page shows last copy | U-6, U-8, I-8 |
 | Upgrade after a downgrade happened (schedule still attached) | No future phase: released, upgrade proceeds | S-21 |
 | Dashboard `cancel_at` beyond this period | Not shown as cancelling | U-7 |
-| Race: downgrade queued while a second source is added | Both take the per-org billing lock; the queued check reads Stripe | I-14 |
+| Race: downgrade queued while a second source is added | Create and unarchive read the queued downgrade from the copy under the org row lock; `applyChange` re-syncs the copy right after scheduling it. A source added in the second between the two isn't refused (accepted: the two don't share a lock) | I-14 |
 | New sign-up not onboarded | `/r/plan` before onboarding, no loop | I-12 |
 | Old bookmark while unpaid | `pageSession` redirects to `/r/plan`; the same URL works after payment | B-15 |
 | Plan on hold: Stripe stopped retrying (`unpaid`) or paused it | Unpaid, so the paywall sends everyone to `/r/plan`, where Subscribe would only refuse ("already has a plan"). `/r/plan` shows the Plan & billing panel instead: admins pay the bill or change the card in Card and invoices (Stripe's portal; its return lands back here) or End plan now (`paused` too), then choose a plan; managers see who the admins are (D-126) | `no-free-use.integration.test.ts`, `plan-view.test.ts`, `actions.integration.test.ts` |
@@ -649,7 +649,7 @@ pass; §8.4 mutations done.
 - **Built:** `src/modules/billing/billing.ts` (every rule, ported from the reference build and keyed
   by organization: `startCheckout`, `quoteChange`, `applyChange`, `cancelPendingChange`,
   `cancelAtPeriodEnd`, `endPlanNow`, `resume`, `portalUrl`, `setCollectionPaused` (D3),
-  `planPriceMoves` (P21), `queuedDowngradeToReconciliation` (P24, reads Stripe live, for Phase 6));
+  `planPriceMoves` (P21));
   `src/modules/billing/actions.ts` (the eight §4.1 actions: session, billing switch, admin check
   and a per-user `billing` rate limit inside each, then `BillingError` to its `UI` string and a
   Stripe error to `billingStripeError`); `app/r/billing/return/route.ts` (ignores the query,
@@ -691,9 +691,8 @@ pass; §8.4 mutations done.
 - **Left for later phases:** the header Plus pill (`app/r/layout.tsx:78`) and
   `app/r/settings/page.tsx:85` still use `aiPlanAllowed(plan)` and must switch to
   `aiAllowedForOrg`; the billing actions and `/r/billing/return` must go on the unpaid allow-list
-  (§4.7); Phase 6's funding-source create and unarchive must call
-  `queuedDowngradeToReconciliation` and take the same in-process `org:{id}` lock the actions use
-  (private in `billing.ts` today). The route-level 403 of I-4 is covered through the shared
+  (§4.7); Phase 6's funding-source create and unarchive must refuse while a downgrade to
+  Reconciliation is queued (built in the PR #23 review from the org's copy, not a Stripe call). The route-level 403 of I-4 is covered through the shared
   loaders, not by a route test.
 
 ### Phase 4: no free use, sign-up, complimentary end
@@ -836,10 +835,11 @@ checklist clear.
   `fundingSourceLimitManager`. The four §10 strings were added verbatim and pinned in
   `strings.test.ts`. Billing off means no limit, so nothing changes today.
 - **Built in the PR #23 review (2026-09-26):** the queued-downgrade refusal (I-14). Create and
-  unarchive ask Stripe for a queued downgrade to Reconciliation (`queuedDowngradeDay`, before the
-  transaction) and refuse with `fundingSourceLimitQueued` while one is queued; if Stripe can't be
-  asked they refuse with `fundingSourceStripeUnavailable` rather than guess. The Add button isn't
-  disabled ahead of time for it: the refusal shows when the admin saves.
+  unarchive read the org's copy under the org row lock (`lockedOrgEntitlement`: `pending_reason`
+  downgrade to Reconciliation, not yet started) and refuse with `fundingSourceLimitQueued` while
+  one is queued. `applyChange` re-syncs the copy right after it schedules the downgrade, so no
+  Stripe call is made on every source added. The Add button isn't disabled ahead of time for it:
+  the refusal shows when the admin saves.
 - **Also built in the review:** D2. With more than one active source, the Reconciliation card on
   `/r/plan` (and in Plan & billing) is disabled with the reason under it, Checkout refuses the same,
   and `/r/plan` lists the admin's active sources with Archive (`archiveFundingSourceAction` uses the

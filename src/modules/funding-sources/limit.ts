@@ -14,7 +14,6 @@ import type { Executor, Transaction } from "@/src/db/org-lock";
 import { lockOrg } from "@/src/db/org-lock";
 import { formatDateShort, todayIso, type IsoDate } from "@/src/domain/dates";
 import { UI } from "@/src/domain/strings";
-import { queuedDowngradeToReconciliation } from "@/src/modules/billing/billing";
 import { activeFundingSourceLimit, type Entitlement } from "@/src/modules/billing/entitlement";
 import { fundingSourceLimit } from "@/src/modules/billing/rules";
 import { ENTITLEMENT_COLUMNS, entitlementOf } from "@/src/services/auth/entitlement";
@@ -22,8 +21,8 @@ import { ENTITLEMENT_COLUMNS, entitlementOf } from "@/src/services/auth/entitlem
 /**
  * The refusal message for activating one more funding source, or `null` to allow it.
  *
- * `queuedDowngradeAt`: the day a downgrade to Reconciliation already scheduled in Stripe starts
- * (`queuedDowngradeDay`), so an admin can't queue the downgrade with one source and then add
+ * `queuedDowngradeAt`: the day a downgrade to Reconciliation already scheduled starts
+ * (`lockedOrgEntitlement`), so an admin can't queue the downgrade with one source and then add
  * more before it lands (P24). `entitlement.reason !== "billing_off"` guards it: a queued
  * downgrade cannot matter while billing itself is off.
  */
@@ -57,24 +56,14 @@ export function fundingSourceLimitRefusal({
   return null;
 }
 
-/**
- * When a downgrade to Reconciliation is queued, the day it starts, asked of Stripe before any
- * transaction opens (P12). `"unavailable"` when Stripe can't be asked: the caller refuses rather
- * than guess, since the answer decides whether one more source is allowed.
- */
-export async function queuedDowngradeDay(orgId: string): Promise<IsoDate | null | "unavailable"> {
-  try {
-    const at = await queuedDowngradeToReconciliation(orgId);
-    return at ? todayIso(at) : null;
-  } catch (e) {
-    console.error(`[billing] reading org ${orgId}'s queued downgrade from Stripe failed`, e);
-    return "unavailable";
-  }
-}
-
 async function entitlementRow(executor: Executor, orgId: string) {
   const [row] = await executor
-    .select(ENTITLEMENT_COLUMNS)
+    .select({
+      ...ENTITLEMENT_COLUMNS,
+      pendingPlan: orgBilling.pendingPlan,
+      pendingReason: orgBilling.pendingReason,
+      pendingAt: orgBilling.pendingAt,
+    })
     .from(organizations)
     .leftJoin(orgBilling, billingCopyOn())
     .where(eq(organizations.id, orgId))
@@ -82,14 +71,19 @@ async function entitlementRow(executor: Executor, orgId: string) {
   return row;
 }
 
-/** The org's entitlement, read under the org row lock so a concurrent create/unarchive in the
- *  same org is serialised (same reasoning as `archiveFundingSourceAction`'s lock). Locked first,
- *  then read, so the read sees whatever a writer that held the lock committed. `undefined` when
- *  the id doesn't exist. */
-export async function lockedOrgEntitlement(tx: Transaction, orgId: string): Promise<Entitlement | undefined> {
+/** The org's entitlement, and the day a downgrade to Reconciliation queued in its Stripe copy
+ *  starts (P24; `applyChange` re-syncs the copy right after queueing one). Read under the org row
+ *  lock so a concurrent create/unarchive in the same org is serialised (same reasoning as
+ *  `archiveFundingSourceAction`'s lock). `undefined` when the id doesn't exist. */
+export async function lockedOrgEntitlement(
+  tx: Transaction,
+  orgId: string,
+): Promise<{ entitlement: Entitlement; queuedDowngradeAt: IsoDate | null } | undefined> {
   if (!(await lockOrg(tx, orgId, { id: organizations.id }))) return undefined;
   const row = await entitlementRow(tx, orgId);
-  return row && entitlementOf(row);
+  if (!row) return undefined;
+  const queued = row.pendingReason === "downgrade" && row.pendingPlan === "reconciliation" && row.pendingAt !== null && row.pendingAt > new Date();
+  return { entitlement: entitlementOf(row), queuedDowngradeAt: queued ? todayIso(row.pendingAt!) : null };
 }
 
 /** Unlocked read of the same limit, for the Settings page only (no write follows it there). */

@@ -14,12 +14,6 @@ vi.mock("@/src/lib/action-session", () => {
   const session = vi.fn();
   return { actionSession: session, actionSessionAnyPlan: session };
 });
-// Stripe's answer to "is a downgrade to Reconciliation queued?" (P24). The rest of billing is real.
-const queuedDowngradeMock = vi.fn();
-vi.mock("@/src/modules/billing/billing", async () => ({
-  ...(await vi.importActual<typeof import("@/src/modules/billing/billing")>("@/src/modules/billing/billing")),
-  queuedDowngradeToReconciliation: (...args: unknown[]) => queuedDowngradeMock(...args),
-}));
 
 config({ path: ".env.local", quiet: true });
 
@@ -95,7 +89,6 @@ describe.skipIf(!hasDatabase)("funding source management actions (integration)",
 
   beforeEach(() => {
     session.mockReset();
-    queuedDowngradeMock.mockReset().mockResolvedValue(null);
   });
 
   it("creates a funding source on the happy path", async () => {
@@ -505,17 +498,19 @@ describe.skipIf(!hasDatabase)("funding source management actions (integration)",
       if (!result.ok) expect(result.error).toBe(UI.fundingSourceLimitManager);
     });
 
-    describe("a downgrade to Reconciliation already queued in Stripe (P24)", () => {
-      const startsAt = new Date("2026-11-01T16:00:00Z");
+    describe("a downgrade to Reconciliation already queued (P24)", () => {
+      const startsAt = new Date(Date.now() + 20 * 86_400_000);
+      /** The copy the sync writes once the downgrade is scheduled in Stripe. */
+      const queue = (orgId: string, reason: "downgrade" | "price_move" = "downgrade") =>
+        setBillingCopy(orgId, { pendingPlan: "reconciliation", pendingInterval: "month", pendingReason: reason, pendingAt: startsAt });
 
       it("refuses a second source on Reconciliation + AI, saying when the switch happens", async () => {
         const a = await paidOrg("Queued Downgrade Create Org", "reconciliation_ai");
-        queuedDowngradeMock.mockResolvedValue(startsAt);
+        await queue(a.orgId);
         asSession(a.orgId, "admin");
         const before = await listFundingSources(a.orgId);
 
         const result = await createFundingSourceAction({ ...BASE_INPUT, name: "Second Source" });
-        expect(queuedDowngradeMock).toHaveBeenCalledWith(a.orgId);
         expect(result).toEqual({ ok: false, error: UI.fundingSourceLimitQueued(formatDateShort(todayIso(startsAt))) });
         expect(await listFundingSources(a.orgId)).toHaveLength(before.length);
       });
@@ -534,7 +529,7 @@ describe.skipIf(!hasDatabase)("funding source management actions (integration)",
             feesReimbursable: true,
           })
           .returning({ id: fundingSources.id });
-        queuedDowngradeMock.mockResolvedValue(startsAt);
+        await queue(a.orgId);
         asSession(a.orgId, "admin");
 
         const result = await unarchiveFundingSourceAction(second.id);
@@ -542,23 +537,12 @@ describe.skipIf(!hasDatabase)("funding source management actions (integration)",
         expect((await findFundingSource(a.orgId, second.id))?.archivedAt).not.toBeNull();
       });
 
-      it("with nothing queued, Reconciliation + AI still adds sources freely", async () => {
+      it("with nothing queued, or only a price move, Reconciliation + AI still adds sources freely", async () => {
         const a = await paidOrg("Nothing Queued Org", "reconciliation_ai");
         asSession(a.orgId, "admin");
         expect(await createFundingSourceAction({ ...BASE_INPUT, name: "Second Source" })).toMatchObject({ ok: true });
-      });
-
-      it("when Stripe can't be asked, nothing is saved and the admin is told to try again", async () => {
-        const a = await paidOrg("Stripe Down Org", "reconciliation_ai");
-        queuedDowngradeMock.mockRejectedValue(new Error("stripe is down"));
-        asSession(a.orgId, "admin");
-        const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-
-        expect(await createFundingSourceAction({ ...BASE_INPUT, name: "Second Source" })).toEqual({
-          ok: false,
-          error: UI.fundingSourceStripeUnavailable,
-        });
-        errorSpy.mockRestore();
+        await queue(a.orgId, "price_move");
+        expect(await createFundingSourceAction({ ...BASE_INPUT, name: "Third Source" })).toMatchObject({ ok: true });
       });
     });
 

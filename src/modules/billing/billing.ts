@@ -759,39 +759,6 @@ export async function staffPayments(orgId: string, limit = 12): Promise<StaffPay
   }
 }
 
-// ── Queued downgrade to Reconciliation (P24, read by Phase 6's funding-source create) ────────
-
-/**
- * When a queued change is a downgrade to Reconciliation, the date it starts — so an admin can't
- * add a second funding source while it waits (P24). `null` when billing is off, the org is
- * complimentary now, there's no customer for this mode, nothing is queued, the queued phase is a
- * price move (P21, not a plan downgrade), or the queue isn't actually a downgrade to
- * Reconciliation.
- */
-export async function queuedDowngradeToReconciliation(orgId: string): Promise<Date | null> {
-  if (!billingEnabled()) return null;
-  const row = await loadOrg(orgId);
-  if (isComplimentaryNow(row, todayIso())) return null;
-  const customerId = row.stripeCustomerId;
-  if (!customerId) return null;
-
-  const sub = pickCurrent(await subscriptionsOf(customerId));
-  if (!sub?.schedule) return null;
-  const schedule = await stripe().subscriptionSchedules.retrieve(idOf(sub.schedule), {
-    expand: ["phases.items.price"],
-  });
-  const queued = futurePhase(schedule);
-  if (!queued || queued.metadata?.reason === "price_move") return null;
-
-  const queuedPrice = queued.items[0]?.price as Stripe.Price | undefined;
-  const currentPrice = sub.items.data[0].price;
-  if (queuedPrice?.metadata?.plan !== "reconciliation" || currentPrice.metadata?.plan === "reconciliation") {
-    return null;
-  }
-
-  return new Date(queued.start_date * 1000);
-}
-
 // ── Price moves (P21, "move-subscribers") ────────────────────────────────────
 
 export type PriceMoveResult = {

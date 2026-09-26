@@ -19,7 +19,7 @@ import { UI } from "@/src/domain/strings";
 import { fail, ok, type ActionResult } from "@/src/lib/action-result";
 import { actionSession, actionSessionAnyPlan } from "@/src/lib/action-session";
 import { hasPaidAccess } from "@/src/services/auth/entitlement";
-import { fundingSourceLimitRefusal, lockedOrgEntitlement, queuedDowngradeDay } from "@/src/modules/funding-sources/limit";
+import { fundingSourceLimitRefusal, lockedOrgEntitlement } from "@/src/modules/funding-sources/limit";
 import { listFundingSources, requireOwnedFundingSource } from "@/src/modules/funding-sources/queries";
 
 function revalidateAll(): void {
@@ -144,24 +144,16 @@ export async function createFundingSourceAction(input: FundingSourceInput): Prom
   const validated = await validate(current.orgId, input);
   if (!validated.ok) return validated;
 
-  const queuedDowngradeAt = await queuedDowngradeDay(current.orgId);
-  if (queuedDowngradeAt === "unavailable") return fail(UI.fundingSourceStripeUnavailable);
-
   try {
     const refused = await db.transaction(async (tx) => {
       // Locks the org row first so two concurrent creates in one org count active sources one
       // at a time, same reasoning as archiveFundingSourceAction's lock below.
-      const entitlement = await lockedOrgEntitlement(tx, current.orgId);
-      if (!entitlement) return fail(UI.orgNoLongerExists);
+      const locked = await lockedOrgEntitlement(tx, current.orgId);
+      if (!locked) return fail(UI.orgNoLongerExists);
 
       const active = await listFundingSources(current.orgId, tx);
       const activeCount = active.filter((row) => row.archivedAt === null).length;
-      const refusal = fundingSourceLimitRefusal({
-        entitlement,
-        activeOthers: activeCount,
-        role: current.role,
-        queuedDowngradeAt,
-      });
+      const refusal = fundingSourceLimitRefusal({ ...locked, activeOthers: activeCount, role: current.role });
       if (refusal) return fail(refusal);
 
       const [{ value: maxSort }] = await tx
@@ -273,25 +265,18 @@ export async function unarchiveFundingSourceAction(id: string): Promise<ActionRe
     return ok();
   }
 
-  const queuedDowngradeAt = await queuedDowngradeDay(current.orgId);
-  if (queuedDowngradeAt === "unavailable") return fail(UI.fundingSourceStripeUnavailable);
 
   const refused = await db.transaction(async (tx) => {
     // Same lock as create: two concurrent unarchives in one org count active sources one at a
     // time, rather than each seeing "under the limit" and both succeeding.
-    const entitlement = await lockedOrgEntitlement(tx, current.orgId);
-    if (!entitlement) return fail(UI.orgNoLongerExists);
+    const locked = await lockedOrgEntitlement(tx, current.orgId);
+    if (!locked) return fail(UI.orgNoLongerExists);
 
     const active = await listFundingSources(current.orgId, tx);
     const activeOthers = active.filter(
       (row) => row.archivedAt === null && row.id !== source.id,
     ).length;
-    const refusal = fundingSourceLimitRefusal({
-      entitlement,
-      activeOthers,
-      role: current.role,
-      queuedDowngradeAt,
-    });
+    const refusal = fundingSourceLimitRefusal({ ...locked, activeOthers, role: current.role });
     if (refusal) return fail(refusal);
 
     await tx
