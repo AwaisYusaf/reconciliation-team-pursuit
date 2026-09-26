@@ -60,8 +60,7 @@ async function loadBillingRow(orgId: string) {
 }
 
 export async function loadPlanBilling(session: { orgId: string; role: string }): Promise<PlanBillingData> {
-  const billingOn = billingEnabled();
-  if (billingOn) await refreshOrgBilling(session.orgId, "stale"); // throttled, never throws
+  await refreshOrgBilling(session.orgId, "stale"); // throttled, never throws
 
   const row = await loadBillingRow(session.orgId);
   const [sources] = await db
@@ -71,7 +70,7 @@ export async function loadPlanBilling(session: { orgId: string; role: string }):
 
   const isAdmin = session.role === "admin";
   return {
-    view: row ? planBillingView(row, { billingOn, now: new Date() }) : { kind: "none" },
+    view: row ? planBillingView(row, { now: new Date() }) : { kind: "none" },
     isAdmin,
     adminNames: isAdmin ? "" : await activeAdminNames(session.orgId),
     activeSources: sources?.total ?? 0,
@@ -96,7 +95,7 @@ export async function loadBillingBanner(session: { orgId: string; role: string }
   const row = await loadBillingRow(session.orgId);
   if (!row) return null;
 
-  const view = planBillingView(row, { billingOn: true, now: new Date() });
+  const view = planBillingView(row, { now: new Date() });
   const isAdmin = session.role === "admin";
   if (view.kind === "subscribed" && view.paymentFailed) {
     return { kind: "paymentFailed", isAdmin, adminNames: isAdmin ? "" : await activeAdminNames(session.orgId) };

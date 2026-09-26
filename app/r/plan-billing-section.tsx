@@ -43,7 +43,7 @@ import {
   PlanCards,
 } from "@/src/modules/landing/plan-cards";
 
-import { SubscribeButton } from "../plan/subscribe-button";
+import { SubscribeButton } from "./subscribe-button";
 
 const dayOf = (iso: IsoDate | null) => (iso ? formatDateUS(iso) : "");
 /** The summary's buttons, in the pricing cards' style (not full width, so they sit in one row). */
@@ -163,7 +163,7 @@ export function PlanBillingSection({ data }: { data: PlanBillingData }) {
           primary={plan === "reconciliation_ai"}
           // Reconciliation includes one active funding source (C8); the server refuses too.
           disabledReason={
-            plan === "reconciliation" && activeSources > 1 ? UI.billingDowngradeTooManySources(activeSources) : undefined
+            plan === "reconciliation" && activeSources > 1 ? UI.billingSubscribeTooManySources(activeSources) : undefined
           }
         />
       );
@@ -204,7 +204,6 @@ export function PlanBillingSection({ data }: { data: PlanBillingData }) {
         {UI.billingSectionTitle}
       </SectionTitle>
 
-      {view.kind === "off" && <p className="text-[15px] text-sub">{UI.billingNotEnabled}</p>}
 
       {view.kind === "subscribed" && view.paymentFailed && (
         <DangerPanel tone="blocking" className="mb-5">
@@ -220,111 +219,109 @@ export function PlanBillingSection({ data }: { data: PlanBillingData }) {
 
       {/* The org's plan at a glance, in the pricing cards' look. The complimentary ending warning
           is the banner above the page, not repeated here. */}
-      {view.kind !== "off" && (
-        <div className="rounded-3xl border-2 border-primary/50 shadow-warm-card ring-1 ring-inset ring-white/30 p-5 sm:p-7 bg-[linear-gradient(135deg,var(--color-surface)_0%,color-mix(in_srgb,var(--color-plus-light)_14%,var(--color-surface))_60%,color-mix(in_srgb,var(--color-accent)_16%,var(--color-surface))_100%)]">
-          <div className="text-[11px] uppercase tracking-[0.08em] font-semibold text-muted mb-2">{UI.billingYourPlan}</div>
-          {view.kind === "none" ? (
-            <p className="text-[15px] text-ink">{UI.billingNoPlan}</p>
-          ) : (
-            <>
-              <div className="flex items-center gap-2.5 flex-wrap">
-                <h3 className={`text-2xl font-semibold font-lp-serif ${GRADIENT_TEXT}`}>{PLAN_LABELS[view.plan]}</h3>
-                {view.plan === "reconciliation_ai" && <PlusBadge size="sm" />}
-                {view.kind === "complimentaryAccess" && <span className={CHIP}>{UI.billingComplimentaryTag}</span>}
-                {view.kind === "subscribed" && view.interval && (
-                  <span className={CHIP}>{view.interval === "month" ? UI.billingIntervalMonthly : UI.billingIntervalYearly}</span>
-                )}
-              </div>
-              <p className="text-sm text-on-surface-variant mt-1.5">
-                {view.kind === "complimentaryAccess"
-                  ? view.until
-                    ? UI.billingComplimentaryUntil(PLAN_LABELS[view.plan], formatDateUS(view.until))
-                    : UI.billingComplimentary(PLAN_LABELS[view.plan])
-                  : view.periodEnd && !view.paymentFailed
-                    ? view.cancelling
-                      ? UI.billingCancelling(dayOf(view.periodEnd))
-                      : UI.billingRenews(dayOf(view.periodEnd))
-                    : view.interval === "year"
-                      ? UI.billingBilledYearly
-                      : UI.billingBilledMonthly}
+      <div className="rounded-3xl border-2 border-primary/50 shadow-warm-card ring-1 ring-inset ring-white/30 p-5 sm:p-7 bg-[linear-gradient(135deg,var(--color-surface)_0%,color-mix(in_srgb,var(--color-plus-light)_14%,var(--color-surface))_60%,color-mix(in_srgb,var(--color-accent)_16%,var(--color-surface))_100%)]">
+        <div className="text-[11px] uppercase tracking-[0.08em] font-semibold text-muted mb-2">{UI.billingYourPlan}</div>
+        {view.kind === "none" ? (
+          <p className="text-[15px] text-ink">{UI.billingNoPlan}</p>
+        ) : (
+          <>
+            <div className="flex items-center gap-2.5 flex-wrap">
+              <h3 className={`text-2xl font-semibold font-lp-serif ${GRADIENT_TEXT}`}>{PLAN_LABELS[view.plan]}</h3>
+              {view.plan === "reconciliation_ai" && <PlusBadge size="sm" />}
+              {view.kind === "complimentaryAccess" && <span className={CHIP}>{UI.billingComplimentaryTag}</span>}
+              {view.kind === "subscribed" && view.interval && (
+                <span className={CHIP}>{view.interval === "month" ? UI.billingIntervalMonthly : UI.billingIntervalYearly}</span>
+              )}
+            </div>
+            <p className="text-sm text-on-surface-variant mt-1.5">
+              {view.kind === "complimentaryAccess"
+                ? view.until
+                  ? UI.billingComplimentaryUntil(PLAN_LABELS[view.plan], formatDateUS(view.until))
+                  : UI.billingComplimentary(PLAN_LABELS[view.plan])
+                : view.periodEnd && !view.paymentFailed
+                  ? view.cancelling
+                    ? UI.billingCancelling(dayOf(view.periodEnd))
+                    : UI.billingRenews(dayOf(view.periodEnd))
+                  : view.interval === "year"
+                    ? UI.billingBilledYearly
+                    : UI.billingBilledMonthly}
+            </p>
+            {view.kind === "complimentaryAccess" && view.upcoming && (
+              <p className="text-sm text-on-surface mt-2">
+                {view.upcoming.cancelling
+                  ? UI.billingCompUpcomingCancelled
+                  : UI.billingCompUpcoming(
+                      PLAN_LABELS[view.upcoming.plan],
+                      view.upcoming.interval ? intervalAdverb(view.upcoming.interval) : "",
+                      dayOf(view.upcoming.startsOn),
+                    )}
               </p>
-              {view.kind === "complimentaryAccess" && view.upcoming && (
-                <p className="text-sm text-on-surface mt-2">
-                  {view.upcoming.cancelling
-                    ? UI.billingCompUpcomingCancelled
-                    : UI.billingCompUpcoming(
-                        PLAN_LABELS[view.upcoming.plan],
-                        view.upcoming.interval ? intervalAdverb(view.upcoming.interval) : "",
-                        dayOf(view.upcoming.startsOn),
-                      )}
-                </p>
-              )}
-            </>
-          )}
+            )}
+          </>
+        )}
 
-          {/* One row of actions: the main one first, Card and invoices beside it, the
-              destructive one last and quiet. */}
-          {view.kind !== "none" && (
-            <div className="flex flex-wrap items-center gap-3 mt-6 pt-5 border-t border-line/70">
-              {view.kind === "subscribed" && isAdmin && view.paymentFailed && (
-                <>
-                  {portalButton}
-                  <button type="button" className={QUIET} disabled={pending} onClick={() => setConfirm("endNow")}>
-                    {UI.billingEndNow}
-                  </button>
-                </>
-              )}
-              {view.kind === "subscribed" && isAdmin && !view.paymentFailed && view.cancelling && (
-                <>
-                  <button
-                    type="button"
-                    className={PRIMARY}
-                    style={PLAN_BUTTON_PRIMARY_STYLE}
-                    disabled={pending}
-                    onClick={() => act(() => resumePlanAction(), UI.billingResumedToast)}
-                  >
-                    {UI.billingKeepPlan}
-                  </button>
-                  {portalButton}
-                </>
-              )}
-              {!(view.kind === "subscribed" && isAdmin && (view.paymentFailed || view.cancelling)) && (
-                <button
-                  type="button"
-                  className={view.kind === "subscribed" && isAdmin ? PRIMARY : LIGHT}
-                  style={view.kind === "subscribed" && isAdmin ? PLAN_BUTTON_PRIMARY_STYLE : undefined}
-                  aria-expanded={showPlans}
-                  aria-controls="plan-cards"
-                  onClick={() => setShowPlans((open) => !open)}
-                >
-                  {showPlans ? UI.billingHidePlans : view.kind === "subscribed" && isAdmin ? UI.billingChangePlan : UI.billingSeePlans}
+        {/* One row of actions: the main one first, Card and invoices beside it, the
+            destructive one last and quiet. */}
+        {view.kind !== "none" && (
+          <div className="flex flex-wrap items-center gap-3 mt-6 pt-5 border-t border-line/70">
+            {view.kind === "subscribed" && isAdmin && view.paymentFailed && (
+              <>
+                {portalButton}
+                <button type="button" className={QUIET} disabled={pending} onClick={() => setConfirm("endNow")}>
+                  {UI.billingEndNow}
                 </button>
-              )}
-              {isAdmin &&
-                ((view.kind === "subscribed" && !view.paymentFailed && !view.cancelling) ||
-                  (view.kind === "complimentaryAccess" && view.upcoming)) &&
-                portalButton}
-              {view.kind === "complimentaryAccess" && view.upcoming?.cancelling && isAdmin && (
+              </>
+            )}
+            {view.kind === "subscribed" && isAdmin && !view.paymentFailed && view.cancelling && (
+              <>
                 <button
                   type="button"
-                  className={LIGHT}
+                  className={PRIMARY}
+                  style={PLAN_BUTTON_PRIMARY_STYLE}
                   disabled={pending}
                   onClick={() => act(() => resumePlanAction(), UI.billingResumedToast)}
                 >
                   {UI.billingKeepPlan}
                 </button>
+                {portalButton}
+              </>
+            )}
+            {!(view.kind === "subscribed" && isAdmin && (view.paymentFailed || view.cancelling)) && (
+              <button
+                type="button"
+                className={view.kind === "subscribed" && isAdmin ? PRIMARY : LIGHT}
+                style={view.kind === "subscribed" && isAdmin ? PLAN_BUTTON_PRIMARY_STYLE : undefined}
+                aria-expanded={showPlans}
+                aria-controls="plan-cards"
+                onClick={() => setShowPlans((open) => !open)}
+              >
+                {showPlans ? UI.billingHidePlans : view.kind === "subscribed" && isAdmin ? UI.billingChangePlan : UI.billingSeePlans}
+              </button>
+            )}
+            {isAdmin &&
+              ((view.kind === "subscribed" && !view.paymentFailed && !view.cancelling) ||
+                (view.kind === "complimentaryAccess" && view.upcoming)) &&
+              portalButton}
+            {view.kind === "complimentaryAccess" && view.upcoming?.cancelling && isAdmin && (
+              <button
+                type="button"
+                className={LIGHT}
+                disabled={pending}
+                onClick={() => act(() => resumePlanAction(), UI.billingResumedToast)}
+              >
+                {UI.billingKeepPlan}
+              </button>
+            )}
+            {isAdmin &&
+              ((view.kind === "subscribed" && !view.paymentFailed && !view.cancelling) ||
+                (view.kind === "complimentaryAccess" && view.upcoming && !view.upcoming.cancelling)) && (
+                <button type="button" className={QUIET} disabled={pending} onClick={() => setConfirm("cancel")}>
+                  {UI.billingCancelPlan}
+                </button>
               )}
-              {isAdmin &&
-                ((view.kind === "subscribed" && !view.paymentFailed && !view.cancelling) ||
-                  (view.kind === "complimentaryAccess" && view.upcoming && !view.upcoming.cancelling)) && (
-                  <button type="button" className={QUIET} disabled={pending} onClick={() => setConfirm("cancel")}>
-                    {UI.billingCancelPlan}
-                  </button>
-                )}
-            </div>
-          )}
-        </div>
-      )}
+          </div>
+        )}
+      </div>
 
       {view.kind === "subscribed" && (
         <div className="space-y-5">
@@ -408,7 +405,7 @@ export function PlanBillingSection({ data }: { data: PlanBillingData }) {
       )}
 
       {/* The plans, as on the landing page: what the org is on, and what it can switch to. */}
-      {view.kind !== "off" && showPlans && (
+      {showPlans && (
         <div id="plan-cards" className="mt-8 pt-6 border-t border-line">
           <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
             <SubsectionTitle gradient>{UI.billingPlansTitle}</SubsectionTitle>

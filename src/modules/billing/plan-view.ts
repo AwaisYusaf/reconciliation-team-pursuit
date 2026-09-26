@@ -36,9 +36,8 @@ export type PendingChangeView = {
   at: IsoDate;
 };
 
+/** Only built while billing is on: until then nothing shows Plan & billing. */
 export type PlanBillingView =
-  /** `BILLING_ENABLED` is off: nothing to manage yet. */
-  | { kind: "off" }
   | {
       kind: "complimentaryAccess";
       plan: PlanId;
@@ -76,9 +75,7 @@ function isoDaysBetween(from: IsoDate, to: IsoDate): number {
   return Math.round(ms / 86_400_000);
 }
 
-export function planBillingView(row: PlanBillingRow, ctx: { billingOn: boolean; now: Date }): PlanBillingView {
-  if (!ctx.billingOn) return { kind: "off" };
-
+export function planBillingView(row: PlanBillingRow, ctx: { now: Date }): PlanBillingView {
   const today = todayIso(ctx.now);
   if (isComplimentaryNow(row, today)) {
     const until = row.complimentaryUntil;

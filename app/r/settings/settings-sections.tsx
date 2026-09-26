@@ -34,7 +34,7 @@ import {
 } from "@/src/modules/settings/actions";
 import type { PlanBillingData } from "@/src/modules/billing/plan-view-loader";
 import { SECTION_IDS, type SectionId } from "@/src/modules/settings/sections";
-import { PlanBillingSection } from "./plan-billing-section";
+import { PlanBillingSection } from "../plan-billing-section";
 import { VendorTable, type LabelRow, type Vendor } from "./vendor-table";
 import { UsersManager, type OrgUser } from "./users/users-manager";
 
@@ -202,8 +202,8 @@ export function SettingsSections({
   /** Null when the organisation's plan doesn't offer this feature (Phase 10, D-105) — the
    *  switch is hidden entirely, not shown disabled. */
   readAmounts: { enabled: boolean } | null;
-  /** Settings → Plan & billing (Phase 16 §4.3), loaded on the server for this org only. */
-  /** Null while billing is off: the section isn't shown at all. */
+  /** Settings → Plan & billing (Phase 16 §4.3), loaded on the server for this org only; null
+   *  while billing is off, when the section isn't shown. */
   planBilling: PlanBillingData | null;
   /** From `?section=` (Phase 16 P19), already checked against the known ids on the server. */
   initialSection: SectionId;

@@ -7,9 +7,8 @@ import "server-only";
  * order, so instead of applying "what the event says" it re-reads the customer's subscriptions
  * from Stripe every time. A copy read from Stripe earlier is never written over one read later
  * (`synced_at` holds when the read behind the stored copy started, D-125), so a slow older sync
- * can't overwrite a newer result. That holds across processes: the webhook, the pages and actions,
- * and the nightly reconcile each have their own `withLock`, which only saves duplicate work within
- * one of them. Throws when Stripe can't be reached, so the webhook answers 500 and Stripe retries.
+ * can't overwrite a newer result, whichever process runs it (the webhook, the app, the nightly
+ * reconcile). Throws when Stripe can't be reached, so the webhook answers 500 and Stripe retries.
  *
  * Ported from the reference build's `lib/stripe.ts`; the org, not a user, is the customer (P11).
  */
@@ -30,7 +29,6 @@ import {
 import { complimentaryState } from "@/src/domain/complimentary";
 import { todayIso } from "@/src/domain/dates";
 import { billingEnabled } from "@/src/modules/billing/config";
-import { withLock } from "@/src/modules/billing/lock";
 import {
   isInterval,
   isLive,
@@ -115,8 +113,9 @@ export function copyOf(
       ...NO_PENDING,
       ...NOT_AWAITING,
       collectionPaused: false,
-      // The customer (or every subscription) was deleted in Stripe while one was live: that is a
-      // cancellation, written once like any live-to-dead move, so `/a` stops saying "Active".
+      // Every subscription was deleted in Stripe while one was live (a deleted customer still lists
+      // its cancelled ones, S-25): that is a cancellation, written once like any live-to-dead
+      // move, so `/a` stops saying "Active".
       ...(isLive(previousStatus) ? { subscriptionStatus: "cancelled" as const } : {}),
     };
   }
@@ -203,35 +202,33 @@ export type SyncOutcome = "synced" | "unknown_customer";
  * belongs to no org here (another business on the same Stripe account, D1) is skipped before
  * any Stripe call.
  */
-export function syncOrgBilling(customerId: string): Promise<SyncOutcome> {
-  return withLock(`sync:${customerId}`, async () => {
-    const org = await findOrgByCustomer(customerId);
-    if (!org) return "unknown_customer";
+export async function syncOrgBilling(customerId: string): Promise<SyncOutcome> {
+  const org = await findOrgByCustomer(customerId);
+  if (!org) return "unknown_customer";
 
-    const readStartedAt = new Date();
-    let subs: Stripe.Subscription[];
-    try {
-      subs = await subscriptionsOf(customerId);
-    } catch (e) {
-      // A customer deleted in Stripe still lists its (cancelled) subscriptions (S-25), so this is
-      // an id this key's account has never seen: the key points somewhere else. Keep the last
-      // copy rather than mark a paying org unpaid; the webhook answers 500 and reconcile fails.
-      if (isMissing(e)) alert(`customer ${customerId} (org ${org.id}) is unknown to this Stripe key; copy left as it was`);
-      throw e;
-    }
-    const sub = currentSubscription(customerId, subs);
-    const [pending, awaiting] = sub ? await Promise.all([pendingChange(sub), awaitingPayment(sub)]) : [NO_PENDING, NOT_AWAITING];
+  const readStartedAt = new Date();
+  let subs: Stripe.Subscription[];
+  try {
+    subs = await subscriptionsOf(customerId);
+  } catch (e) {
+    // A customer deleted in Stripe still lists its (cancelled) subscriptions (S-25), so this is
+    // an id this key's account has never seen: the key points somewhere else. Keep the last
+    // copy rather than mark a paying org unpaid; the webhook answers 500 and reconcile fails.
+    if (isMissing(e)) alert(`customer ${customerId} (org ${org.id}) is unknown to this Stripe key; copy left as it was`);
+    throw e;
+  }
+  const sub = currentSubscription(customerId, subs);
+  const [pending, awaiting] = sub ? await Promise.all([pendingChange(sub), awaitingPayment(sub)]) : [NO_PENDING, NOT_AWAITING];
 
-    await writeCopy(
-      org.id,
-      customerId,
-      readStartedAt,
-      (previousStatus) => copyOf(sub, pending, awaiting, previousStatus),
-      endsComplimentaryAt(sub),
-      sub?.status === "active",
-    );
-    return "synced";
-  });
+  await writeCopy(
+    org.id,
+    customerId,
+    readStartedAt,
+    (previousStatus) => copyOf(sub, pending, awaiting, previousStatus),
+    endsComplimentaryAt(sub),
+    sub?.status === "active",
+  );
+  return "synced";
 }
 
 function snapshot(row: {
@@ -265,8 +262,9 @@ export function endsComplimentaryAt(sub: Stripe.Subscription | undefined): Date 
  * Writes the copy under the org row lock (the one staff actions take), and one History row as
  * "Stripe" when the plan or status actually changed (P15, I-6). No Stripe call happens inside the
  * transaction (P12). Writes nothing when the customer was replaced meanwhile, or when the stored
- * copy came from a Stripe read that started after this one's (`readStartedAt`). `endComplimentarySince`: see `endsComplimentaryAt`; only a grant made before
- * that subscription is ended, so a later staff grant is never undone by it.
+ * copy came from a Stripe read that started after this one's (`readStartedAt`).
+ * `endComplimentarySince`: see `endsComplimentaryAt`; only a grant made before that subscription
+ * is ended, so a later staff grant is never undone by it.
  */
 async function writeCopy(
   orgId: string,
@@ -305,12 +303,8 @@ async function writeCopy(
       .update(orgBilling)
       .set({ ...copy, syncedAt: readStartedAt })
       .where(eq(orgBilling.orgId, orgId));
-    if (plan !== undefined || subscriptionStatus !== undefined) {
-      await tx
-        .update(organizations)
-        .set({ ...(plan ? { plan } : {}), ...(subscriptionStatus ? { subscriptionStatus } : {}) })
-        .where(eq(organizations.id, orgId));
-    }
+    // drizzle leaves an undefined value out of the update.
+    if (plan || subscriptionStatus) await tx.update(organizations).set({ plan, subscriptionStatus }).where(eq(organizations.id, orgId));
 
     const before = snapshot(row);
     const after = snapshot({

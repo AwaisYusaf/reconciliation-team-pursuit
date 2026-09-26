@@ -14,11 +14,12 @@ import "server-only";
  *  5. After Stripe has changed, best-effort refresh our copy and the Stripe customer's email, but
  *     never fail the action because of either: the money already moved.
  */
-import { and, count, eq, isNull, sql } from "drizzle-orm";
+import { and, count, eq, isNull } from "drizzle-orm";
 import type Stripe from "stripe";
 
 import { db } from "@/src/db";
 import { billingCopyOn, sameStripeMode } from "@/src/db/billing-copy";
+import { lockOrg } from "@/src/db/org-lock";
 import { fundingSources, orgBilling, organizations } from "@/src/db/schema";
 import { isComplimentaryNow } from "@/src/domain/complimentary";
 import { formatDateUS, todayIso, type IsoDate } from "@/src/domain/dates";
@@ -119,29 +120,6 @@ async function activeFundingSourceCount(orgId: string): Promise<number> {
   return row?.total ?? 0;
 }
 
-/** The org's customer in the configured Stripe mode, or null. `billingCopyOn()` already drops a
- *  customer from the other mode (P11). */
-function liveCustomerId(row: OrgRow): string | null {
-  return row.stripeCustomerId;
-}
-
-/** Every copied column, empty: what a replaced customer's row starts from. */
-const EMPTY_COPY = {
-  stripeStatus: null,
-  billingInterval: null,
-  currentPeriodEnd: null,
-  cancelAtPeriodEnd: false,
-  pendingPlan: null,
-  pendingInterval: null,
-  pendingAt: null,
-  pendingReason: null,
-  upgradePayUrl: null,
-  upgradeExpiresAt: null,
-  collectionPaused: false,
-  disputedAt: null,
-  syncedAt: null,
-} as const;
-
 function assertNotComplimentary(row: Pick<OrgRow, "complimentary" | "complimentaryUntil">): void {
   if (isComplimentaryNow(row, todayIso())) throw new BillingError("complimentary");
 }
@@ -198,7 +176,7 @@ async function syncEmail(actor: Actor, customerId: string): Promise<void> {
 }
 
 async function ensureCustomer(actor: Actor, row: OrgRow): Promise<string> {
-  const existing = liveCustomerId(row);
+  const existing = row.stripeCustomerId;
   if (existing) {
     // A customer deleted in the Stripe dashboard can never pay again (Checkout refuses it), so
     // ask Stripe, and start a new one only when Stripe says it was deleted. A customer Stripe
@@ -222,26 +200,15 @@ async function ensureCustomer(actor: Actor, row: OrgRow): Promise<string> {
     name: row.name,
     metadata: { orgId: row.id },
   });
-  const live = stripeKeyIsLive();
-
-  // The org's first customer, or a replacement for a deleted one or one from the other Stripe
-  // mode, whose copy goes with it: nothing about the old customer may count for the new one.
-  const stored = await db
-    .insert(orgBilling)
-    .values({ orgId: row.id, stripeCustomerId: customer.id, livemode: live })
-    .onConflictDoUpdate({
-      target: orgBilling.orgId,
-      set: { stripeCustomerId: customer.id, livemode: live, ...EMPTY_COPY },
-      setWhere: existing
-        ? sql`${orgBilling.livemode} IS DISTINCT FROM ${live} OR ${orgBilling.stripeCustomerId} = ${existing}`
-        : sql`${orgBilling.livemode} IS DISTINCT FROM ${live}`,
-    })
-    .returning({ stripeCustomerId: orgBilling.stripeCustomerId });
-  if (stored[0]) return customer.id;
-
-  // Lost the race: someone else already stored a customer id under the lock. Use theirs.
-  const fresh = await loadOrg(row.id);
-  return liveCustomerId(fresh) ?? customer.id;
+  // The new customer starts a new copy: whatever was stored (a deleted customer's, or one from
+  // the other Stripe mode) goes. Under the org row lock, like every writer of the copy, so a sync
+  // still writing about the old customer sees it replaced and writes nothing.
+  await db.transaction(async (tx) => {
+    await lockOrg(tx, row.id, { id: organizations.id });
+    await tx.delete(orgBilling).where(eq(orgBilling.orgId, row.id));
+    await tx.insert(orgBilling).values({ orgId: row.id, stripeCustomerId: customer.id, livemode: stripeKeyIsLive() });
+  });
+  return customer.id;
 }
 
 /** The subscription an action may change: exists, from Stripe (not our copy), with its schedule
@@ -471,7 +438,7 @@ const QUOTE_VALID_SECONDS = 15 * 60;
 export async function quoteChange(actor: Actor, plan: unknown, interval: unknown): Promise<ChangeQuote> {
   const row = await loadOrg(actor.orgId);
   assertNotComplimentary(row);
-  const customerId = liveCustomerId(row);
+  const customerId = row.stripeCustomerId;
   if (!customerId) throw new BillingError("no_plan");
 
   const target = await findPrice(plan, interval);
@@ -531,7 +498,7 @@ export function applyChange(actor: Actor, plan: unknown, interval: unknown, pror
   return orgLock(actor.orgId, async () => {
     const row = await loadOrg(actor.orgId);
     assertNotComplimentary(row);
-    const customerId = liveCustomerId(row);
+    const customerId = row.stripeCustomerId;
     if (!customerId) throw new BillingError("no_plan");
     await syncEmail(actor, customerId);
 
@@ -593,7 +560,7 @@ export function cancelPendingChange(actor: Actor): Promise<void> {
   return orgLock(actor.orgId, async () => {
     const row = await loadOrg(actor.orgId);
     assertNotComplimentary(row);
-    const customerId = liveCustomerId(row);
+    const customerId = row.stripeCustomerId;
     if (!customerId) throw new BillingError("no_plan");
     await syncEmail(actor, customerId);
 
@@ -621,7 +588,7 @@ export function cancelAtPeriodEnd(actor: Actor): Promise<void> {
   return orgLock(actor.orgId, async () => {
     const row = await loadOrg(actor.orgId);
     // A complimentary org may already have bought a plan that starts later (2026-09-25).
-    const customerId = liveCustomerId(row);
+    const customerId = row.stripeCustomerId;
     if (!customerId) throw new BillingError("no_plan");
     await syncEmail(actor, customerId);
 
@@ -641,7 +608,7 @@ export function endPlanNow(actor: Actor): Promise<void> {
   return orgLock(actor.orgId, async () => {
     const row = await loadOrg(actor.orgId);
     assertNotComplimentary(row);
-    const customerId = liveCustomerId(row);
+    const customerId = row.stripeCustomerId;
     if (!customerId) throw new BillingError("no_plan");
     await syncEmail(actor, customerId);
 
@@ -662,7 +629,7 @@ export function resume(actor: Actor): Promise<void> {
   return orgLock(actor.orgId, async () => {
     const row = await loadOrg(actor.orgId);
     // A complimentary org may already have bought a plan that starts later (2026-09-25).
-    const customerId = liveCustomerId(row);
+    const customerId = row.stripeCustomerId;
     if (!customerId) throw new BillingError("no_plan");
     await syncEmail(actor, customerId);
 
@@ -682,7 +649,7 @@ let portalConfigId: string | undefined;
 export async function portalUrl(actor: Actor): Promise<string> {
   const row = await loadOrg(actor.orgId);
   // A complimentary org may already have bought a plan that starts later (2026-09-25).
-  const customerId = liveCustomerId(row);
+  const customerId = row.stripeCustomerId;
   if (!customerId) throw new BillingError("no_plan");
   await syncEmail(actor, customerId);
 
@@ -713,7 +680,7 @@ export async function setCollectionPaused(orgId: string, paused: boolean): Promi
   await orgLock(orgId, async () => {
     if (!billingEnabled()) return;
     const row = await loadOrg(orgId);
-    const customerId = liveCustomerId(row);
+    const customerId = row.stripeCustomerId;
     if (!customerId) return;
     const sub = pickCurrent(await subscriptionsOf(customerId));
     if (!sub || !isLive(sub.status)) return;
@@ -731,7 +698,7 @@ export async function setCollectionPaused(orgId: string, paused: boolean): Promi
 export async function staffCancelSubscription(orgId: string, when: "now" | "period_end"): Promise<void> {
   await orgLock(orgId, async () => {
     if (!billingEnabled()) return;
-    const customerId = liveCustomerId(await loadOrg(orgId));
+    const customerId = (await loadOrg(orgId)).stripeCustomerId;
     if (!customerId) return;
     const sub = pickCurrent(await subscriptionsOf(customerId));
     if (!sub || !isLive(sub.status)) return;
@@ -766,7 +733,7 @@ export type StaffPayment = {
  */
 export async function staffPayments(orgId: string, limit = 12): Promise<StaffPayment[] | null> {
   if (!billingEnabled()) return [];
-  const customerId = liveCustomerId(await loadOrg(orgId));
+  const customerId = (await loadOrg(orgId)).stripeCustomerId;
   if (!customerId) return [];
   try {
     const { data } = await stripe().invoices.list({ customer: customerId, limit });
@@ -805,7 +772,7 @@ export async function queuedDowngradeToReconciliation(orgId: string): Promise<Da
   if (!billingEnabled()) return null;
   const row = await loadOrg(orgId);
   if (isComplimentaryNow(row, todayIso())) return null;
-  const customerId = liveCustomerId(row);
+  const customerId = row.stripeCustomerId;
   if (!customerId) return null;
 
   const sub = pickCurrent(await subscriptionsOf(customerId));

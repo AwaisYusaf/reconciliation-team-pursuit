@@ -26,7 +26,7 @@ describe("Settings tour wiring", () => {
     // Plan & billing lives in its own component, so its target is looked for there too.
     const source =
       readFileSync(`${repoRoot}app/r/settings/settings-sections.tsx`, "utf8") +
-      readFileSync(`${repoRoot}app/r/settings/plan-billing-section.tsx`, "utf8");
+      readFileSync(`${repoRoot}app/r/plan-billing-section.tsx`, "utf8");
     // The sidebar's `data-tour` is built from a template literal (`settings-tab-${id}`), not a
     // static string per id — confirm that wiring exists once, then validate any
     // "settings-tab-<id>" autoOpen value against the known section ids rather than the source.

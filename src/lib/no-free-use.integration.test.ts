@@ -211,7 +211,7 @@ describe.skipIf(!hasDatabase)("no free use at every entry point (I-9, I-16)", as
       const { fundingSources } = await import("@/src/db/schema");
       const { ORIGINAL_RULES } = await import("@/src/modules/expenses/reimbursement");
       const { ArchiveSources } = await import("@/app/r/plan/archive-sources");
-      const { SubscribeButton } = await import("@/app/r/plan/subscribe-button");
+      const { SubscribeButton } = await import("@/app/r/subscribe-button");
       const [extra] = await db
         .insert(fundingSources)
         .values({ orgId, name: `Extra ${Date.now()}`, type: "grant", sortOrder: 2, ...ORIGINAL_RULES })

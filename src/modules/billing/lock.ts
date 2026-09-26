@@ -1,13 +1,9 @@
 /**
- * Runs calls with the same key one after another, in the order they arrived (P12): billing
- * actions per org (`org:{id}`), syncs per customer (`sync:{customerId}`). Ported unchanged from
- * the reference build's `lib/lock.ts`.
- *
- * In-process only. The billing actions (`org:`) all run as server actions, which share one copy
- * of this module, so a double-click is serialised. Syncs (`sync:`) also run from the webhook route
- * and the nightly reconcile, which have their own copies (the bundler gives route handlers a
- * separate one), so for syncs this only saves duplicate work: they order themselves by
- * `org_billing.synced_at` (D-125) under the org row lock.
+ * Runs calls with the same key one after another, in the order they arrived (P12): the billing
+ * actions per org (`org:{id}`), so a double-click can't double-act. Ported unchanged from the
+ * reference build's `lib/lock.ts`. In-process: every billing action is a server action, and those
+ * share one copy of this module. Syncs don't use it; they order themselves by
+ * `org_billing.synced_at` under the org row lock (D-125).
  */
 const tails = new Map<string, Promise<unknown>>();
 

@@ -12,7 +12,7 @@ import { archiveFundingSourceAction } from "@/src/modules/funding-sources/action
 /**
  * The org's active funding sources, each with Archive (Phase 16, D2): Reconciliation includes
  * one, and an unpaid org can't reach Settings, so this is where its admin gets down to one before
- * choosing it. The last one can't be archived; the server refuses the same.
+ * choosing it. Shown only while more than one is active.
  */
 export function ArchiveSources({ sources }: { sources: ReadonlyArray<{ id: string; name: string }> }) {
   const router = useRouter();
@@ -32,7 +32,7 @@ export function ArchiveSources({ sources }: { sources: ReadonlyArray<{ id: strin
         {sources.map((source) => (
           <li key={source.id} className="flex items-center justify-between gap-3 py-2">
             <span className="text-[15px] text-ink">{source.name}</span>
-            <Button variant="quiet" disabled={pending || sources.length <= 1} onClick={() => archive(source.id)}>
+            <Button variant="quiet" disabled={pending} onClick={() => archive(source.id)}>
               {UI.billingArchiveSource}
             </Button>
           </li>

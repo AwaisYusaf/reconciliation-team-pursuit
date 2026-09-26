@@ -855,7 +855,7 @@ export const UI = {
   billingSeePlans: "See plans",
   billingGoToSources: "Go to Funding sources",
   billingSubscribeTooManySources: (count: number) =>
-    `Reconciliation includes one active funding source, and you have ${count}. Archive the ones you don't use below, or choose Reconciliation + AI.`,
+    `Reconciliation includes one active funding source, and you have ${count}. Archive the ones you don't use, or choose Reconciliation + AI.`,
   billingSourcesTitle: "Your funding sources",
   billingSourcesHelp:
     "Reconciliation includes one active funding source. Archiving keeps a source's records, and you can bring it back later from Settings.",

@@ -8,16 +8,16 @@ import { formatDateUS } from "@/src/domain/dates";
 import { pageTitle, UI } from "@/src/domain/strings";
 import { planPageSession } from "@/src/lib/page-session";
 import { complimentaryEndedOn, ORG_ENTITLEMENT_COLUMNS } from "@/src/services/auth/entitlement";
-import { activeAdminNames, loadPlanBilling } from "@/src/modules/billing/plan-view-loader";
+import { loadPlanBilling } from "@/src/modules/billing/plan-view-loader";
 import { PRICES_CENTS } from "@/src/modules/billing/pricing";
 import { INTERVALS, isInterval, isPlanId, type Interval, type PlanId } from "@/src/modules/billing/rules";
 import { PLAN_CARD_IDS, PlanCards } from "@/src/modules/landing/plan-cards";
 
 import { listFundingSources } from "@/src/modules/funding-sources/queries";
 
-import { PlanBillingSection } from "../settings/plan-billing-section";
+import { PlanBillingSection } from "../plan-billing-section";
 import { ArchiveSources } from "./archive-sources";
-import { SubscribeButton } from "./subscribe-button";
+import { SubscribeButton } from "../subscribe-button";
 
 export const metadata = { title: pageTitle("Choose a plan") };
 
@@ -76,7 +76,7 @@ export default async function PlanPage({
         : UI.billingEnded;
 
   const plansToShow = preselected ? [preselected] : PLAN_CARD_IDS;
-  const managerNoticeNames = isAdmin ? "" : await activeAdminNames(session.orgId);
+  const managerNoticeNames = billing.adminNames; // "" for an admin
   // Reconciliation includes one active funding source (C8): with more, its card says why it
   // can't be chosen and the sources are listed below to archive (D2), rather than Checkout
   // refusing after the click.

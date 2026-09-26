@@ -12,7 +12,7 @@ import { COMP_WARNING_DAYS, planBillingView, type PlanBillingRow } from "./plan-
 // Noon in Detroit, so `todayIso` is unambiguous.
 const NOW = new Date("2026-09-25T16:00:00Z");
 const DAY = 86_400_000;
-const on = { billingOn: true, now: NOW };
+const on = { now: NOW };
 
 const base: PlanBillingRow = {
   plan: "reconciliation",
@@ -33,11 +33,6 @@ const base: PlanBillingRow = {
 const row = (over: Partial<PlanBillingRow>): PlanBillingRow => ({ ...base, ...over });
 
 describe("planBillingView", () => {
-  it("billing off: off, whatever the row says", () => {
-    expect(planBillingView(base, { billingOn: false, now: NOW })).toEqual({ kind: "off" });
-    expect(planBillingView(row({ complimentary: true }), { billingOn: false, now: NOW })).toEqual({ kind: "off" });
-  });
-
   it("healthy subscription: plan, interval, renewal, nothing else", () => {
     expect(planBillingView(base, on)).toEqual({
       kind: "subscribed",
@@ -175,12 +170,11 @@ describe("planBillingView", () => {
 
 describe("Plan & billing section renders each state", () => {
   const source = readFileSync(
-    fileURLToPath(new URL("../../../app/r/settings/plan-billing-section.tsx", import.meta.url)),
+    fileURLToPath(new URL("../../../app/r/plan-billing-section.tsx", import.meta.url)),
     "utf8",
   );
 
   it.each([
-    ["off", ["UI.billingNotEnabled"]],
     ["none", ["UI.billingNoPlan", "<SubscribeButton", "UI.billingManagerNote"]],
     ["complimentary", ["UI.billingComplimentaryUntil", "UI.billingComplimentary(", "UI.billingCompBuyDeferred", "UI.billingCompBuyNow", "UI.billingQuestions"]],
     ["complimentary with a plan bought", ["UI.billingCompUpcoming(", "UI.billingCompUpcomingCancelled", "UI.billingCancelUpcomingBody"]],

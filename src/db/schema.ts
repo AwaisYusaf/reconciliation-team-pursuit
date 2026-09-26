@@ -352,8 +352,9 @@ export const orgAccountEvents = pgTable(
  * (`src/modules/billing/`); Stripe stays the record (D-123). Kept off `organizations`, which
  * every request reads, so a webhook rewrites this row rather than the org's.
  *
- * Every read goes through `billingCopyOn()` (`src/db/billing-copy.ts`), which also matches
- * `livemode` to the configured key: a row from the other Stripe mode reads as absent (P11).
+ * Every read goes through `billingCopyOn()` (a join) or `sameStripeMode()` (`org_billing` alone),
+ * both in `src/db/billing-copy.ts`, which match `livemode` to the configured key: a row from the
+ * other Stripe mode reads as absent (P11).
  */
 export const orgBilling = pgTable(
   "org_billing",

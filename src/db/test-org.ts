@@ -69,14 +69,15 @@ export async function createTestOrg(overrides: TestOrgOverrides = {}): Promise<T
   return { orgId: org.id, fundingSourceId: source.id };
 }
 
-export type BillingCopyFixture = Partial<Omit<typeof orgBilling.$inferInsert, "orgId">>;
-
 /**
  * Gives the org a Stripe copy (`org_billing`, D-125), as the sync would. A new row defaults to
  * customer `cus_test_<orgId>` in test mode; on an existing row only the given keys change, so a
  * customer set earlier survives a later status change.
  */
-export async function setBillingCopy(orgId: string, copy: BillingCopyFixture = {}): Promise<void> {
+export async function setBillingCopy(
+  orgId: string,
+  copy: Partial<Omit<typeof orgBilling.$inferInsert, "orgId">> = {},
+): Promise<void> {
   const insert = db
     .insert(orgBilling)
     .values({ orgId, stripeCustomerId: `cus_test_${orgId}`, livemode: false, ...copy });

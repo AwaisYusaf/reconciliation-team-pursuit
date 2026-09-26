@@ -776,7 +776,7 @@ checklist clear.
 **Results (2026-09-25).**
 - **Built:** `src/modules/billing/plan-view.ts` (pure `planBillingView`, every §4.3 state) and
   `plan-view-loader.ts` (`loadPlanBilling`, `loadBillingBanner`, `activeAdminNames`; both call the
-  stale re-sync); `app/r/settings/plan-billing-section.tsx` (states, switch with Stripe's quote in
+  stale re-sync); `app/r/plan-billing-section.tsx` (states, switch with Stripe's quote in
   a dialog, cancel, keep, end now, cancel a queued change, Card and invoices, Reconciliation
   disabled with more than one active source); `src/modules/settings/sections.ts` (`?section=`);
   `app/r/billing-banner.tsx`; `app/r/see-plans-link.tsx` beside the Plus notes; the header Plus
