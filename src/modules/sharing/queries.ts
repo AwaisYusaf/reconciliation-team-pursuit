@@ -8,7 +8,8 @@ import "server-only";
 import { and, asc, eq, isNull, sql } from "drizzle-orm";
 
 import { db } from "@/src/db";
-import { organizations, sharedLinks, users } from "@/src/db/schema";
+import { billingCopyOn } from "@/src/db/billing-copy";
+import { orgBilling, organizations, sharedLinks, users } from "@/src/db/schema";
 import { formatDateUS, todayIso, type MonthKey } from "@/src/domain/dates";
 import { sharedFileKindOf, type SharedFileKind } from "@/src/domain/shared-links";
 import { userDisplay } from "@/src/domain/user-display";
@@ -78,6 +79,7 @@ export async function loadSharedLinks(
     db
       .select({ ...ENTITLEMENT_COLUMNS })
       .from(organizations)
+      .leftJoin(orgBilling, billingCopyOn())
       .where(eq(organizations.id, orgId))
       .limit(1),
   ]);

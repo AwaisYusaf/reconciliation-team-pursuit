@@ -8,11 +8,13 @@
  * transaction — the client calls `router.refresh()` after a success (Phase 4), which is why
  * nothing here calls `revalidatePath`.
  */
-import { eq, inArray } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 
 import { db } from "@/src/db";
+import { billingCopyOn, sameStripeMode } from "@/src/db/billing-copy";
 import {
   orgAccountEvents,
+  orgBilling,
   organizations,
   orgPlan,
   sessions,
@@ -89,11 +91,15 @@ async function withLockedOrg(
       complimentary: organizations.complimentary,
       complimentaryUntil: organizations.complimentaryUntil,
       suspendedAt: organizations.suspendedAt,
-      stripeStatus: organizations.stripeStatus,
     });
-
     if (!row) return fail(UI.orgNoLongerExists);
-    return fn(row, tx);
+
+    // Read after the lock, so this is the copy the last writer holding it committed.
+    const [billing] = await tx
+      .select({ stripeStatus: orgBilling.stripeStatus })
+      .from(orgBilling)
+      .where(and(eq(orgBilling.orgId, orgId), sameStripeMode()));
+    return fn({ ...row, stripeStatus: billing?.stripeStatus ?? null }, tx);
   });
 }
 
@@ -173,8 +179,9 @@ export async function setComplimentaryAction(
   // this triggers writes the same row, and a Stripe failure then leaves nothing half done.
   if (enabled && billingEnabled() && isUuid(orgId)) {
     const [current] = await db
-      .select({ complimentary: organizations.complimentary, stripeStatus: organizations.stripeStatus })
+      .select({ complimentary: organizations.complimentary, stripeStatus: orgBilling.stripeStatus })
       .from(organizations)
+      .leftJoin(orgBilling, billingCopyOn())
       .where(eq(organizations.id, orgId));
     if (current && !current.complimentary && isLive(current.stripeStatus)) {
       if (cancelPaid !== "now" && cancelPaid !== "period_end") return fail(UI.staffCompCancelRequired);
@@ -191,9 +198,10 @@ export async function setComplimentaryAction(
     if (!enabled) {
       if (!row.complimentary) return fail(UI.accountNothingChanged); // already off
       const before = snapshot(row);
+      // The pinned free plan (`complimentary_plan`) ends with the grant it belongs to.
       await tx
         .update(organizations)
-        .set({ complimentary: false, complimentaryUntil: null })
+        .set({ complimentary: false, complimentaryUntil: null, complimentaryPlan: null })
         .where(eq(organizations.id, orgId));
       const after = snapshot({ ...row, complimentary: false, complimentaryUntil: null });
       await tx.insert(orgAccountEvents).values({

@@ -140,13 +140,20 @@ flags the org in `/a`.
 
 ## 3. Data model (one migration, `0041`)
 
-`organizations`, all nullable or defaulted; no existing row is updated:
+**Revised 2026-09-26 (PR #23 review, D-125):** the Stripe copy moved off `organizations` into its
+own table, `org_billing`. `stripe_subscription_id` (never read) is gone, `billing_flag` became the
+date `disputed_at`, and `billing_synced_at` became `synced_at`.
+
+`org_billing`, one row per organization, created with its first Stripe customer (1:1, like
+`contract_settings`). Every read goes through `billingCopyOn()` (`src/db/billing-copy.ts`), which
+also matches `livemode` to the configured key, so a row from the other Stripe mode reads as no
+copy at all (P11):
 
 | Column | Type | Notes |
 |---|---|---|
-| `stripe_customer_id` | text UNIQUE | Set once (`WHERE stripe_customer_id IS NULL`); the UNIQUE index serves the sync's lookup |
-| `stripe_livemode` | boolean | The mode the customer id belongs to (P11) |
-| `stripe_subscription_id` | text | The current subscription |
+| `org_id` | uuid PK, FK `organizations` ON DELETE CASCADE | |
+| `stripe_customer_id` | text NOT NULL UNIQUE | The UNIQUE index serves the sync's lookup |
+| `livemode` | boolean NOT NULL | The mode the customer belongs to (P11). Checkout replaces a row from the other mode, and its copy with it |
 | `stripe_status` | text, CHECK `stripe_status IS NULL OR length(stripe_status) > 0` | Exact Stripe status, validated in code (P8) |
 | `billing_interval` | text, CHECK (`month`, `year`) | |
 | `current_period_end` | timestamptz | Renewal date, or the cancel date when cancelling |
@@ -157,21 +164,24 @@ flags the org in `/a`.
 | `pending_reason` | text, CHECK (`downgrade`, `price_move`) | P21 |
 | `upgrade_pay_url` | text | Upgrade awaiting payment: Stripe's hosted invoice page |
 | `upgrade_expires_at` | timestamptz | |
-| `billing_synced_at` | timestamptz | Throttles the stale re-sync |
-| `complimentary_plan` | org_plan | The plan a complimentary grant gives (P27); null means today's `plan` |
 | `collection_paused` | boolean NOT NULL default false | D3 |
-| `billing_flag` | text | e.g. `dispute`, shown in `/a` |
+| `disputed_at` | timestamptz | When the latest card dispute was opened; shown in `/a`, never cleared, never changes access |
+| `synced_at` | timestamptz | When the Stripe read behind this copy started; throttles the stale re-sync |
 
-`org_account_events`: `via_stripe boolean NOT NULL default false`.
+`organizations` gains only `complimentary_plan` (org_plan, null): the plan a complimentary grant
+gives (P27); null means today's `plan`. `org_account_events`: `via_stripe boolean NOT NULL
+default false`.
 
 The sync writes the existing `plan` and `subscription_status` only from a live subscription
 (trialing→trial, active→active, past_due and unpaid→past_due, canceled and incomplete_expired→
 cancelled), so `/a` counts keep working. Staff edits of those two are refused on the server while a
 subscription is live (P16).
 
-Migration test `src/db/migration-0041.test.ts`: only nullable or defaulted adds, no `ALTER TYPE`, no
-enum literal in any CHECK, no `UPDATE`. Rollback: drop the columns; `via_stripe` on past History rows
-is lost, which is cosmetic (before and after snapshots stay). Rehearsed on a throwaway database.
+Migration test `src/db/migration-0041.test.ts`: creates `org_billing`, then only nullable or
+defaulted adds to existing tables (counted, so the check can't pass by matching nothing), no
+`ALTER TYPE`, no enum literal in any CHECK, no `UPDATE` statement. Rollback: drop `org_billing` and
+the two columns; `via_stripe` on past History rows is lost, which is cosmetic (before and after
+snapshots stay).
 
 ---
 
@@ -269,7 +279,7 @@ awaiting payment, complimentary ending within 14 days. Nothing for healthy or co
 
 For an org with a live subscription: plan and status edits refused on the server and disabled with
 `staffStripeManaged` and a link to the Stripe customer; the org page shows interval, renewal, queued
-change, failed payment, `billing_flag`. History shows "Stripe" for `via_stripe` rows. Granting
+change, failed payment, the date of a card dispute (`disputed_at`). History shows "Stripe" for `via_stripe` rows. Granting
 complimentary to a paying org asks staff to cancel the subscription now or at period end in the same
 dialog. Suspending a paying org pauses collection; reinstating resumes it (D3).
 
@@ -753,7 +763,7 @@ checklist clear.
   pill and `settings/page.tsx` read the entitlement; `PlusBadge` takes an `href`, only the header
   passes one; `/r/plan?checkout=cancelled` note. Staff `/a`: Billing card (`staffBilling()` in
   `admin/directory.ts`) with status, interval, renewal or end, queued change, warnings for failed
-  payment, upgrade waiting, paused collection and `billing_flag`, and an "Open in Stripe" link;
+  payment, upgrade waiting, paused collection and a card dispute (a date since D-125), and an "Open in Stripe" link;
   Change plan disabled with `staffStripeManaged` while live; History shows "Stripe" on
   `via_stripe` rows; complimentary for a paying org asks to cancel now or at period end
   (`staffCancelSubscription` in `billing.ts`, Stripe first, outside the row lock, a failure grants

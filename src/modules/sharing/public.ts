@@ -12,7 +12,8 @@ import "server-only";
 import { and, eq, isNull } from "drizzle-orm";
 
 import { db } from "@/src/db";
-import { generatedArtifacts, organizations, sharedLinks } from "@/src/db/schema";
+import { billingCopyOn } from "@/src/db/billing-copy";
+import { generatedArtifacts, orgBilling, organizations, sharedLinks } from "@/src/db/schema";
 import {
   SHARE_PASSWORD_MAX,
   SHARE_PASSWORD_MIN,
@@ -66,6 +67,7 @@ export async function loadPublicShare(token: string): Promise<PublicShare | null
       and(eq(generatedArtifacts.id, sharedLinks.artifactId), eq(generatedArtifacts.orgId, sharedLinks.orgId)),
     )
     .innerJoin(organizations, eq(organizations.id, sharedLinks.orgId))
+    .leftJoin(orgBilling, billingCopyOn())
     .where(
       and(
         eq(sharedLinks.token, token),

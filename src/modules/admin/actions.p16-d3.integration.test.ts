@@ -36,7 +36,7 @@ const hasDatabase = Boolean(process.env.DATABASE_URL);
 describe.skipIf(!hasDatabase)("P16 (staff-managed while live) and D3 (collection pause wiring)", async () => {
   const { db } = await import("@/src/db");
   const { organizations, orgAccountEvents, staffUsers } = await import("@/src/db/schema");
-  const { createTestOrg } = await import("@/src/db/test-org");
+  const { createTestOrg, setBillingCopy } = await import("@/src/db/test-org");
   const { hashPassword } = await import("@/src/services/auth/passwords");
   const { UI } = await import("@/src/domain/strings");
   const { fail } = await import("@/src/lib/action-result");
@@ -59,7 +59,7 @@ describe.skipIf(!hasDatabase)("P16 (staff-managed while live) and D3 (collection
   }
 
   async function setStripeStatus(orgId: string, status: string | null) {
-    await db.update(organizations).set({ stripeStatus: status }).where(eq(organizations.id, orgId));
+    await setBillingCopy(orgId, { stripeStatus: status });
   }
 
   async function eventsFor(orgId: string) {

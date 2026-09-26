@@ -10,11 +10,10 @@ import { config } from "dotenv";
 
 config({ path: ".env.local", quiet: true });
 
-import { and, eq, isNotNull } from "drizzle-orm";
-
 import { db } from "@/src/db";
-import { organizations } from "@/src/db/schema";
-import { billingEnabled, stripeKeyIsLive } from "@/src/modules/billing/config";
+import { sameStripeMode } from "@/src/db/billing-copy";
+import { orgBilling } from "@/src/db/schema";
+import { billingEnabled } from "@/src/modules/billing/config";
 import { syncOrgBilling } from "@/src/modules/billing/sync";
 
 async function main(): Promise<number> {
@@ -23,14 +22,14 @@ async function main(): Promise<number> {
     return 0;
   }
   const orgs = await db
-    .select({ id: organizations.id, customerId: organizations.stripeCustomerId })
-    .from(organizations)
-    .where(and(isNotNull(organizations.stripeCustomerId), eq(organizations.stripeLivemode, stripeKeyIsLive())));
+    .select({ id: orgBilling.orgId, customerId: orgBilling.stripeCustomerId })
+    .from(orgBilling)
+    .where(sameStripeMode());
 
   let failed = 0;
   for (const org of orgs) {
     try {
-      await syncOrgBilling(org.customerId!);
+      await syncOrgBilling(org.customerId);
     } catch (e) {
       failed++;
       console.error(`[reconcile] ALERT org ${org.id} failed to sync`, e);

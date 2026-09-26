@@ -78,7 +78,7 @@ describe.skipIf(!hasDatabase)("billing actions (integration, Phase 16)", async (
   const { eq, and, isNull } = await import("drizzle-orm");
   const { db } = await import("@/src/db");
   const { organizations, fundingSources } = await import("@/src/db/schema");
-  const { createTestOrg } = await import("@/src/db/test-org");
+  const { createTestOrg, orgWithBilling, setBillingCopy } = await import("@/src/db/test-org");
   const { ORIGINAL_RULES } = await import("@/src/modules/expenses/reimbursement");
   const { v7: uuidv7 } = await import("uuid");
   const { UI } = await import("@/src/domain/strings");
@@ -121,7 +121,7 @@ describe.skipIf(!hasDatabase)("billing actions (integration, Phase 16)", async (
   }
 
   async function withCustomer(orgId: string, customerId: string) {
-    await db.update(organizations).set({ stripeCustomerId: customerId, stripeLivemode: false }).where(eq(organizations.id, orgId));
+    await setBillingCopy(orgId, { stripeCustomerId: customerId, livemode: false });
   }
 
   async function activeCount(orgId: string) {
@@ -700,6 +700,36 @@ describe.skipIf(!hasDatabase)("billing actions (integration, Phase 16)", async (
       expect(result).toEqual({ ok: true, data: undefined });
       expect(subscriptionsUpdateMock).toHaveBeenCalledWith("sub_1", { cancel_at_period_end: true });
       errorSpy.mockRestore();
+    });
+  });
+
+  describe("P11, D-125: a copy from the other Stripe mode", () => {
+    it("counts as no copy, and the next Checkout replaces it with a customer in this mode and an empty copy", async () => {
+      const orgId = await freshOrg({ complimentary: false });
+      asAdmin(orgId);
+      // Left over from live mode; this suite runs with a test key.
+      await setBillingCopy(orgId, { stripeCustomerId: uniqueCustomerId(), livemode: true, stripeStatus: "active" });
+      const newCustomer = uniqueCustomerId();
+      customersCreateMock.mockResolvedValue({ id: newCustomer });
+
+      expect(await startCheckoutAction("reconciliation", "month")).toMatchObject({ ok: true });
+      expect(customersCreateMock).toHaveBeenCalledTimes(1);
+      expect(await orgWithBilling(orgId)).toMatchObject({
+        stripeCustomerId: newCustomer,
+        livemode: false,
+        stripeStatus: null,
+      });
+    });
+
+    it("a customer already in this mode is reused, never replaced", async () => {
+      const orgId = await freshOrg({ complimentary: false });
+      asAdmin(orgId);
+      const existing = uniqueCustomerId();
+      await setBillingCopy(orgId, { stripeCustomerId: existing, livemode: false });
+
+      expect(await startCheckoutAction("reconciliation", "month")).toMatchObject({ ok: true });
+      expect(customersCreateMock).not.toHaveBeenCalled();
+      expect((await orgWithBilling(orgId)).stripeCustomerId).toBe(existing);
     });
   });
 });

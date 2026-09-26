@@ -170,7 +170,6 @@ describe("copyOf: undefined subscription", () => {
   it("returns an all-null/false copy, and never touches pending/awaiting inputs' identity", () => {
     const copy = copyOf(undefined, NP, NA, null);
     expect(copy).toEqual({
-      stripeSubscriptionId: null,
       stripeStatus: null,
       billingInterval: null,
       currentPeriodEnd: null,

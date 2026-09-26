@@ -15,9 +15,11 @@ import { and, desc, eq, inArray } from "drizzle-orm";
 import type Stripe from "stripe";
 
 import { db } from "@/src/db";
+import { sameStripeMode } from "@/src/db/billing-copy";
 import { lockOrg } from "@/src/db/org-lock";
 import {
   orgAccountEvents,
+  orgBilling,
   organizations,
   type OrgAccountSnapshot,
   type OrgPlan,
@@ -25,7 +27,7 @@ import {
 } from "@/src/db/schema";
 import { complimentaryState } from "@/src/domain/complimentary";
 import { todayIso } from "@/src/domain/dates";
-import { billingEnabled, stripeKeyIsLive } from "@/src/modules/billing/config";
+import { billingEnabled } from "@/src/modules/billing/config";
 import { withLock } from "@/src/modules/billing/lock";
 import {
   isInterval,
@@ -38,10 +40,9 @@ import {
 } from "@/src/modules/billing/rules";
 import { futurePhase, idOf, isMissing, stripe, subscriptionsOf } from "@/src/modules/billing/stripe";
 
-/** Every column the sync writes. `plan` and `subscriptionStatus` are absent when it must not
- *  write them (P27). */
+/** Every column the sync writes: the `org_billing` copy, plus `plan` and `subscriptionStatus` on
+ *  `organizations`, which are absent when it must not write them (P27). */
 export type BillingCopy = {
-  stripeSubscriptionId: string | null;
   stripeStatus: string | null;
   billingInterval: Interval | null;
   currentPeriodEnd: Date | null;
@@ -105,7 +106,6 @@ export function copyOf(
 ): BillingCopy {
   if (!sub) {
     return {
-      stripeSubscriptionId: null,
       stripeStatus: null,
       billingInterval: null,
       currentPeriodEnd: null,
@@ -136,7 +136,6 @@ export function copyOf(
   const mappedStatus = STATUS_MAP[sub.status];
 
   return {
-    stripeSubscriptionId: sub.id,
     stripeStatus: sub.status,
     billingInterval: isInterval(interval) ? interval : null,
     // Since API 2025-03-31 the renewal date lives on the item, not the subscription.
@@ -188,12 +187,11 @@ async function awaitingPayment(sub: Stripe.Subscription): Promise<AwaitingPaymen
  */
 export async function findOrgByCustomer(customerId: string): Promise<{ id: string } | undefined> {
   const [org] = await db
-    .select({ id: organizations.id, livemode: organizations.stripeLivemode })
-    .from(organizations)
-    .where(eq(organizations.stripeCustomerId, customerId))
+    .select({ id: orgBilling.orgId })
+    .from(orgBilling)
+    .where(and(eq(orgBilling.stripeCustomerId, customerId), sameStripeMode()))
     .limit(1);
-  if (!org || org.livemode !== stripeKeyIsLive()) return undefined;
-  return { id: org.id };
+  return org;
 }
 
 export type SyncOutcome = "synced" | "unknown_customer";
@@ -278,23 +276,31 @@ async function writeCopy(
       complimentary: organizations.complimentary,
       complimentaryUntil: organizations.complimentaryUntil,
       suspendedAt: organizations.suspendedAt,
-      stripeStatus: organizations.stripeStatus,
-      stripeCustomerId: organizations.stripeCustomerId,
     });
+    const [billing] = await tx
+      .select({ stripeStatus: orgBilling.stripeStatus, stripeCustomerId: orgBilling.stripeCustomerId })
+      .from(orgBilling)
+      .where(and(eq(orgBilling.orgId, orgId), sameStripeMode()));
     // The customer was replaced between the lookup and the lock: that customer's news is stale.
-    if (!row || row.stripeCustomerId !== customerId) return;
+    if (!row || billing?.stripeCustomerId !== customerId) return;
 
-    const copy = build(row.stripeStatus);
+    const { plan, subscriptionStatus, ...copy } = build(billing.stripeStatus);
     await tx
-      .update(organizations)
-      .set({ ...copy, billingSyncedAt: new Date() })
-      .where(eq(organizations.id, orgId));
+      .update(orgBilling)
+      .set({ ...copy, syncedAt: new Date() })
+      .where(eq(orgBilling.orgId, orgId));
+    if (plan !== undefined || subscriptionStatus !== undefined) {
+      await tx
+        .update(organizations)
+        .set({ ...(plan ? { plan } : {}), ...(subscriptionStatus ? { subscriptionStatus } : {}) })
+        .where(eq(organizations.id, orgId));
+    }
 
     const before = snapshot(row);
     const after = snapshot({
       ...row,
-      plan: copy.plan ?? row.plan,
-      subscriptionStatus: copy.subscriptionStatus ?? row.subscriptionStatus,
+      plan: plan ?? row.plan,
+      subscriptionStatus: subscriptionStatus ?? row.subscriptionStatus,
     });
     if (before.plan !== after.plan || before.status !== after.status) {
       await tx.insert(orgAccountEvents).values({
@@ -357,22 +363,21 @@ export async function refreshOrgBilling(orgId: string, mode: "stale" | "return",
   if (!billingEnabled()) return false;
   const [org] = await db
     .select({
-      customerId: organizations.stripeCustomerId,
-      livemode: organizations.stripeLivemode,
-      stripeStatus: organizations.stripeStatus,
-      currentPeriodEnd: organizations.currentPeriodEnd,
-      pendingAt: organizations.pendingAt,
-      upgradeExpiresAt: organizations.upgradeExpiresAt,
-      billingSyncedAt: organizations.billingSyncedAt,
+      customerId: orgBilling.stripeCustomerId,
+      stripeStatus: orgBilling.stripeStatus,
+      currentPeriodEnd: orgBilling.currentPeriodEnd,
+      pendingAt: orgBilling.pendingAt,
+      upgradeExpiresAt: orgBilling.upgradeExpiresAt,
+      syncedAt: orgBilling.syncedAt,
     })
-    .from(organizations)
-    .where(eq(organizations.id, orgId))
+    .from(orgBilling)
+    .where(and(eq(orgBilling.orgId, orgId), sameStripeMode()))
     .limit(1);
-  if (!org?.customerId || org.livemode !== stripeKeyIsLive()) return false;
+  if (!org) return false;
 
   const past = (at: Date | null) => at !== null && at < now;
   const overdue =
-    org.billingSyncedAt === null ||
+    org.syncedAt === null ||
     (isLive(org.stripeStatus) && past(org.currentPeriodEnd)) ||
     past(org.pendingAt) ||
     past(org.upgradeExpiresAt);
@@ -409,6 +414,6 @@ export async function flagDispute(dispute: { id: string; charge: string | { id: 
   const org = customerId ? await findOrgByCustomer(customerId) : undefined;
   if (!org) return "unknown_customer";
   alert(`dispute ${dispute.id} on charge ${charge.id} for org ${org.id}; review it in Stripe`);
-  await db.update(organizations).set({ billingFlag: "dispute" }).where(eq(organizations.id, org.id));
+  await db.update(orgBilling).set({ disputedAt: new Date() }).where(eq(orgBilling.orgId, org.id));
   return "synced";
 }

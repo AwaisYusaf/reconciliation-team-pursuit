@@ -1,11 +1,11 @@
 /**
- * Unit checks on migration 0041 (Phase 16, §3): the Stripe billing columns. No database —
- * this only reads the SQL file and the schema's enum exports, in the style of
- * `src/db/migration-0031.test.ts`.
+ * Unit checks on migration 0041 (Phase 16, §3, D-125): the `org_billing` table, plus one column
+ * each on `organizations` and `org_account_events`. No database: this only reads the SQL file,
+ * the journal and the schema's enum exports, in the style of `src/db/migration-0031.test.ts`.
  *
  * D-106/D-115: drizzle runs every pending migration in one transaction, so anything here that
- * would fail partway (an `ALTER TYPE`, a `NOT NULL` with no default, an enum literal baked into
- * a `CHECK`) could wedge every future deploy, not just this one.
+ * would fail partway (an `ALTER TYPE`, a `NOT NULL` column added to a table that has rows, an enum
+ * literal baked into a `CHECK`) could wedge every future deploy, not just this one.
  */
 import { readFileSync } from "node:fs";
 import path from "node:path";
@@ -14,7 +14,8 @@ import { describe, expect, it } from "vitest";
 
 import * as schema from "./schema";
 
-const sql = readFileSync(path.join(__dirname, "..", "..", "drizzle", "0041_stripe_billing.sql"), "utf8");
+const drizzleDir = path.join(__dirname, "..", "..", "drizzle");
+const sql = readFileSync(path.join(drizzleDir, "0041_stripe_billing.sql"), "utf8");
 const statements = sql
   .split("--> statement-breakpoint")
   .map((s) =>
@@ -27,45 +28,44 @@ const statements = sql
   .filter(Boolean);
 const LOCK_TIMEOUT = /^SET LOCAL lock_timeout = '\d+s';$/;
 
-describe("migration 0041: Stripe billing columns", () => {
-  it("has at least one statement", () => {
-    expect(statements.length).toBeGreaterThan(0);
-  });
+/** `ALTER TABLE "t" ADD COLUMN ...;` on a table that already has rows. */
+const ADD_COLUMN = /^ALTER TABLE "\w+" ADD COLUMN "\w+" [^;]+;?$/;
 
-  it("starts by giving up on the table lock after a few seconds rather than queueing requests behind it", () => {
+describe("migration 0041: Stripe billing", () => {
+  it("starts by giving up on a table lock after a few seconds rather than queueing requests behind it", () => {
     expect(statements[0]).toMatch(LOCK_TIMEOUT);
   });
 
-  it("is only ALTER TABLE ... ADD COLUMN/ADD CONSTRAINT, or CREATE UNIQUE INDEX, after the lock timeout", () => {
+  it("after the lock timeout, only creates org_billing, adds columns, constraints and the unique index", () => {
     for (const statement of statements.slice(1)) {
-      const isAddColumn = /^ALTER TABLE "\w+" ADD COLUMN /.test(statement);
-      const isAddConstraint = /^ALTER TABLE "\w+" ADD CONSTRAINT /.test(statement);
-      const isUniqueIndex = /^CREATE UNIQUE INDEX /.test(statement);
-      expect(isAddColumn || isAddConstraint || isUniqueIndex, statement).toBe(true);
+      const allowed =
+        /^CREATE TABLE "org_billing" \(/.test(statement) ||
+        ADD_COLUMN.test(statement) ||
+        /^ALTER TABLE "\w+" ADD CONSTRAINT /.test(statement) ||
+        /^CREATE UNIQUE INDEX /.test(statement);
+      expect(allowed, statement).toBe(true);
     }
   });
 
-  it("never runs ALTER TYPE, UPDATE, DROP or ALTER COLUMN", () => {
+  it("never runs ALTER TYPE, an UPDATE statement, DROP or ALTER COLUMN", () => {
     expect(sql).not.toMatch(/ALTER TYPE/i);
-    expect(sql).not.toMatch(/\bUPDATE\b/i);
+    // As a statement only: the foreign key's own text says "ON UPDATE no action".
+    expect(sql).not.toMatch(/^\s*UPDATE\s/im);
     expect(sql).not.toMatch(/\bDROP\b/i);
     expect(sql).not.toMatch(/ALTER COLUMN/i);
   });
 
-  it("every ADD COLUMN is nullable or has a DEFAULT — never a bare NOT NULL", () => {
-    for (const statement of statements) {
-      const match = statement.match(/^ALTER TABLE "\w+" ADD COLUMN "\w+" [^;]+$/);
-      if (!match) continue;
-      const clause = match[0];
-      const hasNotNull = /NOT NULL/.test(clause);
-      const hasDefault = /DEFAULT/.test(clause);
-      expect(hasNotNull && !hasDefault, clause).toBe(false);
+  it("every column added to an existing table is nullable or has a DEFAULT, never a bare NOT NULL", () => {
+    const added = statements.filter((statement) => ADD_COLUMN.test(statement));
+    // Counted, so a pattern that stops matching fails here instead of checking nothing.
+    expect(added).toHaveLength(2);
+    for (const clause of added) {
+      expect(/NOT NULL/.test(clause) && !/DEFAULT/.test(clause), clause).toBe(false);
     }
   });
 
-  // ── No enum literal (other than the four plain-text values this migration itself defines)
-  // baked into a CHECK — a future Stripe status or a renamed enum value would otherwise leave
-  // a CHECK that silently stops matching what the enum actually contains.
+  // No enum literal (other than the four plain-text values this migration itself defines) baked
+  // into a CHECK: a renamed enum value would otherwise leave a CHECK that silently stops matching.
   it("no CHECK body quotes a pgEnum value, other than 'month'/'year'/'downgrade'/'price_move'", () => {
     const allowed = new Set(["month", "year", "downgrade", "price_move"]);
     const enumEntries = Object.entries(schema).filter(
@@ -73,86 +73,44 @@ describe("migration 0041: Stripe billing columns", () => {
     ) as Array<[string, { enumValues: readonly string[] }]>;
 
     const checkStatements = statements.filter((s) => s.includes(" CHECK ("));
+    expect(checkStatements.length).toBeGreaterThan(0);
     for (const [enumName, enumColumn] of enumEntries) {
       for (const value of enumColumn.enumValues) {
-        if (allowed.has(value)) continue; // not one of this migration's own text values
+        if (allowed.has(value)) continue;
         for (const statement of checkStatements) {
-          expect(statement.includes(`'${value}'`), `${enumName} value "${value}" in: ${statement}`).toBe(
-            false,
-          );
+          expect(statement.includes(`'${value}'`), `${enumName} value "${value}" in: ${statement}`).toBe(false);
         }
       }
     }
   });
 
-  // ── Every expected column and its CHECK text ────────────────────────────────
-
-  it("adds every organizations billing column", () => {
-    const expectedColumns = [
-      ["stripe_customer_id", "text"],
-      ["stripe_livemode", "boolean"],
-      ["stripe_subscription_id", "text"],
-      ["stripe_status", "text"],
-      ["billing_interval", "text"],
-      ["current_period_end", "timestamp with time zone"],
-      ["cancel_at_period_end", "boolean"],
-      ["pending_plan", '"org_plan"'],
-      ["pending_interval", "text"],
-      ["pending_at", "timestamp with time zone"],
-      ["pending_reason", "text"],
-      ["upgrade_pay_url", "text"],
-      ["upgrade_expires_at", "timestamp with time zone"],
-      ["billing_synced_at", "timestamp with time zone"],
-      ["complimentary_plan", '"org_plan"'],
-      ["collection_paused", "boolean"],
-      ["billing_flag", "text"],
-    ] as const;
-    for (const [column, type] of expectedColumns) {
-      expect(sql).toContain(`ALTER TABLE "organizations" ADD COLUMN "${column}" ${type}`);
-    }
-  });
-
-  it("adds org_account_events.via_stripe, not null, defaulted", () => {
+  it("creates org_billing keyed by the org, deleted with it, one row per Stripe customer", () => {
+    expect(sql).toContain('"org_id" uuid PRIMARY KEY NOT NULL');
+    expect(sql).toContain('"stripe_customer_id" text NOT NULL');
+    expect(sql).toContain('"livemode" boolean NOT NULL');
     expect(sql).toContain(
-      'ALTER TABLE "org_account_events" ADD COLUMN "via_stripe" boolean DEFAULT false NOT NULL',
+      'FOREIGN KEY ("org_id") REFERENCES "public"."organizations"("id") ON DELETE cascade',
+    );
+    expect(sql).toContain(
+      'CREATE UNIQUE INDEX "org_billing_stripe_customer_id_uq" ON "org_billing" USING btree ("stripe_customer_id")',
     );
   });
 
-  it("cancel_at_period_end and collection_paused are NOT NULL DEFAULT false", () => {
-    expect(sql).toContain(
-      'ALTER TABLE "organizations" ADD COLUMN "cancel_at_period_end" boolean DEFAULT false NOT NULL',
-    );
-    expect(sql).toContain(
-      'ALTER TABLE "organizations" ADD COLUMN "collection_paused" boolean DEFAULT false NOT NULL',
-    );
+  it("keeps the dropped columns dropped: no subscription id, no free-text flag", () => {
+    expect(sql).not.toContain("stripe_subscription_id");
+    expect(sql).not.toContain("billing_flag");
+    expect(sql).toContain('"disputed_at" timestamp with time zone');
   });
 
-  it("stripe_customer_id is unique, not a hard NOT NULL", () => {
-    expect(sql).toContain(
-      'CREATE UNIQUE INDEX "organizations_stripe_customer_id_uq" ON "organizations" USING btree ("stripe_customer_id")',
-    );
-  });
-
-  it("has the four CHECK constraints, guarding empty status and the interval/reason values", () => {
-    expect(sql).toContain(
-      'ADD CONSTRAINT "organizations_stripe_status_ck" CHECK ("organizations"."stripe_status" IS NULL OR length("organizations"."stripe_status") > 0)',
-    );
-    expect(sql).toContain(
-      'ADD CONSTRAINT "organizations_billing_interval_ck" CHECK ("organizations"."billing_interval" IS NULL OR "organizations"."billing_interval" IN (\'month\', \'year\'))',
-    );
-    expect(sql).toContain(
-      'ADD CONSTRAINT "organizations_pending_interval_ck" CHECK ("organizations"."pending_interval" IS NULL OR "organizations"."pending_interval" IN (\'month\', \'year\'))',
-    );
-    expect(sql).toContain(
-      'ADD CONSTRAINT "organizations_pending_reason_ck" CHECK ("organizations"."pending_reason" IS NULL OR "organizations"."pending_reason" IN (\'downgrade\', \'price_move\'))',
-    );
+  it("adds complimentary_plan to organizations and via_stripe to org_account_events", () => {
+    expect(sql).toContain('ALTER TABLE "organizations" ADD COLUMN "complimentary_plan" "org_plan";');
+    expect(sql).toContain('ALTER TABLE "org_account_events" ADD COLUMN "via_stripe" boolean DEFAULT false NOT NULL;');
   });
 
   it("is the newest entry in the migration journal", () => {
-    const journalPath = path.join(__dirname, "..", "..", "drizzle", "meta", "_journal.json");
-    const journal = JSON.parse(readFileSync(journalPath, "utf8")) as { entries: Array<{ idx: number; tag: string }> };
-    const entry = journal.entries.find((e) => e.tag === "0041_stripe_billing");
-    expect(entry).toBeDefined();
-    expect(entry?.idx).toBe(41);
+    const journal = JSON.parse(readFileSync(path.join(drizzleDir, "meta", "_journal.json"), "utf8")) as {
+      entries: Array<{ idx: number; tag: string }>;
+    };
+    expect(journal.entries.at(-1)).toMatchObject({ idx: 41, tag: "0041_stripe_billing" });
   });
 });

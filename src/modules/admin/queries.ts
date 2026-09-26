@@ -7,6 +7,7 @@ import "server-only";
 import { and, count, desc, eq, isNotNull, isNull, max, sql } from "drizzle-orm";
 
 import { db, type Database } from "@/src/db";
+import { billingCopyOn } from "@/src/db/billing-copy";
 import {
   aiUsageEvents,
   expenses,
@@ -14,6 +15,7 @@ import {
   generatedArtifacts,
   monthStatuses,
   orgAccountEvents,
+  orgBilling,
   organizations,
   staffUsers,
   users,
@@ -49,7 +51,7 @@ export type OrgDirectoryRow = OrgAccountFields & {
 /** The org page also shows our copy of Stripe's billing state (Phase 16 §4.6). */
 export type OrgAccountRow = OrgAccountFields & {
   stripeCustomerId: string | null;
-  stripeLivemode: boolean | null;
+  livemode: boolean | null;
   stripeStatus: string | null;
   billingInterval: string | null;
   currentPeriodEnd: Date | null;
@@ -60,7 +62,7 @@ export type OrgAccountRow = OrgAccountFields & {
   pendingReason: string | null;
   upgradeExpiresAt: Date | null;
   collectionPaused: boolean;
-  billingFlag: string | null;
+  disputedAt: Date | null;
 };
 
 const ORG_ACCOUNT_COLUMNS = {
@@ -233,24 +235,27 @@ export async function loadOrgAccount(orgId: string): Promise<OrgAccountRow | nul
   const [row] = await db
     .select({
       ...ORG_ACCOUNT_COLUMNS,
-      stripeCustomerId: organizations.stripeCustomerId,
-      stripeLivemode: organizations.stripeLivemode,
-      stripeStatus: organizations.stripeStatus,
-      billingInterval: organizations.billingInterval,
-      currentPeriodEnd: organizations.currentPeriodEnd,
-      cancelAtPeriodEnd: organizations.cancelAtPeriodEnd,
-      pendingPlan: organizations.pendingPlan,
-      pendingInterval: organizations.pendingInterval,
-      pendingAt: organizations.pendingAt,
-      pendingReason: organizations.pendingReason,
-      upgradeExpiresAt: organizations.upgradeExpiresAt,
-      collectionPaused: organizations.collectionPaused,
-      billingFlag: organizations.billingFlag,
+      stripeCustomerId: orgBilling.stripeCustomerId,
+      livemode: orgBilling.livemode,
+      stripeStatus: orgBilling.stripeStatus,
+      billingInterval: orgBilling.billingInterval,
+      currentPeriodEnd: orgBilling.currentPeriodEnd,
+      cancelAtPeriodEnd: orgBilling.cancelAtPeriodEnd,
+      pendingPlan: orgBilling.pendingPlan,
+      pendingInterval: orgBilling.pendingInterval,
+      pendingAt: orgBilling.pendingAt,
+      pendingReason: orgBilling.pendingReason,
+      upgradeExpiresAt: orgBilling.upgradeExpiresAt,
+      collectionPaused: orgBilling.collectionPaused,
+      disputedAt: orgBilling.disputedAt,
     })
     .from(organizations)
+    .leftJoin(orgBilling, billingCopyOn())
     .where(eq(organizations.id, orgId))
     .limit(1);
-  return row ?? null;
+  if (!row) return null;
+  // No copy yet (no Stripe customer) reads as a copy with nothing in it.
+  return { ...row, cancelAtPeriodEnd: row.cancelAtPeriodEnd ?? false, collectionPaused: row.collectionPaused ?? false };
 }
 
 export type OrgUserRow = {

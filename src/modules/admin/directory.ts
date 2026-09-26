@@ -80,7 +80,7 @@ export type AccountEvent = {
 /** The org page's copy of Stripe's state — structurally typed, like `AccountEvent`. */
 export type BillingCopy = {
   stripeCustomerId: string | null;
-  stripeLivemode: boolean | null;
+  livemode: boolean | null;
   stripeStatus: string | null;
   billingInterval: string | null;
   currentPeriodEnd: Date | null;
@@ -91,7 +91,7 @@ export type BillingCopy = {
   pendingReason: string | null;
   upgradeExpiresAt: Date | null;
   collectionPaused: boolean;
-  billingFlag: string | null;
+  disputedAt: Date | null;
 };
 
 export type StaffBillingTone = "good" | "warn" | "bad" | "neutral";
@@ -170,10 +170,10 @@ export function staffBilling(row: BillingCopy, lastPaid: LastPayment = null, now
     warnings.push(UI.staffBillingUpgradeWaiting(formatDateTimeShort(row.upgradeExpiresAt)));
   }
   if (row.collectionPaused) warnings.push(UI.staffBillingPaused);
-  if (row.billingFlag) warnings.push(UI.staffBillingFlag(row.billingFlag));
+  if (row.disputedAt) warnings.push(UI.staffBillingDisputed(day(row.disputedAt)));
 
   const customerUrl = row.stripeCustomerId
-    ? `https://dashboard.stripe.com/${row.stripeLivemode ? "" : "test/"}customers/${encodeURIComponent(row.stripeCustomerId)}`
+    ? `https://dashboard.stripe.com/${row.livemode ? "" : "test/"}customers/${encodeURIComponent(row.stripeCustomerId)}`
     : null;
 
   return { headline, facts, warnings, customerUrl };

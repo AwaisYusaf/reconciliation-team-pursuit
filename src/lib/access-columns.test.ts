@@ -4,7 +4,8 @@
  * Source-reading, like `guard-coverage.test.ts`: every non-test file is parsed and any reference
  * to the columns that decide access (`subscription_status`, `stripe_status`, `complimentary`,
  * `complimentary_until`, `complimentary_plan`, as a property or a raw SQL name) must sit in a file
- * listed below. Comments never count. A sharing file reading `subscriptionStatus` itself is what
+ * listed below. `stripe_status` lives on `org_billing` since D-125; readers elsewhere get it by
+ * spreading `ENTITLEMENT_COLUMNS` with the `billingCopyOn()` join, never by name. Comments never count. A sharing file reading `subscriptionStatus` itself is what
  * this exists to stop (§13, security review).
  */
 import { readdirSync, readFileSync, statSync } from "node:fs";

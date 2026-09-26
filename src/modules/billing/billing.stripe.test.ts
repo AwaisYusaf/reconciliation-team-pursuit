@@ -26,7 +26,7 @@ import { afterAll, describe, expect, it } from "vitest";
 
 import { db } from "@/src/db";
 import { fundingSources, orgAccountEvents, organizations } from "@/src/db/schema";
-import { createTestOrg } from "@/src/db/test-org";
+import { createTestOrg, orgWithBilling, setBillingCopy } from "@/src/db/test-org";
 import { todayIso } from "@/src/domain/dates";
 import { ORIGINAL_RULES } from "@/src/modules/expenses/reimbursement";
 import { aiPlanAllowed } from "@/src/modules/ai/access";
@@ -73,7 +73,7 @@ async function fixture(): Promise<Fixture> {
   const { orgId } = await createTestOrg({ name: `Billing ${randomUUID()}`, complimentary: false });
   orgIds.push(orgId);
   const customer = await s.customers.create({ test_clock: clock.id, metadata: { orgId } });
-  await db.update(organizations).set({ stripeCustomerId: customer.id, stripeLivemode: false }).where(eq(organizations.id, orgId));
+  await setBillingCopy(orgId, { stripeCustomerId: customer.id, livemode: false });
   await setDefaultCard(customer.id, "pm_card_visa");
   return { orgId, customerId: customer.id, clockId: clock.id, start };
 }
@@ -97,9 +97,9 @@ async function subscribe(f: Fixture, plan: PlanId, interval: Interval): Promise<
   return sub;
 }
 
+/** The org row with its `org_billing` copy spread over it. */
 async function org(f: Fixture) {
-  const [row] = await db.select().from(organizations).where(eq(organizations.id, f.orgId));
-  return row;
+  return orgWithBilling(f.orgId);
 }
 
 async function history(f: Fixture) {
@@ -197,7 +197,7 @@ async function access(f: Fixture): Promise<{ paid: boolean; ai: boolean }> {
       complimentary: row.complimentary,
       complimentaryUntil: row.complimentaryUntil,
       complimentaryPlan: row.complimentaryPlan,
-      stripeStatus: row.stripeStatus,
+      stripeStatus: row.stripeStatus ?? null,
     },
     todayIso(),
     billingEnabled(),
@@ -293,7 +293,7 @@ describe.concurrent("billing against the Stripe sandbox: sync and safety nets (P
     await syncOrgBilling(f.customerId);
     await syncOrgBilling(f.customerId);
     const thrice = await org(f);
-    expect({ ...thrice, billingSyncedAt: null, updatedAt: null }).toEqual({ ...once, billingSyncedAt: null, updatedAt: null });
+    expect({ ...thrice, syncedAt: null, updatedAt: null }).toEqual({ ...once, syncedAt: null, updatedAt: null });
 
     const rows = await history(f);
     expect(rows).toHaveLength(1);
@@ -317,7 +317,7 @@ describe.concurrent("billing against the Stripe sandbox: sync and safety nets (P
   it("lost webhook: a signed webhook repairs the copy; an unknown customer is acknowledged and skipped", async () => {
     const f = await fixture();
     await subscribe(f, "reconciliation", "month");
-    await db.update(organizations).set({ stripeStatus: null }).where(eq(organizations.id, f.orgId));
+    await setBillingCopy(f.orgId, { stripeStatus: null });
 
     const secret = "whsec_integration";
     const deps = { secret, live: false, sync: syncOrgBilling, dispute: flagDispute };
@@ -333,7 +333,7 @@ describe.concurrent("billing against the Stripe sandbox: sync and safety nets (P
   it("a customer stored for the other Stripe mode is treated as absent (P11)", async () => {
     const f = await fixture();
     await subscribe(f, "reconciliation", "month");
-    await db.update(organizations).set({ stripeLivemode: true, stripeStatus: null }).where(eq(organizations.id, f.orgId));
+    await setBillingCopy(f.orgId, { livemode: true, stripeStatus: null });
     expect(await syncOrgBilling(f.customerId)).toBe("unknown_customer");
     expect((await org(f)).stripeStatus).toBeNull();
   });
@@ -679,7 +679,7 @@ describe.concurrent("billing against the Stripe sandbox: Phase 3's billing actio
     const f = await fixture();
     await subscribe(f, "reconciliation", "month");
     // Simulate a lost webhook: our copy never heard about the subscription's latest status.
-    await db.update(organizations).set({ stripeStatus: null, billingSyncedAt: null }).where(eq(organizations.id, f.orgId));
+    await setBillingCopy(f.orgId, { stripeStatus: null, syncedAt: null });
     expect((await org(f)).stripeStatus).toBeNull();
 
     expect(await refreshOrgBilling(f.orgId, "return")).toBe(true);

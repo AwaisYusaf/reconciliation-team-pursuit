@@ -8,7 +8,8 @@ import "server-only";
 import { and, count, eq, isNull } from "drizzle-orm";
 
 import { db } from "@/src/db";
-import { fundingSources, organizations, users } from "@/src/db/schema";
+import { billingCopyOn } from "@/src/db/billing-copy";
+import { fundingSources, orgBilling, organizations, users } from "@/src/db/schema";
 import { userDisplay } from "@/src/domain/user-display";
 import { billingEnabled } from "@/src/modules/billing/config";
 import { planBillingView, type PlanBillingView } from "@/src/modules/billing/plan-view";
@@ -39,21 +40,23 @@ async function loadBillingRow(orgId: string) {
       complimentary: organizations.complimentary,
       complimentaryUntil: organizations.complimentaryUntil,
       complimentaryPlan: organizations.complimentaryPlan,
-      stripeStatus: organizations.stripeStatus,
-      billingInterval: organizations.billingInterval,
-      currentPeriodEnd: organizations.currentPeriodEnd,
-      cancelAtPeriodEnd: organizations.cancelAtPeriodEnd,
-      pendingPlan: organizations.pendingPlan,
-      pendingInterval: organizations.pendingInterval,
-      pendingAt: organizations.pendingAt,
-      pendingReason: organizations.pendingReason,
-      upgradePayUrl: organizations.upgradePayUrl,
-      upgradeExpiresAt: organizations.upgradeExpiresAt,
+      stripeStatus: orgBilling.stripeStatus,
+      billingInterval: orgBilling.billingInterval,
+      currentPeriodEnd: orgBilling.currentPeriodEnd,
+      cancelAtPeriodEnd: orgBilling.cancelAtPeriodEnd,
+      pendingPlan: orgBilling.pendingPlan,
+      pendingInterval: orgBilling.pendingInterval,
+      pendingAt: orgBilling.pendingAt,
+      pendingReason: orgBilling.pendingReason,
+      upgradePayUrl: orgBilling.upgradePayUrl,
+      upgradeExpiresAt: orgBilling.upgradeExpiresAt,
     })
     .from(organizations)
+    .leftJoin(orgBilling, billingCopyOn())
     .where(eq(organizations.id, orgId))
     .limit(1);
-  return row;
+  // No copy yet (no Stripe customer) reads as a copy with nothing in it.
+  return row && { ...row, cancelAtPeriodEnd: row.cancelAtPeriodEnd ?? false };
 }
 
 export async function loadPlanBilling(session: { orgId: string; role: string }): Promise<PlanBillingData> {

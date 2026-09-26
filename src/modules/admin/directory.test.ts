@@ -29,7 +29,7 @@ describe("staffBilling: the org page's Billing card (Phase 16 §4.6)", () => {
   const NOW = new Date("2026-09-25T16:00:00Z");
   const none: BillingCopy = {
     stripeCustomerId: null,
-    stripeLivemode: null,
+    livemode: null,
     stripeStatus: null,
     billingInterval: null,
     currentPeriodEnd: null,
@@ -40,12 +40,12 @@ describe("staffBilling: the org page's Billing card (Phase 16 §4.6)", () => {
     pendingReason: null,
     upgradeExpiresAt: null,
     collectionPaused: false,
-    billingFlag: null,
+    disputedAt: null,
   };
   const paying: BillingCopy = {
     ...none,
     stripeCustomerId: "cus_123",
-    stripeLivemode: false,
+    livemode: false,
     stripeStatus: "active",
     billingInterval: "month",
     currentPeriodEnd: new Date("2026-10-25T16:00:00Z"),
@@ -116,13 +116,13 @@ describe("staffBilling: the org page's Billing card (Phase 16 §4.6)", () => {
   });
 
   it("a customer with no subscription yet: No Stripe subscription", () => {
-    expect(staffBilling({ ...none, stripeCustomerId: "cus_1", stripeLivemode: false }, null, NOW)?.headline.label).toBe(
+    expect(staffBilling({ ...none, stripeCustomerId: "cus_1", livemode: false }, null, NOW)?.headline.label).toBe(
       "No Stripe subscription.",
     );
   });
 
   it("a live-mode customer links without /test/", () => {
-    expect(staffBilling({ ...paying, stripeLivemode: true }, null, NOW)?.customerUrl).toBe(
+    expect(staffBilling({ ...paying, livemode: true }, null, NOW)?.customerUrl).toBe(
       "https://dashboard.stripe.com/customers/cus_123",
     );
   });
@@ -143,16 +143,21 @@ describe("staffBilling: the org page's Billing card (Phase 16 §4.6)", () => {
     expect(move?.facts.at(-1)?.value).toMatch(/^Price change on /);
   });
 
-  it("upgrade waiting, paused collection and a dispute flag are warnings (a failed payment is the pill)", () => {
+  it("upgrade waiting, paused collection and a card dispute are warnings (a failed payment is the pill)", () => {
     const b = staffBilling(
-      { ...paying, upgradeExpiresAt: new Date(NOW.getTime() + 3600_000), collectionPaused: true, billingFlag: "dispute" },
+      {
+        ...paying,
+        upgradeExpiresAt: new Date(NOW.getTime() + 3600_000),
+        collectionPaused: true,
+        disputedAt: new Date("2026-09-20T16:00:00Z"),
+      },
       null,
       NOW,
     );
     expect(b?.warnings).toEqual([
       expect.stringMatching(/^Upgrade waiting for payment until /),
       "Collection paused while suspended.",
-      "Stripe flagged this account: dispute.",
+      "Card dispute opened on 20 Sep 2026. Review it in Stripe.",
     ]);
   });
 

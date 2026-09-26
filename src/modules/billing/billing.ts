@@ -18,7 +18,8 @@ import { and, count, eq, isNull, sql } from "drizzle-orm";
 import type Stripe from "stripe";
 
 import { db } from "@/src/db";
-import { fundingSources, organizations } from "@/src/db/schema";
+import { billingCopyOn, sameStripeMode } from "@/src/db/billing-copy";
+import { fundingSources, orgBilling, organizations } from "@/src/db/schema";
 import { isComplimentaryNow } from "@/src/domain/complimentary";
 import { formatDateUS, todayIso, type IsoDate } from "@/src/domain/dates";
 import { APP_NAME, UI } from "@/src/domain/strings";
@@ -83,7 +84,6 @@ type OrgRow = {
   id: string;
   name: string;
   stripeCustomerId: string | null;
-  stripeLivemode: boolean | null;
   complimentary: boolean;
   complimentaryUntil: IsoDate | null;
   plan: PlanId;
@@ -95,14 +95,14 @@ async function loadOrg(orgId: string): Promise<OrgRow> {
     .select({
       id: organizations.id,
       name: organizations.name,
-      stripeCustomerId: organizations.stripeCustomerId,
-      stripeLivemode: organizations.stripeLivemode,
+      stripeCustomerId: orgBilling.stripeCustomerId,
       complimentary: organizations.complimentary,
       complimentaryUntil: organizations.complimentaryUntil,
       plan: organizations.plan,
       complimentaryPlan: organizations.complimentaryPlan,
     })
     .from(organizations)
+    .leftJoin(orgBilling, billingCopyOn())
     .where(eq(organizations.id, orgId))
     .limit(1);
   // Unreachable in practice: the caller's session already proved the org exists.
@@ -119,11 +119,28 @@ async function activeFundingSourceCount(orgId: string): Promise<number> {
   return row?.total ?? 0;
 }
 
-/** A customer id stored for the other Stripe mode counts as absent (P11). */
+/** The org's customer in the configured Stripe mode, or null. `billingCopyOn()` already drops a
+ *  customer from the other mode (P11). */
 function liveCustomerId(row: OrgRow): string | null {
-  if (!row.stripeCustomerId) return null;
-  return row.stripeLivemode === stripeKeyIsLive() ? row.stripeCustomerId : null;
+  return row.stripeCustomerId;
 }
+
+/** Every copied column, empty: what a replaced customer's row starts from. */
+const EMPTY_COPY = {
+  stripeStatus: null,
+  billingInterval: null,
+  currentPeriodEnd: null,
+  cancelAtPeriodEnd: false,
+  pendingPlan: null,
+  pendingInterval: null,
+  pendingAt: null,
+  pendingReason: null,
+  upgradePayUrl: null,
+  upgradeExpiresAt: null,
+  collectionPaused: false,
+  disputedAt: null,
+  syncedAt: null,
+} as const;
 
 function assertNotComplimentary(row: Pick<OrgRow, "complimentary" | "complimentaryUntil">): void {
   if (isComplimentaryNow(row, todayIso())) throw new BillingError("complimentary");
@@ -194,17 +211,18 @@ async function ensureCustomer(actor: Actor, row: OrgRow): Promise<string> {
   });
   const live = stripeKeyIsLive();
 
-  const updated = await db
-    .update(organizations)
-    .set({ stripeCustomerId: customer.id, stripeLivemode: live })
-    .where(
-      and(
-        eq(organizations.id, row.id),
-        sql`(${organizations.stripeCustomerId} IS NULL OR ${organizations.stripeLivemode} IS DISTINCT FROM ${live})`,
-      ),
-    )
-    .returning({ stripeCustomerId: organizations.stripeCustomerId });
-  if (updated[0]) return customer.id;
+  // The org's first customer, or a replacement for one from the other Stripe mode, whose copy
+  // goes with it: nothing the other mode wrote may count in this one.
+  const stored = await db
+    .insert(orgBilling)
+    .values({ orgId: row.id, stripeCustomerId: customer.id, livemode: live })
+    .onConflictDoUpdate({
+      target: orgBilling.orgId,
+      set: { stripeCustomerId: customer.id, livemode: live, ...EMPTY_COPY },
+      setWhere: sql`${orgBilling.livemode} IS DISTINCT FROM ${live}`,
+    })
+    .returning({ stripeCustomerId: orgBilling.stripeCustomerId });
+  if (stored[0]) return customer.id;
 
   // Lost the race: someone else already stored a customer id under the lock. Use theirs.
   const fresh = await loadOrg(row.id);
@@ -798,17 +816,16 @@ export type PriceMoveResult = {
  * nothing in Stripe and only reports what would happen.
  */
 export async function planPriceMoves(opts: { apply: boolean }): Promise<PriceMoveResult> {
-  const live = stripeKeyIsLive();
   const orgs = await db
-    .select({ id: organizations.id, customerId: organizations.stripeCustomerId })
-    .from(organizations)
-    .where(and(sql`${organizations.stripeCustomerId} IS NOT NULL`, eq(organizations.stripeLivemode, live)));
+    .select({ id: orgBilling.orgId, customerId: orgBilling.stripeCustomerId })
+    .from(orgBilling)
+    .where(sameStripeMode());
 
   const moved: PriceMoveResult["moved"] = [];
   const skipped: PriceMoveResult["skipped"] = [];
 
   for (const o of orgs) {
-    const customerId = o.customerId!;
+    const customerId = o.customerId;
     const subs = await subscriptionsOf(customerId);
     const sub = subs.find((s) => isLive(s.status));
     if (!sub) continue;

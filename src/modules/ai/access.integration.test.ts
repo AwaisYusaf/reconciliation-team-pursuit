@@ -17,7 +17,7 @@ describe.skipIf(!hasDatabase)("AI access loaders (integration, Phase 16)", async
   const { eq } = await import("drizzle-orm");
   const { db } = await import("@/src/db");
   const { organizations } = await import("@/src/db/schema");
-  const { createTestOrg } = await import("@/src/db/test-org");
+  const { createTestOrg, setBillingCopy } = await import("@/src/db/test-org");
   const { summariesAccessForOrg, readAmountsAllowedForOrg, aiAllowedForOrg } = await import("./access");
 
   const orgIds: string[] = [];
@@ -41,7 +41,9 @@ describe.skipIf(!hasDatabase)("AI access loaders (integration, Phase 16)", async
       readAmountsEnabled: boolean;
     }>,
   ) {
-    await db.update(organizations).set(patch).where(eq(organizations.id, orgId));
+    const { stripeStatus, ...org } = patch;
+    if (Object.keys(org).length > 0) await db.update(organizations).set(org).where(eq(organizations.id, orgId));
+    if (stripeStatus !== undefined) await setBillingCopy(orgId, { stripeStatus });
   }
 
   beforeEach(() => {

@@ -11,10 +11,12 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 
 import { db } from "@/src/db";
+import { billingCopyOn } from "@/src/db/billing-copy";
 import {
   fundingSources,
   lineItems,
   orgAccountEvents,
+  orgBilling,
   organizations,
   paymentSources,
   staffUsers,
@@ -34,7 +36,7 @@ import {
   startStaffSession,
 } from "@/src/services/auth/session";
 import { hashPassword, validatePasswordPolicy, verifyPassword } from "@/src/services/auth/passwords";
-import { ENTITLEMENT_COLUMNS, entitlementOf } from "@/src/services/auth/entitlement";
+import { ENTITLEMENT_COLUMNS, entitlementOf, ORG_ENTITLEMENT_COLUMNS } from "@/src/services/auth/entitlement";
 import { isInterval, isPlanId } from "@/src/modules/billing/rules";
 import { emailInUse } from "@/src/modules/auth/emails";
 import { ORIGINAL_RULES } from "@/src/modules/expenses/reimbursement";
@@ -103,6 +105,7 @@ export async function signInAction(
     })
     .from(users)
     .innerJoin(organizations, eq(organizations.id, users.orgId))
+    .leftJoin(orgBilling, billingCopyOn())
     .where(sql`lower(${users.email}) = lower(${email})`)
     .limit(1);
 
@@ -260,7 +263,7 @@ export async function signUpAction(
         docName: orgName,
         activeMonth: currentMonthKey(),
       })
-      .returning({ id: organizations.id, ...ENTITLEMENT_COLUMNS });
+      .returning({ id: organizations.id, ...ORG_ENTITLEMENT_COLUMNS });
 
     const [user] = await tx
       .insert(users)

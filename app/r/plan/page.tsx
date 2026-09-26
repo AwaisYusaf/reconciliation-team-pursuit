@@ -7,7 +7,7 @@ import { organizations } from "@/src/db/schema";
 import { formatDateUS } from "@/src/domain/dates";
 import { pageTitle, UI } from "@/src/domain/strings";
 import { planPageSession } from "@/src/lib/page-session";
-import { complimentaryEndedOn, ENTITLEMENT_COLUMNS } from "@/src/services/auth/entitlement";
+import { complimentaryEndedOn, ORG_ENTITLEMENT_COLUMNS } from "@/src/services/auth/entitlement";
 import { activeAdminNames } from "@/src/modules/billing/plan-view-loader";
 import { PRICES_CENTS } from "@/src/modules/billing/pricing";
 import { INTERVALS, isInterval, isPlanId, type Interval, type PlanId } from "@/src/modules/billing/rules";
@@ -37,7 +37,7 @@ export default async function PlanPage({
   const preselected = isPlanId(params.plan) ? params.plan : null;
 
   const [org] = await db
-    .select({ name: organizations.name, ...ENTITLEMENT_COLUMNS })
+    .select({ name: organizations.name, ...ORG_ENTITLEMENT_COLUMNS })
     .from(organizations)
     .where(eq(organizations.id, session.orgId))
     .limit(1);

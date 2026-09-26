@@ -23,7 +23,7 @@ const hasDatabase = Boolean(process.env.DATABASE_URL);
 describe.skipIf(!hasDatabase)("funding source management actions (integration)", async () => {
   const { db } = await import("@/src/db");
   const { fundingSources, organizations } = await import("@/src/db/schema");
-  const { createTestOrg } = await import("@/src/db/test-org");
+  const { createTestOrg, setBillingCopy } = await import("@/src/db/test-org");
   const { actionSession } = await import("@/src/lib/action-session");
   const {
     archiveFundingSourceAction,
@@ -461,10 +461,8 @@ describe.skipIf(!hasDatabase)("funding source management actions (integration)",
     /** A paying, non-complimentary org on the given plan. */
     async function paidOrg(name: string, plan: "reconciliation" | "reconciliation_ai" = "reconciliation") {
       const created = await org(name);
-      await db
-        .update(organizations)
-        .set({ plan, stripeStatus: "active", complimentary: false })
-        .where(eq(organizations.id, created.orgId));
+      await db.update(organizations).set({ plan, complimentary: false }).where(eq(organizations.id, created.orgId));
+      await setBillingCopy(created.orgId, { stripeStatus: "active" });
       return created;
     }
 

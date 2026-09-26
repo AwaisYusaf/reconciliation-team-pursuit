@@ -889,7 +889,7 @@ export const UI = {
   staffBillingUpgradeWaiting: (time: string) => `Upgrade waiting for payment until ${time}`,
   staffBillingPaymentFailed: "Last payment failed. Stripe is retrying the card.",
   staffBillingPaused: "Collection paused while suspended.",
-  staffBillingFlag: (flag: string) => `Stripe flagged this account: ${flag}.`,
+  staffBillingDisputed: (date: string) => `Card dispute opened on ${date}. Review it in Stripe.`,
   staffBillingOpenCustomer: "Open in Stripe",
   staffBillingHeadPaid: "Paid",
   staffBillingHeadFailed: "Payment failed",

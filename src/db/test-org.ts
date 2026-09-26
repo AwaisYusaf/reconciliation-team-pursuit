@@ -12,10 +12,17 @@
  * feature would first have to pay for a plan. Billing tests that need an unpaid org pass
  * `complimentary: false`.
  */
+import { eq } from "drizzle-orm";
 import { v7 as uuidv7 } from "uuid";
 
 import { db } from "@/src/db";
-import { fundingSources, organizations } from "@/src/db/schema";
+import {
+  fundingSources,
+  orgBilling,
+  organizations,
+  type OrgBilling,
+  type Organization,
+} from "@/src/db/schema";
 import { currentMonthKey } from "@/src/domain/dates";
 import { ORIGINAL_RULES } from "@/src/modules/expenses/reimbursement";
 
@@ -60,4 +67,30 @@ export async function createTestOrg(overrides: TestOrgOverrides = {}): Promise<T
     .returning({ id: fundingSources.id });
 
   return { orgId: org.id, fundingSourceId: source.id };
+}
+
+export type BillingCopyFixture = Partial<Omit<typeof orgBilling.$inferInsert, "orgId">>;
+
+/**
+ * Gives the org a Stripe copy (`org_billing`, D-125), as the sync would. A new row defaults to
+ * customer `cus_test_<orgId>` in test mode; on an existing row only the given keys change, so a
+ * customer set earlier survives a later status change.
+ */
+export async function setBillingCopy(orgId: string, copy: BillingCopyFixture = {}): Promise<void> {
+  const insert = db
+    .insert(orgBilling)
+    .values({ orgId, stripeCustomerId: `cus_test_${orgId}`, livemode: false, ...copy });
+  await (Object.keys(copy).length > 0
+    ? insert.onConflictDoUpdate({ target: orgBilling.orgId, set: copy })
+    : insert.onConflictDoNothing());
+}
+
+/** The org row with its Stripe copy spread over it (any mode), for assertions. */
+export async function orgWithBilling(orgId: string): Promise<Organization & Partial<OrgBilling>> {
+  const [row] = await db
+    .select()
+    .from(organizations)
+    .leftJoin(orgBilling, eq(orgBilling.orgId, organizations.id))
+    .where(eq(organizations.id, orgId));
+  return { ...row.organizations, ...(row.org_billing ?? {}) };
 }

@@ -7,25 +7,36 @@
  * No `server-only`: nothing here reaches the database directly, and `sharing/public.ts` (which
  * must import no session, `public-isolation.test.ts`) imports this file.
  */
-import { organizations } from "@/src/db/schema";
+import { orgBilling, organizations } from "@/src/db/schema";
 import { todayIso } from "@/src/domain/dates";
 import { orgEntitlement, type Entitlement, type EntitlementOrg } from "@/src/modules/billing/entitlement";
 import { billingEnabled } from "@/src/modules/billing/config";
 
-/** The billing columns every entitlement decision needs, as a drizzle select map. */
-export const ENTITLEMENT_COLUMNS = {
+/** The org's own columns every entitlement decision needs, as a drizzle select map. */
+export const ORG_ENTITLEMENT_COLUMNS = {
   plan: organizations.plan,
   complimentary: organizations.complimentary,
   complimentaryUntil: organizations.complimentaryUntil,
   complimentaryPlan: organizations.complimentaryPlan,
-  stripeStatus: organizations.stripeStatus,
   subscriptionStatus: organizations.subscriptionStatus,
+} as const;
+
+/**
+ * Every column an entitlement decision needs, as a drizzle select map. `stripeStatus` comes from
+ * `org_billing`, so a query selecting these must also
+ * `.leftJoin(orgBilling, billingCopyOn())` (`src/db/billing-copy.ts`); an org with no Stripe
+ * customer, or one from the other Stripe mode, then reads `stripeStatus: null` (D-125).
+ */
+export const ENTITLEMENT_COLUMNS = {
+  ...ORG_ENTITLEMENT_COLUMNS,
+  stripeStatus: orgBilling.stripeStatus,
 } as const;
 
 export type EntitlementRow = EntitlementOrg & { subscriptionStatus: string };
 
-export function entitlementOf(row: EntitlementOrg): Entitlement {
-  return orgEntitlement(row, todayIso(), billingEnabled());
+/** A row with no `stripeStatus` (a new org, before any Stripe customer) is one with none. */
+export function entitlementOf(row: Omit<EntitlementOrg, "stripeStatus"> & { stripeStatus?: string | null }): Entitlement {
+  return orgEntitlement({ ...row, stripeStatus: row.stripeStatus ?? null }, todayIso(), billingEnabled());
 }
 
 /**

@@ -14,7 +14,8 @@ import { and, eq, isNull } from "drizzle-orm";
 import { z } from "zod";
 
 import { db } from "@/src/db";
-import { organizations, sharedLinks } from "@/src/db/schema";
+import { billingCopyOn } from "@/src/db/billing-copy";
+import { orgBilling, organizations, sharedLinks } from "@/src/db/schema";
 import { isValidMonthKey, type MonthKey } from "@/src/domain/dates";
 import {
   artifactTypeOf,
@@ -289,6 +290,7 @@ async function orgCancelled(orgId: string): Promise<boolean> {
   const [org] = await db
     .select({ ...ENTITLEMENT_COLUMNS })
     .from(organizations)
+    .leftJoin(orgBilling, billingCopyOn())
     .where(eq(organizations.id, orgId))
     .limit(1);
   return org ? !sharesAllowed(org) : false;

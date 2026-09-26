@@ -16,7 +16,8 @@ import "server-only";
 import { eq } from "drizzle-orm";
 
 import { db } from "@/src/db";
-import { organizations, type OrgPlan } from "@/src/db/schema";
+import { billingCopyOn } from "@/src/db/billing-copy";
+import { orgBilling, organizations, type OrgPlan } from "@/src/db/schema";
 import { ENTITLEMENT_COLUMNS, entitlementOf } from "@/src/services/auth/entitlement";
 
 /** Both an OpenAI key and a model must be set on the server, or the feature stays hidden as if
@@ -64,7 +65,12 @@ const ENTITLEMENT_FIELDS = ENTITLEMENT_COLUMNS;
 export async function summariesAccessForOrg(
   orgId: string,
 ): Promise<{ use: boolean; write: boolean }> {
-  const [org] = await db.select(ENTITLEMENT_FIELDS).from(organizations).where(eq(organizations.id, orgId)).limit(1);
+  const [org] = await db
+    .select(ENTITLEMENT_FIELDS)
+    .from(organizations)
+    .leftJoin(orgBilling, billingCopyOn())
+    .where(eq(organizations.id, orgId))
+    .limit(1);
   if (!org) return { use: false, write: false };
   const ent = entitlementOf(org);
   const planOnly = { plan: ent.plan };
@@ -79,6 +85,7 @@ export async function readAmountsAllowedForOrg(orgId: string): Promise<boolean> 
   const [org] = await db
     .select({ ...ENTITLEMENT_FIELDS, readAmountsEnabled: organizations.readAmountsEnabled })
     .from(organizations)
+    .leftJoin(orgBilling, billingCopyOn())
     .where(eq(organizations.id, orgId))
     .limit(1);
   if (!org) return false;
@@ -90,7 +97,12 @@ export async function readAmountsAllowedForOrg(orgId: string): Promise<boolean> 
  *  Settings switch or OpenAI configuration. For the header pill and the Settings page, which
  *  show the plan's entitlement rather than whether a particular feature is wired up today. */
 export async function aiAllowedForOrg(orgId: string): Promise<boolean> {
-  const [org] = await db.select(ENTITLEMENT_FIELDS).from(organizations).where(eq(organizations.id, orgId)).limit(1);
+  const [org] = await db
+    .select(ENTITLEMENT_FIELDS)
+    .from(organizations)
+    .leftJoin(orgBilling, billingCopyOn())
+    .where(eq(organizations.id, orgId))
+    .limit(1);
   if (!org) return false;
   const ent = entitlementOf(org);
   return ent.paid && aiPlanAllowed(ent.plan);

@@ -51,7 +51,7 @@ const hasDatabase = Boolean(process.env.DATABASE_URL);
 describe.skipIf(!hasDatabase)("no free use at every entry point (I-9, I-16)", async () => {
   const { db } = await import("@/src/db");
   const { generatedArtifacts, organizations, sharedLinks, users } = await import("@/src/db/schema");
-  const { createTestOrg } = await import("@/src/db/test-org");
+  const { createTestOrg, setBillingCopy } = await import("@/src/db/test-org");
   const { hashPassword } = await import("@/src/services/auth/passwords");
   const { startSession, endSession } = await import("@/src/services/auth/session");
   const nextHeaders = (await import("next/headers")) as unknown as {
@@ -525,12 +525,12 @@ describe.skipIf(!hasDatabase)("no free use at every entry point (I-9, I-16)", as
       // Paid (complimentary by default from createTestOrg... except this org opted out, so make
       // it paid via a live Stripe status the same way `syncOrgBilling` would).
       vi.stubEnv("BILLING_ENABLED", "true");
-      await db.update(organizations).set({ stripeStatus: "active" }).where(eq(organizations.id, scopedOrgId));
+      await setBillingCopy(scopedOrgId, { stripeStatus: "active" });
 
       const before = await snapshotOrgTables(scopedOrgId);
 
       // Flip to unpaid.
-      await db.update(organizations).set({ stripeStatus: "canceled" }).where(eq(organizations.id, scopedOrgId));
+      await setBillingCopy(scopedOrgId, { stripeStatus: "canceled" });
 
       await startSession(scopedAdminId);
       expect(await setActiveMonthAction("2026-06")).toEqual({ ok: false, error: UI.billingPlanRequired });
@@ -542,7 +542,7 @@ describe.skipIf(!hasDatabase)("no free use at every entry point (I-9, I-16)", as
       expect(duringUnpaid).toEqual(before);
 
       // Pay again.
-      await db.update(organizations).set({ stripeStatus: "active" }).where(eq(organizations.id, scopedOrgId));
+      await setBillingCopy(scopedOrgId, { stripeStatus: "active" });
 
       const after = await snapshotOrgTables(scopedOrgId);
       expect(after).toEqual(before);
@@ -617,7 +617,7 @@ describe.skipIf(!hasDatabase)("no free use at every entry point (I-9, I-16)", as
         .from(users)
         .where(sql`lower(${users.email}) = lower(${email})`)
         .limit(1);
-      await db.update(organizations).set({ stripeStatus: "active" }).where(eq(organizations.id, row.orgId));
+      await setBillingCopy(row.orgId, { stripeStatus: "active" });
 
       await startSession(row.id);
       await expect(planPageSession()).rejects.toThrow("NEXT_REDIRECT:/onboarding/line-items");
@@ -649,7 +649,7 @@ describe.skipIf(!hasDatabase)("no free use at every entry point (I-9, I-16)", as
         .from(users)
         .where(sql`lower(${users.email}) = lower(${email})`)
         .limit(1);
-      await db.update(organizations).set({ stripeStatus: "active" }).where(eq(organizations.id, row.orgId));
+      await setBillingCopy(row.orgId, { stripeStatus: "active" });
 
       await expect(signInAction({ ok: false, error: "" }, loginForm())).rejects.toThrow("NEXT_REDIRECT:/onboarding/line-items");
       await endSession();

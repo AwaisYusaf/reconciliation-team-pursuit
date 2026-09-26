@@ -33,7 +33,8 @@ describe.skipIf(!hasDatabase)("billing sync (integration, Phase 16)", async () =
   const { eq } = await import("drizzle-orm");
   const { db } = await import("@/src/db");
   const { organizations, orgAccountEvents } = await import("@/src/db/schema");
-  const { createTestOrg } = await import("@/src/db/test-org");
+  const { createTestOrg, orgWithBilling, setBillingCopy } = await import("@/src/db/test-org");
+  const { entitlementOf } = await import("@/src/services/auth/entitlement");
   const { syncOrgBilling, refreshOrgBilling, clearRefreshThrottle, flagDispute } = await import("./sync");
   const { stripeKeyIsLive } = await import("./config");
 
@@ -52,12 +53,12 @@ describe.skipIf(!hasDatabase)("billing sync (integration, Phase 16)", async () =
 
   /** Sets a Stripe customer on the org, our mode, so `findOrgByCustomer` will find it. */
   async function withCustomer(orgId: string, customerId: string, livemode = false) {
-    await db.update(organizations).set({ stripeCustomerId: customerId, stripeLivemode: livemode }).where(eq(organizations.id, orgId));
+    await setBillingCopy(orgId, { stripeCustomerId: customerId, livemode });
   }
 
+  /** The org row with its `org_billing` copy spread over it. */
   async function orgRow(orgId: string) {
-    const [row] = await db.select().from(organizations).where(eq(organizations.id, orgId)).limit(1);
-    return row;
+    return orgWithBilling(orgId);
   }
 
   async function eventsFor(orgId: string) {
@@ -214,6 +215,14 @@ describe.skipIf(!hasDatabase)("billing sync (integration, Phase 16)", async () =
       const afterFirst = await orgRow(orgId);
       expect(afterFirst.plan).toBe("reconciliation_ai");
       expect(afterFirst.subscriptionStatus).toBe("active");
+      // The copy itself, which is what access is decided from (D-125).
+      expect(afterFirst).toMatchObject({
+        stripeStatus: "active",
+        billingInterval: "month",
+        currentPeriodEnd: new Date(1_700_000_000 * 1000),
+        cancelAtPeriodEnd: false,
+      });
+      expect(afterFirst.syncedAt).toBeInstanceOf(Date);
 
       let events = await eventsFor(orgId);
       expect(events).toHaveLength(1);
@@ -231,11 +240,48 @@ describe.skipIf(!hasDatabase)("billing sync (integration, Phase 16)", async () =
       await syncOrgBilling(customerId);
       const afterSecond = await orgRow(orgId);
       expect(afterSecond.subscriptionStatus).toBe("past_due");
+      expect(afterSecond.stripeStatus).toBe("past_due");
 
       events = await eventsFor(orgId);
       expect(events).toHaveLength(2);
       expect(events[1].before).toMatchObject({ status: "active" });
       expect(events[1].after).toMatchObject({ status: "past_due" });
+    });
+  });
+
+  describe("the copy follows Stripe: renewal, cancel at period end, cancellation", () => {
+    it("a renewal moves the period end, a pending cancel is copied, and a cancelled plan ends access", async () => {
+      vi.stubEnv("BILLING_ENABLED", "true");
+      const orgId = await freshOrg({ complimentary: false });
+      const customerId = uniqueCustomerId();
+      await withCustomer(orgId, customerId);
+      const paid = async () => {
+        const row = await orgRow(orgId);
+        return entitlementOf({ ...row, stripeStatus: row.stripeStatus ?? null }).paid;
+      };
+
+      subscriptionsOfMock.mockResolvedValue([fakeSub({ status: "active", interval: "year", currentPeriodEnd: 1_700_000_000 })]);
+      await syncOrgBilling(customerId);
+      expect(await orgRow(orgId)).toMatchObject({ stripeStatus: "active", billingInterval: "year" });
+      expect(await paid()).toBe(true);
+
+      // Stripe charged the next period: the copy's period end moves with it.
+      subscriptionsOfMock.mockResolvedValue([fakeSub({ status: "active", interval: "year", currentPeriodEnd: 1_731_536_000 })]);
+      await syncOrgBilling(customerId);
+      expect((await orgRow(orgId)).currentPeriodEnd).toEqual(new Date(1_731_536_000 * 1000));
+
+      subscriptionsOfMock.mockResolvedValue([{ ...fakeSub({ status: "active", interval: "year", currentPeriodEnd: 1_731_536_000 }), cancel_at_period_end: true }]);
+      await syncOrgBilling(customerId);
+      expect((await orgRow(orgId)).cancelAtPeriodEnd).toBe(true);
+      expect(await paid()).toBe(true); // still paid until the period ends
+
+      subscriptionsOfMock.mockResolvedValue([fakeSub({ status: "canceled", interval: "year" })]);
+      await syncOrgBilling(customerId);
+      const ended = await orgRow(orgId);
+      expect(ended.stripeStatus).toBe("canceled");
+      expect(ended.subscriptionStatus).toBe("cancelled");
+      expect(await paid()).toBe(false);
+      vi.unstubAllEnvs();
     });
   });
 
@@ -246,8 +292,9 @@ describe.skipIf(!hasDatabase)("billing sync (integration, Phase 16)", async () =
       await withCustomer(orgId, customerId);
       await db
         .update(organizations)
-        .set({ complimentary: true, complimentaryPlan: "reconciliation_ai", stripeStatus: "canceled" })
+        .set({ complimentary: true, complimentaryPlan: "reconciliation_ai" })
         .where(eq(organizations.id, orgId));
+      await setBillingCopy(orgId, { stripeStatus: "canceled" });
 
       const before = await orgRow(orgId);
       subscriptionsOfMock.mockResolvedValue([fakeSub({ status: "canceled" })]);
@@ -302,14 +349,14 @@ describe.skipIf(!hasDatabase)("billing sync (integration, Phase 16)", async () =
       const orgId = await freshOrg({ complimentary: false });
       const customerId = uniqueCustomerId();
       await withCustomer(orgId, customerId);
-      await db.update(organizations).set({ billingSyncedAt: new Date() }).where(eq(organizations.id, orgId));
+      await setBillingCopy(orgId, { syncedAt: new Date() });
 
       const result = await refreshOrgBilling(orgId, "stale");
       expect(result).toBe(false);
       expect(subscriptionsOfMock).not.toHaveBeenCalled();
     });
 
-    it("billingSyncedAt null: overdue, syncs", async () => {
+    it("syncedAt null: overdue, syncs", async () => {
       const orgId = await freshOrg({ complimentary: false });
       const customerId = uniqueCustomerId();
       await withCustomer(orgId, customerId);
@@ -328,9 +375,9 @@ describe.skipIf(!hasDatabase)("billing sync (integration, Phase 16)", async () =
 
       expect(await refreshOrgBilling(orgId, "stale")).toBe(true);
       subscriptionsOfMock.mockClear();
-      // billingSyncedAt now set, but it's the throttle (not overdue-ness) under test here: force
+      // syncedAt now set, but it's the throttle (not overdue-ness) under test here: force
       // overdue again so only the throttle can explain a "false".
-      await db.update(organizations).set({ billingSyncedAt: null }).where(eq(organizations.id, orgId));
+      await setBillingCopy(orgId, { syncedAt: null });
       const result = await refreshOrgBilling(orgId, "stale");
       expect(result).toBe(false);
       expect(subscriptionsOfMock).not.toHaveBeenCalled();
@@ -345,7 +392,7 @@ describe.skipIf(!hasDatabase)("billing sync (integration, Phase 16)", async () =
 
       await expect(refreshOrgBilling(orgId, "stale")).resolves.toBe(true);
       const after = await orgRow(orgId);
-      expect(after.billingSyncedAt).toBeNull();
+      expect(after.syncedAt).toBeNull();
       expect(after.plan).toBe(before.plan);
       expect(after.subscriptionStatus).toBe(before.subscriptionStatus);
     });
@@ -363,7 +410,7 @@ describe.skipIf(!hasDatabase)("billing sync (integration, Phase 16)", async () =
   });
 
   describe("flagDispute", () => {
-    it("a charge belonging to our org: billing_flag set to dispute, ALERT logged", async () => {
+    it("a charge belonging to our org: disputed_at set, ALERT logged", async () => {
       const orgId = await freshOrg({ complimentary: false });
       const customerId = uniqueCustomerId();
       await withCustomer(orgId, customerId);
@@ -373,7 +420,7 @@ describe.skipIf(!hasDatabase)("billing sync (integration, Phase 16)", async () =
       const result = await flagDispute({ id: "dp_1", charge: "ch_1" });
       expect(result).toBe("synced");
       const row = await orgRow(orgId);
-      expect(row.billingFlag).toBe("dispute");
+      expect(row.disputedAt).toBeInstanceOf(Date);
       expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("ALERT"));
       errorSpy.mockRestore();
     });
@@ -386,7 +433,7 @@ describe.skipIf(!hasDatabase)("billing sync (integration, Phase 16)", async () =
       const result = await flagDispute({ id: "dp_2", charge: "ch_2" });
       expect(result).toBe("unknown_customer");
       const row = await orgRow(orgId);
-      expect(row.billingFlag).toBeNull();
+      expect(row.disputedAt).toBeUndefined(); // no copy at all: nothing to flag
     });
 
     it("a dispute with no charge: 'unknown_customer' without calling Stripe", async () => {

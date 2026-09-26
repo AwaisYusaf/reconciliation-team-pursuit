@@ -1,5 +1,5 @@
 {
-  "id": "dddebd39-99a1-4aef-86ce-f3ee8c27e44d",
+  "id": "53fd6c54-014f-4692-803a-259b04200fd8",
   "prevId": "bb6f1c39-cc4a-4267-903d-4b81a499e925",
   "version": "7",
   "dialect": "postgresql",
@@ -3635,6 +3635,165 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+    "public.org_billing": {
+      "name": "org_billing",
+      "schema": "",
+      "columns": {
+        "org_id": {
+          "name": "org_id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "stripe_customer_id": {
+          "name": "stripe_customer_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "livemode": {
+          "name": "livemode",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "stripe_status": {
+          "name": "stripe_status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "billing_interval": {
+          "name": "billing_interval",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "current_period_end": {
+          "name": "current_period_end",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "cancel_at_period_end": {
+          "name": "cancel_at_period_end",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "pending_plan": {
+          "name": "pending_plan",
+          "type": "org_plan",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "pending_interval": {
+          "name": "pending_interval",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "pending_at": {
+          "name": "pending_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "pending_reason": {
+          "name": "pending_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "upgrade_pay_url": {
+          "name": "upgrade_pay_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "upgrade_expires_at": {
+          "name": "upgrade_expires_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "collection_paused": {
+          "name": "collection_paused",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "disputed_at": {
+          "name": "disputed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "synced_at": {
+          "name": "synced_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "org_billing_stripe_customer_id_uq": {
+          "name": "org_billing_stripe_customer_id_uq",
+          "columns": [
+            {
+              "expression": "stripe_customer_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "org_billing_org_id_organizations_id_fk": {
+          "name": "org_billing_org_id_organizations_id_fk",
+          "tableFrom": "org_billing",
+          "tableTo": "organizations",
+          "columnsFrom": [
+            "org_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "org_billing_stripe_status_ck": {
+          "name": "org_billing_stripe_status_ck",
+          "value": "\"org_billing\".\"stripe_status\" IS NULL OR length(\"org_billing\".\"stripe_status\") > 0"
+        },
+        "org_billing_billing_interval_ck": {
+          "name": "org_billing_billing_interval_ck",
+          "value": "\"org_billing\".\"billing_interval\" IS NULL OR \"org_billing\".\"billing_interval\" IN ('month', 'year')"
+        },
+        "org_billing_pending_interval_ck": {
+          "name": "org_billing_pending_interval_ck",
+          "value": "\"org_billing\".\"pending_interval\" IS NULL OR \"org_billing\".\"pending_interval\" IN ('month', 'year')"
+        },
+        "org_billing_pending_reason_ck": {
+          "name": "org_billing_pending_reason_ck",
+          "value": "\"org_billing\".\"pending_reason\" IS NULL OR \"org_billing\".\"pending_reason\" IN ('downgrade', 'price_move')"
+        }
+      },
+      "isRLSEnabled": false
+    },
     "public.organizations": {
       "name": "organizations",
       "schema": "",
@@ -3723,109 +3882,10 @@
           "notNull": true,
           "default": true
         },
-        "stripe_customer_id": {
-          "name": "stripe_customer_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "stripe_livemode": {
-          "name": "stripe_livemode",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "stripe_subscription_id": {
-          "name": "stripe_subscription_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "stripe_status": {
-          "name": "stripe_status",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "billing_interval": {
-          "name": "billing_interval",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "current_period_end": {
-          "name": "current_period_end",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "cancel_at_period_end": {
-          "name": "cancel_at_period_end",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
-        },
-        "pending_plan": {
-          "name": "pending_plan",
-          "type": "org_plan",
-          "typeSchema": "public",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "pending_interval": {
-          "name": "pending_interval",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "pending_at": {
-          "name": "pending_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "pending_reason": {
-          "name": "pending_reason",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "upgrade_pay_url": {
-          "name": "upgrade_pay_url",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "upgrade_expires_at": {
-          "name": "upgrade_expires_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "billing_synced_at": {
-          "name": "billing_synced_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
         "complimentary_plan": {
           "name": "complimentary_plan",
           "type": "org_plan",
           "typeSchema": "public",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "collection_paused": {
-          "name": "collection_paused",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
-        },
-        "billing_flag": {
-          "name": "billing_flag",
-          "type": "text",
           "primaryKey": false,
           "notNull": false
         },
@@ -3844,23 +3904,7 @@
           "default": "now()"
         }
       },
-      "indexes": {
-        "organizations_stripe_customer_id_uq": {
-          "name": "organizations_stripe_customer_id_uq",
-          "columns": [
-            {
-              "expression": "stripe_customer_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
+      "indexes": {},
       "foreignKeys": {
         "organizations_active_funding_source_id_funding_sources_id_fk": {
           "name": "organizations_active_funding_source_id_funding_sources_id_fk",
@@ -3879,24 +3923,7 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {
-        "organizations_stripe_status_ck": {
-          "name": "organizations_stripe_status_ck",
-          "value": "\"organizations\".\"stripe_status\" IS NULL OR length(\"organizations\".\"stripe_status\") > 0"
-        },
-        "organizations_billing_interval_ck": {
-          "name": "organizations_billing_interval_ck",
-          "value": "\"organizations\".\"billing_interval\" IS NULL OR \"organizations\".\"billing_interval\" IN ('month', 'year')"
-        },
-        "organizations_pending_interval_ck": {
-          "name": "organizations_pending_interval_ck",
-          "value": "\"organizations\".\"pending_interval\" IS NULL OR \"organizations\".\"pending_interval\" IN ('month', 'year')"
-        },
-        "organizations_pending_reason_ck": {
-          "name": "organizations_pending_reason_ck",
-          "value": "\"organizations\".\"pending_reason\" IS NULL OR \"organizations\".\"pending_reason\" IN ('downgrade', 'price_move')"
-        }
-      },
+      "checkConstraints": {},
       "isRLSEnabled": false
     },
     "public.payment_sources": {

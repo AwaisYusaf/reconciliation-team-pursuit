@@ -10,7 +10,8 @@ import "server-only";
 import { and, eq, isNull, lt, ne } from "drizzle-orm";
 
 import { db } from "@/src/db";
-import { organizations, sessions, staffSessions, staffUsers, users } from "@/src/db/schema";
+import { billingCopyOn } from "@/src/db/billing-copy";
+import { orgBilling, organizations, sessions, staffSessions, staffUsers, users } from "@/src/db/schema";
 import type { OrgPlan, UserRole } from "@/src/db/schema";
 import { ENTITLEMENT_COLUMNS, entitlementOf } from "@/src/services/auth/entitlement";
 import type { Entitlement } from "@/src/modules/billing/entitlement";
@@ -128,6 +129,7 @@ export async function resolveSession(
     .from(sessions)
     .innerJoin(users, eq(users.id, sessions.userId))
     .innerJoin(organizations, eq(organizations.id, users.orgId))
+    .leftJoin(orgBilling, billingCopyOn())
     // `deactivatedAt` here as well as deleting the sessions at revocation time: the delete is
     // what ends access immediately, and this is what makes it impossible for any cookie to
     // outlive the revocation if a session row is ever created or restored another way.
