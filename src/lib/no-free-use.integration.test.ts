@@ -246,6 +246,20 @@ describe.skipIf(!hasDatabase)("no free use at every entry point (I-9, I-16)", as
       }
     });
 
+    it("an unpaid org can see its own photo but not change it: avatar POST and DELETE answer 403", async () => {
+      const avatarRoute = await import("@/app/api/me/avatar/route");
+      await startSession(adminId);
+      try {
+        const post = await avatarRoute.POST(new Request("http://localhost/api/me/avatar", { method: "POST" }));
+        expect(post.status).toBe(403);
+        expect(await post.json()).toEqual({ ok: false, error: UI.billingPlanRequired });
+        const del = await avatarRoute.DELETE(new Request("http://localhost/api/me/avatar", { method: "DELETE" }));
+        expect(del.status).toBe(403);
+      } finally {
+        await endSession();
+      }
+    });
+
     it("createExpenseAction (expenses module) refuses before validation even runs", async () => {
       await startSession(adminId);
       const result = await createExpenseAction({} as never);

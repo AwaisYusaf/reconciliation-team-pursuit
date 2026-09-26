@@ -299,8 +299,11 @@ Guarded by default, so a new page, action or route is protected unless someone o
   `subscription_status` in sharing use it too.
 - **Allow-list** (`actionSessionAnyPlan()`, `requireAdminAnyPlan()`, `routeSessionAnyPlan()`, only
   callable from listed entries): sign in, sign up, sign out, change password, the billing actions,
-  archive funding source (D2), list and revoke users, `/api/me/avatar`, `/r/billing/return`, the
-  webhook. Staff `/a` is separate (`requireStaff`). Not allowed: onboarding, month and source
+  archive funding source (D2, admin only while unpaid), list and revoke users, `/api/me/avatar`
+  GET (seeing the photo; changing it is paid), `/r/billing/return`, the webhook. Each is listed by
+  exact `file#name` in `guard-coverage.test.ts` (no wildcard or folder entries), and each must still
+  check who is asking unless it rightly can't (sign in, sign up, sign out, the webhook, public
+  links). Staff `/a` is separate (`requireStaff`). Not allowed: onboarding, month and source
   selectors, welcome, tours, downloads, files, `/api/users/avatar`.
 - **Order**: sign-up and sign-in send an unpaid org to `/r/plan` before onboarding; `/r/plan` shows
   the chooser (plan preselected from the landing link, with a "Choose a different plan" link) and,

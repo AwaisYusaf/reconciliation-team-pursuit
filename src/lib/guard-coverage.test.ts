@@ -117,13 +117,9 @@ const isAnyPlan = (name: string) => /AnyPlan$/.test(name);
 const usesAnyPlan = (refs: Set<string>) => [...refs].some(isAnyPlan);
 const refsAny = (refs: Set<string>, names: string[]) => names.some((n) => refs.has(n));
 
-/** `file#name`, `file#*`, or a directory prefix ending in `/`. */
+/** Exact `file#name` only: a wildcard or a folder would also let in whatever is added there later. */
 function allowed(list: Record<string, string>, file: string, name: string): boolean {
-  return Object.keys(list).some((key) => {
-    if (key.endsWith("/")) return file.startsWith(key);
-    const [f, n] = key.split("#");
-    return f === file && (n === "*" || n === name);
-  });
+  return Object.hasOwn(list, `${file}#${name}`);
 }
 
 /* ---------------------------------------------------------------- allow-list */
@@ -138,16 +134,41 @@ export const ACTION_ALLOW: Record<string, string> = {
   "src/modules/users/actions.ts#revokeUserAccessAction": "§4.7: remove a departed user",
   "src/modules/funding-sources/actions.ts#archiveFundingSourceAction":
     "D2: archive sources from the plan page before choosing Reconciliation",
-  "src/modules/billing/actions.ts#*": "the billing actions: paying is the way out (Track A, Phase 3)",
+  // The billing actions: paying is the way out (Track A, Phase 3). Named one by one, so a new
+  // export in that file is not let through unchecked.
+  "src/modules/billing/actions.ts#startCheckoutAction": "subscribe",
+  "src/modules/billing/actions.ts#quoteChangeAction": "quote a switch",
+  "src/modules/billing/actions.ts#applyChangeAction": "apply a switch",
+  "src/modules/billing/actions.ts#cancelPendingChangeAction": "drop a queued switch",
+  "src/modules/billing/actions.ts#cancelPlanAction": "cancel at period end",
+  "src/modules/billing/actions.ts#endPlanNowAction": "end a plan on hold (D-126)",
+  "src/modules/billing/actions.ts#resumePlanAction": "keep the plan",
+  "src/modules/billing/actions.ts#billingPortalAction": "Card and invoices, to pay a plan on hold (D-126)",
 };
 
 /** §4.7: route handlers that answer without `routeSession`. Each says why. */
 export const ROUTE_ALLOW: Record<string, string> = {
-  "app/api/me/avatar/route.ts#*": "the signed-in person's own photo, in the plan page's header",
-  "app/r/billing/": "/r/billing/return re-syncs after Checkout (Track A, Phase 3)",
-  "app/api/stripe/": "the Stripe webhook: Stripe, not a session (Track A, Phase 2)",
-  "app/s/": "public shared links: no session; `loadPublicShare` checks the entitlement",
+  "app/api/me/avatar/route.ts#GET": "the signed-in person's own photo, in the plan page's header",
+  "app/r/billing/return/route.ts#GET": "/r/billing/return re-syncs after Checkout (Track A, Phase 3)",
+  "app/api/stripe/webhook/route.ts#POST": "the Stripe webhook: Stripe, not a session (Track A, Phase 2)",
+  "app/s/[token]/[filename]/route.ts#GET": "a public shared link: no session; `loadPublicShare` checks the entitlement",
+  "app/s/[token]/[filename]/route.ts#HEAD": "the same link's HEAD",
+  "app/s/[token]/unlock/route.ts#POST": "unlocking a password-protected shared link",
 };
+
+/** Allow-listed entries that rightly check no session: nobody is signed in yet (sign in, sign
+ *  up), there is nothing to check (sign out), Stripe calls it (the signature is the check), or it
+ *  is a public link (`loadPublicShare` decides). Every other allowed entry must still reach a
+ *  session, an `*AnyPlan` helper or a raw read, so allow-listing is never "no check at all". */
+const NO_SESSION_NEEDED = new Set([
+  "src/modules/auth/actions.ts#signInAction",
+  "src/modules/auth/actions.ts#signUpAction",
+  "src/modules/auth/actions.ts#signOutAction",
+  "app/api/stripe/webhook/route.ts#POST",
+  "app/s/[token]/[filename]/route.ts#GET",
+  "app/s/[token]/[filename]/route.ts#HEAD",
+  "app/s/[token]/unlock/route.ts#POST",
+]);
 
 /** Where each `*AnyPlan` helper is defined; referencing it there is not a use. */
 const DEFINITIONS = ["src/lib/action-session.ts", "src/lib/route-session.ts"];
@@ -200,13 +221,23 @@ describe("U-18: every entry point refuses an unpaid organization unless allow-li
     expect(offenders).toEqual([]);
   });
 
-  it("the action allow-list names only actions that exist (or a whole billing file still to come)", () => {
-    const stale = Object.keys(ACTION_ALLOW).filter((key) => {
-      const [file, name] = key.split("#");
-      if (name === "*") return false;
-      return !actions.some((a) => a.file === file && a.name === name);
-    });
+  it("the allow-lists name only entries that exist", () => {
+    const entries = new Set([...actions, ...routeMethods].map((e) => `${e.file}#${e.name}`));
+    const stale = [...Object.keys(ACTION_ALLOW), ...Object.keys(ROUTE_ALLOW), ...NO_SESSION_NEEDED].filter(
+      (key) => !entries.has(key),
+    );
     expect(stale).toEqual([]);
+  });
+
+  it("an allow-listed entry still checks who is asking, unless it is one that rightly can't", () => {
+    const offenders = [
+      ...actions.filter((a) => allowed(ACTION_ALLOW, a.file, a.name)),
+      ...routeMethods.filter((r) => allowed(ROUTE_ALLOW, r.file, r.name)),
+    ]
+      .filter((e) => !NO_SESSION_NEEDED.has(`${e.file}#${e.name}`))
+      .filter((e) => !usesAnyPlan(e.refs) && !refsAny(e.refs, RAW_SESSION))
+      .map((e) => `${e.file}#${e.name}`);
+    expect(offenders).toEqual([]);
   });
 
   it("pages: every app/r and onboarding page calls pageSession(); only /r/plan calls planPageSession()", () => {
@@ -293,12 +324,11 @@ describe("the analysis itself catches what it must", () => {
     expect(refsAny(commented.refs, PLAN_GUARDS)).toBe(false);
   });
 
-  it("matches allow-list keys by entry, by file and by directory", () => {
+  it("matches allow-list keys by exact entry only, never by wildcard or folder", () => {
     const list = { "a.ts#x": "", "b.ts#*": "", "app/s/": "" };
     expect(allowed(list, "a.ts", "x")).toBe(true);
     expect(allowed(list, "a.ts", "y")).toBe(false);
-    expect(allowed(list, "b.ts", "anything")).toBe(true);
-    expect(allowed(list, "app/s/[token]/route.ts", "GET")).toBe(true);
-    expect(allowed(list, "app/sx/route.ts", "GET")).toBe(false);
+    expect(allowed(list, "b.ts", "anything")).toBe(false);
+    expect(allowed(list, "app/s/[token]/route.ts", "GET")).toBe(false);
   });
 });
