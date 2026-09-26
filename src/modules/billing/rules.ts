@@ -159,3 +159,30 @@ export function complimentaryStart(
 
 /** Subscription metadata: end complimentary access once this subscription's payment succeeds. */
 export const END_COMPLIMENTARY_KEY = "endComplimentary";
+
+/**
+ * What staff changing complimentary access must do in Stripe first (§4.6), from the org's
+ * current state and the change asked for:
+ *  - `cancel`: a plan is charging, or would be once free access has no end, for access that is
+ *    now free, so staff choose to cancel it now or at the end of the paid period;
+ *  - `move_first_charge`: a plan bought during free access, not charged yet (`trialing`, first
+ *    charge the day after the grant ends), whose first charge must follow the grant's new end,
+ *    or come now when the grant is removed;
+ *  - `none`: nothing is live, or nothing actually changes.
+ * A paid plan under a grant (not `trialing`) is the moment before the sync ends that grant, so it
+ * is left alone, as before.
+ */
+export type ComplimentaryStripeStep = "none" | "cancel" | "move_first_charge";
+
+export function complimentaryStripeStep(
+  current: { complimentary: boolean; complimentaryUntil: string | null; stripeStatus: string | null },
+  enabled: boolean,
+  until: string | null,
+): ComplimentaryStripeStep {
+  if (!isLive(current.stripeStatus)) return "none";
+  if (current.complimentary === enabled && (!enabled || current.complimentaryUntil === until)) return "none";
+  if (!current.complimentary) return enabled ? "cancel" : "none";
+  if (current.stripeStatus !== "trialing") return "none";
+  // Open-ended free access would put the first charge off for ever: end the bought plan instead.
+  return enabled && until === null ? "cancel" : "move_first_charge";
+}

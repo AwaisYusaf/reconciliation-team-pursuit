@@ -931,6 +931,8 @@ export const UI = {
   staffCompCancelNow: "Cancel the paid plan now",
   staffCompCancelAtEnd: "Cancel the paid plan at the end of the paid period",
   staffCompCancelRequired: "This organization pays for a plan. Choose whether to cancel it now or at the end of the paid period.",
+  staffCompChangeQueued:
+    "This organization's plan has a change scheduled in Stripe. Cancel that change in Stripe first, then change the free access.",
 
   // PHASE-16 Track C (landing, funding-source limit)
   fundingSourceLimitReached:

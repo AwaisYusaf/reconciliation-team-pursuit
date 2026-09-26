@@ -16,9 +16,16 @@ vi.mock("@/src/lib/action-session", () => ({
 
 const setCollectionPausedMock = vi.fn().mockResolvedValue(undefined);
 const staffCancelMock = vi.fn().mockResolvedValue(undefined);
+const staffMoveMock = vi.fn().mockResolvedValue(undefined);
 vi.mock("@/src/modules/billing/billing", () => ({
   setCollectionPaused: (...args: unknown[]) => setCollectionPausedMock(...args),
   staffCancelSubscription: (...args: unknown[]) => staffCancelMock(...args),
+  staffMoveFirstCharge: (...args: unknown[]) => staffMoveMock(...args),
+  BillingError: class BillingError extends Error {
+    constructor(readonly code: string) {
+      super(code);
+    }
+  },
 }));
 
 const alertMock = vi.fn();
@@ -45,6 +52,7 @@ describe.skipIf(!hasDatabase)("P16 (staff-managed while live) and D3 (collection
   const { requireStaff } = await import("@/src/lib/action-session");
   const { changePlanAction, setComplimentaryAction, suspendOrgAction, reinstateOrgAction } = await import("./actions");
   const { entitlementOf } = await import("@/src/services/auth/entitlement");
+  const { todayIso } = await import("@/src/domain/dates");
 
   const requireStaffMock = vi.mocked(requireStaff);
 
@@ -91,6 +99,7 @@ describe.skipIf(!hasDatabase)("P16 (staff-managed while live) and D3 (collection
     vi.stubEnv("BILLING_ENABLED", "true");
     setCollectionPausedMock.mockReset().mockResolvedValue(undefined);
     staffCancelMock.mockReset().mockResolvedValue(undefined);
+    staffMoveMock.mockReset().mockResolvedValue(undefined);
     alertMock.mockReset();
     asStaff();
   });
@@ -235,6 +244,88 @@ describe.skipIf(!hasDatabase)("P16 (staff-managed while live) and D3 (collection
       const result = await setComplimentaryAction(orgId, false, "", "");
       expect(result.ok).toBe(true);
       expect(staffCancelMock).not.toHaveBeenCalled();
+      expect(staffMoveMock).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("a plan bought during free access follows the grant (its first charge moves with it)", () => {
+    const iso = (days: number) => todayIso(new Date(Date.now() + days * 86_400_000));
+
+    /** Free access until `until`, with a plan bought during it: trialing until the day after. */
+    async function freeWithBoughtPlan(until: string) {
+      const orgId = await freshOrg({ complimentary: true });
+      await db.update(organizations).set({ complimentaryUntil: until }).where(eq(organizations.id, orgId));
+      await setStripeStatus(orgId, "trialing");
+      return orgId;
+    }
+
+    async function orgRow(orgId: string) {
+      const [row] = await db.select().from(organizations).where(eq(organizations.id, orgId));
+      return row;
+    }
+
+    it("a later end date moves the first charge to the day after it, and saves the date", async () => {
+      const orgId = await freeWithBoughtPlan(iso(30));
+      const result = await setComplimentaryAction(orgId, true, iso(90), "");
+      expect(result.ok).toBe(true);
+      expect(staffMoveMock).toHaveBeenCalledExactlyOnceWith(orgId, iso(90));
+      expect(staffCancelMock).not.toHaveBeenCalled();
+      expect((await orgRow(orgId)).complimentaryUntil).toBe(iso(90));
+    });
+
+    it("an earlier end date moves it too", async () => {
+      const orgId = await freeWithBoughtPlan(iso(60));
+      expect((await setComplimentaryAction(orgId, true, iso(10), "")).ok).toBe(true);
+      expect(staffMoveMock).toHaveBeenCalledExactlyOnceWith(orgId, iso(10));
+    });
+
+    it("removing the free access starts the bought plan now", async () => {
+      const orgId = await freeWithBoughtPlan(iso(30));
+      const result = await setComplimentaryAction(orgId, false, "", "");
+      expect(result.ok).toBe(true);
+      expect(staffMoveMock).toHaveBeenCalledExactlyOnceWith(orgId, null);
+      expect((await orgRow(orgId)).complimentary).toBe(false);
+    });
+
+    it("open-ended free access needs the cancel choice, then cancels the bought plan instead of moving it", async () => {
+      const orgId = await freeWithBoughtPlan(iso(30));
+      expect(await setComplimentaryAction(orgId, true, "", "", null)).toEqual(fail(UI.staffCompCancelRequired));
+      expect(staffMoveMock).not.toHaveBeenCalled();
+      expect((await orgRow(orgId)).complimentaryUntil).toBe(iso(30));
+
+      expect((await setComplimentaryAction(orgId, true, "", "", "now")).ok).toBe(true);
+      expect(staffCancelMock).toHaveBeenCalledExactlyOnceWith(orgId, "now");
+      expect(staffMoveMock).not.toHaveBeenCalled();
+      expect((await orgRow(orgId)).complimentaryUntil).toBeNull();
+    });
+
+    it("the same end date again changes nothing and leaves Stripe alone", async () => {
+      const orgId = await freeWithBoughtPlan(iso(30));
+      expect(await setComplimentaryAction(orgId, true, iso(30), "")).toEqual(fail(UI.accountNothingChanged));
+      expect(staffMoveMock).not.toHaveBeenCalled();
+    });
+
+    it("a change queued in Stripe refuses with its own message, and nothing is saved", async () => {
+      const orgId = await freeWithBoughtPlan(iso(30));
+      const { BillingError } = await import("@/src/modules/billing/billing");
+      staffMoveMock.mockRejectedValueOnce(new BillingError("change_pending"));
+      expect(await setComplimentaryAction(orgId, true, iso(90), "")).toEqual(fail(UI.staffCompChangeQueued));
+      expect((await orgRow(orgId)).complimentaryUntil).toBe(iso(30));
+      expect(await eventsFor(orgId)).toHaveLength(0);
+    });
+
+    it("Stripe failing → the payment-service message, and nothing is saved", async () => {
+      const orgId = await freeWithBoughtPlan(iso(30));
+      staffMoveMock.mockRejectedValueOnce(new Error("Stripe is down"));
+      expect(await setComplimentaryAction(orgId, true, iso(90), "")).toEqual(fail(UI.billingStripeError));
+      expect((await orgRow(orgId)).complimentaryUntil).toBe(iso(30));
+    });
+
+    it("billing off → the date changes and Stripe is never called", async () => {
+      vi.stubEnv("BILLING_ENABLED", "false");
+      const orgId = await freeWithBoughtPlan(iso(30));
+      expect((await setComplimentaryAction(orgId, true, iso(90), "")).ok).toBe(true);
+      expect(staffMoveMock).not.toHaveBeenCalled();
     });
   });
 

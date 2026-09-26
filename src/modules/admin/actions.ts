@@ -31,8 +31,13 @@ import { fail, ok, type ActionResult } from "@/src/lib/action-result";
 import { requireStaff } from "@/src/lib/action-session";
 import { isUuid } from "@/src/lib/ids";
 import { billingEnabled } from "@/src/modules/billing/config";
-import { isLive } from "@/src/modules/billing/rules";
-import { setCollectionPaused, staffCancelSubscription } from "@/src/modules/billing/billing";
+import { complimentaryStripeStep, isLive } from "@/src/modules/billing/rules";
+import {
+  BillingError,
+  setCollectionPaused,
+  staffCancelSubscription,
+  staffMoveFirstCharge,
+} from "@/src/modules/billing/billing";
 import { alert, refreshOrgBilling } from "@/src/modules/billing/sync";
 
 type OrgRow = {
@@ -180,27 +185,35 @@ export async function setComplimentaryAction(
   const parsedNote = parseNote(note);
   if ("refusal" in parsedNote) return parsedNote.refusal;
 
-  // Granting free access to a paying org ends the paid plan in the same step (§4.6), so it is
-  // never billed for access it now gets free. Stripe first and outside the row lock: the sync
-  // this triggers writes the same row, and a Stripe failure then leaves nothing half done.
-  if (enabled && billingEnabled() && isUuid(orgId)) {
+  // Stripe first and outside the row lock: the sync this triggers writes the same row, and a
+  // Stripe failure then leaves nothing half done (§4.6). Granting free access to a paying org
+  // ends the paid plan in the same step; changing the grant of an org that bought a plan during
+  // free access moves that plan's first charge to follow it (`complimentaryStripeStep`).
+  if (billingEnabled() && isUuid(orgId)) {
     // Whether it pays is Stripe's answer, not our copy's, which can be a webhook behind (a
     // Checkout finished a moment ago): re-sync first. Never throws; if Stripe can't be reached
     // the last copy decides.
     await refreshOrgBilling(orgId, "return");
     const [current] = await db
-      .select({ complimentary: organizations.complimentary, stripeStatus: orgBilling.stripeStatus })
+      .select({
+        complimentary: organizations.complimentary,
+        complimentaryUntil: organizations.complimentaryUntil,
+        stripeStatus: orgBilling.stripeStatus,
+      })
       .from(organizations)
       .leftJoin(orgBilling, billingCopyOn())
       .where(eq(organizations.id, orgId));
-    if (current && !current.complimentary && isLive(current.stripeStatus)) {
-      if (cancelPaid !== "now" && cancelPaid !== "period_end") return fail(UI.staffCompCancelRequired);
-      try {
-        await staffCancelSubscription(orgId, cancelPaid);
-      } catch (e) {
-        console.error(`[admin] cancelling org ${orgId}'s subscription for a complimentary grant failed`, e);
-        return fail(UI.billingStripeError);
-      }
+    const step = current ? complimentaryStripeStep(current, enabled, untilValue) : "none";
+    if (step === "cancel" && cancelPaid !== "now" && cancelPaid !== "period_end") {
+      return fail(UI.staffCompCancelRequired);
+    }
+    try {
+      if (step === "cancel") await staffCancelSubscription(orgId, cancelPaid!);
+      if (step === "move_first_charge") await staffMoveFirstCharge(orgId, enabled ? untilValue : null);
+    } catch (e) {
+      if (e instanceof BillingError && e.code === "change_pending") return fail(UI.staffCompChangeQueued);
+      console.error(`[admin] updating org ${orgId}'s subscription for a complimentary change failed`, e);
+      return fail(UI.billingStripeError);
     }
   }
 

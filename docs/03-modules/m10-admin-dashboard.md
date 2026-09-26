@@ -74,7 +74,11 @@ either screen renders more rows than it asks for: ten organizations per page
   paid plan now (no refund, open invoices voided) or at the end of the paid period. Whether it
   pays is asked of Stripe on save (a re-sync first), so if the page's copy was behind, Save
   refuses and the dialog then shows the choice; Stripe is
-  cancelled first, and a Stripe failure grants nothing. Suspend pauses collection, reinstate
+  cancelled first, and a Stripe failure grants nothing. When the org bought a plan during its free access (not charged yet),
+  that plan's first charge follows the grant (`complimentaryStripeStep`): a new end date moves it
+  to the day after, removing the grant starts it now, and making the grant open-ended asks the same
+  cancel choice instead. A change already scheduled on that plan in Stripe refuses
+  (`staffCompChangeQueued`) rather than guess. Suspend pauses collection, reinstate
   resumes it (D3). History lines written by the sync read "Stripe" as the actor.
 - **Feature requests (PHASE-17, D-127)**: the top of `/a` and of `/a/feature-requests` carries
   **Organizations** · **Feature requests (N)** (`src/components/admin/section-links.tsx`), N

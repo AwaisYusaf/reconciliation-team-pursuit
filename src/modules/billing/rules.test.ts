@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import {
   changeBlockedReason,
   complimentaryStart,
+  complimentaryStripeStep,
   dayAfterStart,
   MIN_DEFERRED_START_MS,
   classifyChange,
@@ -211,5 +212,31 @@ describe("complimentaryStart", () => {
 
   it("the minimum covers Stripe's own 2-day rule with margin", () => {
     expect(MIN_DEFERRED_START_MS).toBeGreaterThan(48 * 3600 * 1000);
+  });
+});
+
+describe("complimentaryStripeStep (§4.6): what a staff grant change must do in Stripe first", () => {
+  const paying = { complimentary: false, complimentaryUntil: null, stripeStatus: "active" };
+  const freeWithBought = { complimentary: true, complimentaryUntil: "2027-01-31", stripeStatus: "trialing" };
+
+  it("granting free access to a paying org cancels its plan; removing nothing touches nothing", () => {
+    expect(complimentaryStripeStep(paying, true, "2027-06-30")).toBe("cancel");
+    expect(complimentaryStripeStep(paying, true, null)).toBe("cancel");
+    expect(complimentaryStripeStep(paying, false, null)).toBe("none");
+  });
+
+  it("a bought plan still waiting for its first charge follows the grant", () => {
+    expect(complimentaryStripeStep(freeWithBought, true, "2027-04-30")).toBe("move_first_charge");
+    expect(complimentaryStripeStep(freeWithBought, true, "2027-01-10")).toBe("move_first_charge");
+    expect(complimentaryStripeStep(freeWithBought, false, null)).toBe("move_first_charge");
+    // Open-ended would put the first charge off for ever: the bought plan is ended instead.
+    expect(complimentaryStripeStep(freeWithBought, true, null)).toBe("cancel");
+  });
+
+  it("nothing to do when nothing changes, nothing is live, or the plan under the grant is already paid", () => {
+    expect(complimentaryStripeStep(freeWithBought, true, "2027-01-31")).toBe("none");
+    expect(complimentaryStripeStep({ ...freeWithBought, stripeStatus: "canceled" }, false, null)).toBe("none");
+    expect(complimentaryStripeStep({ ...freeWithBought, stripeStatus: null }, true, "2027-04-30")).toBe("none");
+    expect(complimentaryStripeStep({ ...freeWithBought, stripeStatus: "active" }, true, "2027-04-30")).toBe("none");
   });
 });

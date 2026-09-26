@@ -31,6 +31,7 @@ import { lookupKey, PORTAL_TAG } from "@/src/modules/billing/pricing";
 import {
   changeBlockedReason,
   classifyChange,
+  dayAfterStart,
   isInterval,
   isLive,
   isPlanId,
@@ -711,6 +712,32 @@ export async function staffCancelSubscription(orgId: string, when: "now" | "peri
     } else {
       await stripe().subscriptions.update(sub.id, { cancel_at_period_end: true });
     }
+    await refresh(customerId);
+  });
+}
+
+/**
+ * A plan bought during complimentary access waits for the grant to end before its first charge
+ * (Stripe `trial_end`, set at Checkout). When staff move or remove the grant, the first charge
+ * moves with it: to the first instant after the new end date, or now when `until` is null (the
+ * grant was removed). No proration: nothing was charged yet. No-op when billing is off, there is
+ * no customer, or the subscription isn't waiting for its first charge.
+ *
+ * Refuses (`change_pending`) when a schedule is attached: a queued price move repeats the trial
+ * in its phases (P21), and changing the subscription under it could contradict the schedule.
+ * Staff drop the queued change first. ponytail: rare (a price move queued on a plan not yet
+ * started); rewrite the schedule's current phase instead if it ever matters.
+ */
+export async function staffMoveFirstCharge(orgId: string, until: IsoDate | null): Promise<void> {
+  await orgLock(orgId, async () => {
+    if (!billingEnabled()) return;
+    const customerId = (await loadOrg(orgId)).stripeCustomerId;
+    if (!customerId) return;
+    const sub = pickCurrent(await subscriptionsOf(customerId));
+    if (!sub || sub.status !== "trialing") return;
+    if (sub.schedule) throw new BillingError("change_pending");
+    const trialEnd = until === null ? ("now" as const) : Math.floor(dayAfterStart(until).getTime() / 1000);
+    await stripe().subscriptions.update(sub.id, { trial_end: trialEnd, proration_behavior: "none" });
     await refresh(customerId);
   });
 }
