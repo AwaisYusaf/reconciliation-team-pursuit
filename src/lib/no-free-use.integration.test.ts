@@ -52,6 +52,8 @@ describe.skipIf(!hasDatabase)("no free use at every entry point (I-9, I-16)", as
   const { db } = await import("@/src/db");
   const { generatedArtifacts, organizations, sharedLinks, users } = await import("@/src/db/schema");
   const { createTestOrg, setBillingCopy } = await import("@/src/db/test-org");
+  // Random per run: fixed tokens hit the global unique index after any run that died before cleanup.
+  const { generateShareToken } = await import("@/src/modules/sharing/token");
   const { hashPassword } = await import("@/src/services/auth/passwords");
   const { startSession, endSession } = await import("@/src/services/auth/session");
   const nextHeaders = (await import("next/headers")) as unknown as {
@@ -272,7 +274,7 @@ describe.skipIf(!hasDatabase)("no free use at every entry point (I-9, I-16)", as
     });
 
     it("an existing shared link refuses to open", async () => {
-      const token = "abcdefghijkl";
+      const token = generateShareToken();
       await insertShare(token, "trial");
       const share = await loadPublicShare(token);
       expect(share).toBeNull();
@@ -337,13 +339,13 @@ describe.skipIf(!hasDatabase)("no free use at every entry point (I-9, I-16)", as
     });
 
     it("a shared link still obeys the old rule: 'cancelled' subscription_status refuses", async () => {
-      const token = "mnopqrstuvwx";
+      const token = generateShareToken();
       await insertShare(token, "cancelled");
       expect(await loadPublicShare(token)).toBeNull();
     });
 
     it("a shared link with a healthy subscription_status still opens", async () => {
-      const token = "yzabcdefghij";
+      const token = generateShareToken();
       await insertShare(token, "trial");
       expect(await loadPublicShare(token)).not.toBeNull();
     });
@@ -559,11 +561,25 @@ describe.skipIf(!hasDatabase)("no free use at every entry point (I-9, I-16)", as
       vi.stubEnv("SIGNUP_ENABLED", "true");
     });
 
+    /** Every address signed up with here, so `afterAll` can delete the orgs sign-up created. */
+    const signUpEmails: string[] = [];
+
+    afterAll(async () => {
+      if (signUpEmails.length === 0) return;
+      const created = await db
+        .select({ orgId: users.orgId })
+        .from(users)
+        .where(sql`lower(${users.email}) in (${sql.join(signUpEmails.map((e) => sql`lower(${e})`), sql`, `)})`);
+      for (const { orgId: id } of created) await db.delete(organizations).where(eq(organizations.id, id));
+    });
+
     function signUpForm(overrides: Record<string, string> = {}): FormData {
       const form = new FormData();
+      const email = overrides.email ?? `signup-${Date.now()}-${Math.random()}@example.test`;
+      signUpEmails.push(email);
       form.set("orgName", overrides.orgName ?? `Signup Org ${Date.now()}-${Math.random()}`);
       form.set("name", "New Admin");
-      form.set("email", overrides.email ?? `signup-${Date.now()}-${Math.random()}@example.test`);
+      form.set("email", email);
       form.set("password", "correct-horse-battery-1");
       form.set("confirmPassword", "correct-horse-battery-1");
       for (const [key, value] of Object.entries(overrides)) form.set(key, value);
