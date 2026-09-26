@@ -96,7 +96,9 @@ describe("planPageSession (U-17: never loops)", () => {
 
   it("paid and onboarded -> redirected on into the app at /r, not back here", async () => {
     state.session = session({ onboarded: true, entitlement: paid });
-    await expect(planPageSession()).rejects.toThrow("NEXT_REDIRECT:/r");
+    // Anchored: a string argument to toThrow is a substring match, and "NEXT_REDIRECT:/r/plan"
+    // contains "NEXT_REDIRECT:/r", so the loop this test exists to catch would have passed.
+    await expect(planPageSession()).rejects.toThrow(/^NEXT_REDIRECT:\/r$/);
   });
 
   it("paid but not onboarded -> redirected to onboarding, not back here", async () => {

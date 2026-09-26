@@ -363,8 +363,9 @@ describe.skipIf(!hasDatabase)("billing actions (integration, Phase 16)", async (
       expect(await cancelPendingChangeAction()).toEqual(fail(UI.billingComplimentaryRefused));
       noStripeCallsMade();
 
-      const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-      await db.update(organizations).set({ complimentaryUntil: yesterday }).where(eq(organizations.id, orgId));
+      // Detroit's yesterday, like `todayIso()` above. A UTC date was Detroit's today every evening
+      // from 8 pm, and the test failed then.
+      await db.update(organizations).set({ complimentaryUntil: isoIn(-1) }).where(eq(organizations.id, orgId));
       // No longer complimentary: falls through to "no_plan" (no Stripe customer), not the
       // complimentary refusal — proving the date boundary, not just the flag, is read.
       expect(await cancelPendingChangeAction()).toEqual(fail(UI.billingNoPlan));
