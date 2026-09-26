@@ -43,7 +43,7 @@ import { config } from "dotenv";
 
 config({ path: ".env.local", quiet: true });
 
-import { eq, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 const hasDatabase = Boolean(process.env.DATABASE_URL);
@@ -163,15 +163,30 @@ describe.skipIf(!hasDatabase)("no free use at every entry point (I-9, I-16)", as
       vi.stubEnv("BILLING_ENABLED", "true");
     });
 
+    /** Every element of `type` in a rendered page, calling `PlanCards`' `actions` for the plans it shows. */
+    const find = (node: unknown, type: unknown, out: Array<{ props: Record<string, unknown> }> = []) => {
+      if (Array.isArray(node)) node.forEach((child) => find(child, type, out));
+      else if (node && typeof node === "object" && "props" in node) {
+        const el = node as { type: unknown; props: Record<string, unknown> };
+        if (el.type === type) out.push(el);
+        find(el.props.children, type, out);
+        if (typeof el.props.actions === "function") {
+          for (const plan of el.props.plans as string[]) find((el.props.actions as (p: string) => unknown)(plan), type, out);
+        }
+      }
+      return out;
+    };
+
     it("a plan on hold shows its Plan & billing panel on /r/plan instead of the chooser, which would only refuse", async () => {
       const { orgBilling } = await import("@/src/db/schema");
+      const { PlanBillingSection } = await import("@/app/r/plan-billing-section");
       // Stripe stopped retrying: the org is unpaid, but its plan still exists in Stripe.
       await setBillingCopy(orgId, { stripeStatus: "unpaid", syncedAt: new Date() });
       await startSession(adminId);
       try {
         const PlanPage = (await import("@/app/r/plan/page")).default;
         const page = await PlanPage({ searchParams: Promise.resolve({}) });
-        expect(page.props.children.props.data).toMatchObject({
+        expect(find(page, PlanBillingSection)[0]?.props.data).toMatchObject({
           isAdmin: true,
           view: { kind: "subscribed", paymentFailed: true, onHold: true },
         });
@@ -196,53 +211,56 @@ describe.skipIf(!hasDatabase)("no free use at every entry point (I-9, I-16)", as
       const archivedAt = async () =>
         (await db.select({ at: fundingSources.archivedAt }).from(fundingSources).where(eq(fundingSources.id, second.id)))[0].at;
 
-      await startSession(manager.id);
-      expect(await archiveFundingSourceAction(second.id)).toEqual({ ok: false, error: UI.billingPlanRequired });
-      await endSession();
-      expect(await archivedAt()).toBeNull();
+      try {
+        await startSession(manager.id);
+        expect(await archiveFundingSourceAction(second.id)).toEqual({ ok: false, error: UI.billingPlanRequired });
+        await endSession();
+        expect(await archivedAt()).toBeNull();
 
-      await startSession(adminId);
-      expect(await archiveFundingSourceAction(second.id)).toEqual({ ok: true, data: undefined });
-      await endSession();
-      expect(await archivedAt()).not.toBeNull();
+        await startSession(adminId);
+        expect(await archiveFundingSourceAction(second.id)).toEqual({ ok: true, data: undefined });
+        await endSession();
+        expect(await archivedAt()).not.toBeNull();
+      } finally {
+        await endSession();
+        await db.delete(users).where(eq(users.id, manager.id));
+        await db.delete(fundingSources).where(eq(fundingSources.id, second.id));
+      }
     });
 
-    it("with two active sources, /r/plan disables Reconciliation with the reason and lists the sources to archive", async () => {
+    it("with two active sources, /r/plan disables Reconciliation with the reason and lists those two to archive", async () => {
       const { fundingSources } = await import("@/src/db/schema");
       const { ORIGINAL_RULES } = await import("@/src/modules/expenses/reimbursement");
       const { ArchiveSources } = await import("@/app/r/plan/archive-sources");
       const { SubscribeButton } = await import("@/app/r/subscribe-button");
-      const [extra] = await db
+      const added = await db
         .insert(fundingSources)
-        .values({ orgId, name: `Extra ${Date.now()}`, type: "grant", sortOrder: 2, ...ORIGINAL_RULES })
+        .values([
+          { orgId, name: `Extra ${Date.now()}`, type: "grant", sortOrder: 2, ...ORIGINAL_RULES },
+          // Archived: neither counted nor offered.
+          { orgId, name: `Old ${Date.now()}`, type: "grant", sortOrder: 3, archivedAt: new Date(), ...ORIGINAL_RULES },
+        ])
         .returning({ id: fundingSources.id });
-
-      /** Every element of `type` in a rendered tree, calling render props (`actions`) on the way. */
-      const find = (node: unknown, type: unknown, out: Array<{ props: Record<string, unknown> }> = []) => {
-        if (Array.isArray(node)) node.forEach((child) => find(child, type, out));
-        else if (node && typeof node === "object" && "props" in node) {
-          const el = node as { type: unknown; props: Record<string, unknown> };
-          if (el.type === type) out.push(el);
-          find(el.props.children, type, out);
-          if (typeof el.props.actions === "function") {
-            for (const plan of ["reconciliation", "reconciliation_ai"]) find((el.props.actions as (p: string) => unknown)(plan), type, out);
-          }
-        }
-        return out;
-      };
+      const active = await db
+        .select({ id: fundingSources.id, name: fundingSources.name })
+        .from(fundingSources)
+        .where(and(eq(fundingSources.orgId, orgId), isNull(fundingSources.archivedAt)));
+      expect(active).toHaveLength(2);
 
       await startSession(adminId);
       try {
         const PlanPage = (await import("@/app/r/plan/page")).default;
         const page = await PlanPage({ searchParams: Promise.resolve({}) });
         const buttons = find(page, SubscribeButton);
-        const reconciliation = buttons.find((b) => b.props.plan === "reconciliation");
-        expect(reconciliation?.props.disabledReason).toMatch(/^Reconciliation includes one active funding source/);
+        expect(buttons.find((b) => b.props.plan === "reconciliation")?.props.disabledReason).toBe(
+          UI.billingSubscribeTooManySources(2),
+        );
         expect(buttons.find((b) => b.props.plan === "reconciliation_ai")?.props.disabledReason).toBeUndefined();
-        expect(find(page, ArchiveSources)).toHaveLength(1);
+        const [list] = find(page, ArchiveSources);
+        expect(new Set(list?.props.sources as unknown[])).toEqual(new Set(active));
       } finally {
         await endSession();
-        await db.delete(fundingSources).where(eq(fundingSources.id, extra.id));
+        await db.delete(fundingSources).where(inArray(fundingSources.id, added.map((row) => row.id)));
       }
     });
 
@@ -250,11 +268,12 @@ describe.skipIf(!hasDatabase)("no free use at every entry point (I-9, I-16)", as
       const avatarRoute = await import("@/app/api/me/avatar/route");
       await startSession(adminId);
       try {
-        const post = await avatarRoute.POST(new Request("http://localhost/api/me/avatar", { method: "POST" }));
-        expect(post.status).toBe(403);
-        expect(await post.json()).toEqual({ ok: false, error: UI.billingPlanRequired });
-        const del = await avatarRoute.DELETE(new Request("http://localhost/api/me/avatar", { method: "DELETE" }));
-        expect(del.status).toBe(403);
+        for (const method of ["POST", "DELETE"] as const) {
+          const response = await avatarRoute[method](new Request("http://localhost/api/me/avatar", { method }));
+          expect(response.status, method).toBe(403);
+          // The billing refusal itself, not the origin check that would also answer 403.
+          expect(await response.json(), method).toEqual({ ok: false, error: UI.billingPlanRequired });
+        }
       } finally {
         await endSession();
       }

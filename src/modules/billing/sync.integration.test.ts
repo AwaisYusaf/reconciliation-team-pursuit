@@ -109,6 +109,12 @@ describe.skipIf(!hasDatabase)("billing sync (integration, Phase 16)", async () =
     clearRefreshThrottle();
   });
 
+  // Even when a test fails midway, its env stubs and console spies don't reach the next one.
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.restoreAllMocks();
+  });
+
   afterAll(async () => {
     for (const id of orgIds) await db.delete(organizations).where(eq(organizations.id, id));
   });
@@ -284,7 +290,6 @@ describe.skipIf(!hasDatabase)("billing sync (integration, Phase 16)", async () =
       expect(ended.stripeStatus).toBe("canceled");
       expect(ended.subscriptionStatus).toBe("cancelled");
       expect(await paid()).toBe(false);
-      vi.unstubAllEnvs();
     });
   });
 
@@ -432,30 +437,31 @@ describe.skipIf(!hasDatabase)("billing sync (integration, Phase 16)", async () =
   });
 
   describe("flagDispute", () => {
-    it("a charge belonging to our org: disputed_at set, ALERT logged", async () => {
+    it("a charge belonging to our org: that org's disputed_at set, nobody else's, ALERT logged", async () => {
       const orgId = await freshOrg({ complimentary: false });
       const customerId = uniqueCustomerId();
       await withCustomer(orgId, customerId);
+      const bystander = await freshOrg({ complimentary: false });
+      await withCustomer(bystander, uniqueCustomerId());
       chargesRetrieveMock.mockResolvedValue({ id: "ch_1", customer: customerId });
       const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
       const result = await flagDispute({ id: "dp_1", charge: "ch_1" });
       expect(result).toBe("synced");
-      const row = await orgRow(orgId);
-      expect(row.disputedAt).toBeInstanceOf(Date);
+      expect((await orgRow(orgId)).disputedAt).toBeInstanceOf(Date);
+      expect((await orgRow(bystander)).disputedAt).toBeNull();
       expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("ALERT"));
-      errorSpy.mockRestore();
     });
 
     it("a charge belonging to no org here (another business, same Stripe account): untouched, 'unknown_customer'", async () => {
+      // An org of ours with its own customer, so a dispute flagged on the wrong row would show.
       const orgId = await freshOrg({ complimentary: false });
-      // Deliberately no stripeCustomerId set on this org, so no match is possible.
+      await withCustomer(orgId, uniqueCustomerId());
       chargesRetrieveMock.mockResolvedValue({ id: "ch_2", customer: uniqueCustomerId() });
 
       const result = await flagDispute({ id: "dp_2", charge: "ch_2" });
       expect(result).toBe("unknown_customer");
-      const row = await orgRow(orgId);
-      expect(row.disputedAt).toBeUndefined(); // no copy at all: nothing to flag
+      expect((await orgRow(orgId)).disputedAt).toBeNull();
     });
 
     it("a dispute with no charge: 'unknown_customer' without calling Stripe", async () => {

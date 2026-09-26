@@ -83,6 +83,16 @@ describe("U-20: only the entitlement decides access from billing columns", () =>
     expect(offenders).toEqual([]);
   });
 
+  it("every join to org_billing goes through billingCopyOn(), so a copy from the other Stripe mode never counts (D-125)", () => {
+    const joins = FILES.filter((f) => f !== "src/db/test-org.ts").flatMap((f) =>
+      [...readFileSync(path.join(repoRoot, f), "utf8").matchAll(/\.(?:left|inner)Join\(\s*orgBilling\s*,\s*([^\n]*)/g)].map(
+        (m) => ({ file: f, on: m[1] }),
+      ),
+    );
+    expect(joins.length).toBeGreaterThan(8); // the session, sign-in, sharing, AI, limit, admin, loaders
+    expect(joins.filter((j) => !j.on.startsWith("billingCopyOn()"))).toEqual([]);
+  });
+
   it("catches a property, a raw SQL name and a string key, never a comment", () => {
     const n = (source: string) => accessReads("x.ts", source).length;
     expect(n(`const a = org.subscriptionStatus === "cancelled";`)).toBe(1);

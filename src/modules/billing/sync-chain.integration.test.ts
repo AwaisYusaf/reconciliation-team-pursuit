@@ -119,19 +119,50 @@ describe.skipIf(!hasDatabase)("a Stripe charge reaches org_billing (integration,
     });
   });
 
+  /** A Stripe read held open until the test lets it answer, and a signal once it has started. */
+  function heldRead() {
+    let started!: () => void;
+    let answer!: (subs: Stripe.Subscription[]) => void;
+    const hasStarted = new Promise<void>((resolve) => (started = resolve));
+    const answered = new Promise<Stripe.Subscription[]>((resolve) => (answer = resolve));
+    subscriptionsOfMock.mockImplementationOnce(() => {
+      started();
+      return answered;
+    });
+    return { hasStarted, answer };
+  }
+  const aMoment = () => new Promise((resolve) => setTimeout(resolve, 2)); // a later millisecond
+
   it("a Stripe read that started earlier but finishes last never overwrites a later one", async () => {
     const { orgId, customerId } = await orgWithCustomer();
-    subscriptionsOfMock
-      .mockImplementationOnce(async () => {
-        await new Promise((resolve) => setTimeout(resolve, 80));
-        return [fakeSub({ status: "trialing", plan: "reconciliation" })];
-      })
-      .mockImplementationOnce(async () => [fakeSub({ status: "active", plan: "reconciliation_ai" })]);
+    const older = heldRead();
+    const olderSync = syncOrgBilling(customerId);
+    await older.hasStarted;
+    await aMoment();
+    subscriptionsOfMock.mockImplementationOnce(async () => [fakeSub({ status: "active", plan: "reconciliation_ai" })]);
+    await syncOrgBilling(customerId); // the newer read writes first
 
-    const older = syncOrgBilling(customerId);
-    await new Promise((resolve) => setTimeout(resolve, 10)); // the newer read starts strictly later
-    const newer = syncOrgBilling(customerId);
-    await Promise.all([older, newer]);
+    older.answer([fakeSub({ status: "trialing", plan: "reconciliation" })]);
+    await olderSync;
+
+    expect(await orgWithBilling(orgId)).toMatchObject({ stripeStatus: "active", plan: "reconciliation_ai" });
+  });
+
+  it("a read that started before an older copy was written still lands: the order is by read start, not write time", async () => {
+    const { orgId, customerId } = await orgWithCustomer();
+    const older = heldRead();
+    const olderSync = syncOrgBilling(customerId);
+    await older.hasStarted;
+    await aMoment();
+    const newer = heldRead();
+    const newerSync = syncOrgBilling(customerId);
+    await newer.hasStarted;
+    await aMoment();
+
+    older.answer([fakeSub({ status: "trialing", plan: "reconciliation" })]);
+    await olderSync; // written after the newer read started
+    newer.answer([fakeSub({ status: "active", plan: "reconciliation_ai" })]);
+    await newerSync;
 
     expect(await orgWithBilling(orgId)).toMatchObject({ stripeStatus: "active", plan: "reconciliation_ai" });
   });

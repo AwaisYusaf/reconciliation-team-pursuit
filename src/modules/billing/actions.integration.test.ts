@@ -11,7 +11,6 @@
  * Skipped when DATABASE_URL is absent.
  */
 import { config } from "dotenv";
-import type Stripe from "stripe";
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/src/lib/action-session", () => ({ actionSessionAnyPlan: vi.fn() }));
@@ -59,15 +58,12 @@ const stripeClientMock = {
   billingPortal: { configurations: { list: portalConfigListMock }, sessions: { create: portalSessionsCreateMock } },
 };
 
-vi.mock("@/src/modules/billing/stripe", () => ({
+// Only the calls to Stripe are fakes; the helpers that read its answers (idOf, isMissing,
+// futurePhase) are the real ones, so a branch on them is really taken.
+vi.mock("@/src/modules/billing/stripe", async () => ({
+  ...(await vi.importActual<typeof import("@/src/modules/billing/stripe")>("@/src/modules/billing/stripe")),
   stripe: () => stripeClientMock,
   subscriptionsOf: (...args: unknown[]) => subscriptionsOfMock(...args),
-  idOf: (x: string | { id: string }) => (typeof x === "string" ? x : x.id),
-  isMissing: () => false,
-  futurePhase: (schedule: Stripe.SubscriptionSchedule) => {
-    const current = schedule.current_phase;
-    return current ? schedule.phases.find((p) => p.start_date >= current.end_date) : undefined;
-  },
   stripeNow: (...args: unknown[]) => stripeNowMock(...args),
 }));
 
@@ -365,9 +361,11 @@ describe.skipIf(!hasDatabase)("billing actions (integration, Phase 16)", async (
       expect(await cancelPendingChangeAction()).toEqual(fail(UI.billingComplimentaryRefused));
       noStripeCallsMade();
 
-      // Detroit's yesterday, like `todayIso()` above. A UTC date was Detroit's today every evening
-      // from 8 pm, and the test failed then.
-      await db.update(organizations).set({ complimentaryUntil: isoIn(-1) }).where(eq(organizations.id, orgId));
+      // Detroit's yesterday, from today's date parts: a UTC date was Detroit's today every evening
+      // from 8 pm, and "24 hours ago" is still today in the extra hour of the day clocks go back.
+      const [y, m, d] = todayIso().split("-").map(Number);
+      const yesterday = new Date(Date.UTC(y, m - 1, d - 1)).toISOString().slice(0, 10);
+      await db.update(organizations).set({ complimentaryUntil: yesterday }).where(eq(organizations.id, orgId));
       // No longer complimentary: falls through to "no_plan" (no Stripe customer), not the
       // complimentary refusal — proving the date boundary, not just the flag, is read.
       expect(await cancelPendingChangeAction()).toEqual(fail(UI.billingNoPlan));
@@ -763,6 +761,7 @@ describe.skipIf(!hasDatabase)("billing actions (integration, Phase 16)", async (
       const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
       expect(await startCheckoutAction("reconciliation", "month")).toEqual(fail(UI.billingStripeError));
+      expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("ALERT"));
       expect(customersCreateMock).not.toHaveBeenCalled();
       expect(await orgWithBilling(orgId)).toMatchObject({ stripeCustomerId: unknown, stripeStatus: "active" });
       errorSpy.mockRestore();

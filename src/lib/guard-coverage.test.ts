@@ -260,6 +260,11 @@ describe("U-18: every entry point refuses an unpaid organization unless allow-li
     const source = read("app/r/layout.tsx");
     expect(source.indexOf("hasPaidAccess(")).toBeGreaterThan(-1);
     expect(source.indexOf("hasPaidAccess(")).toBeLessThan(source.indexOf("loadSourceContext("));
+    // Its Stripe re-sync runs after the page is sent, never while it waits.
+    expect(source).toContain("after(() => refreshOrgBilling(");
+    expect(read("src/modules/billing/plan-view-loader.ts").split("export async function loadBillingBanner")[1]).not.toContain(
+      "refreshOrgBilling",
+    );
   });
 
   it("route handlers: each method reaches routeSession or readSignedInJson, or is allow-listed", () => {
