@@ -5,9 +5,11 @@ import "server-only";
  *
  * It deliberately ignores which event triggered it. Stripe delivers events twice, late and out of
  * order, so instead of applying "what the event says" it re-reads the customer's subscriptions
- * from Stripe every time. Syncs for one customer run one at a time (`withLock`), so a sync that
- * starts later also writes later and a slow older one can't overwrite a newer result. Throws when
- * Stripe can't be reached, so the webhook answers 500 and Stripe retries.
+ * from Stripe every time. A copy read from Stripe earlier is never written over one read later
+ * (`synced_at` holds when the read behind the stored copy started, D-125), so a slow older sync
+ * can't overwrite a newer result. That holds across processes: the webhook, the pages and actions,
+ * and the nightly reconcile each have their own `withLock`, which only saves duplicate work within
+ * one of them. Throws when Stripe can't be reached, so the webhook answers 500 and Stripe retries.
  *
  * Ported from the reference build's `lib/stripe.ts`; the org, not a user, is the customer (P11).
  */
@@ -206,6 +208,7 @@ export function syncOrgBilling(customerId: string): Promise<SyncOutcome> {
     const org = await findOrgByCustomer(customerId);
     if (!org) return "unknown_customer";
 
+    const readStartedAt = new Date();
     let subs: Stripe.Subscription[];
     try {
       subs = await subscriptionsOf(customerId);
@@ -219,6 +222,7 @@ export function syncOrgBilling(customerId: string): Promise<SyncOutcome> {
     await writeCopy(
       org.id,
       customerId,
+      readStartedAt,
       (previousStatus) => copyOf(sub, pending, awaiting, previousStatus),
       endsComplimentaryAt(sub),
       sub?.status === "active",
@@ -257,12 +261,14 @@ export function endsComplimentaryAt(sub: Stripe.Subscription | undefined): Date 
 /**
  * Writes the copy under the org row lock (the one staff actions take), and one History row as
  * "Stripe" when the plan or status actually changed (P15, I-6). No Stripe call happens inside the
- * transaction (P12). `endComplimentarySince`: see `endsComplimentaryAt`; only a grant made before
+ * transaction (P12). Writes nothing when the customer was replaced meanwhile, or when the stored
+ * copy came from a Stripe read that started after this one's (`readStartedAt`). `endComplimentarySince`: see `endsComplimentaryAt`; only a grant made before
  * that subscription is ended, so a later staff grant is never undone by it.
  */
 async function writeCopy(
   orgId: string,
   customerId: string,
+  readStartedAt: Date,
   build: (previousStatus: string | null) => BillingCopy,
   endComplimentarySince: Date | null = null,
   /** The subscription is active, so paid: a complimentary grant that has already run out is
@@ -277,17 +283,24 @@ async function writeCopy(
       complimentaryUntil: organizations.complimentaryUntil,
       suspendedAt: organizations.suspendedAt,
     });
+    // Read after the lock, so this is what the last writer holding it committed.
     const [billing] = await tx
-      .select({ stripeStatus: orgBilling.stripeStatus, stripeCustomerId: orgBilling.stripeCustomerId })
+      .select({
+        stripeStatus: orgBilling.stripeStatus,
+        stripeCustomerId: orgBilling.stripeCustomerId,
+        syncedAt: orgBilling.syncedAt,
+      })
       .from(orgBilling)
       .where(and(eq(orgBilling.orgId, orgId), sameStripeMode()));
     // The customer was replaced between the lookup and the lock: that customer's news is stale.
     if (!row || billing?.stripeCustomerId !== customerId) return;
+    // A sync that read Stripe after this one has already written: its copy is the newer one.
+    if (billing.syncedAt !== null && billing.syncedAt > readStartedAt) return;
 
     const { plan, subscriptionStatus, ...copy } = build(billing.stripeStatus);
     await tx
       .update(orgBilling)
-      .set({ ...copy, syncedAt: new Date() })
+      .set({ ...copy, syncedAt: readStartedAt })
       .where(eq(orgBilling.orgId, orgId));
     if (plan !== undefined || subscriptionStatus !== undefined) {
       await tx
