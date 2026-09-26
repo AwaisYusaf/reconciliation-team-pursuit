@@ -58,6 +58,9 @@ export type PlanBillingView =
       cancelling: boolean;
       /** A payment failed: this wins over every other notice (§4.3). */
       paymentFailed: boolean;
+      /** Stripe stopped retrying (`unpaid`) or paused the plan: access is off until the bill is
+       *  paid or the plan is ended, so the panel shows on `/r/plan` too. */
+      onHold: boolean;
       /** Null whenever `paymentFailed`, since that panel replaces it. */
       pending: PendingChangeView | null;
       /** An upgrade waiting for payment; null once expired or whenever `paymentFailed`. */
@@ -66,7 +69,7 @@ export type PlanBillingView =
   /** No paid plan. `pageSession` keeps an unpaid org off Settings, so this is a safe fallback. */
   | { kind: "none" };
 
-const SUBSCRIBED = new Set(["active", "trialing", "past_due", "unpaid"]);
+const SUBSCRIBED = new Set(["active", "trialing", "past_due", "unpaid", "paused"]);
 
 function isoDaysBetween(from: IsoDate, to: IsoDate): number {
   const ms = Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`);
@@ -100,7 +103,8 @@ export function planBillingView(row: PlanBillingRow, ctx: { billingOn: boolean; 
 
   if (!row.stripeStatus || !SUBSCRIBED.has(row.stripeStatus)) return { kind: "none" };
 
-  const paymentFailed = row.stripeStatus === "past_due" || row.stripeStatus === "unpaid";
+  const onHold = row.stripeStatus === "unpaid" || row.stripeStatus === "paused";
+  const paymentFailed = row.stripeStatus === "past_due" || onHold;
   const pendingLive =
     !paymentFailed &&
     row.pendingAt !== null &&
@@ -118,6 +122,7 @@ export function planBillingView(row: PlanBillingRow, ctx: { billingOn: boolean; 
     periodEnd: row.currentPeriodEnd ? todayIso(row.currentPeriodEnd) : null,
     cancelling: row.cancelAtPeriodEnd,
     paymentFailed,
+    onHold,
     pending: pendingLive
       ? {
           kind: row.pendingReason === "price_move" ? "price_move" : "downgrade",

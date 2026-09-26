@@ -633,9 +633,9 @@ export function cancelAtPeriodEnd(actor: Actor): Promise<void> {
 }
 
 /**
- * The renewal payment failed (C2). The current period was never paid for, so it ends now, and
- * the unpaid invoice is voided: a card that starts working later is never charged for a plan
- * the admin already ended.
+ * The renewal payment failed (C2), or Stripe paused the plan. The current period was never paid
+ * for, so it ends now, and the unpaid invoice is voided: a card that starts working later is
+ * never charged for a plan the admin already ended.
  */
 export function endPlanNow(actor: Actor): Promise<void> {
   return orgLock(actor.orgId, async () => {
@@ -646,7 +646,9 @@ export function endPlanNow(actor: Actor): Promise<void> {
     await syncEmail(actor, customerId);
 
     const sub = pickCurrent(await subscriptionsOf(customerId));
-    if (!sub || (sub.status !== "past_due" && sub.status !== "unpaid")) throw new BillingError("no_plan");
+    if (!sub || (sub.status !== "past_due" && sub.status !== "unpaid" && sub.status !== "paused")) {
+      throw new BillingError("no_plan");
+    }
     if (sub.schedule) await stripe().subscriptionSchedules.release(idOf(sub.schedule));
     await stripe().subscriptions.cancel(sub.id, { invoice_now: false, prorate: false });
     const open = await stripe().invoices.list({ subscription: sub.id, status: "open", limit: 20 });

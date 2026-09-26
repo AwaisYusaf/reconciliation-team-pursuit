@@ -46,6 +46,7 @@ describe("planBillingView", () => {
       periodEnd: "2026-10-25",
       cancelling: false,
       paymentFailed: false,
+      onHold: false,
       pending: null,
       upgrade: null,
     });
@@ -85,7 +86,7 @@ describe("planBillingView", () => {
     expect(expired).toMatchObject({ upgrade: null });
   });
 
-  it.each(["past_due", "unpaid"])("payment failed (%s) wins: hides the queued change and the upgrade", (status) => {
+  it.each(["past_due", "unpaid", "paused"])("payment failed (%s) wins: hides the queued change and the upgrade", (status) => {
     const view = planBillingView(
       row({
         stripeStatus: status,
@@ -98,6 +99,8 @@ describe("planBillingView", () => {
       on,
     );
     expect(view).toMatchObject({ kind: "subscribed", paymentFailed: true, pending: null, upgrade: null });
+    // Only once Stripe has stopped retrying is access off, and the panel moves to /r/plan.
+    expect(view).toMatchObject({ onHold: status !== "past_due" });
   });
 
   it.each([null, "canceled", "incomplete", "incomplete_expired", "something_new"])("status %s: no plan", (status) => {

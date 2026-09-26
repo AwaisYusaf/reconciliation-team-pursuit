@@ -822,6 +822,10 @@ export const UI = {
   billingPaymentFailedManager: (names: string) =>
     `Your organization's last payment didn't go through. Your admin (${names}) can update the card.`,
   billingEndNow: "End plan now",
+  billingOnHold:
+    "Your last payment didn't go through, so your plan is on hold and the app is paused. Pay the bill or update your card in Card and invoices, or end the plan to choose a new one. Your records are safe.",
+  billingOnHoldManager: (names: string) =>
+    `Your organization's last payment didn't go through, so the app is paused. Your admin (${names}) can pay the bill or update the card.`,
   billingManagerNote: "Only an admin can change the plan or billing.",
   billingSwitchTitle: (plan: string, interval: string) => `Switch to ${plan}, billed ${interval}?`,
   billingRowCurrent: "Current plan",

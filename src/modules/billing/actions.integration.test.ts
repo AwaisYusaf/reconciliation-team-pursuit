@@ -859,4 +859,31 @@ describe.skipIf(!hasDatabase)("billing actions (integration, Phase 16)", async (
       errorSpy.mockRestore();
     });
   });
+
+  describe("End plan now on a plan on hold", () => {
+    it.each(["unpaid", "paused", "past_due"])("%s: cancels now and voids the unpaid bill", async (status) => {
+      const orgId = await freshOrg({ complimentary: false });
+      await withCustomer(orgId, uniqueCustomerId());
+      asAdmin(orgId);
+      subscriptionsOfMock.mockResolvedValue([
+        { id: "sub_hold", status, created: 1, cancel_at_period_end: false, cancel_at: null, schedule: null, pending_update: null, items: { data: [{ price: { id: "price_1", metadata: { plan: "reconciliation" }, recurring: { interval: "month" } }, current_period_end: 1 }] } },
+      ]);
+      invoicesListMock.mockResolvedValue({ data: [{ id: "in_open" }] });
+
+      expect(await endPlanNowAction()).toEqual({ ok: true, data: undefined });
+      expect(subscriptionsCancelMock).toHaveBeenCalledWith("sub_hold", { invoice_now: false, prorate: false });
+      expect(invoicesVoidMock).toHaveBeenCalledWith("in_open");
+    });
+
+    it("active: refused, since nothing failed", async () => {
+      const orgId = await freshOrg({ complimentary: false });
+      await withCustomer(orgId, uniqueCustomerId());
+      asAdmin(orgId);
+      subscriptionsOfMock.mockResolvedValue([
+        { id: "sub_ok", status: "active", created: 1, cancel_at_period_end: false, cancel_at: null, schedule: null, pending_update: null, items: { data: [{ price: { id: "price_1", metadata: { plan: "reconciliation" }, recurring: { interval: "month" } }, current_period_end: 1 }] } },
+      ]);
+      expect(await endPlanNowAction()).toEqual(fail(UI.billingNoPlan));
+      expect(subscriptionsCancelMock).not.toHaveBeenCalled();
+    });
+  });
 });

@@ -8,11 +8,12 @@ import { formatDateUS } from "@/src/domain/dates";
 import { pageTitle, UI } from "@/src/domain/strings";
 import { planPageSession } from "@/src/lib/page-session";
 import { complimentaryEndedOn, ORG_ENTITLEMENT_COLUMNS } from "@/src/services/auth/entitlement";
-import { activeAdminNames } from "@/src/modules/billing/plan-view-loader";
+import { activeAdminNames, loadPlanBilling } from "@/src/modules/billing/plan-view-loader";
 import { PRICES_CENTS } from "@/src/modules/billing/pricing";
 import { INTERVALS, isInterval, isPlanId, type Interval, type PlanId } from "@/src/modules/billing/rules";
 import { PLAN_CARD_IDS, PlanCards } from "@/src/modules/landing/plan-cards";
 
+import { PlanBillingSection } from "../settings/plan-billing-section";
 import { SubscribeButton } from "./subscribe-button";
 
 export const metadata = { title: pageTitle("Choose a plan") };
@@ -31,6 +32,19 @@ export default async function PlanPage({
   // The gate: never redirects a paid org back here (that would loop), sends everyone else
   // straight to sign in (Phase 16 §4.7).
   const session = await planPageSession();
+
+  // A plan on hold (Stripe stopped retrying a failed payment, or paused it) can't be replaced by
+  // a new one, so the chooser would only refuse. Show the plan instead, with Card and invoices to
+  // pay or change the card in Stripe and End plan now: the admin sorts it out without asking
+  // anyone (Phase 16, D-126). Only billing is shown; the org's records stay behind the paywall.
+  const billing = await loadPlanBilling(session);
+  if (billing.view.kind === "subscribed" && billing.view.onHold) {
+    return (
+      <div className="max-w-3xl mx-auto">
+        <PlanBillingSection data={billing} />
+      </div>
+    );
+  }
 
   const params = await searchParams;
   const interval: Interval = isInterval(params.interval) ? params.interval : "month";

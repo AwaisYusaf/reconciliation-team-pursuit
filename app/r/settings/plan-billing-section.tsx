@@ -198,7 +198,13 @@ export function PlanBillingSection({ data }: { data: PlanBillingData }) {
 
       {view.kind === "subscribed" && view.paymentFailed && (
         <DangerPanel tone="blocking" className="mb-5">
-          {isAdmin ? UI.billingPaymentFailed : UI.billingPaymentFailedManager(adminNames)}
+          {view.onHold
+            ? isAdmin
+              ? UI.billingOnHold
+              : UI.billingOnHoldManager(adminNames)
+            : isAdmin
+              ? UI.billingPaymentFailed
+              : UI.billingPaymentFailedManager(adminNames)}
         </DangerPanel>
       )}
 

@@ -163,6 +163,24 @@ describe.skipIf(!hasDatabase)("no free use at every entry point (I-9, I-16)", as
       vi.stubEnv("BILLING_ENABLED", "true");
     });
 
+    it("a plan on hold shows its Plan & billing panel on /r/plan instead of the chooser, which would only refuse", async () => {
+      const { orgBilling } = await import("@/src/db/schema");
+      // Stripe stopped retrying: the org is unpaid, but its plan still exists in Stripe.
+      await setBillingCopy(orgId, { stripeStatus: "unpaid", syncedAt: new Date() });
+      await startSession(adminId);
+      try {
+        const PlanPage = (await import("@/app/r/plan/page")).default;
+        const page = await PlanPage({ searchParams: Promise.resolve({}) });
+        expect(page.props.children.props.data).toMatchObject({
+          isAdmin: true,
+          view: { kind: "subscribed", paymentFailed: true, onHold: true },
+        });
+      } finally {
+        await endSession();
+        await db.delete(orgBilling).where(eq(orgBilling.orgId, orgId));
+      }
+    });
+
     it("createExpenseAction (expenses module) refuses before validation even runs", async () => {
       await startSession(adminId);
       const result = await createExpenseAction({} as never);

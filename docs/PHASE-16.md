@@ -475,6 +475,7 @@ guard) has been mutation-checked.
 | Race: downgrade queued while a second source is added | Both take the per-org billing lock; the queued check reads Stripe | I-14 |
 | New sign-up not onboarded | `/r/plan` before onboarding, no loop | I-12 |
 | Old bookmark while unpaid | `pageSession` redirects to `/r/plan`; the same URL works after payment | B-15 |
+| Plan on hold: Stripe stopped retrying (`unpaid`) or paused it | Unpaid, so the paywall sends everyone to `/r/plan`, where Subscribe would only refuse ("already has a plan"). `/r/plan` shows the Plan & billing panel instead: admins pay the bill or change the card in Card and invoices (Stripe's portal; its return lands back here) or End plan now (`paused` too), then choose a plan; managers see who the admins are (D-126) | `no-free-use.integration.test.ts`, `plan-view.test.ts`, `actions.integration.test.ts` |
 | Complimentary ends at midnight during work | Next save refused `billingPlanRequired`; warned 14 days before | I-10, B-20 |
 | Dispute on a charge | No access change; `ALERT`; flag in `/a` | U-9 |
 | Admin who is the Stripe email leaves | Customer email updated on the next billing action and on removal | I-17 |
