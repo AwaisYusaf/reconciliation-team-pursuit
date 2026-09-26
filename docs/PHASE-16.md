@@ -478,7 +478,9 @@ guard) has been mutation-checked.
 | Complimentary ends at midnight during work | Next save refused `billingPlanRequired`; warned 14 days before | I-10, B-20 |
 | Dispute on a charge | No access change; `ALERT`; flag in `/a` | U-9 |
 | Admin who is the Stripe email leaves | Customer email updated on the next billing action and on removal | I-17 |
-| Test-mode customer id after going live | Treated as absent (`stripe_livemode`) | U-7 |
+| Test-mode customer id after going live | The whole copy is read only in the key's mode (`billingCopyOn`, D-125): absent, grants nothing, and the next Checkout replaces the row | U-7, `access-mode.integration.test.ts` |
+| Customer deleted in the Stripe dashboard | The sync sees its cancelled subscriptions (org unpaid, S-25); the next Checkout asks Stripe, finds it deleted and starts a new customer with an empty copy | S-25, `actions.integration.test.ts` |
+| Customer this key's account has never seen (key moved to another account) | ALERT and throw: the sync keeps the last copy (webhook 500, reconcile fails), Checkout refuses; a paying org is never marked unpaid and its id never replaced | `sync.integration.test.ts`, `actions.integration.test.ts` |
 
 ---
 

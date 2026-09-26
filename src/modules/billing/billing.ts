@@ -40,8 +40,8 @@ import {
   type Interval,
   type PlanId,
 } from "@/src/modules/billing/rules";
-import { futurePhase, idOf, stripe, subscriptionsOf, stripeNow } from "@/src/modules/billing/stripe";
-import { syncOrgBilling } from "@/src/modules/billing/sync";
+import { futurePhase, idOf, isMissing, stripe, subscriptionsOf, stripeNow } from "@/src/modules/billing/stripe";
+import { alert, syncOrgBilling } from "@/src/modules/billing/sync";
 
 export type Actor = { orgId: string; email: string };
 
@@ -199,7 +199,20 @@ async function syncEmail(actor: Actor, customerId: string): Promise<void> {
 
 async function ensureCustomer(actor: Actor, row: OrgRow): Promise<string> {
   const existing = liveCustomerId(row);
-  if (existing) return existing;
+  if (existing) {
+    // A customer deleted in the Stripe dashboard can never pay again (Checkout refuses it), so
+    // ask Stripe, and start a new one only when Stripe says it was deleted. A customer Stripe
+    // doesn't know at all means the key points at another account: refuse, rather than replace
+    // the id of a customer who may be paying there.
+    let current: Stripe.Customer | Stripe.DeletedCustomer;
+    try {
+      current = await stripe().customers.retrieve(existing);
+    } catch (e) {
+      if (isMissing(e)) alert(`customer ${existing} of org ${row.id} is unknown to this Stripe key; check STRIPE_SECRET_KEY`);
+      throw e;
+    }
+    if (current.deleted !== true) return existing;
+  }
 
   // No hand-made idempotency key (P11): one built from the org id would collide across
   // databases sharing a Stripe account (D1). The SDK's own automatic retries are already
@@ -211,15 +224,17 @@ async function ensureCustomer(actor: Actor, row: OrgRow): Promise<string> {
   });
   const live = stripeKeyIsLive();
 
-  // The org's first customer, or a replacement for one from the other Stripe mode, whose copy
-  // goes with it: nothing the other mode wrote may count in this one.
+  // The org's first customer, or a replacement for a deleted one or one from the other Stripe
+  // mode, whose copy goes with it: nothing about the old customer may count for the new one.
   const stored = await db
     .insert(orgBilling)
     .values({ orgId: row.id, stripeCustomerId: customer.id, livemode: live })
     .onConflictDoUpdate({
       target: orgBilling.orgId,
       set: { stripeCustomerId: customer.id, livemode: live, ...EMPTY_COPY },
-      setWhere: sql`${orgBilling.livemode} IS DISTINCT FROM ${live}`,
+      setWhere: existing
+        ? sql`${orgBilling.livemode} IS DISTINCT FROM ${live} OR ${orgBilling.stripeCustomerId} = ${existing}`
+        : sql`${orgBilling.livemode} IS DISTINCT FROM ${live}`,
     })
     .returning({ stripeCustomerId: orgBilling.stripeCustomerId });
   if (stored[0]) return customer.id;

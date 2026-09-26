@@ -213,8 +213,11 @@ export function syncOrgBilling(customerId: string): Promise<SyncOutcome> {
     try {
       subs = await subscriptionsOf(customerId);
     } catch (e) {
-      if (!isMissing(e)) throw e;
-      subs = []; // the customer was deleted in Stripe: nothing is paid for (S-25)
+      // A customer deleted in Stripe still lists its (cancelled) subscriptions (S-25), so this is
+      // an id this key's account has never seen: the key points somewhere else. Keep the last
+      // copy rather than mark a paying org unpaid; the webhook answers 500 and reconcile fails.
+      if (isMissing(e)) alert(`customer ${customerId} (org ${org.id}) is unknown to this Stripe key; copy left as it was`);
+      throw e;
     }
     const sub = currentSubscription(customerId, subs);
     const [pending, awaiting] = sub ? await Promise.all([pendingChange(sub), awaitingPayment(sub)]) : [NO_PENDING, NOT_AWAITING];

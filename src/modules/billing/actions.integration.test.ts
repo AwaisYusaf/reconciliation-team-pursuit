@@ -120,6 +120,8 @@ describe.skipIf(!hasDatabase)("billing actions (integration, Phase 16)", async (
     return `cus_actions_test_${Date.now()}_${counter}`;
   }
 
+  const sessionArgsOf = () => checkoutSessionsCreateMock.mock.calls.at(-1)![0];
+
   async function withCustomer(orgId: string, customerId: string) {
     await setBillingCopy(orgId, { stripeCustomerId: customerId, livemode: false });
   }
@@ -730,6 +732,40 @@ describe.skipIf(!hasDatabase)("billing actions (integration, Phase 16)", async (
       expect(await startCheckoutAction("reconciliation", "month")).toMatchObject({ ok: true });
       expect(customersCreateMock).not.toHaveBeenCalled();
       expect((await orgWithBilling(orgId)).stripeCustomerId).toBe(existing);
+    });
+  });
+
+  describe("a Stripe customer deleted in the dashboard", () => {
+    it("is replaced by a new customer at the next Checkout, with an empty copy", async () => {
+      const orgId = await freshOrg({ complimentary: false });
+      asAdmin(orgId);
+      const deleted = uniqueCustomerId();
+      await setBillingCopy(orgId, { stripeCustomerId: deleted, stripeStatus: "canceled" });
+      customersRetrieveMock.mockResolvedValue({ id: deleted, deleted: true });
+      const replacement = uniqueCustomerId();
+      customersCreateMock.mockResolvedValue({ id: replacement });
+
+      expect(await startCheckoutAction("reconciliation", "month")).toMatchObject({ ok: true });
+      expect(customersRetrieveMock).toHaveBeenCalledWith(deleted);
+      expect(await orgWithBilling(orgId)).toMatchObject({ stripeCustomerId: replacement, stripeStatus: null });
+      expect(sessionArgsOf().customer).toBe(replacement);
+    });
+
+    it("a customer Stripe doesn't know at all (wrong key) is refused, never replaced", async () => {
+      const orgId = await freshOrg({ complimentary: false });
+      asAdmin(orgId);
+      const unknown = uniqueCustomerId();
+      await setBillingCopy(orgId, { stripeCustomerId: unknown, stripeStatus: "active" });
+      const Stripe = (await import("stripe")).default;
+      customersRetrieveMock.mockRejectedValue(
+        new Stripe.errors.StripeInvalidRequestError({ type: "invalid_request_error", code: "resource_missing", message: "No such customer" }),
+      );
+      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+      expect(await startCheckoutAction("reconciliation", "month")).toEqual(fail(UI.billingStripeError));
+      expect(customersCreateMock).not.toHaveBeenCalled();
+      expect(await orgWithBilling(orgId)).toMatchObject({ stripeCustomerId: unknown, stripeStatus: "active" });
+      errorSpy.mockRestore();
     });
   });
 });

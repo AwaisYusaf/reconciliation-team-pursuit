@@ -17,13 +17,16 @@ const subscriptionsOfMock = vi.fn();
 const chargesRetrieveMock = vi.fn();
 const stripeClientMock = { charges: { retrieve: chargesRetrieveMock } };
 
-vi.mock("@/src/modules/billing/stripe", () => ({
-  subscriptionsOf: subscriptionsOfMock,
-  stripe: () => stripeClientMock,
-  idOf: (x: string | { id: string }) => (typeof x === "string" ? x : x.id),
-  isMissing: () => false,
-  futurePhase: vi.fn(),
-}));
+vi.mock("@/src/modules/billing/stripe", async () => {
+  const actual = await vi.importActual<typeof import("@/src/modules/billing/stripe")>("@/src/modules/billing/stripe");
+  return {
+    subscriptionsOf: subscriptionsOfMock,
+    stripe: () => stripeClientMock,
+    idOf: actual.idOf,
+    isMissing: actual.isMissing,
+    futurePhase: vi.fn(),
+  };
+});
 
 config({ path: ".env.local", quiet: true });
 
@@ -282,6 +285,25 @@ describe.skipIf(!hasDatabase)("billing sync (integration, Phase 16)", async () =
       expect(ended.subscriptionStatus).toBe("cancelled");
       expect(await paid()).toBe(false);
       vi.unstubAllEnvs();
+    });
+  });
+
+  describe("a customer this Stripe key doesn't know", () => {
+    it("throws with an ALERT and leaves the copy alone, so a wrong key never marks paying orgs unpaid", async () => {
+      const orgId = await freshOrg({ complimentary: false });
+      const customerId = uniqueCustomerId();
+      await withCustomer(orgId, customerId);
+      await setBillingCopy(orgId, { stripeStatus: "active" });
+      const Stripe = (await import("stripe")).default;
+      subscriptionsOfMock.mockRejectedValue(
+        new Stripe.errors.StripeInvalidRequestError({ type: "invalid_request_error", code: "resource_missing", message: "No such customer" }),
+      );
+      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+      await expect(syncOrgBilling(customerId)).rejects.toThrow("No such customer");
+      expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("ALERT"));
+      expect((await orgRow(orgId)).stripeStatus).toBe("active");
+      errorSpy.mockRestore();
     });
   });
 
