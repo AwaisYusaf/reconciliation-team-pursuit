@@ -25,7 +25,7 @@ import {
   type SubscriptionStatus,
 } from "@/src/db/schema";
 import { lockOrg, type Executor } from "@/src/db/org-lock";
-import { isValidIsoDate } from "@/src/domain/dates";
+import { isValidIsoDate, todayIso } from "@/src/domain/dates";
 import { ACCOUNT_NOTE_MAX_LENGTH, UI } from "@/src/domain/strings";
 import { fail, ok, type ActionResult } from "@/src/lib/action-result";
 import { requireStaff } from "@/src/lib/action-session";
@@ -181,6 +181,9 @@ export async function setComplimentaryAction(
     return fail(UI.complimentaryUntilInvalid);
   }
   const untilValue = trimmedUntil === "" ? null : trimmedUntil;
+  // A date already past would grant access that has already ended: the org is locked out at
+  // once, and a paying org would also have its plan cancelled in the same step.
+  if (enabled && untilValue !== null && untilValue < todayIso()) return fail(UI.complimentaryUntilPast);
 
   const parsedNote = parseNote(note);
   if ("refusal" in parsedNote) return parsedNote.refusal;

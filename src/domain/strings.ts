@@ -268,6 +268,7 @@ export const UI = {
   accountNoteTooLong: (max: number) => `Keep the note under ${max} characters.`,
   /** `setComplimentaryAction` refusal — `until` is neither empty nor a valid ISO date. */
   complimentaryUntilInvalid: "Enter a valid end date.",
+  complimentaryUntilPast: "Choose an end date of today or later.",
   /** Suspend dialog (Phase 9 §7, verbatim). */
   suspendDialogTitle: (orgName: string) => `Suspend ${orgName}?`,
   suspendDialogText:

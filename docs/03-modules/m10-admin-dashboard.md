@@ -74,7 +74,8 @@ either screen renders more rows than it asks for: ten organizations per page
   paid plan now (no refund, open invoices voided) or at the end of the paid period. Whether it
   pays is asked of Stripe on save (a re-sync first), so if the page's copy was behind, Save
   refuses and the dialog then shows the choice; Stripe is
-  cancelled first, and a Stripe failure grants nothing. When the org bought a plan during its free access (not charged yet),
+  cancelled first, and a Stripe failure grants nothing. An end date must be today or later
+  (`complimentaryUntilPast`). When the org bought a plan during its free access (not charged yet),
   that plan's first charge follows the grant (`complimentaryStripeStep`): a new end date moves it
   to the day after, removing the grant starts it now, and making the grant open-ended asks the same
   cancel choice instead. A change already scheduled on that plan in Stripe refuses

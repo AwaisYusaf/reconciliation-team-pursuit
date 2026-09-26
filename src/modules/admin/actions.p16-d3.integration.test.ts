@@ -248,6 +248,25 @@ describe.skipIf(!hasDatabase)("P16 (staff-managed while live) and D3 (collection
     });
   });
 
+  describe("an end date must be today or later", () => {
+    const iso = (days: number) => todayIso(new Date(Date.now() + days * 86_400_000));
+
+    it.each([false, true])("yesterday is refused (org already complimentary: %s), nothing written, Stripe untouched", async (alreadyComp) => {
+      const orgId = await freshOrg({ complimentary: alreadyComp });
+      await setStripeStatus(orgId, "active");
+      const result = await setComplimentaryAction(orgId, true, iso(-1), "", "now");
+      expect(result).toEqual(fail(UI.complimentaryUntilPast));
+      expect(staffCancelMock).not.toHaveBeenCalled();
+      expect(staffMoveMock).not.toHaveBeenCalled();
+      expect(await eventsFor(orgId)).toHaveLength(0);
+    });
+
+    it("today is allowed (the grant still covers today)", async () => {
+      const orgId = await freshOrg({ complimentary: false });
+      expect((await setComplimentaryAction(orgId, true, iso(0), "")).ok).toBe(true);
+    });
+  });
+
   describe("a plan bought during free access follows the grant (its first charge moves with it)", () => {
     const iso = (days: number) => todayIso(new Date(Date.now() + days * 86_400_000));
 
