@@ -818,10 +818,15 @@ checklist clear.
   `fundingSourceLimitReached` + **See plans** (`/r/settings?section=plan`), managers see
   `fundingSourceLimitManager`. The four §10 strings were added verbatim and pinned in
   `strings.test.ts`. Billing off means no limit, so nothing changes today.
-- **Not built (remaining for Phase 6):** the queued-downgrade refusal (I-14; needs Phase 3's
-  schedule read), Reconciliation Checkout refused with more than one source and archive from the
-  plan page (D2, I-15, B-19; need Phases 3 and 4), S-27, and the `/a` warning for an org over the
-  limit.
+- **Built in the PR #23 review (2026-09-26):** the queued-downgrade refusal (I-14). Create and
+  unarchive ask Stripe for a queued downgrade to Reconciliation (`queuedDowngradeDay`, before the
+  transaction) and refuse with `fundingSourceLimitQueued` while one is queued; if Stripe can't be
+  asked they refuse with `fundingSourceStripeUnavailable` rather than guess. The Add button isn't
+  disabled ahead of time for it: the refusal shows when the admin saves.
+- **Not built (remaining for Phase 6):** Reconciliation Checkout refused with more than one source
+  and archive from the plan page (D2, I-15, B-19; need Phases 3 and 4), S-27, and the `/a` warning
+  for an org over the limit. A complimentary Reconciliation + AI org that buys Reconciliation with a
+  deferred first charge can still add sources during its free access (a known gap).
 - **Tests:** 12 unit (`limit.test.ts`) and 15 integration (I-13: admin and manager refusals, no
   row written, unarchive refused and left archived, an org already over the limit, 5 concurrent
   creates and 5 concurrent unarchives each leaving exactly one active, repeated;

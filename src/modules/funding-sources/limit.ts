@@ -12,8 +12,9 @@ import { billingCopyOn } from "@/src/db/billing-copy";
 import { orgBilling, organizations } from "@/src/db/schema";
 import type { Executor, Transaction } from "@/src/db/org-lock";
 import { lockOrg } from "@/src/db/org-lock";
-import { formatDateShort, type IsoDate } from "@/src/domain/dates";
+import { formatDateShort, todayIso, type IsoDate } from "@/src/domain/dates";
 import { UI } from "@/src/domain/strings";
+import { queuedDowngradeToReconciliation } from "@/src/modules/billing/billing";
 import { activeFundingSourceLimit, type Entitlement } from "@/src/modules/billing/entitlement";
 import { fundingSourceLimit } from "@/src/modules/billing/rules";
 import { ENTITLEMENT_COLUMNS, entitlementOf } from "@/src/services/auth/entitlement";
@@ -21,10 +22,10 @@ import { ENTITLEMENT_COLUMNS, entitlementOf } from "@/src/services/auth/entitlem
 /**
  * The refusal message for activating one more funding source, or `null` to allow it.
  *
- * `queuedDowngradeAt` is Phase 3's hook: a downgrade to Reconciliation already scheduled on
- * Stripe's live schedule, not yet read by anything (nothing passes it today, so this branch is
- * unreachable until Phase 3 wires it up). `entitlement.reason !== "billing_off"` guards it: a
- * queued downgrade cannot matter while billing itself is off.
+ * `queuedDowngradeAt`: the day a downgrade to Reconciliation already scheduled in Stripe starts
+ * (`queuedDowngradeDay`), so an admin can't queue the downgrade with one source and then add
+ * more before it lands (P24). `entitlement.reason !== "billing_off"` guards it: a queued
+ * downgrade cannot matter while billing itself is off.
  */
 export function fundingSourceLimitRefusal({
   entitlement,
@@ -54,6 +55,21 @@ export function fundingSourceLimitRefusal({
   }
 
   return null;
+}
+
+/**
+ * When a downgrade to Reconciliation is queued, the day it starts, asked of Stripe before any
+ * transaction opens (P12). `"unavailable"` when Stripe can't be asked: the caller refuses rather
+ * than guess, since the answer decides whether one more source is allowed.
+ */
+export async function queuedDowngradeDay(orgId: string): Promise<IsoDate | null | "unavailable"> {
+  try {
+    const at = await queuedDowngradeToReconciliation(orgId);
+    return at ? todayIso(at) : null;
+  } catch (e) {
+    console.error(`[billing] reading org ${orgId}'s queued downgrade from Stripe failed`, e);
+    return "unavailable";
+  }
 }
 
 async function entitlementRow(executor: Executor, orgId: string) {

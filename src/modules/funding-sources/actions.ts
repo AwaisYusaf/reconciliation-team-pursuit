@@ -18,7 +18,7 @@ import { parseMoneyToCents } from "@/src/domain/money";
 import { UI } from "@/src/domain/strings";
 import { fail, ok, type ActionResult } from "@/src/lib/action-result";
 import { actionSession } from "@/src/lib/action-session";
-import { fundingSourceLimitRefusal, lockedOrgEntitlement } from "@/src/modules/funding-sources/limit";
+import { fundingSourceLimitRefusal, lockedOrgEntitlement, queuedDowngradeDay } from "@/src/modules/funding-sources/limit";
 import { listFundingSources, requireOwnedFundingSource } from "@/src/modules/funding-sources/queries";
 
 function revalidateAll(): void {
@@ -143,6 +143,9 @@ export async function createFundingSourceAction(input: FundingSourceInput): Prom
   const validated = await validate(current.orgId, input);
   if (!validated.ok) return validated;
 
+  const queuedDowngradeAt = await queuedDowngradeDay(current.orgId);
+  if (queuedDowngradeAt === "unavailable") return fail(UI.fundingSourceStripeUnavailable);
+
   try {
     const refused = await db.transaction(async (tx) => {
       // Locks the org row first so two concurrent creates in one org count active sources one
@@ -156,6 +159,7 @@ export async function createFundingSourceAction(input: FundingSourceInput): Prom
         entitlement,
         activeOthers: activeCount,
         role: current.role,
+        queuedDowngradeAt,
       });
       if (refusal) return fail(refusal);
 
@@ -265,6 +269,9 @@ export async function unarchiveFundingSourceAction(id: string): Promise<ActionRe
     return ok();
   }
 
+  const queuedDowngradeAt = await queuedDowngradeDay(current.orgId);
+  if (queuedDowngradeAt === "unavailable") return fail(UI.fundingSourceStripeUnavailable);
+
   const refused = await db.transaction(async (tx) => {
     // Same lock as create: two concurrent unarchives in one org count active sources one at a
     // time, rather than each seeing "under the limit" and both succeeding.
@@ -279,6 +286,7 @@ export async function unarchiveFundingSourceAction(id: string): Promise<ActionRe
       entitlement,
       activeOthers,
       role: current.role,
+      queuedDowngradeAt,
     });
     if (refusal) return fail(refusal);
 
