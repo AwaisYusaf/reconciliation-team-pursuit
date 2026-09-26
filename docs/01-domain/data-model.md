@@ -87,7 +87,7 @@ History of every account change AB Solutions staff make on an organisation's pla
 | via_stripe | boolean | True when Stripe's sync wrote the row (Phase 16, P15); History shows "Stripe" as the actor |
 
 ### org_billing (1:1 organizations, Phase 16, D-125)
-The organization's copy of what Stripe knows, written only by `syncOrgBilling` and the billing actions (`src/modules/billing/`); Stripe is the record (D-123). One row per org, created with its first Stripe customer. Read only through `billingCopyOn()` (`src/db/billing-copy.ts`), which also requires `livemode` to match the configured Stripe key, so a copy from the other mode reads as none.
+The organization's copy of what Stripe knows, written only by `syncOrgBilling` and the billing actions (`src/modules/billing/`); Stripe is the record (D-123). One row per org, created with its first Stripe customer. Read only through `billingCopyOn()` (joins) or `sameStripeMode()` (`org_billing` alone), both in `src/db/billing-copy.ts`, which require `livemode` to match the configured Stripe key, so a copy from the other mode reads as none.
 | Field | Type | Notes |
 |---|---|---|
 | org_id | uuid PK FK | cascade delete |
