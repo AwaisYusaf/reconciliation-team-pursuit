@@ -8,6 +8,18 @@ refusal, archive from the plan page) is still to build. Phase 8 (go-live) is las
 were renumbered on 2026-09-25 to follow the build order: "no free use" was Phase 5 in the first
 draft and the screen was Phase 4.
 
+**PR #23 review fixes (2026-09-26, branch `review/pr-23-fixes`):** the lockfile is back in sync
+with package.json (the Docker build failed); the Stripe copy moved into `org_billing`, read only in
+the configured Stripe mode (D-125, §3); syncs order themselves by when they read Stripe, across
+processes; a deleted Stripe customer is replaced at Checkout and an unknown one never is; Stripe
+requests time out after 10 s and the layout's re-sync runs after the page is sent; schedule
+rewrites keep a trial and a downgrade's `phase_start`; staff Change plan clears a pinned free
+plan; a staff complimentary grant asks Stripe whether the org pays; a plan on hold is fixed from
+`/r/plan` (D-126); the queued-downgrade refusal and archiving from the plan page are built (Phase
+6); the paywall allow-list names exact entries; nothing about billing shows while it is off.
+Migration `0041` was regenerated: a database that applied the old one must be restored to `0040`
+first.
+
 **Renumbered when `main` was merged in (2026-09-26):** this plan was written as Phase 15, but
 `main` used Phase 15 for the PR #21 follow-ups (`PHASE-15.md`), so it is Phase 16. Its decisions
 D-119, D-120 and D-121 became **D-122, D-123 and D-124** (main had used the first three), and its
