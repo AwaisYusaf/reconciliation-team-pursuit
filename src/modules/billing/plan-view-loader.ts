@@ -87,12 +87,12 @@ export type BillingBanner =
 /**
  * At most one banner, and only when action is needed: a failed payment (everyone, since the
  * app will stop working when Stripe gives up), an upgrade waiting for payment, or complimentary
- * access ending within 14 days (both admin only: only an admin can act on them). Also the
- * "any page" lost-webhook net (P13): an overdue copy is re-synced first, throttled.
+ * access ending within 14 days (both admin only: only an admin can act on them). Reads the copy
+ * as it is: the layout re-syncs an overdue one after the page is sent (the "any page"
+ * lost-webhook net, P13), so a slow Stripe never holds up a page.
  */
 export async function loadBillingBanner(session: { orgId: string; role: string }): Promise<BillingBanner | null> {
   if (!billingEnabled()) return null;
-  await refreshOrgBilling(session.orgId, "stale"); // throttled, never throws
   const row = await loadBillingRow(session.orgId);
   if (!row) return null;
 

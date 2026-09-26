@@ -13,12 +13,16 @@ import { STRIPE_API_VERSION } from "@/src/modules/billing/config";
 
 let client: Stripe | undefined;
 
+/** Longest wait for one Stripe request; the SDK's default is 80 s. A sync that waits on Stripe
+ *  keeps a Settings page, the Checkout return or a webhook waiting with it. */
+const STRIPE_TIMEOUT_MS = 10_000;
+
 /** Pinned SDK and API version (P26); the key is trimmed exactly as the startup check trims it. */
 export function stripe(): Stripe {
   if (client) return client;
   const key = process.env.STRIPE_SECRET_KEY?.trim();
   if (!key) throw new Error("STRIPE_SECRET_KEY is not set");
-  client = new Stripe(key, { apiVersion: STRIPE_API_VERSION, maxNetworkRetries: 2 });
+  client = new Stripe(key, { apiVersion: STRIPE_API_VERSION, maxNetworkRetries: 2, timeout: STRIPE_TIMEOUT_MS });
   return client;
 }
 

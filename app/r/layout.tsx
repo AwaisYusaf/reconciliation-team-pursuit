@@ -3,6 +3,7 @@ import type { CSSProperties } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { after } from "next/server";
 
 import { AppHeader } from "@/src/components/app-shell/app-header";
 import { AppNav } from "@/src/components/app-shell/app-nav";
@@ -18,6 +19,7 @@ import { APP_NAME } from "@/src/domain/strings";
 import { aiPlanAllowed } from "@/src/modules/ai/access";
 import { signOutAction } from "@/src/modules/auth/actions";
 import { loadBillingBanner } from "@/src/modules/billing/plan-view-loader";
+import { refreshOrgBilling } from "@/src/modules/billing/sync";
 import { BillingBanner } from "./billing-banner";
 import { loadSourceContext } from "@/src/modules/funding-sources/queries";
 import { avatarVersionOf } from "@/src/services/storage/keys";
@@ -33,6 +35,11 @@ import { hasPaidAccess } from "@/src/services/auth/entitlement";
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const session = await getSession();
   if (!session) redirect("/login");
+
+  // The "any page" lost-webhook net (P13), for paid and unpaid orgs alike: an overdue copy is
+  // re-synced after the page is sent, never while it waits, so a slow Stripe can't hold up a
+  // page. The next page shows the result.
+  after(() => refreshOrgBilling(session.orgId, "stale"));
 
   // Not the gate (`pageSession()` on every page is): but it must never send org data to an
   // unpaid organization, and it must not loop — no onboarding redirect here, since an unpaid,
