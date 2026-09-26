@@ -42,6 +42,7 @@ describe.skipIf(!hasDatabase)("P16 (staff-managed while live) and D3 (collection
   const { fail } = await import("@/src/lib/action-result");
   const { requireStaff } = await import("@/src/lib/action-session");
   const { changePlanAction, setComplimentaryAction, suspendOrgAction, reinstateOrgAction } = await import("./actions");
+  const { entitlementOf } = await import("@/src/services/auth/entitlement");
 
   const requireStaffMock = vi.mocked(requireStaff);
 
@@ -113,6 +114,27 @@ describe.skipIf(!hasDatabase)("P16 (staff-managed while live) and D3 (collection
       expect(result.ok).toBe(true);
       expect(await eventsFor(orgId)).toHaveLength(1);
     });
+
+    it.each([
+      ["a different plan", "reconciliation_ai", "reconciliation"],
+      ["the same plan label, with a different free plan pinned", "reconciliation", "reconciliation"],
+    ] as const)(
+      "a complimentary org's pinned free plan gives way to the plan staff choose (%s)",
+      async (_case, planBefore, chosen) => {
+        const orgId = await freshOrg({ complimentary: true });
+        // Pinned by a Checkout the admin never finished (P27).
+        await db
+          .update(organizations)
+          .set({ plan: planBefore, subscriptionStatus: "active", complimentaryPlan: "reconciliation_ai" })
+          .where(eq(organizations.id, orgId));
+
+        const result = await changePlanAction(orgId, chosen, "active", "");
+        expect(result.ok).toBe(true);
+        const [row] = await db.select().from(organizations).where(eq(organizations.id, orgId));
+        expect(row.complimentaryPlan).toBeNull();
+        expect(entitlementOf(row).plan).toBe(chosen);
+      },
+    );
 
     it("billing off → allowed even with an active stripeStatus", async () => {
       vi.stubEnv("BILLING_ENABLED", "false");

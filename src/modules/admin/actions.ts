@@ -41,6 +41,7 @@ type OrgRow = {
   subscriptionStatus: SubscriptionStatus;
   complimentary: boolean;
   complimentaryUntil: string | null;
+  complimentaryPlan: OrgPlan | null;
   suspendedAt: Date | null;
   stripeStatus: string | null;
 };
@@ -90,6 +91,7 @@ async function withLockedOrg(
       subscriptionStatus: organizations.subscriptionStatus,
       complimentary: organizations.complimentary,
       complimentaryUntil: organizations.complimentaryUntil,
+      complimentaryPlan: organizations.complimentaryPlan,
       suspendedAt: organizations.suspendedAt,
     });
     if (!row) return fail(UI.orgNoLongerExists);
@@ -130,14 +132,18 @@ export async function changePlanAction(
     // Changing plan or status never touches suspension, complimentary access, or each other.
     // A save that changes nothing is refused rather than reported as saved: there is no event
     // action for "note only", so History would stay silent while the dialog said "updated".
-    if (row.plan === plan && row.subscriptionStatus === status) {
+    // A pinned free plan (`complimentary_plan`) that differs from the chosen one is a change:
+    // it is what a complimentary org actually gets.
+    if (row.plan === plan && row.subscriptionStatus === status && (row.complimentaryPlan ?? plan) === plan) {
       return fail(UI.accountNothingChanged);
     }
 
     const before = snapshot(row);
+    // The plan staff choose is the plan the org gets: a free plan pinned at Checkout would
+    // otherwise keep overriding it (P27).
     await tx
       .update(organizations)
-      .set({ plan, subscriptionStatus: status })
+      .set({ plan, subscriptionStatus: status, complimentaryPlan: null })
       .where(eq(organizations.id, orgId));
     const after = snapshot({ ...row, plan, subscriptionStatus: status });
 
