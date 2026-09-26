@@ -823,9 +823,11 @@ checklist clear.
   transaction) and refuse with `fundingSourceLimitQueued` while one is queued; if Stripe can't be
   asked they refuse with `fundingSourceStripeUnavailable` rather than guess. The Add button isn't
   disabled ahead of time for it: the refusal shows when the admin saves.
-- **Not built (remaining for Phase 6):** Reconciliation Checkout refused with more than one source
-  and archive from the plan page (D2, I-15, B-19; need Phases 3 and 4), S-27, and the `/a` warning
-  for an org over the limit. A complimentary Reconciliation + AI org that buys Reconciliation with a
+- **Also built in the review:** D2. With more than one active source, the Reconciliation card on
+  `/r/plan` (and in Plan & billing) is disabled with the reason under it, Checkout refuses the same,
+  and `/r/plan` lists the admin's active sources with Archive (`archiveFundingSourceAction` uses the
+  any-plan session: an unpaid org's admin may archive, a manager may not).
+- **Not built (remaining for Phase 6):** S-27, and the `/a` warning for an org over the limit. A complimentary Reconciliation + AI org that buys Reconciliation with a
   deferred first charge can still add sources during its free access (a known gap).
 - **Tests:** 12 unit (`limit.test.ts`) and 15 integration (I-13: admin and manager refusals, no
   row written, unarchive refused and left archived, an org already over the limit, 5 concurrent

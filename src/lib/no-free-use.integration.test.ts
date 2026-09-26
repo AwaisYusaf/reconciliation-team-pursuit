@@ -181,6 +181,71 @@ describe.skipIf(!hasDatabase)("no free use at every entry point (I-9, I-16)", as
       }
     });
 
+    it("D2: an unpaid org's admin can archive a funding source (to choose Reconciliation); a manager can't", async () => {
+      const { fundingSources } = await import("@/src/db/schema");
+      const { ORIGINAL_RULES } = await import("@/src/modules/expenses/reimbursement");
+      const { archiveFundingSourceAction } = await import("@/src/modules/funding-sources/actions");
+      const [second] = await db
+        .insert(fundingSources)
+        .values({ orgId, name: `Second ${Date.now()}`, type: "grant", sortOrder: 1, ...ORIGINAL_RULES })
+        .returning({ id: fundingSources.id });
+      const [manager] = await db
+        .insert(users)
+        .values({ orgId, email: `nofreeuse-mgr-${Date.now()}@example.test`, passwordHash: "x", role: "manager" })
+        .returning({ id: users.id });
+      const archivedAt = async () =>
+        (await db.select({ at: fundingSources.archivedAt }).from(fundingSources).where(eq(fundingSources.id, second.id)))[0].at;
+
+      await startSession(manager.id);
+      expect(await archiveFundingSourceAction(second.id)).toEqual({ ok: false, error: UI.billingPlanRequired });
+      await endSession();
+      expect(await archivedAt()).toBeNull();
+
+      await startSession(adminId);
+      expect(await archiveFundingSourceAction(second.id)).toEqual({ ok: true, data: undefined });
+      await endSession();
+      expect(await archivedAt()).not.toBeNull();
+    });
+
+    it("with two active sources, /r/plan disables Reconciliation with the reason and lists the sources to archive", async () => {
+      const { fundingSources } = await import("@/src/db/schema");
+      const { ORIGINAL_RULES } = await import("@/src/modules/expenses/reimbursement");
+      const { ArchiveSources } = await import("@/app/r/plan/archive-sources");
+      const { SubscribeButton } = await import("@/app/r/plan/subscribe-button");
+      const [extra] = await db
+        .insert(fundingSources)
+        .values({ orgId, name: `Extra ${Date.now()}`, type: "grant", sortOrder: 2, ...ORIGINAL_RULES })
+        .returning({ id: fundingSources.id });
+
+      /** Every element of `type` in a rendered tree, calling render props (`actions`) on the way. */
+      const find = (node: unknown, type: unknown, out: Array<{ props: Record<string, unknown> }> = []) => {
+        if (Array.isArray(node)) node.forEach((child) => find(child, type, out));
+        else if (node && typeof node === "object" && "props" in node) {
+          const el = node as { type: unknown; props: Record<string, unknown> };
+          if (el.type === type) out.push(el);
+          find(el.props.children, type, out);
+          if (typeof el.props.actions === "function") {
+            for (const plan of ["reconciliation", "reconciliation_ai"]) find((el.props.actions as (p: string) => unknown)(plan), type, out);
+          }
+        }
+        return out;
+      };
+
+      await startSession(adminId);
+      try {
+        const PlanPage = (await import("@/app/r/plan/page")).default;
+        const page = await PlanPage({ searchParams: Promise.resolve({}) });
+        const buttons = find(page, SubscribeButton);
+        const reconciliation = buttons.find((b) => b.props.plan === "reconciliation");
+        expect(reconciliation?.props.disabledReason).toMatch(/^Reconciliation includes one active funding source/);
+        expect(buttons.find((b) => b.props.plan === "reconciliation_ai")?.props.disabledReason).toBeUndefined();
+        expect(find(page, ArchiveSources)).toHaveLength(1);
+      } finally {
+        await endSession();
+        await db.delete(fundingSources).where(eq(fundingSources.id, extra.id));
+      }
+    });
+
     it("createExpenseAction (expenses module) refuses before validation even runs", async () => {
       await startSession(adminId);
       const result = await createExpenseAction({} as never);

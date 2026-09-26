@@ -15,7 +15,11 @@
 import { config } from "dotenv";
 
 vi.mock("next/cache", () => ({ revalidatePath: () => {} }));
-vi.mock("@/src/lib/action-session", () => ({ actionSession: vi.fn() }));
+// One mock for both: archive uses the any-plan session (D2), everything else the guarded one.
+vi.mock("@/src/lib/action-session", () => {
+  const session = vi.fn();
+  return { actionSession: session, actionSessionAnyPlan: session };
+});
 
 config({ path: ".env.local", quiet: true });
 

@@ -156,7 +156,17 @@ export function PlanBillingSection({ data }: { data: PlanBillingData }) {
     if (!isAdmin) return null;
     // Complimentary: buy now, unless a plan was already bought during the free access.
     if (view.kind === "none" || (view.kind === "complimentaryAccess" && !view.upcoming)) {
-      return <SubscribeButton plan={plan} interval={chooseInterval} primary={plan === "reconciliation_ai"} />;
+      return (
+        <SubscribeButton
+          plan={plan}
+          interval={chooseInterval}
+          primary={plan === "reconciliation_ai"}
+          // Reconciliation includes one active funding source (C8); the server refuses too.
+          disabledReason={
+            plan === "reconciliation" && activeSources > 1 ? UI.billingDowngradeTooManySources(activeSources) : undefined
+          }
+        />
+      );
     }
     if (view.kind !== "subscribed" || switchBlocked) return null;
 

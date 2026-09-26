@@ -17,7 +17,8 @@ import { isDuplicateName } from "@/src/domain/line-item-rules";
 import { parseMoneyToCents } from "@/src/domain/money";
 import { UI } from "@/src/domain/strings";
 import { fail, ok, type ActionResult } from "@/src/lib/action-result";
-import { actionSession } from "@/src/lib/action-session";
+import { actionSession, actionSessionAnyPlan } from "@/src/lib/action-session";
+import { hasPaidAccess } from "@/src/services/auth/entitlement";
 import { fundingSourceLimitRefusal, lockedOrgEntitlement, queuedDowngradeDay } from "@/src/modules/funding-sources/limit";
 import { listFundingSources, requireOwnedFundingSource } from "@/src/modules/funding-sources/queries";
 
@@ -212,8 +213,11 @@ export async function updateFundingSourceAction(
 }
 
 export async function archiveFundingSourceAction(id: string): Promise<ActionResult> {
-  const current = await actionSession();
+  // On the paywall's allow-list (D2): an unpaid org's admin archives sources on the plan page to
+  // be able to choose Reconciliation, which includes one. Only the admin: that page is theirs.
+  const current = await actionSessionAnyPlan();
   if ("expired" in current) return current.expired;
+  if (!hasPaidAccess(current) && current.role !== "admin") return fail(UI.billingPlanRequired);
 
   const source = await requireOwnedFundingSource(current, id);
   if ("denied" in source) return source.denied;

@@ -9,7 +9,11 @@
 import { config } from "dotenv";
 
 vi.mock("next/cache", () => ({ revalidatePath: () => {} }));
-vi.mock("@/src/lib/action-session", () => ({ actionSession: vi.fn() }));
+// One mock for both: archive uses the any-plan session (D2), everything else the guarded one.
+vi.mock("@/src/lib/action-session", () => {
+  const session = vi.fn();
+  return { actionSession: session, actionSessionAnyPlan: session };
+});
 // Stripe's answer to "is a downgrade to Reconciliation queued?" (P24). The rest of billing is real.
 const queuedDowngradeMock = vi.fn();
 vi.mock("@/src/modules/billing/billing", async () => ({
