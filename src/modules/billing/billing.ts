@@ -275,6 +275,17 @@ async function changeableSubscription(customerId: string): Promise<{
   };
 }
 
+/** The current phase exactly as Stripe has it, trial included: a plan bought during free access
+ *  has its first charge at `trial_end`, and a rewrite that left it out would charge it early. */
+function unchangedPhase(phase: Stripe.SubscriptionSchedule.Phase): Stripe.SubscriptionScheduleUpdateParams.Phase {
+  return {
+    items: phase.items.map((i) => ({ price: idOf(i.price), quantity: i.quantity ?? 1 })),
+    start_date: phase.start_date,
+    end_date: phase.end_date,
+    ...(phase.trial_end ? { trial_end: phase.trial_end } : {}),
+  };
+}
+
 /** Rewrites (or creates) a schedule's phases: the current phase exactly as Stripe has it, and a
  *  new future phase on `targetPrice`. Shared by a queued downgrade (`billing_cycle_anchor:
  *  "phase_start"`, so the new plan bills in full the day it starts) and a queued price move
@@ -295,11 +306,7 @@ async function createOrExtendSchedule(
     end_behavior: "release", // after the switch, the subscription carries on by itself
     proration_behavior: "none", // rewriting the schedule must never create a charge or credit
     phases: [
-      {
-        items: currentPhase.items.map((i) => ({ price: idOf(i.price), quantity: i.quantity ?? 1 })),
-        start_date: current.start_date,
-        end_date: current.end_date,
-      },
+      unchangedPhase(currentPhase),
       {
         items: [{ price: targetPrice.id, quantity: item.quantity ?? 1 }],
         duration: { interval: targetPrice.recurring!.interval, interval_count: 1 },
@@ -327,16 +334,14 @@ async function retagFuturePhase(
     end_behavior: schedule.end_behavior,
     proration_behavior: "none",
     phases: [
-      {
-        items: currentPhase.items.map((i) => ({ price: idOf(i.price), quantity: i.quantity ?? 1 })),
-        start_date: currentPhase.start_date,
-        end_date: currentPhase.end_date,
-      },
+      unchangedPhase(currentPhase),
       {
         items: [{ price: targetPrice.id, quantity: future.items[0]?.quantity ?? 1 }],
         start_date: future.start_date,
         duration: { interval: targetPrice.recurring!.interval, interval_count: 1 },
         proration_behavior: "none",
+        // Kept as createOrExtendSchedule set it: a downgrade starts a period billed in full.
+        ...(reason === "downgrade" ? { billing_cycle_anchor: "phase_start" as const } : {}),
         ...(reason === "price_move" ? { metadata: { reason: "price_move" } } : {}),
       },
     ],
@@ -840,57 +845,65 @@ export async function planPriceMoves(opts: { apply: boolean }): Promise<PriceMov
   const skipped: PriceMoveResult["skipped"] = [];
 
   for (const o of orgs) {
-    const customerId = o.customerId;
-    const subs = await subscriptionsOf(customerId);
-    const sub = subs.find((s) => isLive(s.status));
-    if (!sub) continue;
-
-    const item = sub.items.data[0];
-    const currentPrice = item.price;
-    let active: Stripe.Price;
+    // One org's failure (Stripe refusing a schedule, a network error) must not stop the rest, or
+    // lose the list of orgs already moved: it is reported with the skipped ones.
     try {
-      active = await activePriceFor(currentPrice);
-    } catch {
-      skipped.push({ orgId: o.id, reason: `price ${currentPrice.id} has no valid metadata.plan/interval` });
-      continue;
-    }
-    if (active.id === currentPrice.id) continue; // already on the current price
+      const customerId = o.customerId;
+      const subs = await subscriptionsOf(customerId);
+      const sub = subs.find((s) => isLive(s.status));
+      if (!sub) continue;
 
-    if (sub.pending_update) {
-      skipped.push({ orgId: o.id, reason: "an upgrade is awaiting payment" });
-      continue;
-    }
-    if (sub.cancel_at_period_end || sub.cancel_at !== null) {
-      skipped.push({ orgId: o.id, reason: "cancelling" });
-      continue;
-    }
-
-    const schedule = sub.schedule
-      ? await stripe().subscriptionSchedules.retrieve(idOf(sub.schedule), { expand: ["phases.items.price"] })
-      : null;
-    const queued = schedule ? futurePhase(schedule) : undefined;
-
-    if (opts.apply) {
-      if (queued) {
-        const queuedPrice = queued.items[0]?.price as Stripe.Price;
-        const activeForQueued = await activePriceFor(queuedPrice);
-        if (activeForQueued.id !== queuedPrice.id) {
-          // Keep what the queued phase already is: a price move queued before a second price
-          // change must stay a price move, or it would block upgrades as if it were a downgrade.
-          const reason = queued.metadata?.reason === "price_move" ? "price_move" : "downgrade";
-          await retagFuturePhase(schedule!, activeForQueued, reason);
-        }
-      } else {
-        await createOrExtendSchedule(sub, item, active, schedule, "price_move");
+      const item = sub.items.data[0];
+      const currentPrice = item.price;
+      let active: Stripe.Price;
+      try {
+        active = await activePriceFor(currentPrice);
+      } catch {
+        skipped.push({ orgId: o.id, reason: `price ${currentPrice.id} has no valid metadata.plan/interval` });
+        continue;
       }
-    }
+      if (active.id === currentPrice.id) continue; // already on the current price
 
-    moved.push({
-      orgId: o.id,
-      fromPriceId: currentPrice.id,
-      toPriceId: active.id,
-      effectiveAt: new Date(item.current_period_end * 1000).toISOString(),
-    });
+      if (sub.pending_update) {
+        skipped.push({ orgId: o.id, reason: "an upgrade is awaiting payment" });
+        continue;
+      }
+      if (sub.cancel_at_period_end || sub.cancel_at !== null) {
+        skipped.push({ orgId: o.id, reason: "cancelling" });
+        continue;
+      }
+
+      const schedule = sub.schedule
+        ? await stripe().subscriptionSchedules.retrieve(idOf(sub.schedule), { expand: ["phases.items.price"] })
+        : null;
+      const queued = schedule ? futurePhase(schedule) : undefined;
+
+      if (opts.apply) {
+        if (queued) {
+          const queuedPrice = queued.items[0]?.price as Stripe.Price;
+          const activeForQueued = await activePriceFor(queuedPrice);
+          if (activeForQueued.id !== queuedPrice.id) {
+            // Keep what the queued phase already is: a price move queued before a second price
+            // change must stay a price move, or it would block upgrades as if it were a downgrade.
+            const reason = queued.metadata?.reason === "price_move" ? "price_move" : "downgrade";
+            await retagFuturePhase(schedule!, activeForQueued, reason);
+          }
+        } else {
+          await createOrExtendSchedule(sub, item, active, schedule, "price_move");
+        }
+      }
+
+      moved.push({
+        orgId: o.id,
+        fromPriceId: currentPrice.id,
+        toPriceId: active.id,
+        effectiveAt: new Date(item.current_period_end * 1000).toISOString(),
+      });
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      alert(`price move for org ${o.id} failed: ${message}`);
+      skipped.push({ orgId: o.id, reason: `error: ${message}` });
+    }
   }
 
   return { moved, skipped };

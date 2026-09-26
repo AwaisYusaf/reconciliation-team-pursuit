@@ -34,6 +34,9 @@ async function main(): Promise<void> {
 
   console.log(`\nskipped (${skipped.length}):`);
   for (const s of skipped) console.log(`  org ${s.orgId}  ${s.reason}`);
+
+  // Every org was still tried; a failed one shows above and makes the run fail, so it is noticed.
+  if (skipped.some((s) => s.reason.startsWith("error: "))) process.exitCode = 1;
 }
 
 main().catch((error: unknown) => {

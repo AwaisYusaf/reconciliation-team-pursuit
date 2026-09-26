@@ -17,6 +17,7 @@ import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vites
 vi.mock("@/src/lib/action-session", () => ({ actionSessionAnyPlan: vi.fn() }));
 vi.mock("@/src/modules/billing/sync", () => ({
   syncOrgBilling: vi.fn().mockRejectedValue(new Error("sync down (test double)")),
+  alert: (message: string) => console.error(`[billing] ALERT ${message}`),
 }));
 
 const subscriptionsOfMock = vi.fn();
@@ -96,9 +97,8 @@ describe.skipIf(!hasDatabase)("billing actions (integration, Phase 16)", async (
     resumePlanAction,
     billingPortalAction,
   } = await import("./actions");
-  const { BILLING_RETURN_PATH, PLAN_CANCELLED_PATH, SETTINGS_PLAN_PATH, clearPortalConfigCache } = await import(
-    "./billing"
-  );
+  const { BILLING_RETURN_PATH, PLAN_CANCELLED_PATH, SETTINGS_PLAN_PATH, clearPortalConfigCache, planPriceMoves } =
+    await import("./billing");
   const { PORTAL_TAG } = await import("./pricing");
   const { dayAfterStart } = await import("./rules");
 
@@ -765,6 +765,97 @@ describe.skipIf(!hasDatabase)("billing actions (integration, Phase 16)", async (
       expect(await startCheckoutAction("reconciliation", "month")).toEqual(fail(UI.billingStripeError));
       expect(customersCreateMock).not.toHaveBeenCalled();
       expect(await orgWithBilling(orgId)).toMatchObject({ stripeCustomerId: unknown, stripeStatus: "active" });
+      errorSpy.mockRestore();
+    });
+  });
+
+  describe("rewriting a subscription schedule", () => {
+    const price = (id: string, plan: string, interval = "month") => ({ id, metadata: { plan }, recurring: { interval } });
+    const liveSub = (over: Record<string, unknown> = {}) => ({
+      id: "sub_sched",
+      status: "active",
+      created: 1,
+      cancel_at_period_end: false,
+      cancel_at: null,
+      pending_update: null,
+      schedule: null,
+      items: { data: [{ id: "si_1", quantity: 1, price: price("price_reconciliation_ai_month", "reconciliation_ai"), current_period_end: 1_700_000_000 }] },
+      ...over,
+    });
+
+    it("a downgrade queued on a plan bought during free access keeps its trial, so nothing is charged early", async () => {
+      const orgId = await freshOrg({ complimentary: false });
+      const customerId = uniqueCustomerId();
+      await withCustomer(orgId, customerId);
+      asAdmin(orgId);
+      subscriptionsOfMock.mockResolvedValue([liveSub({ status: "trialing" })]);
+      scheduleCreateMock.mockResolvedValue({
+        id: "sub_sched_1",
+        current_phase: { start_date: 1_690_000_000, end_date: 1_700_000_000 },
+        phases: [
+          {
+            start_date: 1_690_000_000,
+            end_date: 1_700_000_000,
+            trial_end: 1_700_000_000,
+            items: [{ price: "price_reconciliation_ai_month", quantity: 1 }],
+          },
+        ],
+      });
+
+      expect(await applyChangeAction("reconciliation", "month", 0)).toMatchObject({ ok: true, data: { result: "scheduled" } });
+      const { phases } = scheduleUpdateMock.mock.calls.at(-1)![1];
+      expect(phases[0]).toMatchObject({ start_date: 1_690_000_000, end_date: 1_700_000_000, trial_end: 1_700_000_000 });
+      expect(phases[1]).toMatchObject({ billing_cycle_anchor: "phase_start" });
+    });
+
+    it("moving a queued downgrade to a new price keeps it billed in full from its start (phase_start)", async () => {
+      const orgId = await freshOrg({ complimentary: false });
+      const customerId = uniqueCustomerId();
+      await withCustomer(orgId, customerId);
+      subscriptionsOfMock.mockImplementation(async (id: string) =>
+        id === customerId
+          ? [liveSub({ schedule: "sub_sched_2", items: { data: [{ id: "si_1", quantity: 1, price: price("price_old_ai", "reconciliation_ai"), current_period_end: 1_700_000_000 }] } })]
+          : [],
+      );
+      scheduleRetrieveMock.mockResolvedValue({
+        id: "sub_sched_2",
+        end_behavior: "release",
+        current_phase: { start_date: 1_690_000_000, end_date: 1_700_000_000 },
+        phases: [
+          { start_date: 1_690_000_000, end_date: 1_700_000_000, trial_end: null, items: [{ price: { id: "price_old_ai" }, quantity: 1 }] },
+          { start_date: 1_700_000_000, end_date: 1_702_600_000, metadata: {}, items: [{ price: price("price_old_rec", "reconciliation"), quantity: 1 }] },
+        ],
+      });
+
+      await planPriceMoves({ apply: true });
+      const { phases } = scheduleUpdateMock.mock.calls.at(-1)![1];
+      expect(phases[1]).toMatchObject({ items: [{ price: "price_reconciliation_month" }], billing_cycle_anchor: "phase_start" });
+      expect(phases[0]).not.toHaveProperty("trial_end");
+    });
+
+    it("one org's failure doesn't stop the others, and is reported with the skipped ones", async () => {
+      const failing = uniqueCustomerId();
+      const fine = uniqueCustomerId();
+      const failingOrg = await freshOrg({ complimentary: false });
+      const fineOrg = await freshOrg({ complimentary: false });
+      await withCustomer(failingOrg, failing);
+      await withCustomer(fineOrg, fine);
+      const stale = { items: { data: [{ id: "si_1", quantity: 1, price: price("price_old_ai", "reconciliation_ai"), current_period_end: 1_700_000_000 }] } };
+      subscriptionsOfMock.mockImplementation(async (id: string) => {
+        if (id === failing) throw new Error("stripe said no");
+        return id === fine ? [liveSub(stale)] : [];
+      });
+      scheduleCreateMock.mockResolvedValue({
+        id: "sub_sched_3",
+        current_phase: { start_date: 1_690_000_000, end_date: 1_700_000_000 },
+        phases: [{ start_date: 1_690_000_000, end_date: 1_700_000_000, items: [{ price: "price_old_ai", quantity: 1 }] }],
+      });
+      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+      const { moved, skipped } = await planPriceMoves({ apply: true });
+      expect(moved.map((m) => m.orgId)).toContain(fineOrg);
+      expect(skipped).toContainEqual({ orgId: failingOrg, reason: "error: stripe said no" });
+      expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("ALERT"));
       errorSpy.mockRestore();
     });
   });
