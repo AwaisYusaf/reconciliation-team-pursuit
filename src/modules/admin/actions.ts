@@ -33,7 +33,7 @@ import { isUuid } from "@/src/lib/ids";
 import { billingEnabled } from "@/src/modules/billing/config";
 import { isLive } from "@/src/modules/billing/rules";
 import { setCollectionPaused, staffCancelSubscription } from "@/src/modules/billing/billing";
-import { alert } from "@/src/modules/billing/sync";
+import { alert, refreshOrgBilling } from "@/src/modules/billing/sync";
 
 type OrgRow = {
   id: string;
@@ -184,6 +184,10 @@ export async function setComplimentaryAction(
   // never billed for access it now gets free. Stripe first and outside the row lock: the sync
   // this triggers writes the same row, and a Stripe failure then leaves nothing half done.
   if (enabled && billingEnabled() && isUuid(orgId)) {
+    // Whether it pays is Stripe's answer, not our copy's, which can be a webhook behind (a
+    // Checkout finished a moment ago): re-sync first. Never throws; if Stripe can't be reached
+    // the last copy decides.
+    await refreshOrgBilling(orgId, "return");
     const [current] = await db
       .select({ complimentary: organizations.complimentary, stripeStatus: orgBilling.stripeStatus })
       .from(organizations)

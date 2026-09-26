@@ -203,6 +203,9 @@ function ComplimentaryAccess({ org, paying }: { org: ActionsOrg; paying: boolean
   const [enabled, setEnabled] = useState(org.complimentary);
   const [until, setUntil] = useState(org.complimentaryUntil ?? "");
   const [cancelPaid, setCancelPaid] = useState<"now" | "period_end" | null>(null);
+  // The page's copy said "not paying", but Stripe, asked on save, said it is: ask now.
+  const [askCancel, setAskCancel] = useState(false);
+  const showCancelChoice = paying || askCancel;
   const [note, setNote] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -212,6 +215,7 @@ function ComplimentaryAccess({ org, paying }: { org: ActionsOrg; paying: boolean
     setEnabled(org.complimentary);
     setUntil(org.complimentaryUntil ?? "");
     setCancelPaid(null);
+    setAskCancel(false);
     setNote("");
     setError(null);
     setOpen(true);
@@ -225,8 +229,9 @@ function ComplimentaryAccess({ org, paying }: { org: ActionsOrg; paying: boolean
   function save() {
     setError(null);
     startTransition(async () => {
-      const result = await setComplimentaryAction(org.id, enabled, until, note, paying ? cancelPaid : null);
+      const result = await setComplimentaryAction(org.id, enabled, until, note, showCancelChoice ? cancelPaid : null);
       if (!result.ok) {
+        if (result.error === UI.staffCompCancelRequired) setAskCancel(true);
         setError(result.error);
         return;
       }
@@ -265,7 +270,7 @@ function ComplimentaryAccess({ org, paying }: { org: ActionsOrg; paying: boolean
               onChange={(event) => setUntil(event.target.value)}
             />
           </div>
-          {paying && enabled && (
+          {showCancelChoice && enabled && (
             <fieldset className="flex flex-col gap-2">
               <legend className="text-[15px] font-semibold text-ink mb-1">{UI.staffCompPaying}</legend>
               {(

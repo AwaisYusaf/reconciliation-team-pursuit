@@ -70,7 +70,9 @@ either screen renders more rows than it asks for: ten organizations per page
   customer). While billing is on and a subscription is live, Change plan is disabled with
   "Billing for this organization is managed in Stripe." (the server refuses too, P16).
   Complimentary access for a paying organization asks, in the same dialog, whether to cancel the
-  paid plan now (no refund, open invoices voided) or at the end of the paid period; Stripe is
+  paid plan now (no refund, open invoices voided) or at the end of the paid period. Whether it
+  pays is asked of Stripe on save (a re-sync first), so if the page's copy was behind, Save
+  refuses and the dialog then shows the choice; Stripe is
   cancelled first, and a Stripe failure grants nothing. Suspend pauses collection, reinstate
   resumes it (D3). History lines written by the sync read "Stripe" as the actor.
 

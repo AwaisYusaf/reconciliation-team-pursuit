@@ -22,8 +22,10 @@ vi.mock("@/src/modules/billing/billing", () => ({
 }));
 
 const alertMock = vi.fn();
+const refreshMock = vi.fn();
 vi.mock("@/src/modules/billing/sync", () => ({
   alert: (...args: unknown[]) => alertMock(...args),
+  refreshOrgBilling: (...args: unknown[]) => refreshMock(...args),
 }));
 
 config({ path: ".env.local", quiet: true });
@@ -85,6 +87,7 @@ describe.skipIf(!hasDatabase)("P16 (staff-managed while live) and D3 (collection
   });
 
   beforeEach(() => {
+    refreshMock.mockReset().mockResolvedValue(true);
     vi.stubEnv("BILLING_ENABLED", "true");
     setCollectionPausedMock.mockReset().mockResolvedValue(undefined);
     staffCancelMock.mockReset().mockResolvedValue(undefined);
@@ -167,6 +170,22 @@ describe.skipIf(!hasDatabase)("P16 (staff-managed while live) and D3 (collection
         .where(eq(organizations.id, orgId));
       return row.complimentary;
     }
+
+    it("decides from Stripe, not a copy that is a webhook behind: refuses without a choice once Stripe says it pays", async () => {
+      const orgId = await freshOrg({ complimentary: false });
+      await setStripeStatus(orgId, "canceled"); // our copy: not paying
+      // Stripe: a Checkout finished a moment ago, and the re-sync brings the copy up to date.
+      refreshMock.mockImplementationOnce(async () => {
+        await setStripeStatus(orgId, "active");
+        return true;
+      });
+
+      const result = await setComplimentaryAction(orgId, true, "", "", null);
+      expect(refreshMock).toHaveBeenCalledWith(orgId, "return");
+      expect(result).toEqual(fail(UI.staffCompCancelRequired));
+      expect(await complimentary(orgId)).toBe(false);
+      expect(staffCancelMock).not.toHaveBeenCalled();
+    });
 
     it.each([null, "later" as never])("no valid choice (%s) → refused, nothing written, Stripe untouched", async (choice) => {
       const orgId = await freshOrg({ complimentary: false });
