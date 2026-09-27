@@ -6,6 +6,7 @@
  * module so wording can never drift between the app, the Word cover sheet, the Excel
  * summary and the packet PDF. Do not inline these strings anywhere.
  */
+import type { FeatureRequestStatus } from "@/src/db/schema";
 import type { ReadAmounts } from "@/src/domain/amount-suggestion";
 import { formatMoney } from "@/src/domain/format";
 import { SHARE_PASSWORD_MAX, SHARE_PASSWORD_MIN } from "@/src/domain/shared-links";
@@ -235,6 +236,10 @@ export const UI = {
   noOrganizationsYet: "No organizations yet.",
   /** Directory pagination bar, shown only past one page (Phase 9). */
   pageOf: (page: number, pageCount: number) => `Page ${page} of ${pageCount}`,
+  /** The pagination bar's own words (`src/components/ui/pagination.tsx`). */
+  pagesLabel: "Pages",
+  pagePrevious: "Previous",
+  pageNext: "Next",
   /** Under a truncated users table on an organization's page (Phase 9). */
   showingUsers: (shown: number, total: number) => `Showing ${shown} of ${total} users.`,
   /** The same, once "View all" has been used and the list has hit its ceiling — there is no
@@ -934,6 +939,115 @@ export const UI = {
     "Reconciliation includes one active funding source. Ask your admin about upgrading.",
   fundingSourceLimitQueued: (date: string) =>
     `Your plan switches to Reconciliation on ${date}, which includes one active funding source. To add another, cancel that switch in Plan & billing.`,
+
+  // PHASE-17: feature requests. The ticket's own words wherever it gives them (Appendix A).
+  // "Request" is allowed here: it names the feature, not a web request (Words rule 4).
+  featureRequestsTitle: "Feature requests",
+  featureRequestsIntro: `Tell us what would make ${APP_NAME} work better for you. Our team reads every request and replies here.`,
+  featureRequestSuggest: "Suggest a feature",
+  featureRequestSearchLabel: "Search requests",
+  featureRequestSearchButton: "Search",
+  featureRequestSearchClear: "Clear search",
+  featureRequestTabAll: "All requests",
+  featureRequestTabOrg: "From your organization",
+  featureRequestYourOrg: "Your organization",
+  /** Ticket §2, on a request of your own that is still waiting for review. */
+  featureRequestWaitingNote: "Only your organization can see this until our team reviews it.",
+  /** PHASE-17 Q4: any other request of your own that other organizations can't see. */
+  featureRequestPrivateNote: "Only your organization can see this.",
+  featureRequestTeamReplied: "Our team replied",
+  featureRequestVote: "I want this too",
+  featureRequestVoted: "You want this",
+  featureRequestVotes: (count: number) => (count === 1 ? "1 vote" : `${count} votes`),
+  featureRequestSuggestedOn: (date: string) => `Suggested ${date}`,
+  /** Left without a name once the author's account is removed, never "by Unknown" (P13). */
+  featureRequestSuggestedBy: (name: string | null, date: string) =>
+    name ? `Suggested by ${name} on ${date}` : `Suggested on ${date}`,
+  featureRequestsEmptyAll: "No feature requests yet. Press Suggest a feature to send the first one.",
+  featureRequestsEmptyOrg: "Your organization hasn't suggested anything yet. Press Suggest a feature to send one.",
+  featureRequestsNoMatch: "No requests match your search.",
+  featureRequestsCapped: (shown: number) => `Showing the first ${shown}. Search to find others.`,
+  featureRequestDialogTitle: "Suggest a feature",
+  featureRequestTitleLabel: "What would you like?",
+  featureRequestTitlePlaceholder: "For example: Remind us when receipts are missing before month end",
+  featureRequestDetailsLabel: "Tell us more",
+  featureRequestDetailsHelp: "What are you trying to do, and how would it help your team?",
+  featureRequestSend: "Send request",
+  featureRequestSending: "Sending…",
+  featureRequestSent: "Thanks. Your request was sent to our team.",
+  featureRequestTitleRequired: "Tell us what you would like.",
+  featureRequestDetailsRequired: "Tell us a little more about it.",
+  featureRequestTooLong: (max: number) => `Keep this to ${max.toLocaleString("en-US")} characters or fewer.`,
+  featureRequestDailyLimit: "You've sent a lot of requests today. Please try again tomorrow.",
+  /** The one answer for a request that is missing, hidden from this organization, or (for a
+   *  reply) another organization's: the three must be indistinguishable (PHASE-17 P9). */
+  featureRequestUnavailable: "This feature request is no longer available.",
+  featureRequestVotingClosed: "Votes are closed on this request.",
+  featureRequestBack: "Back to feature requests",
+  featureRequestRepliesTitle: "Replies",
+  featureRequestNoReplies: "No replies yet.",
+  featureRequestReplyLabel: "Add a reply",
+  featureRequestReplySend: "Send reply",
+  featureRequestReplySent: "Reply sent.",
+  featureRequestReplyRequired: "Write a reply first.",
+  /** How every staff reply is signed, on both sides (ticket §4, open question 4). */
+  featureRequestTeamSignature: `${APP_NAME} team`,
+
+  // PHASE-17: feature requests in /a.
+  staffSectionsLabel: "Sections",
+  staffSectionOrganizations: "Organizations",
+  staffSectionFeatureRequests: "Feature requests",
+  staffFeatureRequestsCount: (count: number) =>
+    count === 1 ? "1 feature request" : `${count} feature requests`,
+  staffFeatureRequestsAllStatuses: "All statuses",
+  staffFeatureRequestsNeedsAttention: "Needs attention",
+  staffFeatureRequestsNoneYet: "No feature requests yet.",
+  staffFeatureRequestsNoneMatch: "No feature requests match these filters.",
+  staffFeatureRequestsSearch: "Search requests or organizations",
+  staffFeatureRequestUnknownPerson: "Unknown",
+  staffFeatureRequestRequest: "Request",
+  staffFeatureRequestOrganization: "Organization",
+  staffFeatureRequestSuggestedBy: "Suggested by",
+  staffFeatureRequestSuggestedOn: "Suggested on",
+  staffFeatureRequestDate: "Date",
+  staffFeatureRequestShownToAll: "Shown to all",
+  staffFeatureRequestOriginal: "Original wording",
+  staffFeatureRequestEdit: "Edit wording",
+  staffFeatureRequestTitleField: "Title",
+  staffFeatureRequestDetailsField: "Details",
+  staffFeatureRequestSaved: "Wording saved.",
+  staffFeatureRequestNothingChanged: "Nothing changed.",
+  staffFeatureRequestStatus: "Status",
+  staffFeatureRequestStatusSaved: "Status updated.",
+  /** A status that can't be shown to others also turns the switch off (PHASE-17 P1), so the toast
+   *  says so rather than leaving staff to notice the switch moved. */
+  staffFeatureRequestStatusSavedHidden: "Status updated. Other organizations no longer see this request.",
+  staffFeatureRequestShowToAll: "Show to all organizations",
+  staffFeatureRequestShowToAllHelp:
+    "Other organizations see only the title, details, status and votes. They never see who asked or any replies.",
+  staffFeatureRequestShowBlocked:
+    "Choose a status other than Waiting for review or Already requested first.",
+  staffFeatureRequestShown: "Now shown to all organizations.",
+  staffFeatureRequestHidden: "Now shown only to its own organization.",
+  staffFeatureRequestVotesFrom: (votes: number, orgs: number) =>
+    `${votes === 1 ? "1 vote" : `${votes} votes`} from ${orgs === 1 ? "1 organization" : `${orgs} organizations`}`,
+  staffFeatureRequestReplyTo: (orgName: string) => `Reply to ${orgName}`,
+  staffFeatureRequestNotFound: "That feature request does not exist, or has been deleted.",
+  staffFeatureRequestsCapped: (shown: number) => `Showing the newest ${shown}.`,
+  staffFeatureRequestsIntro: "What customers have asked for, newest first.",
+  /** Read out beside the number on the Feature requests link; the number alone is what shows. */
+  staffFeatureRequestsNeedingAttention: (count: number) =>
+    count === 1 ? "1 needs attention" : `${count} need attention`,
+  staffFeatureRequestsShow: "Show",
+  staffFeatureRequestsAll: "All feature requests",
+  staffFeatureRequestYes: "Yes",
+  staffFeatureRequestNo: "No",
+  staffFeatureRequestVotesTitle: "Votes",
+  /** Rather than "0 votes from 0 organizations", once the author has taken back the only vote. */
+  staffFeatureRequestNoVotes: "No votes yet.",
+  /** Beside the list's count, one click to the requests that need an answer. */
+  staffFeatureRequestsShowAttention: (count: number) =>
+    count === 1 ? "Show the 1 that needs attention" : `Show the ${count} that need attention`,
 } as const;
 
 /**
@@ -974,6 +1088,35 @@ export const STATUS_LABELS: Record<"trial" | "active" | "past_due" | "cancelled"
   active: "Active",
   past_due: "Past due",
   cancelled: "Cancelled",
+};
+
+/**
+ * A feature request's status as customers and staff read it (PHASE-17, ticket §5). Keyed by the
+ * schema's enum through an erased `import type`, so a status added there fails to compile here
+ * until it has words.
+ */
+export const FEATURE_REQUEST_STATUS_LABELS: Record<FeatureRequestStatus, string> = {
+  waiting_for_review: "Waiting for review",
+  considering: "Considering",
+  planned: "Planned",
+  in_progress: "In progress",
+  released: "Released",
+  not_planned: "Not planned",
+  already_requested: "Already requested",
+};
+
+/**
+ * "What it tells the customer" (ticket §5). Shown only on a request of the reader's own
+ * organization: two of them mention a reply, which another organization never sees.
+ */
+export const FEATURE_REQUEST_STATUS_DESCRIPTIONS: Record<FeatureRequestStatus, string> = {
+  waiting_for_review: "Just sent. Our team hasn't looked at it yet.",
+  considering: "Our team is thinking about it.",
+  planned: "It will be built.",
+  in_progress: "It's being built now.",
+  released: "It's in the app now.",
+  not_planned: "It won't be built. A reply says why.",
+  already_requested: "Someone asked for this before. A reply points to the existing request.",
 };
 
 /** Inline explanation beside a disabled download button (m07, R4.3). */

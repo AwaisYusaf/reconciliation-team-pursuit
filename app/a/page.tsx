@@ -1,6 +1,7 @@
 import Link from "next/link";
 
-import { ButtonLabel, buttonClassName } from "@/src/components/ui/button";
+import { AdminSectionLinks } from "@/src/components/admin/section-links";
+import { Pagination } from "@/src/components/ui/pagination";
 import { PageTitle, Subtext } from "@/src/components/ui/surfaces";
 import { TableCard, Td, Th } from "@/src/components/ui/table";
 import { formatDateShort, todayIso } from "@/src/domain/dates";
@@ -8,6 +9,7 @@ import { PLAN_LABELS, STATUS_LABELS, UI } from "@/src/domain/strings";
 import { cn } from "@/src/lib/cn";
 import { parsePlanFilter, parseStatusFilter } from "@/src/modules/admin/directory";
 import { requireStaffPage } from "@/src/modules/admin/guard";
+import { countFeatureRequestsNeedingAttention } from "@/src/modules/feature-requests/staff-queries";
 import {
   loadOrgDirectory,
   loadOrgSummary,
@@ -16,7 +18,7 @@ import {
   type OrgStatusFilter,
 } from "@/src/modules/admin/queries";
 
-import { AccountBadges } from "./badges";
+import { AccountBadges } from "@/src/components/admin/account-badges";
 import { DirectoryFilters } from "./directory-filters";
 
 export const metadata = { title: "Organizations | AB Solutions admin" };
@@ -117,9 +119,10 @@ export default async function AdminPage({ searchParams }: { searchParams: Search
   };
   const requestedPage = Number(one(params.page) ?? "1");
 
-  const [summary, directory] = await Promise.all([
+  const [summary, directory, attention] = await Promise.all([
     loadOrgSummary(),
     loadOrgDirectory(filter, Number.isFinite(requestedPage) ? requestedPage : 1),
+    countFeatureRequestsNeedingAttention(),
   ]);
   const today = todayIso();
   const current = { ...filter, page: directory.page };
@@ -130,6 +133,7 @@ export default async function AdminPage({ searchParams }: { searchParams: Search
 
   return (
     <div>
+      <AdminSectionLinks current="organizations" attention={attention} />
       <PageTitle gradient className="mb-2">
         Organizations
       </PageTitle>
@@ -245,45 +249,11 @@ export default async function AdminPage({ searchParams }: { searchParams: Search
         </tbody>
       </TableCard>
 
-      {directory.pageCount > 1 && (
-        <nav aria-label="Pages" className="mt-5 flex items-center justify-between gap-4 flex-wrap">
-          <div className="text-[15px] text-sub">
-            {UI.pageOf(directory.page, directory.pageCount)}
-          </div>
-          <div className="flex items-center gap-2">
-            {directory.page > 1 ? (
-              <Link
-                href={withParams(current, { page: directory.page - 1 })}
-                className={buttonClassName("secondary", "min-h-11 px-4 text-[15px] no-underline")}
-              >
-                <ButtonLabel>Previous</ButtonLabel>
-              </Link>
-            ) : (
-              <span
-                aria-disabled="true"
-                className={buttonClassName("secondary", "min-h-11 px-4 text-[15px] opacity-50")}
-              >
-                Previous
-              </span>
-            )}
-            {directory.page < directory.pageCount ? (
-              <Link
-                href={withParams(current, { page: directory.page + 1 })}
-                className={buttonClassName("secondary", "min-h-11 px-4 text-[15px] no-underline")}
-              >
-                <ButtonLabel>Next</ButtonLabel>
-              </Link>
-            ) : (
-              <span
-                aria-disabled="true"
-                className={buttonClassName("secondary", "min-h-11 px-4 text-[15px] opacity-50")}
-              >
-                Next
-              </span>
-            )}
-          </div>
-        </nav>
-      )}
+      <Pagination
+        page={directory.page}
+        pageCount={directory.pageCount}
+        hrefFor={(page) => withParams(current, { page })}
+      />
     </div>
   );
 }

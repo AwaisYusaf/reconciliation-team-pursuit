@@ -107,10 +107,12 @@ describe("migration 0041: Stripe billing", () => {
     expect(sql).toContain('ALTER TABLE "org_account_events" ADD COLUMN "via_stripe" boolean DEFAULT false NOT NULL;');
   });
 
-  it("is the newest entry in the migration journal", () => {
+  // "Is the newest entry in the journal" moved to migration-0042.test.ts when 0042 was added;
+  // this one only checks 0041 is still in it, under the same tag.
+  it("is in the migration journal as 0041_stripe_billing", () => {
     const journal = JSON.parse(readFileSync(path.join(drizzleDir, "meta", "_journal.json"), "utf8")) as {
       entries: Array<{ idx: number; tag: string }>;
     };
-    expect(journal.entries.at(-1)).toMatchObject({ idx: 41, tag: "0041_stripe_billing" });
+    expect(journal.entries.find((entry) => entry.idx === 41)).toMatchObject({ tag: "0041_stripe_billing" });
   });
 });

@@ -1721,6 +1721,151 @@ export const monthlySummaries = pgTable(
   ],
 );
 
+/* -------------------------------------------------------- feature requests */
+
+/**
+ * feature_requests.status — what our team has decided about a suggestion (PHASE-17 §2).
+ *
+ * `waiting_for_review` and `already_requested` can never be shown to other organizations
+ * (`feature_requests_shown_status_ck`); the words for each are `FEATURE_REQUEST_STATUS_LABELS`.
+ */
+export const featureRequestStatus = pgEnum("feature_request_status", [
+  "waiting_for_review",
+  "considering",
+  "planned",
+  "in_progress",
+  "released",
+  "not_planned",
+  "already_requested",
+]);
+
+/**
+ * A customer's suggestion for the app (PHASE-17, D-127).
+ *
+ * The one table any organization can read another organization's rows from: a request is seen by
+ * its own organization, and by everyone else only while `shown_to_all_at` is set, and then only
+ * its title, details, status and votes (`visibleTo` in `src/modules/feature-requests/queries.ts`
+ * is the single predicate). Deleted with its organization; kept when its author is removed.
+ */
+export const featureRequests = pgTable(
+  "feature_requests",
+  {
+    id: id(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    /** Null once that account is removed: the request stays (ticket, "Good to know"). */
+    authorUserId: uuid("author_user_id").references(() => users.id, { onDelete: "set null" }),
+    /** What everyone sees. Staff may reword it; the customer's own words move to `original_*`. */
+    title: text().notNull(),
+    details: text().notNull(),
+    /**
+     * The customer's wording, saved by the first staff edit and never again (PHASE-17 P12), so a
+     * second edit can't overwrite it. Staff-only: no customer query reads or searches these,
+     * since an edit usually exists to remove a name or a figure.
+     */
+    originalTitle: text("original_title"),
+    originalDetails: text("original_details"),
+    status: featureRequestStatus().notNull().default("waiting_for_review"),
+    /** "Show to all organizations". Null means only the request's own organization sees it. */
+    shownToAllAt: timestamp("shown_to_all_at", { withTimezone: true }),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    // Target of `feature_request_replies`' composite FK, as on `expense_drafts`.
+    uniqueIndex("feature_requests_id_org_uq").on(t.id, t.orgId),
+    // The "From your organization" tab and the org card in /a, both newest first.
+    index("feature_requests_org_idx").on(t.orgId, t.createdAt),
+    // The ten-a-day count, and the FK check when a user is deleted.
+    index("feature_requests_author_idx").on(t.authorUserId, t.createdAt),
+    check("feature_requests_title_ck", sql`char_length(${t.title}) between 1 and 100`),
+    check("feature_requests_details_ck", sql`char_length(${t.details}) between 1 and 2000`),
+    check(
+      "feature_requests_original_ck",
+      sql`(${t.originalTitle} is null) = (${t.originalDetails} is null)`,
+    ),
+    // "Waiting for review" and "Already requested" are never shown to other organizations
+    // (ticket §5). Unstorable rather than filtered: a status change to either clears the
+    // switch in the same UPDATE. Compared as text so a status added to the enum later can't
+    // trip D-115's same-transaction rule.
+    check(
+      "feature_requests_shown_status_ck",
+      sql`${t.shownToAllAt} is null or ${t.status}::text not in ('waiting_for_review', 'already_requested')`,
+    ),
+  ],
+);
+
+/**
+ * "I want this too": one row per person per request (PHASE-17 P10, P11).
+ *
+ * `org_id` is the voter's organization, not the request's: deleting an organization removes its
+ * own people's votes on everyone's requests, and staff see "from N organizations" without going
+ * through `users`. `user_id` is set null when the account is removed, and the vote still counts;
+ * NULLs are distinct in the unique index, so any number of such votes can remain.
+ */
+export const featureRequestVotes = pgTable(
+  "feature_request_votes",
+  {
+    id: id(),
+    requestId: uuid("request_id")
+      .notNull()
+      .references(() => featureRequests.id, { onDelete: "cascade" }),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    userId: uuid("user_id").references(() => users.id, { onDelete: "set null" }),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    uniqueIndex("feature_request_votes_request_user_uq").on(t.requestId, t.userId),
+    index("feature_request_votes_org_idx").on(t.orgId),
+    index("feature_request_votes_user_idx").on(t.userId),
+  ],
+);
+
+/**
+ * The conversation under one request, between its own organization and our team (PHASE-17).
+ *
+ * Append-only: nothing edits or deletes a reply, which is what lets "Needs attention" and "Our
+ * team replied" be read off the newest one instead of being stored (P2). Never shown to another
+ * organization. `from_staff` survives either author link being set null, so a reply still reads
+ * as our team's or the customer's after the account behind it is gone.
+ */
+export const featureRequestReplies = pgTable(
+  "feature_request_replies",
+  {
+    id: id(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    requestId: uuid("request_id").notNull(),
+    /** No default: every insert says who wrote it. */
+    fromStaff: boolean("from_staff").notNull(),
+    authorUserId: uuid("author_user_id").references(() => users.id, { onDelete: "set null" }),
+    authorStaffId: uuid("author_staff_id").references(() => staffUsers.id, {
+      onDelete: "set null",
+    }),
+    body: text().notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    index("feature_request_replies_request_idx").on(t.requestId, t.createdAt),
+    index("feature_request_replies_org_idx").on(t.orgId),
+    index("feature_request_replies_author_idx").on(t.authorUserId),
+    // A reply belongs to its request's organization, whoever wrote it.
+    foreignKey({
+      columns: [t.requestId, t.orgId],
+      foreignColumns: [featureRequests.id, featureRequests.orgId],
+    }).onDelete("cascade"),
+    check("feature_request_replies_body_ck", sql`char_length(${t.body}) between 1 and 2000`),
+    // One way only, like `shared_links_revoked_by_ck`: an author link can be set null when its
+    // account is removed, so "exactly one author" would fail on that delete.
+    check("feature_request_replies_staff_ck", sql`${t.fromStaff} or ${t.authorStaffId} is null`),
+    check("feature_request_replies_user_ck", sql`not ${t.fromStaff} or ${t.authorUserId} is null`),
+  ],
+);
+
 /* -------------------------------------------------------------------- types */
 
 export type Organization = typeof organizations.$inferSelect;
@@ -1753,6 +1898,9 @@ export type MonthSnapshotTotals = typeof monthSnapshotTotals.$inferSelect;
 export type AiUsageEvent = typeof aiUsageEvents.$inferSelect;
 export type MonthlySummary = typeof monthlySummaries.$inferSelect;
 export type SharedLink = typeof sharedLinks.$inferSelect;
+export type FeatureRequest = typeof featureRequests.$inferSelect;
+export type FeatureRequestVote = typeof featureRequestVotes.$inferSelect;
+export type FeatureRequestReply = typeof featureRequestReplies.$inferSelect;
 
 export type DocumentKind = (typeof documentKind.enumValues)[number];
 export type DocumentStatus = (typeof documentStatus.enumValues)[number];
@@ -1770,3 +1918,4 @@ export type AiUsageOutcome = (typeof aiUsageOutcome.enumValues)[number];
 export type AiUsageDocumentSource = (typeof aiUsageDocumentSource.enumValues)[number];
 export type AiUsageDocumentKind = (typeof aiUsageDocumentKind.enumValues)[number];
 export type SummaryTrigger = (typeof summaryTrigger.enumValues)[number];
+export type FeatureRequestStatus = (typeof featureRequestStatus.enumValues)[number];

@@ -41,6 +41,8 @@ const ALLOWED: Record<string, string> = {
   "src/db/": "the schema, the seed and the test-org fixtures",
   "src/modules/admin/": "the staff dashboard shows and edits them; staff access is not an org's plan",
   "app/a/": "the staff dashboard pages",
+  "src/components/admin/account-badges.tsx":
+    "the staff dashboard's status and complimentary badges, moved out of app/a/badges.tsx (PHASE-17)",
   "src/domain/strings.ts": "`UI.complimentaryUntil` is the /a badge's wording, not a check",
 };
 

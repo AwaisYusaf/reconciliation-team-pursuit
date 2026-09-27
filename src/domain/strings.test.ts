@@ -7,6 +7,8 @@ import {
   coverSheetHeading,
   coverSheetTitle,
   downloadBlockedReason,
+  FEATURE_REQUEST_STATUS_DESCRIPTIONS,
+  FEATURE_REQUEST_STATUS_LABELS,
   lineItemDeleteBlocked,
   monthlySummaryFilename,
   monthlySummaryTitle,
@@ -476,6 +478,8 @@ function sampleUiTexts(): string[] {
   return [
     ...Object.values(PLAN_LABELS),
     ...Object.values(STATUS_LABELS),
+    ...Object.values(FEATURE_REQUEST_STATUS_LABELS),
+    ...Object.values(FEATURE_REQUEST_STATUS_DESCRIPTIONS),
     downloadBlockedReason(1),
     downloadBlockedReason(3),
     lineItemDeleteBlocked("Salary"),
@@ -531,6 +535,26 @@ function sampleUiTexts(): string[] {
           return [(value as (used: string, limit: string) => string)("212 MB", "5 GB")];
         case "organizationsCount":
           return [(value as (n: number) => string)(2)];
+        case "featureRequestVotes":
+        case "staffFeatureRequestsCount":
+        case "staffFeatureRequestsNeedingAttention":
+        case "staffFeatureRequestsShowAttention":
+          return [0, 1, 7].map((n) => (value as (n: number) => string)(n));
+        case "featureRequestsCapped":
+        case "staffFeatureRequestsCapped":
+          return [(value as (n: number) => string)(100)];
+        case "featureRequestTooLong":
+          return [(value as (n: number) => string)(2000)];
+        case "featureRequestSuggestedBy":
+          return [
+            (value as (n: string | null, d: string) => string)("Misty", "3/12/2026"),
+            (value as (n: string | null, d: string) => string)(null, "3/12/2026"),
+          ];
+        case "staffFeatureRequestVotesFrom":
+          return [
+            (value as (v: number, o: number) => string)(1, 1),
+            (value as (v: number, o: number) => string)(7, 4),
+          ];
         case "historyPlanChanged":
           return [(value as (from: string, to: string) => string)("Reconciliation", "Reconciliation + AI")];
         case "historyStatusChanged":
@@ -587,5 +611,55 @@ describe("funding source limit copy (Phase 16 Track C, C8 verbatim)", () => {
       "Your plan switches to Reconciliation on 10/1/2026, which includes one active funding source. To add another, cancel that switch in Plan & billing.",
     );
     expect(UI.billingSeePlans).toBe("See plans");
+  });
+});
+
+describe("feature requests copy (PHASE-17, Appendix A verbatim)", () => {
+  it("pins the ticket's wording", () => {
+    expect(UI.featureRequestsIntro).toBe(
+      "Tell us what would make Stay Funded 360 work better for you. Our team reads every request and replies here.",
+    );
+    expect(UI.featureRequestSuggest).toBe("Suggest a feature");
+    expect(UI.featureRequestSearchLabel).toBe("Search requests");
+    expect(UI.featureRequestTabAll).toBe("All requests");
+    expect(UI.featureRequestTabOrg).toBe("From your organization");
+    expect(UI.featureRequestWaitingNote).toBe("Only your organization can see this until our team reviews it.");
+    expect(UI.featureRequestTeamReplied).toBe("Our team replied");
+    expect(UI.featureRequestVote).toBe("I want this too");
+    expect(UI.featureRequestVoted).toBe("You want this");
+    expect(UI.featureRequestTitleLabel).toBe("What would you like?");
+    expect(UI.featureRequestTitlePlaceholder).toBe(
+      "For example: Remind us when receipts are missing before month end",
+    );
+    expect(UI.featureRequestDetailsLabel).toBe("Tell us more");
+    expect(UI.featureRequestDetailsHelp).toBe("What are you trying to do, and how would it help your team?");
+    expect(UI.featureRequestSend).toBe("Send request");
+    expect(UI.featureRequestSent).toBe("Thanks. Your request was sent to our team.");
+    expect(UI.featureRequestDailyLimit).toBe("You've sent a lot of requests today. Please try again tomorrow.");
+    expect(UI.featureRequestTeamSignature).toBe("Stay Funded 360 team");
+    expect(UI.featureRequestSuggestedBy("Misty", "3/12/2026")).toBe("Suggested by Misty on 3/12/2026");
+    expect(UI.featureRequestSuggestedBy(null, "3/12/2026")).toBe("Suggested on 3/12/2026");
+    expect(UI.featureRequestVotes(1)).toBe("1 vote");
+    expect(UI.featureRequestVotes(7)).toBe("7 votes");
+    expect(UI.featureRequestTooLong(2000)).toBe("Keep this to 2,000 characters or fewer.");
+    expect(UI.staffFeatureRequestShowToAll).toBe("Show to all organizations");
+    expect(UI.staffFeatureRequestShowToAllHelp).toBe(
+      "Other organizations see only the title, details, status and votes. They never see who asked or any replies.",
+    );
+    expect(UI.staffFeatureRequestVotesFrom(7, 4)).toBe("7 votes from 4 organizations");
+    expect(UI.staffFeatureRequestReplyTo("Team Pursuit")).toBe("Reply to Team Pursuit");
+  });
+
+  it("names every status as ticket §5 does", () => {
+    expect(Object.values(FEATURE_REQUEST_STATUS_LABELS)).toEqual([
+      "Waiting for review",
+      "Considering",
+      "Planned",
+      "In progress",
+      "Released",
+      "Not planned",
+      "Already requested",
+    ]);
+    expect(FEATURE_REQUEST_STATUS_DESCRIPTIONS.not_planned).toBe("It won't be built. A reply says why.");
   });
 });

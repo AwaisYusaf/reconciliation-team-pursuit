@@ -505,9 +505,65 @@ Checks `shared_links_revoked_password_ck` (`revoked_at is null or password_hash 
 link keeps no password) and `shared_links_revoked_by_ck` (`revoked_by is null or revoked_at is not
 null` — one way only, since `revoked_by` is set null when that account is removed).
 
+### feature_requests (Phase 17, D-127)
+A customer's suggestion for the app, sent from the avatar menu's Feature requests page. The one
+table any organization can read another organization's rows from: a request is seen by its own
+organization always, and by every other organization only while `shown_to_all_at` is set, and then
+only its title, details, status and votes (`visibleTo` in `src/modules/feature-requests/queries.ts`
+is the single predicate). Staff read and change it in `/a`.
+
+| Field | Type | Notes |
+|---|---|---|
+| id | uuid PK | |
+| org_id | uuid FK | cascade delete with organization |
+| author_user_id | uuid FK null | who suggested it; set null when that account is removed, and the request stays |
+| title | text | check 1 to 100 characters; runs of whitespace folded to one space by the app |
+| details | text | check 1 to 2000 characters, trimmed; plain text, never linkified |
+| original_title / original_details | text null | the customer's wording, saved by the first staff edit and never again (`coalesce` in the same UPDATE). Staff-only: no customer query reads or searches them. Check: both null or both set |
+| status | enum `feature_request_status` | `waiting_for_review` (default), `considering`, `planned`, `in_progress`, `released`, `not_planned`, `already_requested` |
+| shown_to_all_at | timestamptz null | "Show to all organizations". Check `feature_requests_shown_status_ck`: null while the status is `waiting_for_review` or `already_requested` (compared as `status::text`, D-115); a status change to either clears it in the same UPDATE |
+
+Unique `(id, org_id)` is the target of the replies' composite FK. Index `(org_id, created_at)` serves
+the "From your organization" tab and the organization card in `/a`; `(author_user_id, created_at)`
+serves the ten-a-day count and the FK check on a user delete.
+
+### feature_request_votes (Phase 17, D-127)
+"I want this too": one row per person per request. The author's vote is inserted with the request.
+
+| Field | Type | Notes |
+|---|---|---|
+| id | uuid PK | |
+| request_id | uuid FK | cascade delete with the request |
+| org_id | uuid FK | **the voter's** organization, not the request's; cascade delete, so deleting an organization removes its people's votes on every request, and staff count "from N organizations" without going through `users` |
+| user_id | uuid FK null | set null when that account is removed; the vote still counts |
+
+Unique `(request_id, user_id)`: one vote per person. NULLs are distinct, so any number of removed
+people's votes can remain. Indexes `(org_id)` and `(user_id)` serve the cascades.
+
+### feature_request_replies (Phase 17, D-127)
+The conversation under one request, between its own organization and our team. Append-only:
+nothing edits or deletes a reply, so "Needs attention" and "Our team replied" are read off the
+newest one rather than stored. Never shown to another organization.
+
+| Field | Type | Notes |
+|---|---|---|
+| id | uuid PK | |
+| org_id | uuid FK | the request's organization, whoever wrote the reply; cascade delete |
+| request_id | uuid | composite FK `(request_id, org_id) → feature_requests(id, org_id)`, cascade |
+| from_staff | boolean | no default; survives either author link being set null |
+| author_user_id | uuid FK null | the customer who wrote it; set null on removal |
+| author_staff_id | uuid FK null | the staff member who wrote it (`staff_users`); set null on removal. Never shown: staff replies are signed "Stay Funded 360 team" |
+| body | text | check 1 to 2000 characters, trimmed |
+
+One-way checks `feature_request_replies_staff_ck` (`from_staff or author_staff_id is null`) and
+`feature_request_replies_user_ck` (`not from_staff or author_user_id is null`): an "exactly one
+author" check would fail when a delete sets the author to null. Index `(request_id, created_at)`
+serves the thread and the newest-reply subquery; `(org_id)` and `(author_user_id)` serve the
+cascades.
+
 ## Relationships summary
 
-organizations 1—1 contract_settings (deprecated) · 1—n users, payment_sources, supporting_doc_types, funding_sources, line_items, expenses, month_documents, month_statuses, month_lock_events, vendor_defaults, recurring_items, generated_artifacts, ai_usage_events, monthly_summaries, shared_links (cascade delete). generated_artifacts 1—n shared_links (no action; pinned artifacts are never deleted). funding_sources 1—n line_items, expenses, month_documents, month_statuses, month_lock_events, generated_artifacts, monthly_summaries, shared_links (no action; funding sources are never deleted), ai_usage_events (set null on delete). expenses 1—n expense_documents. line_items 1—n expenses (restrict), recurring_items (cascade after confirm), vendor_defaults (set null). users 1—n user_tour_progress (cascade delete), month_lock_events (set null on delete), ai_usage_events (set null on delete), monthly_summaries as written_by/edited_by, shared_links as created_by/shared_by/revoked_by (set null on delete).
+organizations 1—1 contract_settings (deprecated) · 1—n users, payment_sources, supporting_doc_types, funding_sources, line_items, expenses, month_documents, month_statuses, month_lock_events, vendor_defaults, recurring_items, generated_artifacts, ai_usage_events, monthly_summaries, shared_links, feature_requests, feature_request_votes (the voter's organization), feature_request_replies (cascade delete). feature_requests 1—n feature_request_votes, feature_request_replies (cascade). generated_artifacts 1—n shared_links (no action; pinned artifacts are never deleted). funding_sources 1—n line_items, expenses, month_documents, month_statuses, month_lock_events, generated_artifacts, monthly_summaries, shared_links (no action; funding sources are never deleted), ai_usage_events (set null on delete). expenses 1—n expense_documents. line_items 1—n expenses (restrict), recurring_items (cascade after confirm), vendor_defaults (set null). users 1—n user_tour_progress (cascade delete), month_lock_events (set null on delete), ai_usage_events (set null on delete), monthly_summaries as written_by/edited_by, shared_links as created_by/shared_by/revoked_by, feature_requests as author, feature_request_votes as voter, feature_request_replies as author (set null on delete). staff_users 1—n feature_request_replies as author (set null on delete).
 
 ## S3 layout (private bucket)
 
@@ -545,4 +601,5 @@ Deleting an expense/document deletes S3 objects inline best-effort; a nightly sw
 - Composite FKs (D-93 2.2): every grant-scoped table's `(funding_source_id, org_id) → funding_sources(id, org_id)`, and `expenses(line_item_id, funding_source_id) → line_items(id, funding_source_id)` — cross-source and cross-org rows are unrepresentable at the database level. `ON DELETE NO ACTION` (not `RESTRICT`) so org deletion cascades in one statement.
 - `generated_artifacts` live-cache uniqueness coalesces the nullable `line_item_id` (SQL NULLs are distinct in unique indexes, which would otherwise allow duplicate packet/summary cache rows).
 - Indexes for hot paths (declared in the Drizzle schema): expenses `(org_id, funding_source_id, month)`; expense_documents `(expense_id, kind, sort_order)`; month_documents `(org_id, funding_source_id, month, category, sort_order)`; month_lock_events `(org_id, funding_source_id, month, created_at)`; generated_artifacts `(org_id, funding_source_id, month, type, line_item_id)`; sessions `(user_id)`, `(expires_at)`; staff_sessions `(staff_user_id)`, `(expires_at)`; org_account_events `(org_id, created_at)`.
+- A feature request is visible to another organization only while `shown_to_all_at` is set, and that is unstorable while its status is `waiting_for_review` or `already_requested` (`feature_requests_shown_status_ck`, D-127).
 - No denormalized totals — all figures derive at read time through the calculation service (R10.2).

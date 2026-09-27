@@ -3,7 +3,7 @@ import { Card, Skeleton } from "@/src/components/ui/surfaces";
 
 /**
  * One organization: the identity card with its detail pairs and the users table, then the
- * usage and AI-usage figure grids, then actions and history.
+ * usage and AI-usage figure grids, then actions, feature requests and history.
  *
  * A stack of cards rather than one page-wide block, because that is what the screen is — the
  * skeleton reproduces the gaps between them so nothing slides when the real cards land.
@@ -41,6 +41,16 @@ export default function AdminOrgLoading() {
         <div className="flex flex-wrap gap-3">
           <Skeleton className="h-12 w-40 rounded-[3px]" />
           <Skeleton className="h-12 w-40 rounded-[3px]" />
+        </div>
+      </Card>
+
+      {/* Feature requests (PHASE-17): a heading over a short list. */}
+      <Card className="p-4 sm:p-5 lg:p-6 mb-6">
+        <Skeleton className="h-5 w-36 mb-2" />
+        <div className="flex flex-col gap-2.5">
+          {[0, 1].map((entry) => (
+            <Skeleton key={entry} className="h-4 w-2/3" />
+          ))}
         </div>
       </Card>
 

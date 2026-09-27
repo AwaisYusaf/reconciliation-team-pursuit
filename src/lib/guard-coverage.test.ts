@@ -187,6 +187,12 @@ const PAGES = FILES.filter(
   (f) => (f.startsWith("app/r/") || f.startsWith("app/(auth)/onboarding/")) && f.endsWith("/page.tsx"),
 );
 
+/** Every `/a` page shows data from every organization, so each one checks for staff itself: the
+ *  layout does too, but a layout doesn't re-render on navigation (D-98). Added with PHASE-17's
+ *  two feature request pages. */
+const STAFF_PAGES = FILES.filter((f) => f.startsWith("app/a/") && f.endsWith("/page.tsx"));
+const STAFF_PAGE_GUARD = "requireStaffPage";
+
 const routeMethods = FILES.filter((f) => f.endsWith("/route.ts")).flatMap((file) =>
   parsed.get(file)!.exports.filter((e) => HTTP_METHODS.has(e.name)),
 );
@@ -252,6 +258,14 @@ describe("U-18: every entry point refuses an unpaid organization unless allow-li
       (f) => f !== PLAN_PAGE && f !== "src/lib/page-session.ts" && parsed.get(f)!.refs.has(PLAN_PAGE_GUARD),
     );
     expect(planPageGuardUsers).toEqual([]);
+  });
+
+  it("staff pages: every app/a page calls requireStaffPage()", () => {
+    expect(STAFF_PAGES).toEqual(
+      expect.arrayContaining(["app/a/page.tsx", "app/a/orgs/[id]/page.tsx", "app/a/feature-requests/[id]/page.tsx"]),
+    );
+    const offenders = STAFF_PAGES.filter((page) => !parsed.get(page)!.defaultExport?.refs.has(STAFF_PAGE_GUARD));
+    expect(offenders).toEqual([]);
   });
 
   it("the /r layout checks the plan before it loads any organization data", () => {
