@@ -1727,7 +1727,7 @@ export const monthlySummaries = pgTable(
  * feature_requests.status — what our team has decided about a suggestion (PHASE-17 §2).
  *
  * `waiting_for_review` and `already_requested` can never be shown to other organizations
- * (`feature_requests_shown_status_ck`); the customer wording for each is `UI.featureRequestStatus`.
+ * (`feature_requests_shown_status_ck`); the words for each are `FEATURE_REQUEST_STATUS_LABELS`.
  */
 export const featureRequestStatus = pgEnum("feature_request_status", [
   "waiting_for_review",

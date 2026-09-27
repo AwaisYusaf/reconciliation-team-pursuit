@@ -106,7 +106,7 @@ export function FeatureRequestFilters({ filter }: { filter: StaffFeatureRequestF
           value={filter.attention ? "attention" : ""}
           onValueChange={(next) => navigate({ attention: next === "attention" })}
         >
-          <option value="">{UI.staffFeatureRequestsEverything}</option>
+          <option value="">{UI.staffFeatureRequestsAll}</option>
           <option value="attention">{UI.staffFeatureRequestsNeedsAttention}</option>
         </Select>
       </div>

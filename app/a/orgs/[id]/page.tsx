@@ -32,7 +32,7 @@ import {
 import { userDisplay } from "@/src/domain/user-display";
 
 import { AccountActions } from "./account-actions";
-import { AccountBadges } from "../../badges";
+import { AccountBadges } from "@/src/components/admin/account-badges";
 
 /** Named per organization, so two open tabs are tellable apart. */
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {

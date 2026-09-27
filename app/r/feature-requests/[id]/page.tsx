@@ -6,7 +6,7 @@ import { ReplyThread } from "@/src/components/feature-requests/reply-thread";
 import { VoteButton } from "@/src/components/feature-requests/vote-button";
 import { Card, CARD_PADDING, PageHeader, SectionTitle } from "@/src/components/ui/surfaces";
 import { formatDateUS, todayIso } from "@/src/domain/dates";
-import { backHref, votingOpen } from "@/src/domain/feature-requests";
+import { backHref, LIST_PATH, votingOpen } from "@/src/domain/feature-requests";
 import {
   FEATURE_REQUEST_STATUS_DESCRIPTIONS,
   FEATURE_REQUEST_STATUS_LABELS,
@@ -44,7 +44,7 @@ export default async function FeatureRequestPage({
   const request = await loadFeatureRequest(session, id);
   if (!request) notFound();
 
-  const back = backHref("/r/feature-requests", backParam);
+  const back = backHref(LIST_PATH, backParam);
   const own = request.kind === "own" ? request : null;
 
   return (

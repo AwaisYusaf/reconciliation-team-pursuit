@@ -4,8 +4,8 @@ import { notFound } from "next/navigation";
 import { ReplyForm } from "@/src/components/feature-requests/reply-form";
 import { ReplyThread } from "@/src/components/feature-requests/reply-thread";
 import { Card, PageTitle, SubsectionTitle } from "@/src/components/ui/surfaces";
-import { formatDateShort, todayIso } from "@/src/domain/dates";
-import { backHref } from "@/src/domain/feature-requests";
+import { formatDateShort, formatDateTimeShort, todayIso } from "@/src/domain/dates";
+import { backHref, STAFF_LIST_PATH } from "@/src/domain/feature-requests";
 import { UI } from "@/src/domain/strings";
 import { userDisplay } from "@/src/domain/user-display";
 import { requireStaffPage } from "@/src/modules/admin/guard";
@@ -38,15 +38,18 @@ export default async function StaffFeatureRequestPage({
   const request = await loadStaffFeatureRequest(id);
   if (!request) notFound();
 
-  const author = request.authorEmail
-    ? `${userDisplay(request.authorName, request.authorEmail)} (${request.authorEmail})`
-    : UI.staffFeatureRequestUnknownPerson;
+  // Name and email (ticket §7), the email once when there is no name on file.
+  const author = !request.authorEmail
+    ? UI.staffFeatureRequestUnknownPerson
+    : request.authorName?.trim()
+      ? `${userDisplay(request.authorName, request.authorEmail)} (${request.authorEmail})`
+      : request.authorEmail;
 
   return (
     <div className="flex flex-col gap-6">
       <div>
         <Link
-          href={backHref("/a/feature-requests", back)}
+          href={backHref(STAFF_LIST_PATH, back)}
           className="inline-flex items-center gap-1.5 text-[15px] text-sub hover:text-ink"
         >
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
@@ -95,9 +98,24 @@ export default async function StaffFeatureRequestPage({
         )}
       </Card>
 
+      {/* The conversation straight under the request: answering is what a Needs attention
+          visit is for, so the reply box comes before status and votes. */}
       <Card className={CARD}>
         <SubsectionTitle gradient className="mb-3">
-          {UI.staffFeatureRequestStatusTitle}
+          {UI.featureRequestRepliesTitle}
+        </SubsectionTitle>
+        <ReplyThread replies={request.replies} formatAt={formatDateTimeShort} />
+        <div className="mt-5">
+          <ReplyForm
+            requestId={request.id}
+            label={UI.staffFeatureRequestReplyTo(request.orgName)}
+            send={staffReplyToFeatureRequestAction}
+          />
+        </div>
+      </Card>
+      <Card className={CARD}>
+        <SubsectionTitle gradient className="mb-3">
+          {UI.staffFeatureRequestStatus}
         </SubsectionTitle>
         <StatusAndVisibility requestId={request.id} status={request.status} shownToAll={request.shownToAll} />
       </Card>
@@ -107,7 +125,9 @@ export default async function StaffFeatureRequestPage({
           {UI.staffFeatureRequestVotesTitle}
         </SubsectionTitle>
         <p className="m-0 text-[15px] text-ink">
-          {UI.staffFeatureRequestVotesFrom(request.votes, request.votesByOrg.length)}
+          {request.votes === 0
+            ? UI.staffFeatureRequestNoVotes
+            : UI.staffFeatureRequestVotesFrom(request.votes, request.votesByOrg.length)}
         </p>
         {request.votesByOrg.length > 0 && (
           <ul className="mt-2 divide-y divide-line">
@@ -123,19 +143,6 @@ export default async function StaffFeatureRequestPage({
         )}
       </Card>
 
-      <Card className={CARD}>
-        <SubsectionTitle gradient className="mb-3">
-          {UI.featureRequestRepliesTitle}
-        </SubsectionTitle>
-        <ReplyThread replies={request.replies} />
-        <div className="mt-5">
-          <ReplyForm
-            requestId={request.id}
-            label={UI.staffFeatureRequestReplyTo(request.orgName)}
-            send={staffReplyToFeatureRequestAction}
-          />
-        </div>
-      </Card>
     </div>
   );
 }

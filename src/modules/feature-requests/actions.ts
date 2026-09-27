@@ -13,17 +13,15 @@ import { z } from "zod";
 
 import { db } from "@/src/db";
 import { featureRequestReplies, featureRequests, featureRequestVotes } from "@/src/db/schema";
-import { ORG_TIME_ZONE, todayIso } from "@/src/domain/dates";
+import { ORG_TIME_ZONE } from "@/src/domain/dates";
 import {
-  FEATURE_REQUEST_DETAILS_MAX,
-  FEATURE_REQUEST_REPLY_MAX,
-  FEATURE_REQUEST_TITLE_MAX,
+  checkReplyBody,
+  checkWording,
   FEATURE_REQUESTS_PER_DAY,
-  normalizeTitle,
   votingOpen,
 } from "@/src/domain/feature-requests";
 import { UI } from "@/src/domain/strings";
-import { fail, ok, type ActionResult, type FieldErrors } from "@/src/lib/action-result";
+import { fail, ok, type ActionResult } from "@/src/lib/action-result";
 import { actionSession } from "@/src/lib/action-session";
 
 import { findVisibleFeatureRequest } from "./queries";
@@ -32,18 +30,14 @@ const suggestSchema = z.object({ title: z.string(), details: z.string() });
 const voteSchema = z.object({ requestId: z.string(), want: z.boolean() });
 const replySchema = z.object({ requestId: z.string(), body: z.string() });
 
-/** The first field error as the message, with every field's own message beside it. */
-function invalidFields(fieldErrors: FieldErrors): ActionResult<never> | null {
-  const first = Object.values(fieldErrors)[0];
-  return first ? fail(first, fieldErrors) : null;
-}
-
 /**
  * Suggest a feature (ticket §3): the request waits for review, seen only by this organization,
  * and the person who sent it has the first vote on it.
  *
  * At most ten a day per person, counted in the database on the America/Detroit day (P5). The
- * advisory lock is per person, so two sends at once can't both see nine and both get in.
+ * advisory lock is per person, so two sends at once can't both see nine and both get in. The day
+ * starts at Detroit midnight by the database's own clock, the one that stamps `created_at`, so a
+ * send that waits on the lock across midnight can't count one day and be dated the other.
  */
 export async function suggestFeatureAction(input: {
   title: string;
@@ -54,20 +48,12 @@ export async function suggestFeatureAction(input: {
 
   const parsed = suggestSchema.safeParse(input);
   if (!parsed.success) return fail(UI.requestRefused);
-  const title = normalizeTitle(parsed.data.title);
-  const details = parsed.data.details.trim();
-
-  const fieldErrors: FieldErrors = {};
-  if (!title) fieldErrors.title = UI.featureRequestTitleRequired;
-  else if (title.length > FEATURE_REQUEST_TITLE_MAX) {
-    fieldErrors.title = UI.featureRequestTooLong(FEATURE_REQUEST_TITLE_MAX);
+  const wording = checkWording(parsed.data);
+  if (!wording.ok) {
+    const { fieldErrors } = wording;
+    return fail((fieldErrors.title ?? fieldErrors.details)!, fieldErrors);
   }
-  if (!details) fieldErrors.details = UI.featureRequestDetailsRequired;
-  else if (details.length > FEATURE_REQUEST_DETAILS_MAX) {
-    fieldErrors.details = UI.featureRequestTooLong(FEATURE_REQUEST_DETAILS_MAX);
-  }
-  const invalid = invalidFields(fieldErrors);
-  if (invalid) return invalid;
+  const { title, details } = wording;
 
   const id = await db.transaction(async (tx) => {
     await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`feature-requests:${session.userId}`}))`);
@@ -77,7 +63,7 @@ export async function suggestFeatureAction(input: {
       .where(
         and(
           eq(featureRequests.authorUserId, session.userId),
-          sql`to_char(${featureRequests.createdAt} at time zone ${ORG_TIME_ZONE}, 'YYYY-MM-DD') = ${todayIso()}`,
+          sql`${featureRequests.createdAt} >= (date_trunc('day', now() at time zone ${ORG_TIME_ZONE}) at time zone ${ORG_TIME_ZONE})`,
         ),
       );
     if ((today?.sent ?? 0) >= FEATURE_REQUESTS_PER_DAY) return null;
@@ -123,25 +109,29 @@ export async function setFeatureRequestVoteAction(input: {
   if (!parsed.success) return fail(UI.requestRefused);
   const { requestId, want } = parsed.data;
 
-  // Visibility first, then whether voting is open: the other order would tell another
-  // organization that a hidden request exists and has been released (P9).
-  const request = await findVisibleFeatureRequest(db, session.orgId, requestId);
-  if (!request) return fail(UI.featureRequestUnavailable);
-  if (!votingOpen(request.status)) return fail(UI.featureRequestVotingClosed);
+  // Checked and written in one transaction, the request held FOR SHARE: staff hiding or closing
+  // it in between would otherwise let a vote land on a request that just stopped taking them.
+  return db.transaction(async (tx) => {
+    // Visibility first, then whether voting is open: the other order would tell another
+    // organization that a hidden request exists and has been released (P9).
+    const request = await findVisibleFeatureRequest(tx, session.orgId, requestId, { lock: true });
+    if (!request) return fail(UI.featureRequestUnavailable);
+    if (!votingOpen(request.status)) return fail(UI.featureRequestVotingClosed);
 
-  if (want) {
-    await db
-      .insert(featureRequestVotes)
-      .values({ requestId, orgId: session.orgId, userId: session.userId })
-      .onConflictDoNothing({ target: [featureRequestVotes.requestId, featureRequestVotes.userId] });
-  } else {
-    await db
-      .delete(featureRequestVotes)
-      .where(
-        and(eq(featureRequestVotes.requestId, requestId), eq(featureRequestVotes.userId, session.userId)),
-      );
-  }
-  return ok();
+    if (want) {
+      await tx
+        .insert(featureRequestVotes)
+        .values({ requestId, orgId: session.orgId, userId: session.userId })
+        .onConflictDoNothing({ target: [featureRequestVotes.requestId, featureRequestVotes.userId] });
+    } else {
+      await tx
+        .delete(featureRequestVotes)
+        .where(
+          and(eq(featureRequestVotes.requestId, requestId), eq(featureRequestVotes.userId, session.userId)),
+        );
+    }
+    return ok();
+  });
 }
 
 /**
@@ -158,23 +148,19 @@ export async function replyToFeatureRequestAction(input: {
 
   const parsed = replySchema.safeParse(input);
   if (!parsed.success) return fail(UI.requestRefused);
-  const body = parsed.data.body.trim();
 
   const request = await findVisibleFeatureRequest(db, session.orgId, parsed.data.requestId);
   if (!request?.isOwn) return fail(UI.featureRequestUnavailable);
 
-  if (!body) return fail(UI.featureRequestReplyRequired, { body: UI.featureRequestReplyRequired });
-  if (body.length > FEATURE_REQUEST_REPLY_MAX) {
-    const message = UI.featureRequestTooLong(FEATURE_REQUEST_REPLY_MAX);
-    return fail(message, { body: message });
-  }
+  const reply = checkReplyBody(parsed.data.body);
+  if (!reply.ok) return fail(reply.error, { body: reply.error });
 
   await db.insert(featureRequestReplies).values({
     orgId: session.orgId,
     requestId: parsed.data.requestId,
     fromStaff: false,
     authorUserId: session.userId,
-    body,
+    body: reply.body,
   });
   return ok();
 }

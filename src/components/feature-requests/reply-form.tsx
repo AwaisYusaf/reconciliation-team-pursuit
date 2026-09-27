@@ -66,7 +66,7 @@ export function ReplyForm({
       </div>
       <div>
         <Button type="submit" disabled={pending} className="w-full sm:w-auto">
-          {UI.featureRequestReplySend}
+          {pending ? UI.featureRequestSending : UI.featureRequestReplySend}
         </Button>
       </div>
     </form>

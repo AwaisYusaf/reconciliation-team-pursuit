@@ -20,7 +20,11 @@ import {
   FEATURE_REQUEST_DETAILS_MAX,
   FEATURE_REQUEST_TITLE_MAX,
 } from "@/src/domain/feature-requests";
-import { FEATURE_REQUEST_STATUS_LABELS, UI } from "@/src/domain/strings";
+import {
+  FEATURE_REQUEST_STATUS_DESCRIPTIONS,
+  FEATURE_REQUEST_STATUS_LABELS,
+  UI,
+} from "@/src/domain/strings";
 import {
   editFeatureRequestAction,
   setFeatureRequestShownAction,
@@ -55,6 +59,11 @@ export function EditWording({
   function save(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setErrors({});
+    // Nothing to save: close, rather than answer "Nothing changed." as if it were a mistake.
+    if (draftTitle === title && draftDetails === details) {
+      setOpen(false);
+      return;
+    }
     startTransition(async () => {
       const result = await editFeatureRequestAction({ requestId, title: draftTitle, details: draftDetails });
       if (!result.ok) {
@@ -103,7 +112,7 @@ export function EditWording({
           )}
           <div className="flex flex-wrap gap-3">
             <Button type="submit" disabled={pending}>
-              {UI.save}
+              {pending ? UI.saving : UI.save}
             </Button>
             <Button variant="secondary" disabled={pending} onClick={() => setOpen(false)}>
               {UI.cancel}
@@ -169,6 +178,9 @@ export function StatusAndVisibility({
             </option>
           ))}
         </Select>
+        {/* What the customer reads for this status, so staff see when it promises a reply
+            ("A reply says why.") before moving on. */}
+        <p className="m-0 mt-1.5 text-sm text-sub">{FEATURE_REQUEST_STATUS_DESCRIPTIONS[status]}</p>
       </div>
       <div>
         <Switch checked={shownToAll} disabled={pending || blocked} onChange={changeShown} describedBy={helpId}>

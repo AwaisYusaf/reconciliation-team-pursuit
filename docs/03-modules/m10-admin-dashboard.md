@@ -84,15 +84,19 @@ either screen renders more rows than it asks for: ten organizations per page
   requests newest first, ten per page with the same `Pagination` as the organizations list, a
   status filter, a Show filter (All requests / Needs attention) and a search over titles, details
   and organization names, all in the URL through `staffListHref`; columns Request · Organization
-  · Suggested by · Date · Votes · Status (with a Needs attention badge) · Shown to all.
-  **`/a/feature-requests/[id]`**: the title and details with **Edit wording** (a Modal; the
-  customer's first wording is kept under "Original wording" and the customer's own organization
-  sees the edited version), the organization (a link to its page), who suggested it (name and
-  email, "Unknown" once removed) and when; the status Select, saving on change; **Show to all
-  organizations**, off to start with and disabled with its reason while the status is Waiting for
-  review or Already requested (a status change to either turns it off, and the toast says so);
-  "N votes from M organizations" with the names; and the conversation as the customer sees it,
-  with a "Reply to {organization}" box. Replying, or moving a request off Waiting for review
+  · Suggested by · Date · Votes · Status (with a Needs attention badge) · Shown to all. Beside the
+  count line, "Show the N that need attention" is one click to that filter.
+  **`/a/feature-requests/[id]`**, in this order: the title and details with **Edit wording** (a
+  Modal; the customer's first wording is kept under "Original wording" and the customer's own
+  organization sees the edited version; saving with nothing changed just closes), the
+  organization (a link to its page), who suggested it (name and email, the email once when there
+  is no name, "Unknown" once removed) and when; then the conversation as the customer sees it
+  with a "Reply to {organization}" box, straight under the request because answering is what a
+  Needs attention visit is for; then the status Select, saving on change, with what that status
+  tells the customer under it (two of them promise a reply), and **Show to all organizations**,
+  off to start with and disabled with its reason while the status is Waiting for review or
+  Already requested (a status change to either turns it off, and the toast says so); then
+  "N votes from M organizations" with the names, or "No votes yet." Replying, or moving a request off Waiting for review
   while nobody has replied, clears Needs attention. The organization page gets a **Feature
   requests** card (title, status, date, newest first, 50 at most) between Actions and History.
   Reads: `src/modules/feature-requests/staff-queries.ts`; writes: `staff-actions.ts`

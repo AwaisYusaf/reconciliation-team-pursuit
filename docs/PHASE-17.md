@@ -1,8 +1,8 @@
 # Phase 17: Feature requests
 
-**Status (2026-09-27): Phases 0 to 4 built and committed on `implementation/feature-requests`;
-the customer screens were checked in Chrome, the staff screens still need a signed-in staff pass
-(§11).** The plan was
+**Status (2026-09-27): Phases 0 to 5 built and committed on `implementation/feature-requests`,
+and reviewed (§11); the customer screens were checked in Chrome, the staff screens still need a
+signed-in staff pass (§11).** The plan was
 written from the code and reviewed against it under seven lenses (tenancy, database, simplicity,
 usability, edge cases, Next 16, tests). §10 lists what the review changed. Awais answered the four
 product questions it raised (§2.1). The ticket is Appendix A, word for word.
@@ -40,10 +40,10 @@ emailed, nothing updates live, and the entry point is one item in the avatar men
 | P2 | **Needs attention** and **Our team replied** are derived from the newest reply by one SQL fragment. Needs attention = `coalesce(NOT <newest reply is staff>, status = 'waiting_for_review')` | Replies are append-only, so there is no second write path to keep in step (Q2) |
 | P3 | Author, voter and reply-author links to `users` are **nullable, `ON DELETE SET NULL`**; every table cascades from `organizations` | The ticket: a removed user's rows stay, an organization's rows go with it. The repo's standard "who did this" FK (`expense_drafts`, `shared_links`). A NOT NULL link would make the Users page offer Delete and then refuse it (D-120) |
 | P4 | A vote's `org_id` is the **voter's** organization | Deleting organization B removes B's votes on A's requests, and staff get "from N organizations" without a join through `users` |
-| P5 | The limit of 10 a day is counted **in the database**, per author, per America/Detroit day (`todayIso()`), under `pg_advisory_xact_lock` | The in-memory limiter resets on restart and has no calendar day. The lock follows `withOrgUploadLock` |
+| P5 | The limit of 10 a day is counted **in the database**, per author, from Detroit midnight by the database's clock (`created_at >= date_trunc('day', now() at time zone …)`), under `pg_advisory_xact_lock` | The in-memory limiter resets on restart and has no calendar day. One clock for the count and the `created_at` it compares, and a range the author index serves (review) |
 | P6 | Customer search is a `next/form` GET form (hidden `tab`, a Search button, no debounce). It matches **every typed word** in the current title and details (escaped ILIKE), **never the original wording** | No client component and no second URL builder. Searching the original would find a name staff removed |
 | P7 | The customer list shows up to **100 rows** (fetches 101) with "Showing the first 100. Search to find others." `/a` pages ten at a time with the pagination bar moved out of `app/a/page.tsx` into `src/components/ui/pagination.tsx` | Paging a list sorted by votes moves rows between pages; the ticket pages only `/a` |
-| P8 | Another organization's rows and the public detail carry **`isOwn: false` and nothing else about ownership**: no org id, author, replies or reply flag. The page title is fixed | Client-component props reach the browser; a per-request `generateMetadata` would print a hidden title |
+| P8 | Another organization's rows and the public detail carry **`isOwn: false` and nothing else about ownership**: no org id, author, replies or reply flag. The page title is fixed. The creation date is not treated as private: the list row shows it, and a uuid v7 id encodes it anyway | Client-component props reach the browser; a per-request `generateMetadata` would print a hidden title |
 | P9 | Vote and reply check **in a fixed order**: `isUuid`, then visibility (reply: own organization only), then one fixed refusal for missing or hidden. Only then does vote check that voting is open | A hidden request and a missing one answer identically |
 | P10 | Votes are **set, not toggled** (`want: boolean`): insert with `onConflictDoNothing`, delete when false | A double click or a stale second tab can't flip the vote the wrong way |
 | P11 | The author's vote is an **ordinary vote**, inserted in the same transaction as the request, and can be taken back | Simplest reading of "has a vote from the start" |
@@ -126,8 +126,8 @@ chooser), customer actions `actionSession()`, staff pages `requireStaffPage()` a
 | 1 | Schema, migration, domain, queries, actions, unit and integration tests | `64bfe28` |
 | 2 | Customer screens: menu item, list, dialog, vote, detail with replies | `d924fb8` |
 | 3 | Staff screens: pagination moved, section links, list, detail, organization card | `9eab7ef` |
-| 4 | Docs: m12, m10, data-model, D-127, README, design-language, architecture | this commit |
-| 5 | Adversarial review, then a Chrome pass at 1280 and 375 px | review done in-session; staff browser pass open (§11) |
+| 4 | Docs: m12, m10, data-model, D-127, README, design-language, architecture | `46dc3ff` |
+| 5 | Adversarial review and its fixes, then a Chrome pass at 1280 and 375 px | review fixes committed; staff browser pass open (§11) |
 
 ---
 
@@ -213,9 +213,47 @@ refusals inside the dialog, a toast when a status change hides a request, and wr
 **Checked in Chrome (customer side, localhost:3000):** the menu item between Your profile and
 Sign out; empty-field errors; Cancel keeping the text; sending, the toast and the org tab with the
 new row, its note and the author's vote; taking the vote back and giving it again; the request
-page, a reply, the back link keeping the tab; a random and a malformed id give the app's 404; no
-sideways scroll at 375 px (same-origin iframes) with a long unbroken address; a customer opening
-either `/a` feature request page is sent to `/r`.
+page, a reply, the back link keeping the tab; a random and a malformed id give the app's 404; a
+customer opening either `/a` feature request page is sent to `/r`. At 375 px (same-origin iframes)
+the list, the org tab and a request's page have nothing wider than the screen with a long unbroken
+address, and the vote button is 140 by 48 px. The first 375 px measurement was empty: the Chrome
+window wasn't painting, so React never revealed the streamed content (still in its hidden
+`S:0` div) and there was nothing to overflow; it was redone with a screenshot forcing the paint
+and the hidden div checked gone. "From your organization" wraps to two lines in its tab there.
+
+**Review (2026-09-27): three reviewers on the branch (tenancy and correctness; code structure and
+database; ticket fit and usability).** No blocking finding and no way found for one organization
+to learn anything hidden about another's request. Fixed on the branch:
+- A NUL character in any text, or `?q=%00`, made Postgres throw (22021): taken out by
+  `withoutNul`. The `/a` organizations search has the same bug and is left to its own change.
+- A vote's check and write were two statements: now one transaction with the request `FOR SHARE`.
+- The daily count mixed Node's day and Postgres's clock: now one clock, as a range.
+- One validator (`checkWording`, `checkReplyBody`) for both action files; `listQuery` and
+  `staffListQuery` instead of slicing the paths; the table headers and pagination words in `UI`;
+  `AccountBadges` moved to `src/components/admin/`; a test that the CHECK allows "shown" exactly
+  where `canShowToAll` does, the CHECK lengths pinned to the constants, the 101-row cap, and a
+  2,001-character reply on both sides. Each new guard was mutation-tested.
+- Usability, inside the ticket: the staff reply box now comes straight under the request; "Show
+  the N that need attention" beside the staff count; the status's customer meaning under the
+  staff Select; "No votes yet." instead of "0 votes from 0 organizations"; the email once when
+  there is no name; `/a` reply times in `/a`'s format; the vote button at its own width on a
+  phone; "Sending…" and "Saving…" while working; saving an unchanged wording just closes; the
+  empty org tab says what to do; "Tell us what you would like."
+
+Deferred, recorded here rather than done: one search-debounce hook shared with
+`directory-filters.tsx` and one Postgres error-code helper (both would change existing code this
+phase can't browser-test); no rate limit on replies, and the thread loads whole (own organization
+only); the replies' composite foreign key name is over 63 characters and Postgres truncates it,
+as nine siblings' are; scale ceilings (the staff list's `created_at` order and the attention
+count's per-row subquery are fine to the low thousands).
+
+For Awais to choose (each departs from the ticket or the plan):
+- The ticket's title placeholder is cut off in the dialog (about "…receipts are missing be" at
+  480 px, "…Remind us when rece" at 375 px): a two-row box, or the example as help text.
+- The month and funding-source selectors show on this page as on every `/r` page (P16); hide them
+  on `/r/feature-requests*`?
+- "Your organization" on every row of the From your organization tab is redundant there.
+- A request opened from an organization's card in `/a` goes back to the list, not the card.
 
 **Still open.**
 - A signed-in staff pass of `/a/feature-requests`, one request, and the organization card, plus a

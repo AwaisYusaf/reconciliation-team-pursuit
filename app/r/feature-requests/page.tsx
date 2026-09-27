@@ -12,6 +12,7 @@ import {
   FEATURE_REQUEST_LIST_LIMIT,
   FEATURE_REQUEST_SEARCH_MAX,
   listHref,
+  listQuery,
   parseListParams,
   votingOpen,
   type FeatureRequestListParams,
@@ -43,7 +44,7 @@ export default async function FeatureRequestsPage({ searchParams }: { searchPara
   const params = parseListParams(await searchParams);
   const { rows, capped } = await loadFeatureRequestList(session, params);
   // Carried onto each request's link so its back link returns to this tab and search.
-  const back = listHref(params).slice("/r/feature-requests".length);
+  const back = listQuery(params);
 
   return (
     <div>

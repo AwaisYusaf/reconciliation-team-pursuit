@@ -54,14 +54,22 @@ it is shown to all, and the replies (`OwnFeatureRequest`). Pure rules and URL he
   Another organization sees the title, details, status, votes and the vote button, nothing else. A
   request this organization can't see, and an unknown or malformed id, are the same 404.
 - **Plain text.** Typed line breaks are kept; nothing becomes a link; long words and addresses wrap
-  rather than widening the page. No live updates: new requests, votes and replies appear on reload.
+  rather than widening the page. A NUL character, which Postgres refuses, is taken out of typed
+  text and of a search from the URL. No live updates: new requests, votes and replies appear on
+  reload.
+- **The creation date is not private.** Another organization's list row shows "Suggested {date}"
+  (the ticket's example row), and every request's id is a uuid v7, which encodes the moment it was
+  created. The detail page's "title, details, status and votes" (ticket §4) is about identity:
+  never who asked or which organization, never a reply.
 
 ## Server surface
 `src/modules/feature-requests/actions.ts`, each behind `actionSession()` (paid and complimentary):
 - `suggestFeatureAction({ title, details })` — the request and its author's vote in one
   transaction, under a per-person advisory lock that counts today's requests.
 - `setFeatureRequestVoteAction({ requestId, want })` — visibility first, then whether voting is
-  open; adds with `onConflictDoNothing`, or deletes.
+  open, then the write, all in one transaction with the request held `FOR SHARE`, so a vote can't
+  land on a request staff are hiding or closing at that moment; adds with `onConflictDoNothing`,
+  or deletes.
 - `replyToFeatureRequestAction({ requestId, body })` — this organization's own requests only;
   another organization's, shown or not, is refused like a missing one.
 

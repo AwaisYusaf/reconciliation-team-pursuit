@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
 
+import { UI } from "./strings";
 import {
   backHref,
   canShowToAll,
+  checkReplyBody,
+  checkWording,
   FEATURE_REQUEST_SEARCH_MAX,
   likePattern,
   listHref,
@@ -13,6 +16,7 @@ import {
   searchWords,
   staffListHref,
   votingOpen,
+  withoutNul,
 } from "./feature-requests";
 
 describe("which statuses allow what (ticket §2, §5; PHASE-17 Q3)", () => {
@@ -31,6 +35,37 @@ describe("which statuses allow what (ticket §2, §5; PHASE-17 Q3)", () => {
     for (const status of ["waiting_for_review", "considering", "planned", "in_progress"] as const) {
       expect(votingOpen(status), status).toBe(true);
     }
+  });
+});
+
+describe("NUL characters, which Postgres refuses in text", () => {
+  it("are taken out of typed text, titles, replies and a search from the URL", () => {
+    expect(withoutNul("a\u0000b\u0000")).toBe("ab");
+    expect(checkWording({ title: "Split\u0000 it", details: "x\u0000" })).toEqual({ ok: true, title: "Split it", details: "x" });
+    expect(checkReplyBody("\u0000")).toEqual({ ok: false, error: UI.featureRequestReplyRequired });
+    expect(parseListParams({ q: "\u0000receipts" }).q).toBe("receipts");
+    expect(parseStaffFilter({ q: "\u0000" }).filter.q).toBe("");
+  });
+});
+
+describe("the wording both Suggest and the staff Edit save", () => {
+  it("folds the title, trims both, and names each field's problem", () => {
+    expect(checkWording({ title: " A\nB ", details: " x " })).toEqual({ ok: true, title: "A B", details: "x" });
+    expect(checkWording({ title: " ", details: "" })).toEqual({
+      ok: false,
+      fieldErrors: { title: UI.featureRequestTitleRequired, details: UI.featureRequestDetailsRequired },
+    });
+    expect(checkWording({ title: "t".repeat(100), details: "d".repeat(2000) }).ok).toBe(true);
+    expect(checkWording({ title: "t".repeat(101), details: "d".repeat(2001) })).toEqual({
+      ok: false,
+      fieldErrors: { title: UI.featureRequestTooLong(100), details: UI.featureRequestTooLong(2000) },
+    });
+  });
+
+  it("takes a reply of up to 2,000 characters after trimming", () => {
+    expect(checkReplyBody(`  ${"r".repeat(2000)}  `)).toEqual({ ok: true, body: "r".repeat(2000) });
+    expect(checkReplyBody("r".repeat(2001))).toEqual({ ok: false, error: UI.featureRequestTooLong(2000) });
+    expect(checkReplyBody("   ")).toEqual({ ok: false, error: UI.featureRequestReplyRequired });
   });
 });
 

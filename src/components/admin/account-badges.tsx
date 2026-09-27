@@ -1,6 +1,7 @@
 /**
  * The `/a` status/complimentary/suspended badge row (Phase 9 §6), built on the shared `Badge`
- * (`src/components/ui/badge.tsx`, moved there in PHASE-17 when the customer side needed it).
+ * (`src/components/ui/badge.tsx`). Both moved out of `app/a/badges.tsx` in PHASE-17: the pill to
+ * the shared UI kit when the customer side needed it, this row beside the other `/a` components.
  */
 import { Badge, type BadgeTone } from "@/src/components/ui/badge";
 import { complimentaryState } from "@/src/domain/complimentary";

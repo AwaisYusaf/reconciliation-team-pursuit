@@ -106,7 +106,7 @@ export function SuggestFeature() {
           )}
           <div className="flex flex-wrap gap-3">
             <Button type="submit" disabled={pending}>
-              {UI.featureRequestSend}
+              {pending ? UI.featureRequestSending : UI.featureRequestSend}
             </Button>
             <Button variant="secondary" disabled={pending} onClick={close}>
               {UI.cancel}

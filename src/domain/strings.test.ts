@@ -538,6 +538,7 @@ function sampleUiTexts(): string[] {
         case "featureRequestVotes":
         case "staffFeatureRequestsCount":
         case "staffFeatureRequestsNeedingAttention":
+        case "staffFeatureRequestsShowAttention":
           return [0, 1, 7].map((n) => (value as (n: number) => string)(n));
         case "featureRequestsCapped":
         case "staffFeatureRequestsCapped":

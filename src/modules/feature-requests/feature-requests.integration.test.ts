@@ -23,11 +23,19 @@ const hasDatabase = Boolean(process.env.DATABASE_URL);
 
 describe.skipIf(!hasDatabase)("feature requests (integration, PHASE-17)", async () => {
   const { db } = await import("@/src/db");
-  const { featureRequestReplies, featureRequests, featureRequestVotes, organizations, staffUsers, users } =
-    await import("@/src/db/schema");
+  const {
+    featureRequestReplies,
+    featureRequestStatus,
+    featureRequests,
+    featureRequestVotes,
+    organizations,
+    staffUsers,
+    users,
+  } = await import("@/src/db/schema");
   const { createTestOrg } = await import("@/src/db/test-org");
   const { UI } = await import("@/src/domain/strings");
-  const { FEATURE_REQUESTS_PER_DAY, ORG_FEATURE_REQUESTS_LIMIT } = await import("@/src/domain/feature-requests");
+  const { canShowToAll, FEATURE_REQUEST_LIST_LIMIT, FEATURE_REQUESTS_PER_DAY, ORG_FEATURE_REQUESTS_LIMIT } =
+    await import("@/src/domain/feature-requests");
   const { actionSession, requireStaff } = await import("@/src/lib/action-session");
   const actions = await import("./actions");
   const staffActions = await import("./staff-actions");
@@ -152,6 +160,15 @@ describe.skipIf(!hasDatabase)("feature requests (integration, PHASE-17)", async 
       expect((await list(misty, "org")).rows[0].voted).toBe(true);
     });
 
+    it("takes NUL characters out rather than failing on them", async () => {
+      as(misty);
+      const sent = await actions.suggestFeatureAction({ title: `Nul\u0000 ${TOKEN}`, details: "a\u0000b" });
+      expect(sent.ok).toBe(true);
+      const id = (sent as { data: { id: string } }).data.id;
+      expect(await loadFeatureRequest(misty, id)).toMatchObject({ title: `Nul ${TOKEN}`, details: "ab" });
+      expect((await actions.replyToFeatureRequestAction({ requestId: id, body: "hi\u0000" })).ok).toBe(true);
+    });
+
     it("folds the title onto one line and refuses empty or over-long fields with field errors", async () => {
       as(misty);
       const folded = await actions.suggestFeatureAction({ title: `  Two\nlines ${TOKEN} `, details: " x " });
@@ -208,6 +225,20 @@ describe.skipIf(!hasDatabase)("feature requests (integration, PHASE-17)", async 
       expect(errorCode(raw)).toBe("23514");
     });
 
+    it("the database allows 'shown' for exactly the statuses canShowToAll allows", async () => {
+      // The rule lives twice: `canShowToAll` gives the friendly refusal, the CHECK is the guarantee.
+      const id = await suggest(misty, "Every status");
+      for (const status of featureRequestStatus.enumValues) {
+        await db.update(featureRequests).set({ status, shownToAllAt: null }).where(eq(featureRequests.id, id));
+        const outcome = await db
+          .update(featureRequests)
+          .set({ shownToAllAt: new Date() })
+          .where(eq(featureRequests.id, id))
+          .then(() => "allowed", (error: unknown) => errorCode(error));
+        expect(outcome, status).toBe(canShowToAll(status) ? "allowed" : "23514");
+      }
+    });
+
     it("moving a shown request to Already requested hides it again and says so", async () => {
       const id = await suggest(misty, "A duplicate");
       await show(id);
@@ -261,6 +292,22 @@ describe.skipIf(!hasDatabase)("feature requests (integration, PHASE-17)", async 
       }
       // Shown to B: B may vote, but never reply (no comments on another organization's request).
       expect(await actions.replyToFeatureRequestAction({ requestId: shown, body: "hi" })).toEqual(unavailable);
+    });
+
+    it("a vote that arrives while staff are hiding the request waits for them, then is refused", async () => {
+      const id = await suggest(misty, "Hidden mid-vote");
+      await show(id);
+      as(otherCustomer);
+      let vote: ReturnType<typeof actions.setFeatureRequestVoteAction> | undefined;
+      await db.transaction(async (tx) => {
+        await tx.update(featureRequests).set({ shownToAllAt: null }).where(eq(featureRequests.id, id));
+        // The vote's FOR SHARE read waits on this uncommitted hide, then sees it. Without the lock
+        // it would read the committed "shown" row and the vote would land.
+        vote = actions.setFeatureRequestVoteAction({ requestId: id, want: true });
+        await new Promise((resolve) => setTimeout(resolve, 300));
+      });
+      expect(await vote).toEqual({ ok: false, error: UI.featureRequestUnavailable });
+      expect((await loadStaffFeatureRequest(id))?.votes).toBe(1);
     });
 
     it("refuses a vote on a hidden request as unavailable even when its voting is closed", async () => {
@@ -515,6 +562,29 @@ describe.skipIf(!hasDatabase)("feature requests (integration, PHASE-17)", async 
     });
   });
 
+  describe("the list's cap (PHASE-17 P7)", () => {
+    it("shows the first 100 and says there were more", async () => {
+      const q = `${TOKEN}cap`;
+      await db.insert(featureRequests).values(
+        Array.from({ length: FEATURE_REQUEST_LIST_LIMIT + 1 }, (_, n) => ({
+          orgId: misty.orgId,
+          authorUserId: misty.userId,
+          title: `Capped ${n} ${q}`,
+          details: "x",
+          status: "waiting_for_review" as const,
+        })),
+      );
+      const full = await loadFeatureRequestList(misty, { tab: "org", q });
+      expect(full.rows).toHaveLength(FEATURE_REQUEST_LIST_LIMIT);
+      expect(full.capped).toBe(true);
+      // Exactly the limit is not "more than": one fewer row and the note goes.
+      await db.delete(featureRequests).where(eq(featureRequests.title, `Capped 0 ${q}`));
+      const exact = await loadFeatureRequestList(misty, { tab: "org", q });
+      expect(exact.rows).toHaveLength(FEATURE_REQUEST_LIST_LIMIT);
+      expect(exact.capped).toBe(false);
+    });
+  });
+
   describe("replies (ticket §4)", () => {
     it("anyone in the organization can reply, oldest first, and an empty reply is refused", async () => {
       const id = await suggest(misty, "Thread");
@@ -524,6 +594,19 @@ describe.skipIf(!hasDatabase)("feature requests (integration, PHASE-17)", async 
         error: UI.featureRequestReplyRequired,
         fieldErrors: { body: UI.featureRequestReplyRequired },
       });
+      const tooLong = UI.featureRequestTooLong(2000);
+      expect(await actions.replyToFeatureRequestAction({ requestId: id, body: "r".repeat(2001) })).toEqual({
+        ok: false,
+        error: tooLong,
+        fieldErrors: { body: tooLong },
+      });
+      asStaff();
+      expect(await staffActions.staffReplyToFeatureRequestAction({ requestId: id, body: "r".repeat(2001) })).toEqual({
+        ok: false,
+        error: tooLong,
+        fieldErrors: { body: tooLong },
+      });
+      as(tasha);
       await actions.replyToFeatureRequestAction({ requestId: id, body: "First" });
       as(misty);
       await actions.replyToFeatureRequestAction({ requestId: id, body: "Second" });

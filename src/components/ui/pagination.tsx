@@ -20,11 +20,11 @@ export function Pagination({
 }) {
   if (pageCount <= 1) return null;
   return (
-    <nav aria-label="Pages" className="mt-5 flex items-center justify-between gap-4 flex-wrap">
+    <nav aria-label={UI.pagesLabel} className="mt-5 flex items-center justify-between gap-4 flex-wrap">
       <div className="text-[15px] text-sub">{UI.pageOf(page, pageCount)}</div>
       <div className="flex items-center gap-2">
-        <PageLink label="Previous" href={page > 1 ? hrefFor(page - 1) : null} />
-        <PageLink label="Next" href={page < pageCount ? hrefFor(page + 1) : null} />
+        <PageLink label={UI.pagePrevious} href={page > 1 ? hrefFor(page - 1) : null} />
+        <PageLink label={UI.pageNext} href={page < pageCount ? hrefFor(page + 1) : null} />
       </div>
     </nav>
   );

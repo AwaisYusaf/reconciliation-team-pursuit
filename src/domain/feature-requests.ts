@@ -4,7 +4,7 @@
  * component share one copy (the review rule: one helper parses and builds a page's URL).
  */
 import type { FeatureRequestStatus } from "@/src/db/schema";
-import { FEATURE_REQUEST_STATUS_LABELS } from "@/src/domain/strings";
+import { FEATURE_REQUEST_STATUS_LABELS, UI } from "@/src/domain/strings";
 
 /** Ticket §3 and §4. Shared with the boxes' `maxLength`, so the two can't drift apart. */
 export const FEATURE_REQUEST_TITLE_MAX = 100;
@@ -50,9 +50,48 @@ export function parseFeatureRequestStatus(value: string | undefined): FeatureReq
     : null;
 }
 
+/**
+ * Typed text with any NUL character taken out. Postgres refuses `\u0000` in text (22021), so a
+ * pasted one, or `?q=%00` in a link, would otherwise be an error page rather than a search.
+ * `trim()` and `\s` don't match it.
+ */
+export function withoutNul(value: string): string {
+  return value.replace(/\u0000/g, "");
+}
+
 /** A title is one line: runs of whitespace, newlines included, become one space. */
 export function normalizeTitle(value: string): string {
-  return value.replace(/\s+/g, " ").trim();
+  return withoutNul(value).replace(/\s+/g, " ").trim();
+}
+
+export type WordingCheck =
+  | { ok: true; title: string; details: string }
+  | { ok: false; fieldErrors: { title?: string; details?: string } };
+
+/**
+ * A request's title and details as the customer's Suggest and the staff Edit both save them: the
+ * title on one line, both trimmed, both required and within the limits. One copy, so the two
+ * screens can't accept different text.
+ */
+export function checkWording(input: { title: string; details: string }): WordingCheck {
+  const title = normalizeTitle(input.title);
+  const details = withoutNul(input.details).trim();
+  const fieldErrors: { title?: string; details?: string } = {};
+  if (!title) fieldErrors.title = UI.featureRequestTitleRequired;
+  else if (title.length > FEATURE_REQUEST_TITLE_MAX) fieldErrors.title = UI.featureRequestTooLong(FEATURE_REQUEST_TITLE_MAX);
+  if (!details) fieldErrors.details = UI.featureRequestDetailsRequired;
+  else if (details.length > FEATURE_REQUEST_DETAILS_MAX) {
+    fieldErrors.details = UI.featureRequestTooLong(FEATURE_REQUEST_DETAILS_MAX);
+  }
+  return fieldErrors.title || fieldErrors.details ? { ok: false, fieldErrors } : { ok: true, title, details };
+}
+
+/** A reply as either side sends it: trimmed, required, within the limit. */
+export function checkReplyBody(body: string): { ok: true; body: string } | { ok: false; error: string } {
+  const trimmed = withoutNul(body).trim();
+  if (!trimmed) return { ok: false, error: UI.featureRequestReplyRequired };
+  if (trimmed.length > FEATURE_REQUEST_REPLY_MAX) return { ok: false, error: UI.featureRequestTooLong(FEATURE_REQUEST_REPLY_MAX) };
+  return { ok: true, body: trimmed };
 }
 
 /** The words a search matches, every one of which must appear (PHASE-17 P6). */
@@ -73,7 +112,7 @@ function one(value: string | string[] | undefined): string | undefined {
 }
 
 function parseSearch(value: string | string[] | undefined): string {
-  return (one(value) ?? "").trim().slice(0, FEATURE_REQUEST_SEARCH_MAX).trim();
+  return withoutNul(one(value) ?? "").trim().slice(0, FEATURE_REQUEST_SEARCH_MAX).trim();
 }
 
 export type FeatureRequestTab = "all" | "org";
@@ -85,12 +124,19 @@ export function parseListParams(params: SearchParams): FeatureRequestListParams 
   return { tab: one(params.tab) === "org" ? "org" : "all", q: parseSearch(params.q) };
 }
 
-export function listHref({ tab, q }: FeatureRequestListParams): string {
+export const LIST_PATH = "/r/feature-requests";
+
+/** The list's query string, `?…` or empty: what a request's `?back=` carries. */
+export function listQuery({ tab, q }: FeatureRequestListParams): string {
   const query = new URLSearchParams();
   if (tab === "org") query.set("tab", "org");
   if (q) query.set("q", q);
   const text = query.toString();
-  return text ? `/r/feature-requests?${text}` : "/r/feature-requests";
+  return text ? `?${text}` : "";
+}
+
+export function listHref(params: FeatureRequestListParams): string {
+  return `${LIST_PATH}${listQuery(params)}`;
 }
 
 /**
@@ -124,12 +170,19 @@ export function parseStaffFilter(params: SearchParams): {
   };
 }
 
-export function staffListHref(filter: StaffFeatureRequestFilter, page = 1): string {
+export const STAFF_LIST_PATH = "/a/feature-requests";
+
+/** The `/a` list's query string, `?…` or empty. */
+export function staffListQuery(filter: StaffFeatureRequestFilter, page = 1): string {
   const query = new URLSearchParams();
   if (filter.q) query.set("q", filter.q);
   if (filter.status) query.set("status", filter.status);
   if (filter.attention) query.set("attention", "1");
   if (page > 1) query.set("page", String(page));
   const text = query.toString();
-  return text ? `/a/feature-requests?${text}` : "/a/feature-requests";
+  return text ? `?${text}` : "";
+}
+
+export function staffListHref(filter: StaffFeatureRequestFilter, page = 1): string {
+  return `${STAFF_LIST_PATH}${staffListQuery(filter, page)}`;
 }

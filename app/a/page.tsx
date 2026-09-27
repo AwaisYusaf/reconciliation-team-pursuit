@@ -18,7 +18,7 @@ import {
   type OrgStatusFilter,
 } from "@/src/modules/admin/queries";
 
-import { AccountBadges } from "./badges";
+import { AccountBadges } from "@/src/components/admin/account-badges";
 import { DirectoryFilters } from "./directory-filters";
 
 export const metadata = { title: "Organizations | AB Solutions admin" };

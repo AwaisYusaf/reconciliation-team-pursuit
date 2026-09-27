@@ -12,14 +12,12 @@ import { db } from "@/src/db";
 import { featureRequestReplies, featureRequests } from "@/src/db/schema";
 import {
   canShowToAll,
-  FEATURE_REQUEST_DETAILS_MAX,
-  FEATURE_REQUEST_REPLY_MAX,
-  FEATURE_REQUEST_TITLE_MAX,
-  normalizeTitle,
+  checkReplyBody,
+  checkWording,
   parseFeatureRequestStatus,
 } from "@/src/domain/feature-requests";
 import { UI } from "@/src/domain/strings";
-import { fail, ok, type ActionResult, type FieldErrors } from "@/src/lib/action-result";
+import { fail, ok, type ActionResult } from "@/src/lib/action-result";
 import { requireStaff } from "@/src/lib/action-session";
 import { isUuid } from "@/src/lib/ids";
 
@@ -66,20 +64,13 @@ export async function editFeatureRequestAction(input: {
 
   const parsed = editSchema.safeParse(input);
   if (!parsed.success) return fail(UI.requestRefused);
-  const title = normalizeTitle(parsed.data.title);
-  const details = parsed.data.details.trim();
-
-  const fieldErrors: FieldErrors = {};
-  if (!title) fieldErrors.title = UI.featureRequestTitleRequired;
-  else if (title.length > FEATURE_REQUEST_TITLE_MAX) {
-    fieldErrors.title = UI.featureRequestTooLong(FEATURE_REQUEST_TITLE_MAX);
+  // The same rules as the customer's Suggest, so staff can't save a wording a customer couldn't.
+  const wording = checkWording(parsed.data);
+  if (!wording.ok) {
+    const { fieldErrors } = wording;
+    return fail((fieldErrors.title ?? fieldErrors.details)!, fieldErrors);
   }
-  if (!details) fieldErrors.details = UI.featureRequestDetailsRequired;
-  else if (details.length > FEATURE_REQUEST_DETAILS_MAX) {
-    fieldErrors.details = UI.featureRequestTooLong(FEATURE_REQUEST_DETAILS_MAX);
-  }
-  const first = Object.values(fieldErrors)[0];
-  if (first) return fail(first, fieldErrors);
+  const { title, details } = wording;
 
   const current = await currentRequest(parsed.data.requestId);
   if (!current) return fail(UI.staffFeatureRequestNotFound);
@@ -176,12 +167,8 @@ export async function staffReplyToFeatureRequestAction(input: {
 
   const parsed = replySchema.safeParse(input);
   if (!parsed.success) return fail(UI.requestRefused);
-  const body = parsed.data.body.trim();
-  if (!body) return fail(UI.featureRequestReplyRequired, { body: UI.featureRequestReplyRequired });
-  if (body.length > FEATURE_REQUEST_REPLY_MAX) {
-    const message = UI.featureRequestTooLong(FEATURE_REQUEST_REPLY_MAX);
-    return fail(message, { body: message });
-  }
+  const reply = checkReplyBody(parsed.data.body);
+  if (!reply.ok) return fail(reply.error, { body: reply.error });
 
   const current = await currentRequest(parsed.data.requestId);
   if (!current) return fail(UI.staffFeatureRequestNotFound);
@@ -191,7 +178,7 @@ export async function staffReplyToFeatureRequestAction(input: {
     requestId: parsed.data.requestId,
     fromStaff: true,
     authorStaffId: staff.staffId,
-    body,
+    body: reply.body,
   });
   return ok();
 }

@@ -12,7 +12,14 @@ import type { FeatureRequestReplyView } from "@/src/modules/feature-requests/que
  * breaks are kept, nothing becomes a link, and a long address wraps rather than widening the
  * page.
  */
-export function ReplyThread({ replies }: { replies: FeatureRequestReplyView[] }) {
+export function ReplyThread({
+  replies,
+  formatAt = formatDateTimeUS,
+}: {
+  replies: FeatureRequestReplyView[];
+  /** How a reply's time reads: the customer app's form by default, `/a` passes its own. */
+  formatAt?: (at: Date) => string;
+}) {
   if (replies.length === 0) {
     return <p className="text-[15px] text-sub m-0">{UI.featureRequestNoReplies}</p>;
   }
@@ -33,7 +40,7 @@ export function ReplyThread({ replies }: { replies: FeatureRequestReplyView[] })
                 {reply.fromStaff ? UI.featureRequestTeamSignature : reply.authorName}
               </span>
             )}
-            <span>{formatDateTimeUS(reply.createdAt)}</span>
+            <span>{formatAt(reply.createdAt)}</span>
           </div>
           <p className="mt-1.5 m-0 text-[15px] text-ink leading-relaxed whitespace-pre-wrap [overflow-wrap:anywhere]">
             {reply.body}

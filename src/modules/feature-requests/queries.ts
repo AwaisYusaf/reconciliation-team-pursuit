@@ -272,18 +272,21 @@ export async function loadFeatureRequest(
 
 /**
  * The request a vote or reply is about, if this organization can see it (P9). Takes a reader so
- * an action can read it inside its own transaction.
+ * an action can read it inside its own transaction; `lock` holds the row (`FOR SHARE`) until that
+ * transaction ends, so staff hiding or closing it wait for a vote that already passed the check.
  */
 export async function findVisibleFeatureRequest(
   reader: Reader,
   orgId: string,
   id: string,
+  { lock = false }: { lock?: boolean } = {},
 ): Promise<{ status: FeatureRequestStatus; isOwn: boolean } | null> {
   if (!isUuid(id)) return null;
-  const [row] = await reader
+  const query = reader
     .select({ status: featureRequests.status, orgId: featureRequests.orgId })
     .from(featureRequests)
     .where(and(eq(featureRequests.id, id), visibleTo(orgId)))
     .limit(1);
+  const [row] = lock ? await query.for("share") : await query;
   return row ? { status: row.status, isOwn: row.orgId === orgId } : null;
 }

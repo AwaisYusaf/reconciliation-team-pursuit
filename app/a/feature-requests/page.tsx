@@ -6,7 +6,7 @@ import { Pagination } from "@/src/components/ui/pagination";
 import { PageTitle, Subtext } from "@/src/components/ui/surfaces";
 import { TableCard, Td, Th } from "@/src/components/ui/table";
 import { formatDateShort, todayIso } from "@/src/domain/dates";
-import { parseStaffFilter, staffListHref } from "@/src/domain/feature-requests";
+import { parseStaffFilter, staffListHref, staffListQuery } from "@/src/domain/feature-requests";
 import { FEATURE_REQUEST_STATUS_LABELS, UI } from "@/src/domain/strings";
 import { userDisplay } from "@/src/domain/user-display";
 import { requireStaffPage } from "@/src/modules/admin/guard";
@@ -37,7 +37,7 @@ export default async function StaffFeatureRequestsPage({ searchParams }: { searc
   ]);
   const hasFilter = Boolean(filter.q || filter.status || filter.attention);
   // Carried into each row link so the request's page returns to this filtered, paged list.
-  const backQuery = staffListHref(filter, list.page).slice("/a/feature-requests".length);
+  const backQuery = staffListQuery(filter, list.page);
 
   return (
     <div>
@@ -49,18 +49,29 @@ export default async function StaffFeatureRequestsPage({ searchParams }: { searc
 
       <FeatureRequestFilters filter={filter} />
 
-      <div className="text-[15px] text-sub mt-6 mb-3">{UI.staffFeatureRequestsCount(list.total)}</div>
+      <div className="text-[15px] text-sub mt-6 mb-3 flex flex-wrap items-baseline gap-x-3">
+        {UI.staffFeatureRequestsCount(list.total)}
+        {/* One click to what needs an answer, which the link's count promised. */}
+        {!filter.attention && attention > 0 && (
+          <Link
+            href={staffListHref({ q: "", status: null, attention: true })}
+            className="text-accent underline underline-offset-2 hover:text-accent-dark"
+          >
+            {UI.staffFeatureRequestsShowAttention(attention)}
+          </Link>
+        )}
+      </div>
 
       <TableCard minWidth={960}>
         <thead>
           <tr>
-            <Th sticky>Request</Th>
-            <Th>Organization</Th>
-            <Th>Suggested by</Th>
-            <Th>Date</Th>
-            <Th align="right">Votes</Th>
-            <Th>Status</Th>
-            <Th>Shown to all</Th>
+            <Th sticky>{UI.staffFeatureRequestRequest}</Th>
+            <Th>{UI.staffFeatureRequestOrganization}</Th>
+            <Th>{UI.staffFeatureRequestSuggestedBy}</Th>
+            <Th>{UI.staffFeatureRequestDate}</Th>
+            <Th align="right">{UI.staffFeatureRequestVotesTitle}</Th>
+            <Th>{UI.staffFeatureRequestStatus}</Th>
+            <Th>{UI.staffFeatureRequestShownToAll}</Th>
           </tr>
         </thead>
         <tbody>

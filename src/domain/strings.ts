@@ -236,6 +236,10 @@ export const UI = {
   noOrganizationsYet: "No organizations yet.",
   /** Directory pagination bar, shown only past one page (Phase 9). */
   pageOf: (page: number, pageCount: number) => `Page ${page} of ${pageCount}`,
+  /** The pagination bar's own words (`src/components/ui/pagination.tsx`). */
+  pagesLabel: "Pages",
+  pagePrevious: "Previous",
+  pageNext: "Next",
   /** Under a truncated users table on an organization's page (Phase 9). */
   showingUsers: (shown: number, total: number) => `Showing ${shown} of ${total} users.`,
   /** The same, once "View all" has been used and the list has hit its ceiling — there is no
@@ -960,7 +964,7 @@ export const UI = {
   featureRequestSuggestedBy: (name: string | null, date: string) =>
     name ? `Suggested by ${name} on ${date}` : `Suggested on ${date}`,
   featureRequestsEmptyAll: "No feature requests yet. Press Suggest a feature to send the first one.",
-  featureRequestsEmptyOrg: "Your organization hasn't suggested anything yet.",
+  featureRequestsEmptyOrg: "Your organization hasn't suggested anything yet. Press Suggest a feature to send one.",
   featureRequestsNoMatch: "No requests match your search.",
   featureRequestsCapped: (shown: number) => `Showing the first ${shown}. Search to find others.`,
   featureRequestDialogTitle: "Suggest a feature",
@@ -969,8 +973,9 @@ export const UI = {
   featureRequestDetailsLabel: "Tell us more",
   featureRequestDetailsHelp: "What are you trying to do, and how would it help your team?",
   featureRequestSend: "Send request",
+  featureRequestSending: "Sending…",
   featureRequestSent: "Thanks. Your request was sent to our team.",
-  featureRequestTitleRequired: "Enter what you would like.",
+  featureRequestTitleRequired: "Tell us what you would like.",
   featureRequestDetailsRequired: "Tell us a little more about it.",
   featureRequestTooLong: (max: number) => `Keep this to ${max.toLocaleString("en-US")} characters or fewer.`,
   featureRequestDailyLimit: "You've sent a lot of requests today. Please try again tomorrow.",
@@ -995,15 +1000,17 @@ export const UI = {
   staffFeatureRequestsCount: (count: number) =>
     count === 1 ? "1 feature request" : `${count} feature requests`,
   staffFeatureRequestsAllStatuses: "All statuses",
-  staffFeatureRequestsEverything: "All requests",
   staffFeatureRequestsNeedsAttention: "Needs attention",
   staffFeatureRequestsNoneYet: "No feature requests yet.",
   staffFeatureRequestsNoneMatch: "No feature requests match these filters.",
   staffFeatureRequestsSearch: "Search requests or organizations",
   staffFeatureRequestUnknownPerson: "Unknown",
+  staffFeatureRequestRequest: "Request",
   staffFeatureRequestOrganization: "Organization",
   staffFeatureRequestSuggestedBy: "Suggested by",
   staffFeatureRequestSuggestedOn: "Suggested on",
+  staffFeatureRequestDate: "Date",
+  staffFeatureRequestShownToAll: "Shown to all",
   staffFeatureRequestOriginal: "Original wording",
   staffFeatureRequestEdit: "Edit wording",
   staffFeatureRequestTitleField: "Title",
@@ -1035,8 +1042,12 @@ export const UI = {
   staffFeatureRequestsAll: "All feature requests",
   staffFeatureRequestYes: "Yes",
   staffFeatureRequestNo: "No",
-  staffFeatureRequestStatusTitle: "Status",
   staffFeatureRequestVotesTitle: "Votes",
+  /** Rather than "0 votes from 0 organizations", once the author has taken back the only vote. */
+  staffFeatureRequestNoVotes: "No votes yet.",
+  /** Beside the list's count, one click to the requests that need an answer. */
+  staffFeatureRequestsShowAttention: (count: number) =>
+    count === 1 ? "Show the 1 that needs attention" : `Show the ${count} that need attention`,
 } as const;
 
 /**

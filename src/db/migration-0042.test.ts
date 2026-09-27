@@ -12,6 +12,12 @@ import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
+import {
+  FEATURE_REQUEST_DETAILS_MAX,
+  FEATURE_REQUEST_REPLY_MAX,
+  FEATURE_REQUEST_TITLE_MAX,
+} from "@/src/domain/feature-requests";
+
 const drizzleDir = path.join(__dirname, "..", "..", "drizzle");
 const sql = readFileSync(path.join(drizzleDir, "0042_feature_requests.sql"), "utf8");
 const statements = sql
@@ -82,6 +88,17 @@ describe("migration 0042: feature requests", () => {
   it("makes a Waiting for review or Already requested request unshowable to other organizations", () => {
     expect(sql).toContain(
       `CHECK ("feature_requests"."shown_to_all_at" is null or "feature_requests"."status"::text not in ('waiting_for_review', 'already_requested'))`,
+    );
+  });
+
+  // The boxes' maxLength and the actions read these constants; the database has its own copy.
+  it("checks the same lengths the screens and actions allow", () => {
+    expect(sql).toContain(`CHECK (char_length("feature_requests"."title") between 1 and ${FEATURE_REQUEST_TITLE_MAX})`);
+    expect(sql).toContain(
+      `CHECK (char_length("feature_requests"."details") between 1 and ${FEATURE_REQUEST_DETAILS_MAX})`,
+    );
+    expect(sql).toContain(
+      `CHECK (char_length("feature_request_replies"."body") between 1 and ${FEATURE_REQUEST_REPLY_MAX})`,
     );
   });
 
