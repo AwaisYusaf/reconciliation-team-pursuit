@@ -19,8 +19,9 @@ export default defineConfig({
     environment: "node",
     include: ["src/**/*.stripe.test.ts"],
     env: { TZ: "Asia/Karachi" },
-    testTimeout: 600_000,
-    hookTimeout: 600_000,
+    // A test can wait on several test-clock advances, each up to 15 minutes (`clockReady`).
+    testTimeout: 1_800_000,
+    hookTimeout: 1_800_000,
     maxConcurrency: 25,
   },
 });

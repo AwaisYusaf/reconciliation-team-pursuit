@@ -127,14 +127,15 @@ async function advance(f: Fixture, toSeconds: number): Promise<void> {
   await syncOrgBilling(f.customerId);
 }
 
+/** Up to 15 minutes: an advance through a declined payment took 6.4 minutes in the sandbox. */
 async function clockReady(clockId: string): Promise<void> {
-  for (let i = 0; i < 180; i++) {
+  for (let i = 0; i < 450; i++) {
     const c = await s.testHelpers.testClocks.retrieve(clockId);
     if (c.status === "ready") return;
     if (c.status === "internal_failure") throw new Error(`test clock ${clockId} failed`);
     await sleep(2000);
   }
-  throw new Error("test clock did not finish advancing in 6 minutes");
+  throw new Error("test clock did not finish advancing in 15 minutes");
 }
 
 /** The subscription that counts, straight from Stripe (mirrors `pickCurrent`). */
