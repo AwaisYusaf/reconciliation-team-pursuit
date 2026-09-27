@@ -943,6 +943,7 @@ export const UI = {
   featureRequestSuggest: "Suggest a feature",
   featureRequestSearchLabel: "Search requests",
   featureRequestSearchButton: "Search",
+  featureRequestSearchClear: "Clear search",
   featureRequestTabAll: "All requests",
   featureRequestTabOrg: "From your organization",
   featureRequestYourOrg: "Your organization",

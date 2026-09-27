@@ -1,44 +1,15 @@
 /**
- * The `/a` badge pill and the shared status/complimentary/suspended row (Phase 9 §6). Not
- * `"use client"` — it gets pulled into the client bundle by whichever importer (`org-directory.tsx`,
- * the org page) is a client component, the same way `RuleBadge` in `settings-sections.tsx` does.
+ * The `/a` status/complimentary/suspended badge row (Phase 9 §6), built on the shared `Badge`
+ * (`src/components/ui/badge.tsx`, moved there in PHASE-17 when the customer side needed it).
  */
-import type { ReactNode } from "react";
-
+import { Badge, type BadgeTone } from "@/src/components/ui/badge";
 import { complimentaryState } from "@/src/domain/complimentary";
 import type { IsoDate } from "@/src/domain/dates";
 import { formatDateShort } from "@/src/domain/dates";
 import type { DirectoryOrg } from "@/src/modules/admin/directory";
 import { STATUS_LABELS, UI } from "@/src/domain/strings";
-import { cn } from "@/src/lib/cn";
 
-const TONE = {
-  neutral: "bg-surface text-sub border border-line",
-  success: "bg-success-bg text-success",
-  warning: "bg-caution/10 text-caution",
-  danger: "bg-danger-bg text-danger",
-} as const;
-
-export function Badge({
-  tone,
-  children,
-}: {
-  tone: keyof typeof TONE;
-  children: ReactNode;
-}) {
-  return (
-    <span
-      className={cn(
-        "inline-flex items-center rounded-full px-3 py-1 text-[13px] font-medium",
-        TONE[tone],
-      )}
-    >
-      {children}
-    </span>
-  );
-}
-
-const STATUS_TONE: Record<DirectoryOrg["subscriptionStatus"], keyof typeof TONE> = {
+const STATUS_TONE: Record<DirectoryOrg["subscriptionStatus"], BadgeTone> = {
   active: "success",
   past_due: "warning",
   cancelled: "neutral",

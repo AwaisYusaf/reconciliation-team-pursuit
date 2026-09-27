@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 
+import { UI } from "@/src/domain/strings";
 import { initialsFor } from "@/src/domain/user-display";
 import { cn } from "@/src/lib/cn";
 
@@ -25,6 +26,7 @@ export function ProfileMenu({
   photoUrl,
   signOut,
   profileHref = "/r/settings?section=account",
+  featureRequestsHref = null,
 }: {
   name: string | null;
   email: string;
@@ -32,6 +34,12 @@ export function ProfileMenu({
   photoUrl?: string | null;
   /** Where "Your profile" goes, or `null` to leave the item out — see below. */
   profileHref?: string | null;
+  /**
+   * Where "Feature requests" goes (PHASE-17, ticket §1), or `null`, the default, to leave it out.
+   * Opt-in rather than opt-out: only the paid `/r` shell passes it, so an organization without a
+   * paid plan, which can reach nothing but the plan chooser, and staff in `/a` never see it.
+   */
+  featureRequestsHref?: string | null;
   /** The sign-out server action, passed down so this stays a presentational client component. */
   signOut: () => void | Promise<void>;
 }) {
@@ -114,7 +122,24 @@ export function ProfileMenu({
             </Link>
           )}
 
-          <form action={signOut} className={profileHref ? "border-t border-line" : undefined}>
+          {featureRequestsHref && (
+            <Link
+              href={featureRequestsHref}
+              role="menuitem"
+              onClick={() => setOpen(false)}
+              className={cn(
+                "block w-full min-h-11 flex items-center px-3.5 text-[15px] text-ink hover:bg-section",
+                profileHref && "border-t border-line",
+              )}
+            >
+              {UI.featureRequestsTitle}
+            </Link>
+          )}
+
+          <form
+            action={signOut}
+            className={profileHref || featureRequestsHref ? "border-t border-line" : undefined}
+          >
             <button
               type="submit"
               role="menuitem"

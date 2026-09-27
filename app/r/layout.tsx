@@ -151,6 +151,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             photoUrl={
               session.avatarKey ? `/api/me/avatar?v=${avatarVersionOf(session.avatarKey)}` : null
             }
+            // Paid shell only (PHASE-17, ticket §1): the unpaid shell above leaves it out.
+            featureRequestsHref="/r/feature-requests"
             signOut={signOutAction}
           />
         }
