@@ -916,6 +916,8 @@ export const UI = {
   staffBillingHeadUnfinished: "Payment not finished",
   staffBillingLastPaid: (amount: string, date: string) => `Last payment ${amount} on ${date}.`,
   staffBillingLastPaidLabel: "Last payment",
+  staffBillingTotalPaidLabel: "Total paid",
+  staffBillingTotalPaidNote: "Every paid invoice, before any refunds.",
   staffBillingFirstCharge: (date: string) => `Card saved. The first payment is on ${date}.`,
   staffBillingFirstChargeLabel: "First payment on",
   staffBillingAccessEnds: (date: string) => `Won't renew. Access ends on ${date}.`,

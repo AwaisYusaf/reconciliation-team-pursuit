@@ -885,4 +885,37 @@ describe.skipIf(!hasDatabase)("billing actions (integration, Phase 16)", async (
       expect(subscriptionsCancelMock).not.toHaveBeenCalled();
     });
   });
+  /* ------------------------------------------------------------ staffTotalPaid */
+
+  describe("staffTotalPaid: every paid invoice, across pages", () => {
+    it("adds amount_paid over every page, asking only for paid invoices", async () => {
+      const { staffTotalPaid } = await import("./billing");
+      const orgId = await freshOrg({ complimentary: false });
+      const customerId = uniqueCustomerId();
+      await withCustomer(orgId, customerId);
+      invoicesListMock
+        .mockResolvedValueOnce({ data: [{ id: "in_1", amount_paid: 19_999 }, { id: "in_2", amount_paid: 29_700 }], has_more: true })
+        .mockResolvedValueOnce({ data: [{ id: "in_3", amount_paid: 20_000 }], has_more: false });
+
+      expect(await staffTotalPaid(orgId)).toBe(69_699);
+      expect(invoicesListMock).toHaveBeenCalledTimes(2);
+      expect(invoicesListMock.mock.calls[0][0]).toEqual({ customer: customerId, status: "paid", limit: 100 });
+      expect(invoicesListMock.mock.calls[1][0]).toEqual({ customer: customerId, status: "paid", limit: 100, starting_after: "in_2" });
+    });
+
+    it("no Stripe customer: 0, and Stripe is never asked", async () => {
+      const { staffTotalPaid } = await import("./billing");
+      const orgId = await freshOrg({ complimentary: false });
+      expect(await staffTotalPaid(orgId)).toBe(0);
+      expect(invoicesListMock).not.toHaveBeenCalled();
+    });
+
+    it("Stripe failing: null, so the page leaves the figure out instead of showing $0.00", async () => {
+      const { staffTotalPaid } = await import("./billing");
+      const orgId = await freshOrg({ complimentary: false });
+      await withCustomer(orgId, uniqueCustomerId());
+      invoicesListMock.mockRejectedValueOnce(new Error("Stripe is down"));
+      expect(await staffTotalPaid(orgId)).toBeNull();
+    });
+  });
 });

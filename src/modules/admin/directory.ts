@@ -99,7 +99,7 @@ export type StaffBillingTone = "good" | "warn" | "bad" | "neutral";
 export type StaffBilling = {
   /** Has this org paid? One pill and one line, answered first. */
   headline: { tone: StaffBillingTone; label: string; detail: string | null };
-  facts: { label: string; value: string }[];
+  facts: { label: string; value: string; caption?: string }[];
   warnings: string[];
   customerUrl: string | null;
 };
@@ -112,10 +112,16 @@ const intervalWord = (interval: string | null) =>
 
 /**
  * The Billing card on the org page (Phase 16 §4.6), or `null` when Stripe has never seen this
- * org. Reads our copy (written by `syncOrgBilling`) plus the latest paid invoice; the Stripe link
- * is for anything more.
+ * org. Reads our copy (written by `syncOrgBilling`) plus the latest paid invoice and the total of
+ * every paid invoice (`staffTotalPaid`; `null` when Stripe couldn't be reached, so the figure is
+ * left out rather than shown as $0.00); the Stripe link is for anything more.
  */
-export function staffBilling(row: BillingCopy, lastPaid: LastPayment = null, now: Date = new Date()): StaffBilling | null {
+export function staffBilling(
+  row: BillingCopy,
+  lastPaid: LastPayment = null,
+  now: Date = new Date(),
+  totalPaidCents: number | null = null,
+): StaffBilling | null {
   if (!row.stripeCustomerId && !row.stripeStatus) return null;
 
   const facts: StaffBilling["facts"] = [];
@@ -155,6 +161,9 @@ export function staffBilling(row: BillingCopy, lastPaid: LastPayment = null, now
   }
   if (lastPaid) {
     facts.push({ label: UI.staffBillingLastPaidLabel, value: `${formatMoney(lastPaid.amountCents)} · ${day(lastPaid.at)}` });
+  }
+  if (totalPaidCents !== null) {
+    facts.push({ label: UI.staffBillingTotalPaidLabel, value: formatMoney(totalPaidCents), caption: UI.staffBillingTotalPaidNote });
   }
   if (row.pendingAt) {
     facts.push({

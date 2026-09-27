@@ -65,7 +65,9 @@ either screen renders more rows than it asks for: ten organizations per page
   `router.refresh()` — the same pattern as `month-lock.tsx`'s lock/unlock dialogs.
 - **Billing (Phase 16 §4.6)**: once Stripe has seen an organization, a Billing card between AI
   usage and Actions shows our copy of its state (`staffBilling()` in `directory.ts`): Stripe
-  status, billed monthly/yearly, "Renews on" or "Ends on", a scheduled change, and warnings for
+  status, billed monthly/yearly, "Renews on" or "Ends on", the last payment, "Total paid" (the
+  sum of every paid invoice, read page by page from Stripe by `staffTotalPaid` when the page opens,
+  before any refunds; left out if Stripe can't be reached), a scheduled change, and warnings for
   a failed payment, an upgrade waiting for payment, collection paused, and a card dispute
   ("Card dispute opened on {date}", from `org_billing.disputed_at`, never cleared); plus "Open in Stripe" (the dashboard customer page, `/test/` for a test
   customer). While billing is on and a subscription is live, Change plan is disabled with

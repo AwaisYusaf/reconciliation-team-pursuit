@@ -70,6 +70,16 @@ describe("staffBilling: the org page's Billing card (Phase 16 §4.6)", () => {
     });
   });
 
+  it("Total paid follows Last payment, with a note that refunds aren't taken off; $0.00 shows, unknown doesn't", () => {
+    const facts = staffBilling(paying, PAID, NOW, 69_699)?.facts ?? [];
+    expect(facts.map((f) => f.label)).toEqual(["Billed", "Renews on", "Last payment", "Total paid"]);
+    expect(facts[3]).toEqual({ label: "Total paid", value: "$696.99", caption: "Every paid invoice, before any refunds." });
+
+    expect(staffBilling(paying, null, NOW, 0)?.facts.at(-1)).toMatchObject({ label: "Total paid", value: "$0.00" });
+    // Stripe couldn't be reached: no figure rather than a wrong $0.00.
+    expect(staffBilling(paying, null, NOW, null)?.facts.map((f) => f.label)).not.toContain("Total paid");
+  });
+
   it("active but no paid invoice read (Stripe unreachable): still Paid, no invented amount", () => {
     const b = staffBilling(paying, null, NOW);
     expect(b?.headline).toEqual({ tone: "good", label: "Paid", detail: null });

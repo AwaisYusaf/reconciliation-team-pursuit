@@ -786,6 +786,41 @@ export async function staffPayments(orgId: string, limit = 12): Promise<StaffPay
   }
 }
 
+/** Pages of 100 read at most for the total: 10,000 invoices, far past any org's lifetime. */
+const TOTAL_PAID_MAX_PAGES = 100;
+
+/**
+ * Everything the org has paid, in cents: the sum of `amount_paid` over every paid invoice, read
+ * page by page from Stripe when the org page opens (nothing is stored). Refunds are not taken
+ * off; the page says so. `null` when Stripe couldn't be reached, `0` when billing is off or
+ * Stripe has never seen the org. Every price is in US dollars (§4.9), so one sum is meaningful.
+ */
+export async function staffTotalPaid(orgId: string): Promise<number | null> {
+  if (!billingEnabled()) return 0;
+  const customerId = (await loadOrg(orgId)).stripeCustomerId;
+  if (!customerId) return 0;
+  try {
+    let total = 0;
+    let startingAfter: string | undefined;
+    for (let page = 0; page < TOTAL_PAID_MAX_PAGES; page++) {
+      const { data, has_more } = await stripe().invoices.list({
+        customer: customerId,
+        status: "paid",
+        limit: 100,
+        ...(startingAfter ? { starting_after: startingAfter } : {}),
+      });
+      for (const invoice of data) total += invoice.amount_paid;
+      if (!has_more || data.length === 0) return total;
+      startingAfter = data[data.length - 1].id;
+    }
+    alert(`org ${orgId} has more than ${TOTAL_PAID_MAX_PAGES * 100} paid invoices; Total paid shows the first ones only`);
+    return total;
+  } catch (e) {
+    console.error(`[billing] totalling paid invoices for org ${orgId} failed`, e);
+    return null;
+  }
+}
+
 // ── Price moves (P21, "move-subscribers") ────────────────────────────────────
 
 export type PriceMoveResult = {
