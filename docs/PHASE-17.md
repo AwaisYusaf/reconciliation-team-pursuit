@@ -1,8 +1,6 @@
 # Phase 17: Feature requests
 
-**Status (2026-09-27): Phases 0 to 5 built and committed on `implementation/feature-requests`,
-and reviewed (§11); the customer screens were checked in Chrome, the staff screens still need a
-signed-in staff pass (§11).** The plan was
+**Status (2026-09-27): built, reviewed and browser-checked on both sides (§11); merged to `main`.** The plan was
 written from the code and reviewed against it under seven lenses (tenancy, database, simplicity,
 usability, edge cases, Next 16, tests). §10 lists what the review changed. Awais answered the four
 product questions it raised (§2.1). The ticket is Appendix A, word for word.
@@ -127,7 +125,7 @@ chooser), customer actions `actionSession()`, staff pages `requireStaffPage()` a
 | 2 | Customer screens: menu item, list, dialog, vote, detail with replies | `d924fb8` |
 | 3 | Staff screens: pagination moved, section links, list, detail, organization card | `9eab7ef` |
 | 4 | Docs: m12, m10, data-model, D-127, README, design-language, architecture | `46dc3ff` |
-| 5 | Adversarial review and its fixes, then a Chrome pass at 1280 and 375 px | review fixes committed; staff browser pass open (§11) |
+| 5 | Adversarial review and its fixes, then the browser passes | `67bfaf0`, then the staff pass and its two fixes |
 
 ---
 
@@ -255,10 +253,37 @@ For Awais to choose (each departs from the ticket or the plan):
 - "Your organization" on every row of the From your organization tab is redundant there.
 - A request opened from an organization's card in `/a` goes back to the list, not the card.
 
+**Staff and second-organization pass (2026-09-27, before the merge).** In the built-in browser on
+`review.localhost:3000` and `orgb.localhost:3000` (each `*.localhost` host keeps its own cookies,
+so neither of Awais's own sessions was touched; `127.0.0.1` doesn't work, because the Next dev
+server refuses its dev scripts to that origin and the page never hydrates), with a throwaway staff
+account and a throwaway second organization, both deleted afterwards:
+- `/a`: "Organizations" and "Feature requests 1" (the count read out as "1 needs attention"); the
+  organizations list still pages ("Page 1 of 6", Previous off, Next to `?page=2`, a filter kept on
+  page 2) through the moved `Pagination`.
+- `/a/feature-requests`: the seven columns, the Needs attention badge, "Show the 1 that needs
+  attention" to `?attention=1` with the Show filter following it; search over an organization name
+  and a title word on Enter, and on its own after two seconds with "Press Enter to search now."
+  meanwhile; "No feature requests match these filters." for no match.
+- One request: back link keeping the filter; "Awais (email)"; a staff reply signed "Stay Funded
+  360 team" that cleared Needs attention; Considering, with its meaning shown; the switch off and
+  disabled while waiting, then on ("Now shown to all organizations.") and off again ("Now shown
+  only to its own organization."); two edits with the customer's first wording kept under
+  "Original wording"; the organization card listing it; "No feature requests yet." on an
+  organization with none.
+- The second organization, while shown: the row with only title, details, status, votes and the
+  date, no "Your organization", no "Our team replied" (though staff had replied); voting took it
+  to 2 votes, and staff then saw "2 votes from 2 organizations" with both names; its request page
+  had no author, no status meaning and no reply box. The whole page payload (HTML and the RSC
+  data) was searched for the other organization's name and id, the author's name and email, both
+  replies and the original wording: none there (the one "Awais" was a dev-mode file path). Once
+  hidden: the same address is the app's 404 and the list is empty. Deleting the second
+  organization removed its vote.
+- Fixed from this pass: "Edit wording" no longer wraps beside a long title, and the status
+  field's label is for screen readers only, since the card's heading already says "Status".
+
 **Still open.**
-- A signed-in staff pass of `/a/feature-requests`, one request, and the organization card, plus a
-  second organization seeing a request only once it is shown. Needs Awais to sign in as staff
-  (the local staff account's password isn't recorded) and as a second organization's user.
+- Awais's four choices above.
 - Pre-existing, not from this phase: in development, a hard load of a page that calls
   `notFound()` logs React's "cannot have a negative time stamp" performance-track error; the
   expense edit page does the same.

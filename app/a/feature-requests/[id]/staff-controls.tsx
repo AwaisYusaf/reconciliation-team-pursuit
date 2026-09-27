@@ -79,7 +79,7 @@ export function EditWording({
 
   return (
     <>
-      <Button variant="secondary" className="min-h-11 px-4 text-[15px]" onClick={openWithCurrent}>
+      <Button variant="secondary" className="min-h-11 px-4 text-[15px] shrink-0 whitespace-nowrap" onClick={openWithCurrent}>
         {UI.staffFeatureRequestEdit}
       </Button>
       <Modal open={open} title={UI.staffFeatureRequestEdit} onClose={() => setOpen(false)} dismissDisabled={pending}>
@@ -162,7 +162,8 @@ export function StatusAndVisibility({
   return (
     <div className="flex flex-col gap-5">
       <div className="max-w-[340px]">
-        <Label id="requestStatusSelect-label" htmlFor="requestStatusSelect">
+        {/* Named for screen readers only: the card's own heading already reads "Status". */}
+        <Label id="requestStatusSelect-label" htmlFor="requestStatusSelect" className="sr-only">
           {UI.staffFeatureRequestStatus}
         </Label>
         <Select

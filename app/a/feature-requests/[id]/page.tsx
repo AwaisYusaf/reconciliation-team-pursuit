@@ -142,7 +142,6 @@ export default async function StaffFeatureRequestPage({
           </ul>
         )}
       </Card>
-
     </div>
   );
 }
