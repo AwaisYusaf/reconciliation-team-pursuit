@@ -989,6 +989,7 @@ export const UI = {
   featureRequestTeamSignature: `${APP_NAME} team`,
 
   // PHASE-17: feature requests in /a.
+  staffSectionsLabel: "Sections",
   staffSectionOrganizations: "Organizations",
   staffSectionFeatureRequests: "Feature requests",
   staffFeatureRequestsCount: (count: number) =>
@@ -1026,6 +1027,16 @@ export const UI = {
   staffFeatureRequestReplyTo: (orgName: string) => `Reply to ${orgName}`,
   staffFeatureRequestNotFound: "That feature request does not exist, or has been deleted.",
   staffFeatureRequestsCapped: (shown: number) => `Showing the newest ${shown}.`,
+  staffFeatureRequestsIntro: "What customers have asked for, newest first.",
+  /** Read out beside the number on the Feature requests link; the number alone is what shows. */
+  staffFeatureRequestsNeedingAttention: (count: number) =>
+    count === 1 ? "1 needs attention" : `${count} need attention`,
+  staffFeatureRequestsShow: "Show",
+  staffFeatureRequestsAll: "All feature requests",
+  staffFeatureRequestYes: "Yes",
+  staffFeatureRequestNo: "No",
+  staffFeatureRequestStatusTitle: "Status",
+  staffFeatureRequestVotesTitle: "Votes",
 } as const;
 
 /**

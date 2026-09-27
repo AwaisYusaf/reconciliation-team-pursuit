@@ -2,7 +2,7 @@ import { PageSkeleton, TableSkeleton, TileGridSkeleton } from "@/src/components/
 import { Skeleton } from "@/src/components/ui/surfaces";
 
 /**
- * The organizations directory: the eight filter tiles, the search and filter row, the count
+ * The organizations directory: the section links, the eight filter tiles, the search and filter row, the count
  * line, then the directory table.
  *
  * Eight tiles exactly, at the screen's own `grid-cols-2 lg:grid-cols-4` — unlike the counts on
@@ -12,6 +12,8 @@ import { Skeleton } from "@/src/components/ui/surfaces";
 export default function AdminDirectoryLoading() {
   return (
     <PageSkeleton>
+      {/* The Organizations / Feature requests links above the title. */}
+      <Skeleton className="h-[52px] w-full sm:w-[340px] rounded-[10px] mb-6" />
       <Skeleton className="h-7 sm:h-8 lg:h-9 w-64 mb-2" />
       <Skeleton className="h-4 w-96 max-w-full mb-6" />
 

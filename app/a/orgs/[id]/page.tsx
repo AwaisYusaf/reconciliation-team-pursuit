@@ -6,7 +6,8 @@ import { TableCard, Td, Th } from "@/src/components/ui/table";
 import { cn } from "@/src/lib/cn";
 import { formatDateShort, formatDateTimeShort, monthLabel, todayIso } from "@/src/domain/dates";
 import { formatBytes, formatMoney, ratio } from "@/src/domain/format";
-import { PLAN_LABELS, UI } from "@/src/domain/strings";
+import { ORG_FEATURE_REQUESTS_LIMIT } from "@/src/domain/feature-requests";
+import { FEATURE_REQUEST_STATUS_LABELS, PLAN_LABELS, UI } from "@/src/domain/strings";
 import { aiCost } from "@/src/modules/admin/ai-cost";
 import {
   describeAccountEvent,
@@ -19,6 +20,7 @@ import { staffPayments } from "@/src/modules/billing/billing";
 import { billingEnabled } from "@/src/modules/billing/config";
 import { isLive } from "@/src/modules/billing/rules";
 import { requireStaffPage } from "@/src/modules/admin/guard";
+import { loadOrgFeatureRequests } from "@/src/modules/feature-requests/staff-queries";
 import {
   loadOrgAccount,
   loadOrgHistory,
@@ -121,12 +123,13 @@ export default async function OrgPage({
   const rawBack = typeof query.back === "string" ? query.back : "";
   const backHref = rawBack.startsWith("?") ? `/a${rawBack}` : "/a";
 
-  const [users, usage, aiUsage, history, payments] = await Promise.all([
+  const [users, usage, aiUsage, history, payments, featureRequests] = await Promise.all([
     loadOrgUsers(id, showAllUsers),
     loadOrgUsage(id),
     loadOrgAiUsage(id),
     loadOrgHistory(id),
     staffPayments(id),
+    loadOrgFeatureRequests(id),
   ]);
   const lastPaid = payments?.find((p) => p.status === "paid") ?? null;
   const billing = staffBilling(account, lastPaid);
@@ -438,6 +441,33 @@ export default async function OrgPage({
       <Card className="p-4 sm:p-5 lg:p-6">
         <SubsectionTitle gradient className="mb-3">Actions</SubsectionTitle>
         <AccountActions org={account} stripeManaged={stripeManaged} customerUrl={billing?.customerUrl ?? null} />
+      </Card>
+
+      {/* PHASE-17, ticket §8: this organization's requests, each opening its page in /a. */}
+      <Card className="p-4 sm:p-5 lg:p-6">
+        <SubsectionTitle gradient className="mb-2">{UI.staffSectionFeatureRequests}</SubsectionTitle>
+        {featureRequests.rows.length === 0 ? (
+          <p className="text-[15px] text-sub m-0">{UI.staffFeatureRequestsNoneYet}</p>
+        ) : (
+          <ul className="divide-y divide-line">
+            {featureRequests.rows.map((request) => (
+              <li key={request.id} className="py-2.5 text-[15px] flex flex-wrap items-baseline gap-x-2">
+                <Link
+                  href={`/a/feature-requests/${request.id}`}
+                  className="text-accent font-semibold underline underline-offset-2 hover:no-underline [overflow-wrap:anywhere]"
+                >
+                  {request.title}
+                </Link>
+                <span className="text-sub">
+                  {FEATURE_REQUEST_STATUS_LABELS[request.status]} · {formatDateShort(todayIso(request.createdAt))}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+        {featureRequests.capped && (
+          <p className="text-[13px] text-sub mt-2 m-0">{UI.staffFeatureRequestsCapped(ORG_FEATURE_REQUESTS_LIMIT)}</p>
+        )}
       </Card>
 
       <Card className="p-4 sm:p-5 lg:p-6">

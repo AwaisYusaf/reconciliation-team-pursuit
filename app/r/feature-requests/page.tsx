@@ -5,6 +5,7 @@ import { VoteButton } from "@/src/components/feature-requests/vote-button";
 import { Badge } from "@/src/components/ui/badge";
 import { Button } from "@/src/components/ui/button";
 import { Input } from "@/src/components/ui/field";
+import { SegmentedLinks } from "@/src/components/ui/segmented-links";
 import { Card, EmptyState, PageHeader, Subtext } from "@/src/components/ui/surfaces";
 import { formatDateUS, todayIso } from "@/src/domain/dates";
 import {
@@ -17,7 +18,6 @@ import {
   type FeatureRequestTab,
 } from "@/src/domain/feature-requests";
 import { FEATURE_REQUEST_STATUS_LABELS, pageTitle, UI } from "@/src/domain/strings";
-import { cn } from "@/src/lib/cn";
 import { pageSession } from "@/src/lib/page-session";
 import {
   loadFeatureRequestList,
@@ -83,36 +83,21 @@ function emptyMessage({ tab, q }: FeatureRequestListParams): string {
 }
 
 /** "All requests" / "From your organization": links, so the tab lives in the URL and keeps the
- *  search. Styled as the Settings sidebar's pills, lying flat. */
+ *  search. */
 function Tabs({ params }: { params: FeatureRequestListParams }) {
   const tabs: Array<{ tab: FeatureRequestTab; label: string }> = [
     { tab: "all", label: UI.featureRequestTabAll },
     { tab: "org", label: UI.featureRequestTabOrg },
   ];
   return (
-    <nav
-      aria-label={UI.featureRequestsTitle}
-      className="flex gap-1 bg-section border-2 border-line rounded-[10px] p-1 w-full sm:w-fit"
-    >
-      {tabs.map(({ tab, label }) => {
-        const active = params.tab === tab;
-        return (
-          <Link
-            key={tab}
-            href={listHref({ ...params, tab })}
-            aria-current={active ? "page" : undefined}
-            className={cn(
-              "flex-1 sm:flex-none min-h-11 px-4 inline-flex items-center justify-center rounded-[8px] text-[15px] font-medium no-underline transition-colors",
-              active
-                ? "text-white bg-[linear-gradient(145deg,var(--color-accent)_0%,var(--color-accent-dark)_100%)] shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_1px_2px_rgba(43,26,16,0.25)]"
-                : "text-sub hover:bg-surface/60 hover:text-ink",
-            )}
-          >
-            {label}
-          </Link>
-        );
-      })}
-    </nav>
+    <SegmentedLinks
+      label={UI.featureRequestsTitle}
+      items={tabs.map(({ tab, label }) => ({
+        href: listHref({ ...params, tab }),
+        label,
+        active: params.tab === tab,
+      }))}
+    />
   );
 }
 
