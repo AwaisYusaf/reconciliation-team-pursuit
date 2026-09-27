@@ -86,8 +86,10 @@ non-technical, and some of these words reach the City on signed documents.
 2. **Plain American English.** "Organization"; "check" or "select", never "tick".
 3. **Say what happened, then what to do.** Never blame the user. "Please" only when asking for
    real effort.
-4. **No internal words.** Never "Mantaq", "S3", "artifact", "request", "session", "server
-   action", "Phase N" or a rule number. Support is "support" (`UI.supportEmail`).
+4. **No internal words.** Never "Mantaq", "S3", "artifact", "request" (meaning a web request),
+   "session", "server action", "Phase N" or a rule number. Support is "support"
+   (`UI.supportEmail`). "Feature request" is the name of a feature customers use (PHASE-17), so
+   "request" is fine there: "Send request", "Search requests".
 5. **One name per thing:** expense, line item, funding source, receipt, proof of payment,
    narrative, cover sheet, packet, month documents. "Sign in" and "Sign out".
 6. **Sentence case** for buttons, headings, labels, dialog titles and menu items. Tab names are
@@ -138,7 +140,7 @@ the Stay Funded 360 mark; then the nav, a dark #3E2719 pill of tabs: Dashboard, 
 Expenses, Cover Sheets, Recurring, Month-End Packet, Contract Summary, Line Items, Settings —
 active tab: white pill with bold #5B3A29 text; inactive: white text at 75%. Right: "Month" and
 "Funding source" as compact white pill selects, then a round avatar opening the account menu
-(Your profile, Sign out). Content area: max-width 1220px, centered, 24px side padding.
+(Your profile, Feature requests, Sign out). Content area: max-width 1220px, centered, 24px side padding.
 
 Layout is desktop-first but must degrade gracefully to a 390px phone (tables scroll
 horizontally inside their card; below 1280px the nav becomes one menu button naming the

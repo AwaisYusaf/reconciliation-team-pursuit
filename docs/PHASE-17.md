@@ -1,6 +1,8 @@
 # Phase 17: Feature requests
 
-**Status (2026-09-27): planned, building on `implementation/feature-requests`.** The plan was
+**Status (2026-09-27): Phases 0 to 4 built and committed on `implementation/feature-requests`;
+the customer screens were checked in Chrome, the staff screens still need a signed-in staff pass
+(§11).** The plan was
 written from the code and reviewed against it under seven lenses (tenancy, database, simplicity,
 usability, edge cases, Next 16, tests). §10 lists what the review changed. Awais answered the four
 product questions it raised (§2.1). The ticket is Appendix A, word for word.
@@ -120,12 +122,12 @@ chooser), customer actions `actionSession()`, staff pages `requireStaffPage()` a
 
 | Phase | What | Status |
 |---|---|---|
-| 0 | This file | Done |
-| 1 | Schema, migration, domain, queries, actions, unit and integration tests | |
-| 2 | Customer screens: menu item, list, dialog, vote, detail with replies | |
-| 3 | Staff screens: pagination moved, section links, list, detail, organization card | |
-| 4 | Docs: m12, m10, data-model, D-127, README, design-language | |
-| 5 | Adversarial review, then a Chrome pass at 1280 and 375 px | |
+| 0 | This file | `9b95ba4` |
+| 1 | Schema, migration, domain, queries, actions, unit and integration tests | `64bfe28` |
+| 2 | Customer screens: menu item, list, dialog, vote, detail with replies | `d924fb8` |
+| 3 | Staff screens: pagination moved, section links, list, detail, organization card | `9eab7ef` |
+| 4 | Docs: m12, m10, data-model, D-127, README, design-language, architecture | this commit |
+| 5 | Adversarial review, then a Chrome pass at 1280 and 375 px | review done in-session; staff browser pass open (§11) |
 
 ---
 
@@ -179,6 +181,49 @@ ownership data in the page payload, a fixed page title and a guard test for `/a`
 into D-127 (simplicity); the vote button on your own request, `?back=`, per-tab empty states,
 refusals inside the dialog, a toast when a status change hides a request, and wrapping in `/a`
 (usability); `revalidatePath` on the literal list path, checked against the Next 16 docs.
+
+
+---
+
+## 11. Build record
+
+**Found while building.**
+- Drizzle prints a column bare inside a `sql` fragment when the outer query has one table, so the
+  correlated subqueries compared the vote's or reply's own `id` with itself and every vote count
+  came back 0. The integration suite caught it; the outer request id is now spelled out with its
+  table (`outerRequestId`), the fix `hasAuditHistory` in `users/actions.ts` already records.
+- The first race test (twelve sends at once) still passed with the advisory lock removed: the
+  sends never overlapped. It was replaced with a deterministic one that holds the table in SHARE
+  mode while two sends count. Fourteen mutations, each failing a test: visibility, the CHECK,
+  voting-open before visibility, author leaked to the public loader, no ILIKE escaping, no
+  advisory lock, no `coalesce` on the original wording, replies on another organization's
+  request, "Our team replied" leaked, a status change keeping the switch, the cap off by one, the
+  cap counting the UTC day, Needs attention ignoring a customer reply, the org tab sorted by
+  votes; and a `/a` page without `requireStaffPage`.
+
+**Small choices made while building.**
+- Another organization's request page shows no date, as ticket §4 lists; its list row keeps
+  "Suggested {date}", as the ticket's example row does.
+- A status's meaning ("It will be built.") shows only to its own organization: two of them point
+  to a reply, which another organization never sees.
+- A "Clear search" link beside the search box while a search is on.
+- The customer tabs and the `/a` sections share `SegmentedLinks`; the `Badge` pill moved to
+  `src/components/ui/badge.tsx` and the pagination bar to `src/components/ui/pagination.tsx`.
+
+**Checked in Chrome (customer side, localhost:3000):** the menu item between Your profile and
+Sign out; empty-field errors; Cancel keeping the text; sending, the toast and the org tab with the
+new row, its note and the author's vote; taking the vote back and giving it again; the request
+page, a reply, the back link keeping the tab; a random and a malformed id give the app's 404; no
+sideways scroll at 375 px (same-origin iframes) with a long unbroken address; a customer opening
+either `/a` feature request page is sent to `/r`.
+
+**Still open.**
+- A signed-in staff pass of `/a/feature-requests`, one request, and the organization card, plus a
+  second organization seeing a request only once it is shown. Needs Awais to sign in as staff
+  (the local staff account's password isn't recorded) and as a second organization's user.
+- Pre-existing, not from this phase: in development, a hard load of a page that calls
+  `notFound()` logs React's "cannot have a negative time stamp" performance-track error; the
+  expense edit page does the same.
 
 ---
 

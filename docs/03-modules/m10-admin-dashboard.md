@@ -6,7 +6,8 @@ complimentary access and suspension, at a glance and per-organization, with a fu
 who changed what and when.
 
 ## Scope
-Routes `/a` (directory) and `/a/orgs/[id]` (one organization). Staff-only — gated by
+Routes `/a` (directory), `/a/orgs/[id]` (one organization), and `/a/feature-requests` and
+`/a/feature-requests/[id]` (PHASE-17, below). Staff-only — gated by
 `requireStaffPage()` (Phase 9 §3.6, D-98), which also covers the layout. No customer, including
 an organization's own admin, can reach either route. Read view plus four staff actions (change
 plan, complimentary access, suspend, reinstate) that write an `org_account_events` row each.
@@ -75,6 +76,29 @@ either screen renders more rows than it asks for: ten organizations per page
   refuses and the dialog then shows the choice; Stripe is
   cancelled first, and a Stripe failure grants nothing. Suspend pauses collection, reinstate
   resumes it (D3). History lines written by the sync read "Stripe" as the actor.
+- **Feature requests (PHASE-17, D-127)**: the top of `/a` and of `/a/feature-requests` carries
+  **Organizations** · **Feature requests (N)** (`src/components/admin/section-links.tsx`), N
+  being the requests that need attention: waiting for review with nobody having replied, or the
+  customer wrote last (Q2). Each list page renders the links itself rather than the layout, since
+  a layout doesn't re-render on navigation. **`/a/feature-requests`** lists every organization's
+  requests newest first, ten per page with the same `Pagination` as the organizations list, a
+  status filter, a Show filter (All requests / Needs attention) and a search over titles, details
+  and organization names, all in the URL through `staffListHref`; columns Request · Organization
+  · Suggested by · Date · Votes · Status (with a Needs attention badge) · Shown to all.
+  **`/a/feature-requests/[id]`**: the title and details with **Edit wording** (a Modal; the
+  customer's first wording is kept under "Original wording" and the customer's own organization
+  sees the edited version), the organization (a link to its page), who suggested it (name and
+  email, "Unknown" once removed) and when; the status Select, saving on change; **Show to all
+  organizations**, off to start with and disabled with its reason while the status is Waiting for
+  review or Already requested (a status change to either turns it off, and the toast says so);
+  "N votes from M organizations" with the names; and the conversation as the customer sees it,
+  with a "Reply to {organization}" box. Replying, or moving a request off Waiting for review
+  while nobody has replied, clears Needs attention. The organization page gets a **Feature
+  requests** card (title, status, date, newest first, 50 at most) between Actions and History.
+  Reads: `src/modules/feature-requests/staff-queries.ts`; writes: `staff-actions.ts`
+  (`editFeatureRequestAction`, `setFeatureRequestStatusAction`, `setFeatureRequestShownAction`,
+  `staffReplyToFeatureRequestAction`), each behind `requireStaff()`. `guard-coverage.test.ts`
+  fails any `app/a` page that doesn't call `requireStaffPage()`.
 
 ## Acceptance
 Only staff reach either route (Phase 9 P1 tests + a manual customer-admin check). Search, the
