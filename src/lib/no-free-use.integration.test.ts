@@ -81,6 +81,7 @@ describe.skipIf(!hasDatabase)("no free use at every entry point (I-9, I-16)", as
   const { completeTourAction } = await import("@/src/modules/tours/actions");
   const { discardDraftAction } = await import("@/src/modules/expense-imports/draft-actions");
   const { updateFundingSourceAction } = await import("@/src/modules/funding-sources/actions");
+  const { suggestFeatureAction } = await import("@/src/modules/feature-requests/actions");
   const { GET: downloadSummary } = await import("@/app/api/downloads/summary/route");
   const { GET: downloadPacket } = await import("@/app/api/downloads/packet/route");
   const { GET: downloadCoverSheet } = await import("@/app/api/downloads/cover-sheet/route");
@@ -366,6 +367,11 @@ describe.skipIf(!hasDatabase)("no free use at every entry point (I-9, I-16)", as
       expect(afterShare).toEqual(beforeShare);
       // users (admin-only action, requireAdmin also refuses on billing before the role check runs)
       expect(await setUserNameAction(bogusId, "New Name")).toEqual({ ok: false, error: UI.billingPlanRequired });
+      // feature-requests (a valid shape, so the billing check, not validation, is what refuses)
+      expect(await suggestFeatureAction({ title: "An idea", details: "More about it." })).toEqual({
+        ok: false,
+        error: UI.billingPlanRequired,
+      });
 
       // admin/actions.ts is guarded by requireStaff, not actionSession/requireAdmin — staff have
       // no organization and are unaffected by *this* org's billing state, so it is intentionally
