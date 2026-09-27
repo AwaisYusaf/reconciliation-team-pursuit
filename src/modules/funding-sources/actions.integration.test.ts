@@ -21,6 +21,7 @@ import { and, eq, sql } from "drizzle-orm";
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { formatDateUS, todayIso } from "@/src/domain/dates";
+import { dayAfterStart } from "@/src/modules/billing/rules";
 import { UI } from "@/src/domain/strings";
 
 const hasDatabase = Boolean(process.env.DATABASE_URL);
@@ -543,6 +544,37 @@ describe.skipIf(!hasDatabase)("funding source management actions (integration)",
         expect(await createFundingSourceAction({ ...BASE_INPUT, name: "Second Source" })).toMatchObject({ ok: true });
         await queue(a.orgId, "price_move");
         expect(await createFundingSourceAction({ ...BASE_INPUT, name: "Third Source" })).toMatchObject({ ok: true });
+      });
+
+      /** Free Reconciliation + AI until `until`, having bought `bought` to start the day after
+       *  (Checkout pins the free plan in complimentary_plan and the sync writes the bought one to
+       *  plan; the subscription is trialing until the free access runs out). */
+      async function freeAiThatBought(name: string, bought: "reconciliation" | "reconciliation_ai") {
+        const created = await org(name);
+        const until = todayIso(new Date(Date.now() + 30 * 86_400_000));
+        await db
+          .update(organizations)
+          .set({ plan: bought, complimentary: true, complimentaryUntil: until, complimentaryPlan: "reconciliation_ai" })
+          .where(eq(organizations.id, created.orgId));
+        await setBillingCopy(created.orgId, { stripeStatus: "trialing" });
+        return { ...created, until };
+      }
+
+      it("free Reconciliation + AI that bought Reconciliation to start later: no second source before it starts", async () => {
+        const a = await freeAiThatBought("Free AI Bought Recon Org", "reconciliation");
+        asSession(a.orgId, "admin");
+        const before = await listFundingSources(a.orgId);
+
+        const result = await createFundingSourceAction({ ...BASE_INPUT, name: "Second Source" });
+        const startsOn = formatDateUS(todayIso(dayAfterStart(a.until)));
+        expect(result).toEqual({ ok: false, error: UI.fundingSourceLimitQueued(startsOn) });
+        expect(await listFundingSources(a.orgId)).toHaveLength(before.length);
+      });
+
+      it("free Reconciliation + AI that bought Reconciliation + AI still adds sources freely", async () => {
+        const a = await freeAiThatBought("Free AI Bought AI Org", "reconciliation_ai");
+        asSession(a.orgId, "admin");
+        expect(await createFundingSourceAction({ ...BASE_INPUT, name: "Second Source" })).toMatchObject({ ok: true });
       });
     });
 

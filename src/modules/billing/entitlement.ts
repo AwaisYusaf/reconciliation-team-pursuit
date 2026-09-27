@@ -7,8 +7,15 @@
  * Suspension is handled earlier, in `resolveSession`, and is not part of this function (§4.2).
  */
 import { complimentaryState, isComplimentaryNow } from "@/src/domain/complimentary";
-import type { IsoDate } from "@/src/domain/dates";
-import { fundingSourceLimit, KNOWN_STRIPE_STATUSES, PAID_STATUSES, type PlanId } from "@/src/modules/billing/rules";
+import { todayIso, type IsoDate } from "@/src/domain/dates";
+import {
+  dayAfterStart,
+  fundingSourceLimit,
+  isLive,
+  KNOWN_STRIPE_STATUSES,
+  PAID_STATUSES,
+  type PlanId,
+} from "@/src/modules/billing/rules";
 
 export type Entitlement =
   | { paid: true; plan: PlanId; reason: "billing_off" | "complimentary" | "subscription" }
@@ -56,4 +63,40 @@ export function orgEntitlement(org: EntitlementOrg, today: IsoDate, enabled: boo
 export function activeFundingSourceLimit(ent: Entitlement): number | null {
   if (ent.reason === "billing_off") return null;
   return fundingSourceLimit(ent.plan);
+}
+
+export type UpcomingPlanOrg = EntitlementOrg & {
+  pendingPlan: PlanId | null;
+  pendingReason: string | null;
+  pendingAt: Date | null;
+};
+
+/**
+ * The day an org that has more today moves onto Reconciliation, or `null` (P24). Adding or
+ * unarchiving a funding source is refused while this is set, so the org can't arrive on
+ * Reconciliation with several active sources. Two ways it happens:
+ *  - a downgrade to Reconciliation queued in the Stripe copy (`pending_*`);
+ *  - a complimentary org on Reconciliation + AI that bought Reconciliation with a deferred first
+ *    charge: `plan` is what it bought and pays for from the day after `complimentary_until`,
+ *    `complimentary_plan` the free plan it keeps until then.
+ */
+export function reconciliationStartsOn(org: UpcomingPlanOrg, today: IsoDate, now: Date): IsoDate | null {
+  if (
+    org.pendingPlan === "reconciliation" &&
+    org.pendingReason === "downgrade" &&
+    org.pendingAt !== null &&
+    org.pendingAt > now
+  ) {
+    return todayIso(org.pendingAt);
+  }
+  if (
+    isComplimentaryNow(org, today) &&
+    org.complimentaryUntil !== null &&
+    org.plan === "reconciliation" &&
+    (org.complimentaryPlan ?? org.plan) !== "reconciliation" &&
+    isLive(org.stripeStatus)
+  ) {
+    return todayIso(dayAfterStart(org.complimentaryUntil));
+  }
+  return null;
 }

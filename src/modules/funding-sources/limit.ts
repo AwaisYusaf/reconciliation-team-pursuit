@@ -12,11 +12,11 @@ import { billingCopyOn } from "@/src/db/billing-copy";
 import { orgBilling, organizations } from "@/src/db/schema";
 import type { Executor, Transaction } from "@/src/db/org-lock";
 import { lockOrg } from "@/src/db/org-lock";
-import { formatDateUS, todayIso, type IsoDate } from "@/src/domain/dates";
+import { formatDateUS, type IsoDate } from "@/src/domain/dates";
 import { UI } from "@/src/domain/strings";
 import { activeFundingSourceLimit, type Entitlement } from "@/src/modules/billing/entitlement";
 import { fundingSourceLimit } from "@/src/modules/billing/rules";
-import { ENTITLEMENT_COLUMNS, entitlementOf } from "@/src/services/auth/entitlement";
+import { ENTITLEMENT_COLUMNS, entitlementOf, reconciliationStartsOf } from "@/src/services/auth/entitlement";
 
 /**
  * The refusal message for activating one more funding source, or `null` to allow it.
@@ -72,10 +72,11 @@ async function entitlementRow(executor: Executor, orgId: string) {
   return row;
 }
 
-/** The org's entitlement, and the day a downgrade to Reconciliation queued in its Stripe copy
- *  starts (P24; `applyChange` re-syncs the copy right after queueing one). Read under the org row
- *  lock so a concurrent create/unarchive in the same org is serialised (same reasoning as
- *  `archiveFundingSourceAction`'s lock). `undefined` when the id doesn't exist. */
+/** The org's entitlement, and the day it moves onto Reconciliation if it is about to
+ *  (`reconciliationStartsOn`: a queued downgrade, or Reconciliation bought during free
+ *  Reconciliation + AI; P24, `applyChange` re-syncs the copy right after queueing one). Read under
+ *  the org row lock so a concurrent create/unarchive in the same org is serialised (same reasoning
+ *  as `archiveFundingSourceAction`'s lock). `undefined` when the id doesn't exist. */
 export async function lockedOrgEntitlement(
   tx: Transaction,
   orgId: string,
@@ -83,8 +84,7 @@ export async function lockedOrgEntitlement(
   if (!(await lockOrg(tx, orgId, { id: organizations.id }))) return undefined;
   const row = await entitlementRow(tx, orgId);
   if (!row) return undefined;
-  const queued = row.pendingReason === "downgrade" && row.pendingPlan === "reconciliation" && row.pendingAt !== null && row.pendingAt > new Date();
-  return { entitlement: entitlementOf(row), queuedDowngradeAt: queued ? todayIso(row.pendingAt!) : null };
+  return { entitlement: entitlementOf(row), queuedDowngradeAt: reconciliationStartsOf(row) };
 }
 
 /** Unlocked read of the same limit, for the Settings page only (no write follows it there). */

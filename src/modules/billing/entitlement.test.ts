@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { KNOWN_STRIPE_STATUSES, type PlanId } from "./rules";
-import { activeFundingSourceLimit, orgEntitlement, type EntitlementOrg } from "./entitlement";
+import { activeFundingSourceLimit, orgEntitlement, reconciliationStartsOn, type EntitlementOrg } from "./entitlement";
 
 const base: EntitlementOrg = {
   plan: "reconciliation",
@@ -265,5 +265,42 @@ describe("activeFundingSourceLimit", () => {
         expect(limit, `${reason}/${plan}`).toBe(plan === "reconciliation" ? 1 : null);
       }
     }
+  });
+});
+
+describe("reconciliationStartsOn (P24): the day an org with more moves onto Reconciliation", () => {
+  const now = new Date("2027-01-01T17:00:00Z"); // noon in Detroit on `today`
+  const none = { pendingPlan: null, pendingReason: null, pendingAt: null } as const;
+  const freeAiBoughtRecon = {
+    ...base,
+    ...none,
+    plan: "reconciliation" as const,
+    complimentary: true,
+    complimentaryUntil: "2027-01-31",
+    complimentaryPlan: "reconciliation_ai" as const,
+    stripeStatus: "trialing",
+  };
+
+  it("a downgrade to Reconciliation queued for later: its start day", () => {
+    const at = new Date("2027-02-01T05:00:00Z");
+    const org = { ...base, ...none, plan: "reconciliation_ai" as const, pendingPlan: "reconciliation" as const, pendingReason: "downgrade", pendingAt: at };
+    expect(reconciliationStartsOn(org, today, now)).toBe("2027-02-01");
+    expect(reconciliationStartsOn({ ...org, pendingReason: "price_move" }, today, now)).toBeNull();
+    expect(reconciliationStartsOn({ ...org, pendingAt: new Date("2026-12-01T00:00:00Z") }, today, now)).toBeNull();
+  });
+
+  it("free Reconciliation + AI that bought Reconciliation: the day after the free access ends", () => {
+    expect(reconciliationStartsOn(freeAiBoughtRecon, today, now)).toBe("2027-02-01");
+  });
+
+  it.each([
+    ["it bought Reconciliation + AI", { plan: "reconciliation_ai" as const }],
+    ["the free plan is Reconciliation already", { complimentaryPlan: "reconciliation" as const }],
+    ["nothing was bought", { stripeStatus: null }],
+    ["the free access has no end", { complimentaryUntil: null }],
+    ["the free access already ended", { complimentaryUntil: "2026-12-31" }],
+    ["it isn't complimentary", { complimentary: false }],
+  ])("not when %s", (_case, change) => {
+    expect(reconciliationStartsOn({ ...freeAiBoughtRecon, ...change }, today, now)).toBeNull();
   });
 });

@@ -844,8 +844,12 @@ checklist clear.
   `/r/plan` (and in Plan & billing) is disabled with the reason under it, Checkout refuses the same,
   and `/r/plan` lists the admin's active sources with Archive (`archiveFundingSourceAction` uses the
   any-plan session: an unpaid org's admin may archive, a manager may not).
-- **Not built (remaining for Phase 6):** S-27, and the `/a` warning for an org over the limit. A complimentary Reconciliation + AI org that buys Reconciliation with a
-  deferred first charge can still add sources during its free access (a known gap).
+- **Fixed after the merge (2026-09-28):** a complimentary Reconciliation + AI org that bought
+  Reconciliation with a deferred first charge is refused a second source during its free access,
+  with the same `fundingSourceLimitQueued` message dated the day the bought plan starts.
+  `reconciliationStartsOn` (`src/modules/billing/entitlement.ts`) is now the one answer to "when
+  does this org move onto Reconciliation", for both this and a queued downgrade.
+- **Not built (remaining for Phase 6):** S-27, and the `/a` warning for an org over the limit.
 - **Tests:** 12 unit (`limit.test.ts`) and 15 integration (I-13: admin and manager refusals, no
   row written, unarchive refused and left archived, an org already over the limit, 5 concurrent
   creates and 5 concurrent unarchives each leaving exactly one active, repeated;
