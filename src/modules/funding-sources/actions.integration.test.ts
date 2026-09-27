@@ -20,7 +20,7 @@ config({ path: ".env.local", quiet: true });
 import { and, eq, sql } from "drizzle-orm";
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { formatDateShort, todayIso } from "@/src/domain/dates";
+import { formatDateUS, todayIso } from "@/src/domain/dates";
 import { UI } from "@/src/domain/strings";
 
 const hasDatabase = Boolean(process.env.DATABASE_URL);
@@ -511,7 +511,7 @@ describe.skipIf(!hasDatabase)("funding source management actions (integration)",
         const before = await listFundingSources(a.orgId);
 
         const result = await createFundingSourceAction({ ...BASE_INPUT, name: "Second Source" });
-        expect(result).toEqual({ ok: false, error: UI.fundingSourceLimitQueued(formatDateShort(todayIso(startsAt))) });
+        expect(result).toEqual({ ok: false, error: UI.fundingSourceLimitQueued(formatDateUS(todayIso(startsAt))) });
         expect(await listFundingSources(a.orgId)).toHaveLength(before.length);
       });
 
@@ -533,7 +533,7 @@ describe.skipIf(!hasDatabase)("funding source management actions (integration)",
         asSession(a.orgId, "admin");
 
         const result = await unarchiveFundingSourceAction(second.id);
-        expect(result).toEqual({ ok: false, error: UI.fundingSourceLimitQueued(formatDateShort(todayIso(startsAt))) });
+        expect(result).toEqual({ ok: false, error: UI.fundingSourceLimitQueued(formatDateUS(todayIso(startsAt))) });
         expect((await findFundingSource(a.orgId, second.id))?.archivedAt).not.toBeNull();
       });
 

@@ -12,7 +12,7 @@ import { billingCopyOn } from "@/src/db/billing-copy";
 import { orgBilling, organizations } from "@/src/db/schema";
 import type { Executor, Transaction } from "@/src/db/org-lock";
 import { lockOrg } from "@/src/db/org-lock";
-import { formatDateShort, todayIso, type IsoDate } from "@/src/domain/dates";
+import { formatDateUS, todayIso, type IsoDate } from "@/src/domain/dates";
 import { UI } from "@/src/domain/strings";
 import { activeFundingSourceLimit, type Entitlement } from "@/src/modules/billing/entitlement";
 import { fundingSourceLimit } from "@/src/modules/billing/rules";
@@ -50,7 +50,8 @@ export function fundingSourceLimitRefusal({
     reconciliationLimit !== null &&
     activeOthers >= reconciliationLimit
   ) {
-    return UI.fundingSourceLimitQueued(formatDateShort(queuedDowngradeAt));
+    // The same 9/26/2027 form Plan & billing shows the switch date in.
+    return UI.fundingSourceLimitQueued(formatDateUS(queuedDowngradeAt));
   }
 
   return null;

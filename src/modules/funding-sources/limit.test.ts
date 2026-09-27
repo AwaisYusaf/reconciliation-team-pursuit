@@ -86,8 +86,8 @@ describe("fundingSourceLimitRefusal", () => {
         role: "admin",
         queuedDowngradeAt: "2026-10-01",
       });
-      expect(message).toBe(UI.fundingSourceLimitQueued("1 Oct 2026"));
-      expect(message).toContain("1 Oct 2026");
+      expect(message).toBe(UI.fundingSourceLimitQueued("10/1/2026"));
+      expect(message).toContain("10/1/2026");
     });
 
     it("on reconciliation_ai with 0 others active, allows it (null)", () => {

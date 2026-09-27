@@ -19,7 +19,8 @@ import { PlanBillingSection } from "../plan-billing-section";
 import { ArchiveSources } from "./archive-sources";
 import { SubscribeButton } from "../subscribe-button";
 
-export const metadata = { title: pageTitle("Choose a plan") };
+// Not "Choose a plan": a plan on hold shows its Plan & billing panel here instead (D-126).
+export const metadata = { title: pageTitle("Plan & billing") };
 
 function planHref(interval: Interval, plan: PlanId | null): string {
   const params = new URLSearchParams({ interval });

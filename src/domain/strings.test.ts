@@ -583,8 +583,8 @@ describe("funding source limit copy (Phase 16 Track C, C8 verbatim)", () => {
     expect(UI.fundingSourceLimitManager).toBe(
       "Reconciliation includes one active funding source. Ask your admin about upgrading.",
     );
-    expect(UI.fundingSourceLimitQueued("1 Oct 2026")).toBe(
-      "Your plan switches to Reconciliation on 1 Oct 2026, which includes one active funding source. To add another, cancel that switch in Plan & billing.",
+    expect(UI.fundingSourceLimitQueued("10/1/2026")).toBe(
+      "Your plan switches to Reconciliation on 10/1/2026, which includes one active funding source. To add another, cancel that switch in Plan & billing.",
     );
     expect(UI.billingSeePlans).toBe("See plans");
   });
