@@ -11,6 +11,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:stripe": "vitest run --config vitest.stripe.config.mts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:studio": "drizzle-kit studio",
@@ -20,7 +21,11 @@
     "db:create-staff": "tsx --conditions=react-server src/db/create-staff.ts",
     "db:backup-upload": "tsx --conditions=react-server src/db/backup-upload.ts",
     "db:backup-fetch": "tsx --conditions=react-server src/db/backup-fetch.ts",
-    "db:preflight-funding-sources": "tsx --conditions=react-server src/db/preflight-funding-sources.ts"
+    "db:preflight-funding-sources": "tsx --conditions=react-server src/db/preflight-funding-sources.ts",
+    "billing:setup": "tsx --conditions=react-server src/modules/billing/scripts/setup.ts",
+    "billing:reconcile": "tsx --conditions=react-server src/modules/billing/scripts/reconcile.ts",
+    "billing:listen": "tsx --conditions=react-server src/modules/billing/scripts/listen.ts",
+    "billing:move-subscribers": "tsx --conditions=react-server src/modules/billing/scripts/move-subscribers.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1111.0",
@@ -31,7 +36,7 @@
     "drizzle-orm": "^0.45.2",
     "exceljs": "^4.4.0",
     "heic-decode": "^2.1.0",
-    "next": "16.3.1",
+    "next": "16.3.6",
     "pdf-lib": "^1.17.1",
     "pg": "^8.23.0",
     "react": "19.2.8",
@@ -39,6 +44,7 @@
     "react-hot-toast": "^2.6.0",
     "server-only": "^0.0.1",
     "sharp": "^0.35.3",
+    "stripe": "22.6.2",
     "uuid": "^14.0.1",
     "zod": "^4.4.3"
   },
@@ -51,7 +57,7 @@
     "dotenv": "^17.4.2",
     "drizzle-kit": "^0.31.10",
     "eslint": "^9",
-    "eslint-config-next": "16.3.1",
+    "eslint-config-next": "16.3.6",
     "tailwindcss": "^4",
     "tsx": "^4.23.12",
     "typescript": "^5",

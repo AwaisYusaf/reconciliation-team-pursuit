@@ -6,8 +6,8 @@ import { db } from "@/src/db";
 import { users } from "@/src/db/schema";
 import { SESSION_EXPIRED } from "@/src/lib/action-result";
 import { INLINE_DISPOSITION } from "@/src/lib/http";
+import { routeSession, routeSessionAnyPlan } from "@/src/lib/route-session";
 import { sameOrigin } from "@/src/lib/same-origin";
-import { getSession } from "@/src/services/auth/session";
 import { consume } from "@/src/services/rate-limit";
 import { normaliseAvatar } from "@/src/services/storage/avatar";
 import { deleteStoredObjects, orgStorageError, withOrgUploadLock } from "@/src/services/storage/documents";
@@ -55,7 +55,7 @@ function contentTypeFor(key: string): string {
 }
 
 export async function GET() {
-  const session = await getSession();
+  const session = await routeSessionAnyPlan();
   if (!session) return new NextResponse(SESSION_EXPIRED, { status: 401 });
 
   const [row] = await db
@@ -95,8 +95,11 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  const session = await getSession();
+  // Paid only: the photo shows in the unpaid plan page's header (GET), but changing it is using
+  // the app like anything else (Phase 16 §4.7).
+  const session = await routeSession("json");
   if (!session) return NextResponse.json({ ok: false, error: SESSION_EXPIRED }, { status: 401 });
+  if ("denied" in session) return session.denied;
 
   if (!sameOrigin(request)) {
     return NextResponse.json({ ok: false, error: "Bad origin." }, { status: 403 });
@@ -203,8 +206,9 @@ export async function POST(request: Request) {
 }
 
 export async function DELETE(request: Request) {
-  const session = await getSession();
+  const session = await routeSession("json");
   if (!session) return NextResponse.json({ ok: false, error: SESSION_EXPIRED }, { status: 401 });
+  if ("denied" in session) return session.denied;
 
   if (!sameOrigin(request)) {
     return NextResponse.json({ ok: false, error: "Bad origin." }, { status: 403 });

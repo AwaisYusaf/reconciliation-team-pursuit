@@ -1,19 +1,26 @@
 /**
  * The two plans the landing page sells, and what each costs a month.
  *
- * The one place a price is written. It used to be typed six times: twice in the pricing
- * cards, once in the AI section, twice inside an FAQ answer, and again in the structured data
- * search engines read (`app/page.tsx`). A price change that missed one of them would have shown
- * a visitor two different prices for the same plan, or told Google a third.
+ * The amounts are read from `PRICES_CENTS` (`src/modules/billing/pricing.ts`), the one place a
+ * price is written: the same constant Stripe's prices are created from (`billing:setup`) and the
+ * in-app chooser prints, so the landing page can never show a price the checkout won't charge.
+ * The price used to be typed six times here and in `app/page.tsx`; a price change that missed
+ * one would have shown a visitor two prices for the same plan, or told Google a third.
  */
+import { PLAN_LABELS } from "@/src/domain/strings";
+import { PRICES_CENTS } from "@/src/modules/billing/pricing";
+import { planPriceLabel } from "@/src/modules/landing/plan-links";
+
 export const PLANS = {
-  reconciliation: { name: "Reconciliation", monthlyUsd: 297 },
-  reconciliationAi: { name: "Reconciliation + AI", monthlyUsd: 497 },
+  reconciliation: { name: PLAN_LABELS.reconciliation, monthlyUsd: PRICES_CENTS.reconciliation.month / 100 },
+  reconciliationAi: { name: PLAN_LABELS.reconciliation_ai, monthlyUsd: PRICES_CENTS.reconciliation_ai.month / 100 },
 } as const;
 
 export type PlanKey = keyof typeof PLANS;
 
-/** "$297": whole dollars, which is how every plan is priced. */
+const CENTS_KEY = { reconciliation: "reconciliation", reconciliationAi: "reconciliation_ai" } as const;
+
+/** The monthly price as the page prints it: whole dollars without cents, any other amount with them (never rounded). */
 export function planPrice(plan: PlanKey): string {
-  return `$${PLANS[plan].monthlyUsd}`;
+  return planPriceLabel(PRICES_CENTS[CENTS_KEY[plan]].month);
 }

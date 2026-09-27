@@ -1,8 +1,11 @@
 import type { Metadata } from "next";
+import { connection } from "next/server";
 
 import { LandingPage } from "@/src/modules/landing/landing-page";
 import { type PlanKey, PLANS } from "@/src/modules/landing/plans";
 import { APP_NAME } from "@/src/domain/strings";
+import { PRICES_CENTS } from "@/src/modules/billing/pricing";
+import { signupEnabled } from "@/src/modules/auth/config";
 
 // Ported from grant-ledger app/layout.tsx (lines 18-56) with the site URL swapped to this
 // repo's own convention: APP_URL, not grant-ledger's NEXT_PUBLIC_SITE_URL.
@@ -63,22 +66,36 @@ const organizationSchema = {
 // the shape search and answer engines read a price out of. Names and amounts come from the same
 // `PLANS` the pricing cards print, so the two cannot disagree.
 //
-// The price alone read as a one-off $297. `UnitPriceSpecification` with `MON` (UN/CEFACT's code
-// for a month) is how schema.org says "per month", which is what the page says.
+// The price alone read as a one-off payment. `UnitPriceSpecification` with `MON` (UN/CEFACT's code
+// for a month) is how schema.org says "per month", which is what the page says; the yearly
+// price the page's toggle shows is a second specification, `ANN` for a year. Both amounts come
+// from PRICES_CENTS, the one place a price is written (U-19).
+const CENTS_KEY = { reconciliation: "reconciliation", reconciliationAi: "reconciliation_ai" } as const;
+
 function planOffer(plan: PlanKey, category: string, description: string) {
   const price = String(PLANS[plan].monthlyUsd);
+  const yearly = String(PRICES_CENTS[CENTS_KEY[plan]].year / 100);
   return {
     "@type": "Offer",
     name: PLANS[plan].name,
     price,
     priceCurrency: "USD",
-    priceSpecification: {
-      "@type": "UnitPriceSpecification",
-      price,
-      priceCurrency: "USD",
-      unitCode: "MON",
-      referenceQuantity: { "@type": "QuantitativeValue", value: 1, unitCode: "MON" },
-    },
+    priceSpecification: [
+      {
+        "@type": "UnitPriceSpecification",
+        price,
+        priceCurrency: "USD",
+        unitCode: "MON",
+        referenceQuantity: { "@type": "QuantitativeValue", value: 1, unitCode: "MON" },
+      },
+      {
+        "@type": "UnitPriceSpecification",
+        price: yearly,
+        priceCurrency: "USD",
+        unitCode: "ANN",
+        referenceQuantity: { "@type": "QuantitativeValue", value: 1, unitCode: "ANN" },
+      },
+    ],
     category,
     description,
   };
@@ -109,7 +126,11 @@ const softwareSchema = {
 
 // Scoped here rather than the root layout: /r and /a are not marketing pages and should not
 // carry the landing's JSON-LD or its marketing type scale (see globals.css's `.lp` scoping).
-export default function Home() {
+export default async function Home() {
+  // Reads SIGNUP_ENABLED at request time, not baked in at build (Phase 7): a deploy that
+  // flips it must not require a rebuild to show up here.
+  await connection();
+
   return (
     <div className="lp bg-lp-surface text-on-surface font-lp-sans antialiased selection:bg-brand-700 selection:text-white">
       <script
@@ -124,7 +145,7 @@ export default function Home() {
           __html: JSON.stringify(softwareSchema).replace(/</g, "\\u003c"),
         }}
       />
-      <LandingPage />
+      <LandingPage signupOpen={signupEnabled()} />
     </div>
   );
 }

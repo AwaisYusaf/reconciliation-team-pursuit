@@ -1,5 +1,4 @@
 import { and, asc, count, eq, isNull } from "drizzle-orm";
-import { redirect } from "next/navigation";
 
 import { PageTitle, Subtext } from "@/src/components/ui/surfaces";
 import { TourGuide } from "@/src/components/ui/tour";
@@ -12,15 +11,14 @@ import { loadSourceContext } from "@/src/modules/funding-sources/queries";
 import { loadLockedMonths } from "@/src/modules/packet/queries";
 import { RECURRING_TOUR_STEPS } from "@/src/modules/tours/recurring-tour";
 import { hasSeenTour } from "@/src/modules/tours/queries";
-import { getSession } from "@/src/services/auth/session";
+import { pageSession } from "@/src/lib/page-session";
 
 import { RecurringManager, type RecurringRow } from "./recurring-manager";
 
 export const metadata = { title: pageTitle("Recurring") };
 
 export default async function RecurringPage() {
-  const session = await getSession();
-  if (!session) redirect("/login");
+  const session = await pageSession();
 
   const month = session.activeMonth;
   const seenRecurringTour = await hasSeenTour(session.userId, "recurring");

@@ -10,6 +10,7 @@ import { isValidIsoDate, monthLabel } from "@/src/domain/dates";
 import { UI } from "@/src/domain/strings";
 import { parseMoneyToCentsOrZero } from "@/src/domain/money";
 import { SESSION_EXPIRED } from "@/src/lib/action-result";
+import { routeSession } from "@/src/lib/route-session";
 import { sameOrigin } from "@/src/lib/same-origin";
 import { isUuid } from "@/src/lib/ids";
 import { readAmountsAllowedForOrg } from "@/src/modules/ai/access";
@@ -24,7 +25,6 @@ import { insertExpenseWithAudit, learnVendor, toRow, type ExpenseRow } from "@/s
 import { MAX_INVOICE_LINES } from "@/src/services/openai/read-invoice";
 import { sweepOrphanImports } from "@/src/modules/expense-imports/orphan-imports";
 import { consume } from "@/src/services/rate-limit";
-import { getSession } from "@/src/services/auth/session";
 import { storage } from "@/src/services/storage/driver";
 import {
   attachImportAsReceipt,
@@ -90,10 +90,11 @@ const DRAFT_VALIDATE: ValidateOptions = { draft: true };
  * refused after the object is stored means the object comes back out (step 17).
  */
 export async function POST(request: NextRequest) {
-  const session = await getSession();
+  const session = await routeSession("json");
   if (!session) {
     return NextResponse.json({ ok: false, error: SESSION_EXPIRED }, { status: 401 });
   }
+  if ("denied" in session) return session.denied;
 
   if (!sameOrigin(request)) {
     return NextResponse.json({ ok: false, error: "Bad origin." }, { status: 403 });

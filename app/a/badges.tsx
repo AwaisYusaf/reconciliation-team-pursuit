@@ -5,9 +5,10 @@
  */
 import type { ReactNode } from "react";
 
-import { complimentaryState, type DirectoryOrg } from "@/src/modules/admin/directory";
+import { complimentaryState } from "@/src/domain/complimentary";
 import type { IsoDate } from "@/src/domain/dates";
 import { formatDateShort } from "@/src/domain/dates";
+import type { DirectoryOrg } from "@/src/modules/admin/directory";
 import { STATUS_LABELS, UI } from "@/src/domain/strings";
 import { cn } from "@/src/lib/cn";
 

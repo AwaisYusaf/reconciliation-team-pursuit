@@ -14,7 +14,7 @@ import { db } from "@/src/db";
 import { organizations, paymentSources, supportingDocTypes, users, vendorDefaults } from "@/src/db/schema";
 import { parseMoneyToCents } from "@/src/domain/money";
 import { fail, ok, type ActionResult } from "@/src/lib/action-result";
-import { actionSession, requireAdmin } from "@/src/lib/action-session";
+import { actionSession, actionSessionAnyPlan, requireAdmin } from "@/src/lib/action-session";
 import { consume, reset as resetLimit } from "@/src/services/rate-limit";
 import { isUuid } from "@/src/lib/ids";
 import { hashPassword, validatePasswordPolicy, verifyPassword } from "@/src/services/auth/passwords";
@@ -225,7 +225,8 @@ export async function changePasswordAction(input: {
   newPassword: string;
   confirmPassword: string;
 }): Promise<ActionResult> {
-  const current = await actionSession();
+  // Allow-listed (Phase 16 §4.7): an unpaid admin can still change their password.
+  const current = await actionSessionAnyPlan();
   if ("expired" in current) return current.expired;
 
   // Verifying the current password is an argon2 oracle for anyone holding a stolen cookie,

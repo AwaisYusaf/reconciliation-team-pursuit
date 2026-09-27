@@ -8,13 +8,15 @@ import "server-only";
 import { and, asc, eq, isNull, sql } from "drizzle-orm";
 
 import { db } from "@/src/db";
-import { organizations, sharedLinks, users } from "@/src/db/schema";
+import { billingCopyOn } from "@/src/db/billing-copy";
+import { orgBilling, organizations, sharedLinks, users } from "@/src/db/schema";
 import { formatDateUS, todayIso, type MonthKey } from "@/src/domain/dates";
 import { sharedFileKindOf, type SharedFileKind } from "@/src/domain/shared-links";
 import { userDisplay } from "@/src/domain/user-display";
 import { loadMonthSnapshot } from "@/src/generation/month-snapshot";
 import { siteOrigin } from "@/src/lib/site-url";
 import { monthOutputRecordsHash } from "@/src/modules/packet/month-output";
+import { ENTITLEMENT_COLUMNS, sharesAllowed } from "@/src/services/auth/entitlement";
 
 export type SharedLinkView = {
   id: string;
@@ -75,13 +77,14 @@ export async function loadSharedLinks(
       // `packet_pdf` sorts before `summary_xlsx`: the packet row first, as Appendix A shows it.
       .orderBy(asc(sharedLinks.artifactType)),
     db
-      .select({ subscriptionStatus: organizations.subscriptionStatus })
+      .select({ ...ENTITLEMENT_COLUMNS })
       .from(organizations)
+      .leftJoin(orgBilling, billingCopyOn())
       .where(eq(organizations.id, orgId))
       .limit(1),
   ]);
 
-  const orgCancelled = org?.subscriptionStatus === "cancelled";
+  const orgCancelled = org ? !sharesAllowed(org) : false;
   const links = rows.flatMap((row) => {
     const kind = sharedFileKindOf(row.artifactType);
     return kind ? [{ ...row, kind }] : [];

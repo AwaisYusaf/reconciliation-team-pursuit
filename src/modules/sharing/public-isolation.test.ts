@@ -40,7 +40,12 @@ function importsOf(file: string): string[] {
   );
   return specifiers.map((specifier) =>
     specifier.startsWith(".")
-      ? path.relative(repoRoot, path.resolve(path.dirname(path.join(repoRoot, file)), specifier))
+      ? // Forward slashes on every OS: FORBIDDEN is written with "/", and on Windows path.relative
+        // returns "\", so a relative import of the session module matched nothing and passed.
+        path
+          .relative(repoRoot, path.resolve(path.dirname(path.join(repoRoot, file)), specifier))
+          .split(path.sep)
+          .join("/")
       : specifier.replace(/^@\//, ""),
   );
 }

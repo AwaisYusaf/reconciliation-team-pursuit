@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { redirect } from "next/navigation";
 
 import { WelcomeBanner } from "@/src/components/app-shell/welcome-banner";
 import {
@@ -15,7 +14,7 @@ import { loadSourceContext } from "@/src/modules/funding-sources/queries";
 import { loadReadySummarySourceIds } from "@/src/modules/monthly-summary/queries";
 import { DASHBOARD_TOUR_STEPS } from "@/src/modules/tours/dashboard-tour";
 import { hasSeenTour } from "@/src/modules/tours/queries";
-import { getSession } from "@/src/services/auth/session";
+import { pageSession } from "@/src/lib/page-session";
 import { SourceBudgetSection } from "./source-budget-section";
 
 export const metadata = { title: pageTitle("Dashboard") };
@@ -28,8 +27,7 @@ export const metadata = { title: pageTitle("Dashboard") };
  * shown (Phase 5).
  */
 export default async function DashboardPage() {
-  const session = await getSession();
-  if (!session) redirect("/login");
+  const session = await pageSession();
 
   const { selectedId, sources, activeSources, single } = await loadSourceContext(
     session.orgId,

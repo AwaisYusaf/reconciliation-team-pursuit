@@ -10,7 +10,7 @@ import {
   prepareMonthOutput,
   resolveMonthOutput,
 } from "@/src/modules/packet/month-output";
-import { getSession } from "@/src/services/auth/session";
+import { routeSession } from "@/src/lib/route-session";
 import { consume } from "@/src/services/rate-limit";
 import { SESSION_EXPIRED } from "@/src/lib/action-result";
 
@@ -26,8 +26,9 @@ export const maxDuration = 600;
  * that failed, and nothing is written to the artifact cache.
  */
 export async function GET(request: Request) {
-  const session = await getSession();
+  const session = await routeSession("text");
   if (!session) return new NextResponse(SESSION_EXPIRED, { status: 401 });
+  if ("denied" in session) return session.denied;
 
   // Absent header falls through on purpose: every browser since Safari 16.4 sends it, and
   // SameSite=Lax plus the same-origin policy already cover the realistic cases — so a

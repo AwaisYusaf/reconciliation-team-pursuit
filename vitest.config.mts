@@ -1,6 +1,6 @@
 import { fileURLToPath } from "node:url";
 
-import { defineConfig } from "vitest/config";
+import { configDefaults, defineConfig } from "vitest/config";
 
 export default defineConfig({
   resolve: {
@@ -16,8 +16,16 @@ export default defineConfig({
   test: {
     environment: "node",
     include: ["src/**/*.test.ts"],
+    // Stripe sandbox tests run separately (`npm run test:stripe`, `vitest.stripe.config.mts`):
+    // they hit real Stripe, take minutes, and must never skip silently inside the normal suite.
+    exclude: [...configDefaults.exclude, "src/**/*.stripe.test.ts"],
     // TZ is deliberately hostile: a UTC-offset machine would hide America/Detroit bugs
     // (domain-rules R2.5), so the suite runs in a zone a day ahead of Detroit.
-    env: { TZ: "Asia/Karachi" },
+    //
+    // BILLING_ENABLED is pinned off, as it is in production today: a developer who switches it on
+    // in `.env.local` to try billing must not turn every unpaid test org into a paywalled one
+    // (the tests' dotenv load never overrides a variable already set here). Tests that need
+    // billing on say so with `vi.stubEnv("BILLING_ENABLED", "true")`.
+    env: { TZ: "Asia/Karachi", BILLING_ENABLED: "false" },
   },
 });

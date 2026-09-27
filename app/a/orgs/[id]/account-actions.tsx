@@ -34,19 +34,48 @@ export type ActionsOrg = {
   suspendedAt: Date | null;
 };
 
-export function AccountActions({ org }: { org: ActionsOrg }) {
+/**
+ * `stripeManaged`: billing is on and a subscription is live, so Stripe is the one writer of plan
+ * and status (P16). The server refuses the change anyway; this only stops offering it.
+ */
+export function AccountActions({
+  org,
+  stripeManaged = false,
+  customerUrl = null,
+}: {
+  org: ActionsOrg;
+  stripeManaged?: boolean;
+  customerUrl?: string | null;
+}) {
   return (
-    <div className="flex flex-wrap gap-3">
-      <ChangePlan org={org} />
-      <ComplimentaryAccess org={org} />
-      {org.suspendedAt === null ? <Suspend org={org} /> : <Reinstate org={org} />}
+    <div className="flex flex-col gap-3">
+      <div className="flex flex-wrap gap-3">
+        <ChangePlan org={org} disabled={stripeManaged} />
+        <ComplimentaryAccess org={org} paying={stripeManaged && !org.complimentary} />
+        {org.suspendedAt === null ? <Suspend org={org} /> : <Reinstate org={org} />}
+      </div>
+      {stripeManaged && (
+        <p className="text-[15px] text-sub">
+          {UI.staffStripeManaged}{" "}
+          {customerUrl && (
+            <a
+              href={customerUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-accent underline underline-offset-2 hover:no-underline"
+            >
+              {UI.staffBillingOpenCustomer}
+            </a>
+          )}
+        </p>
+      )}
     </div>
   );
 }
 
 /* -------------------------------------------------------------------- change plan */
 
-function ChangePlan({ org }: { org: ActionsOrg }) {
+function ChangePlan({ org, disabled }: { org: ActionsOrg; disabled: boolean }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [plan, setPlan] = useState<OrgPlan>(org.plan);
@@ -88,7 +117,13 @@ function ChangePlan({ org }: { org: ActionsOrg }) {
 
   return (
     <>
-      <Button variant="secondary" className="min-h-11 px-4 text-[15px]" onClick={openWithCurrent}>
+      <Button
+        variant="secondary"
+        className="min-h-11 px-4 text-[15px]"
+        disabled={disabled}
+        title={disabled ? UI.staffStripeManaged : undefined}
+        onClick={openWithCurrent}
+      >
         {UI.changePlanTitle}
       </Button>
       <Modal open={open} title={UI.changePlanTitle} onClose={close}>
@@ -161,11 +196,16 @@ function ChangePlan({ org }: { org: ActionsOrg }) {
 
 /* ----------------------------------------------------------- complimentary access */
 
-function ComplimentaryAccess({ org }: { org: ActionsOrg }) {
+/** `paying`: granting free access must also end the paid plan (§4.6), now or at period end. */
+function ComplimentaryAccess({ org, paying }: { org: ActionsOrg; paying: boolean }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [enabled, setEnabled] = useState(org.complimentary);
   const [until, setUntil] = useState(org.complimentaryUntil ?? "");
+  const [cancelPaid, setCancelPaid] = useState<"now" | "period_end" | null>(null);
+  // The page's copy said "not paying", but Stripe, asked on save, said it is: ask now.
+  const [askCancel, setAskCancel] = useState(false);
+  const showCancelChoice = paying || askCancel;
   const [note, setNote] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -174,6 +214,8 @@ function ComplimentaryAccess({ org }: { org: ActionsOrg }) {
   function openWithCurrent() {
     setEnabled(org.complimentary);
     setUntil(org.complimentaryUntil ?? "");
+    setCancelPaid(null);
+    setAskCancel(false);
     setNote("");
     setError(null);
     setOpen(true);
@@ -187,8 +229,9 @@ function ComplimentaryAccess({ org }: { org: ActionsOrg }) {
   function save() {
     setError(null);
     startTransition(async () => {
-      const result = await setComplimentaryAction(org.id, enabled, until, note);
+      const result = await setComplimentaryAction(org.id, enabled, until, note, showCancelChoice ? cancelPaid : null);
       if (!result.ok) {
+        if (result.error === UI.staffCompCancelRequired) setAskCancel(true);
         setError(result.error);
         return;
       }
@@ -227,6 +270,28 @@ function ComplimentaryAccess({ org }: { org: ActionsOrg }) {
               onChange={(event) => setUntil(event.target.value)}
             />
           </div>
+          {showCancelChoice && enabled && (
+            <fieldset className="flex flex-col gap-2">
+              <legend className="text-[15px] font-semibold text-ink mb-1">{UI.staffCompPaying}</legend>
+              {(
+                [
+                  ["period_end", UI.staffCompCancelAtEnd],
+                  ["now", UI.staffCompCancelNow],
+                ] as const
+              ).map(([value, label]) => (
+                <label key={value} className="flex items-center gap-2 text-[15px] text-ink">
+                  <input
+                    type="radio"
+                    name="complimentary-cancel"
+                    className="w-[18px] h-[18px] accent-accent"
+                    checked={cancelPaid === value}
+                    onChange={() => setCancelPaid(value)}
+                  />
+                  {label}
+                </label>
+              ))}
+            </fieldset>
+          )}
           <div>
             <Label htmlFor="complimentary-note">
               Note <span className="font-normal">(optional)</span>

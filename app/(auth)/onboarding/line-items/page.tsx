@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 
 import { db } from "@/src/db";
 import { lineItems } from "@/src/db/schema";
-import { getSession } from "@/src/services/auth/session";
+import { pageSession } from "@/src/lib/page-session";
 import { asc, eq } from "drizzle-orm";
 import { pageTitle } from "@/src/domain/strings";
 
@@ -24,8 +24,7 @@ const STARTER_NAMES = [
 ];
 
 export default async function OnboardingLineItemsPage() {
-  const session = await getSession();
-  if (!session) redirect("/login");
+  const session = await pageSession();
   if (session.onboarded) redirect("/r");
 
   // Step 1 saves immediately, so a returning user resumes with what they already typed.

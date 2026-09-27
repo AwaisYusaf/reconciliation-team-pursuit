@@ -7,6 +7,8 @@ import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
+import { SECTION_IDS } from "@/src/modules/settings/sections";
+
 import { SETTINGS_TOUR_STEPS } from "./settings-tour";
 
 const repoRoot = fileURLToPath(new URL("../../../", import.meta.url));
@@ -19,14 +21,20 @@ describe("Settings tour wiring", () => {
     expect(source).toContain('hasSeenTour(session.userId, "settings")');
   });
 
-  it("has 8 steps covering every section, each with a real target and a valid autoOpen tab anchor", () => {
-    expect(SETTINGS_TOUR_STEPS).toHaveLength(8);
-    const source = readFileSync(`${repoRoot}app/r/settings/settings-sections.tsx`, "utf8");
+  it("has 9 steps covering every section, each with a real target and a valid autoOpen tab anchor", () => {
+    expect(SETTINGS_TOUR_STEPS).toHaveLength(9);
+    // Plan & billing lives in its own component, so its target is looked for there too.
+    const source =
+      readFileSync(`${repoRoot}app/r/settings/settings-sections.tsx`, "utf8") +
+      readFileSync(`${repoRoot}app/r/plan-billing-section.tsx`, "utf8");
     // The sidebar's `data-tour` is built from a template literal (`settings-tab-${id}`), not a
     // static string per id — confirm that wiring exists once, then validate any
     // "settings-tab-<id>" autoOpen value against the known section ids rather than the source.
     expect(source).toContain("data-tour={`settings-tab-${id}`}");
-    const validSectionIds = ["organization", "fundingSources", "labels", "vendors", "users", "account"];
+    const validSectionIds: readonly string[] = SECTION_IDS;
+    expect(new Set(SETTINGS_TOUR_STEPS.map((step) => step.autoOpen))).toEqual(
+      new Set(SECTION_IDS.map((id) => `settings-tab-${id}`)),
+    );
     for (const step of SETTINGS_TOUR_STEPS) {
       const targets = Array.isArray(step.target) ? step.target : [step.target];
       for (const target of targets) {

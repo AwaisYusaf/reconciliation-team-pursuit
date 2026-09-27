@@ -24,6 +24,7 @@ Postgres, single database, org-scoped rows (single-tenant-per-org from day one; 
 | complimentary_until | date null | Null → no end. A past date is allowed and shows as ended |
 | suspended_at | timestamptz null | Set → every session for this org is refused and its users can't sign in. Enforced in `resolveSession` (Phase 9 part 2, D-99); written by `suspendOrgAction`/`reinstateOrgAction` and read by `signInAction`'s paused branch |
 | read_amounts_enabled | boolean | Settings → Organization switch (Phase 10, D-105). Default `true`, admin-only to change. Combined with `plan` and the server's OpenAI configuration in `canReadAmounts` — never decided from this column alone |
+| complimentary_plan | org_plan null | The plan a complimentary grant gives (Phase 16, P27); null means `plan`. Pinned when an admin buys a plan during free access, so the bought plan's sync never takes the free plan away; cleared when staff change the plan or end the grant |
 
 The five columns above arrive in migration `0027`, which ends with a one-off
 `UPDATE organizations SET subscription_status = 'active', complimentary = true;` — every
@@ -83,6 +84,24 @@ History of every account change AB Solutions staff make on an organisation's pla
 | action | org_account_event_action enum | `plan_changed` \| `complimentary_granted` \| `complimentary_changed` \| `complimentary_removed` \| `suspended` \| `reinstated` |
 | before / after | jsonb | `OrgAccountSnapshot` — `{ plan, status, complimentary, complimentaryUntil, suspended }` |
 | note | text null | Trimmed; the suspend reason is required, the rest optional |
+| via_stripe | boolean | True when Stripe's sync wrote the row (Phase 16, P15); History shows "Stripe" as the actor |
+
+### org_billing (1:1 organizations, Phase 16, D-125)
+The organization's copy of what Stripe knows, written only by `syncOrgBilling` and the billing actions (`src/modules/billing/`); Stripe is the record (D-123). One row per org, created with its first Stripe customer. Read only through `billingCopyOn()` (joins) or `sameStripeMode()` (`org_billing` alone), both in `src/db/billing-copy.ts`, which require `livemode` to match the configured Stripe key, so a copy from the other mode reads as none.
+| Field | Type | Notes |
+|---|---|---|
+| org_id | uuid PK FK | cascade delete |
+| stripe_customer_id | text UNIQUE | How the sync finds the org |
+| livemode | boolean | The Stripe mode of the customer |
+| stripe_status | text null | Stripe's exact subscription status (no enum, P8); decides access via `orgEntitlement` |
+| billing_interval | text null | `month` \| `year` |
+| current_period_end | timestamptz null | Renewal date, or the cancel date while cancelling |
+| cancel_at_period_end | boolean | |
+| pending_plan / pending_interval / pending_at / pending_reason | null | A queued downgrade or price move (`downgrade` \| `price_move`) |
+| upgrade_pay_url / upgrade_expires_at | null | An upgrade waiting for payment |
+| collection_paused | boolean | Stripe collection paused while suspended (D3) |
+| disputed_at | timestamptz null | Latest card dispute; shown in `/a`, never cleared |
+| synced_at | timestamptz null | When the Stripe read behind this copy started |
 
 ### contract_settings (1:1 organizations) — **deprecated (Phase 6, D-93)**
 Superseded by `funding_sources`: contract details now live on each funding source. Kept in the database, no longer read or written, so the migration stays additive and reversible. A later phase drops this table once Phase 6 has run in production.

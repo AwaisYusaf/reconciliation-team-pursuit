@@ -7,6 +7,7 @@ import "server-only";
 import { and, count, desc, eq, isNotNull, isNull, max, sql } from "drizzle-orm";
 
 import { db, type Database } from "@/src/db";
+import { billingCopyOn } from "@/src/db/billing-copy";
 import {
   aiUsageEvents,
   expenses,
@@ -14,6 +15,7 @@ import {
   generatedArtifacts,
   monthStatuses,
   orgAccountEvents,
+  orgBilling,
   organizations,
   staffUsers,
   users,
@@ -46,7 +48,22 @@ export type OrgDirectoryRow = OrgAccountFields & {
   lastSignInAt: Date | null;
 };
 
-export type OrgAccountRow = OrgAccountFields;
+/** The org page also shows our copy of Stripe's billing state (Phase 16 §4.6). */
+export type OrgAccountRow = OrgAccountFields & {
+  stripeCustomerId: string | null;
+  livemode: boolean | null;
+  stripeStatus: string | null;
+  billingInterval: string | null;
+  currentPeriodEnd: Date | null;
+  cancelAtPeriodEnd: boolean;
+  pendingPlan: OrgPlan | null;
+  pendingInterval: string | null;
+  pendingAt: Date | null;
+  pendingReason: string | null;
+  upgradeExpiresAt: Date | null;
+  collectionPaused: boolean;
+  disputedAt: Date | null;
+};
 
 const ORG_ACCOUNT_COLUMNS = {
   id: organizations.id,
@@ -216,11 +233,29 @@ export async function loadOrgAccount(orgId: string): Promise<OrgAccountRow | nul
   if (!isUuid(orgId)) return null;
 
   const [row] = await db
-    .select(ORG_ACCOUNT_COLUMNS)
+    .select({
+      ...ORG_ACCOUNT_COLUMNS,
+      stripeCustomerId: orgBilling.stripeCustomerId,
+      livemode: orgBilling.livemode,
+      stripeStatus: orgBilling.stripeStatus,
+      billingInterval: orgBilling.billingInterval,
+      currentPeriodEnd: orgBilling.currentPeriodEnd,
+      cancelAtPeriodEnd: orgBilling.cancelAtPeriodEnd,
+      pendingPlan: orgBilling.pendingPlan,
+      pendingInterval: orgBilling.pendingInterval,
+      pendingAt: orgBilling.pendingAt,
+      pendingReason: orgBilling.pendingReason,
+      upgradeExpiresAt: orgBilling.upgradeExpiresAt,
+      collectionPaused: orgBilling.collectionPaused,
+      disputedAt: orgBilling.disputedAt,
+    })
     .from(organizations)
+    .leftJoin(orgBilling, billingCopyOn())
     .where(eq(organizations.id, orgId))
     .limit(1);
-  return row ?? null;
+  if (!row) return null;
+  // No copy yet (no Stripe customer) reads as a copy with nothing in it.
+  return { ...row, cancelAtPeriodEnd: row.cancelAtPeriodEnd ?? false, collectionPaused: row.collectionPaused ?? false };
 }
 
 export type OrgUserRow = {
@@ -380,6 +415,7 @@ export type OrgAccountEventRow = {
   note: string | null;
   actorName: string | null;
   actorEmail: string | null;
+  viaStripe: boolean;
 };
 
 /**
@@ -403,6 +439,7 @@ export async function loadOrgHistory(orgId: string): Promise<OrgAccountEventRow[
       note: orgAccountEvents.note,
       actorName: staffUsers.name,
       actorEmail: staffUsers.email,
+      viaStripe: orgAccountEvents.viaStripe,
     })
     .from(orgAccountEvents)
     .leftJoin(staffUsers, eq(staffUsers.id, orgAccountEvents.actorStaffId))

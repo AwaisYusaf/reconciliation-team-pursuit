@@ -32,27 +32,22 @@ import {
   setReadAmountsEnabledAction,
   updateOrganisationAction,
 } from "@/src/modules/settings/actions";
+import type { PlanBillingData } from "@/src/modules/billing/plan-view-loader";
+import { SECTION_IDS, type SectionId } from "@/src/modules/settings/sections";
+import { PlanBillingSection } from "../plan-billing-section";
 import { VendorTable, type LabelRow, type Vendor } from "./vendor-table";
 import { UsersManager, type OrgUser } from "./users/users-manager";
 
 /** One entry per sidebar item — a settings screen used to be a long scroll of cards; this is
- *  the same content, just one section shown at a time instead of stacked. */
-const SECTION_IDS = [
-  "organization",
-  "fundingSources",
-  "labels",
-  "vendors",
-  "users",
-  "account",
-] as const;
-type SectionId = (typeof SECTION_IDS)[number];
-
+ *  the same content, just one section shown at a time instead of stacked. The list and the
+ *  `?section=` parsing live in `src/modules/settings/sections.ts` (Phase 16 P19). */
 const SECTION_LABELS: Record<SectionId, string> = {
   organization: "Organization",
   fundingSources: "Funding sources",
   labels: "Lists",
   vendors: "Vendor library",
   users: "Users",
+  plan: UI.billingSectionTitle,
   account: "Account",
 };
 
@@ -137,6 +132,12 @@ function SectionIcon({ id }: { id: SectionId }) {
         <path d="M13 12.2c1.9.3 3.5 1.6 3.5 3.8" />
       </>
     ),
+    plan: (
+      <>
+        <rect x="3" y="5" width="14" height="10" rx="1.5" />
+        <path d="M3 8.5h14M6 12h3" />
+      </>
+    ),
     account: (
       <>
         <circle cx="10" cy="7" r="3" />
@@ -176,6 +177,9 @@ export function SettingsSections({
   users,
   usersError,
   readAmounts,
+  planBilling,
+  initialSection,
+  fundingSourceLimit,
 }: {
   email: string;
   /** The signed-in person's own name and photo version, for the Account section's avatar. */
@@ -198,10 +202,18 @@ export function SettingsSections({
   /** Null when the organisation's plan doesn't offer this feature (Phase 10, D-105) — the
    *  switch is hidden entirely, not shown disabled. */
   readAmounts: { enabled: boolean } | null;
+  /** Settings → Plan & billing (Phase 16 §4.3), loaded on the server for this org only; null
+   *  while billing is off, when the section isn't shown. */
+  planBilling: PlanBillingData | null;
+  /** From `?section=` (Phase 16 P19), already checked against the known ids on the server. */
+  initialSection: SectionId;
+  /** The active-funding-source limit (Phase 6 core, C8). Null means unlimited, which is
+   *  always the case while billing is off. */
+  fundingSourceLimit: number | null;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
-  const [active, setActive] = useState<SectionId>("organization");
+  const [active, setActive] = useState<SectionId>(initialSection);
 
   const [org, setOrg] = useState(organisation);
   const [readAmountsEnabled, setReadAmountsEnabled] = useState(readAmounts?.enabled ?? false);
@@ -221,7 +233,9 @@ export function SettingsSections({
 
   // "Users" is the only item a manager never sees — same rule D-85 already established for
   // the nav and the old /settings/users route: identity/user-management is admin-only.
-  const visibleSections = SECTION_IDS.filter((id) => id !== "users" || isAdmin);
+  const visibleSections = SECTION_IDS.filter(
+    (id) => (id !== "users" || isAdmin) && (id !== "plan" || planBilling !== null),
+  );
 
   /** Toggles immediately (optimistic), reverting only if the action itself refuses — a manager
    *  never reaches this (the switch renders `disabled`), so the only realistic failure is a
@@ -334,6 +348,8 @@ export function SettingsSections({
               orgDocName={org.docName}
               pending={pending}
               run={run}
+              limit={fundingSourceLimit}
+              isAdmin={isAdmin}
             />
           </Card>
         )}
@@ -394,6 +410,8 @@ export function SettingsSections({
             )}
           </div>
         )}
+
+        {active === "plan" && planBilling && <PlanBillingSection data={planBilling} />}
 
         {active === "account" && (
           <>
@@ -556,6 +574,8 @@ function FundingSourcesSection({
   orgDocName,
   pending,
   run,
+  limit,
+  isAdmin,
 }: {
   fundingSources: FundingSourceRow[];
   orgDocName: string;
@@ -565,6 +585,9 @@ function FundingSourcesSection({
     successMessage: string,
     onDone?: () => void,
   ) => void;
+  /** Null means unlimited (Phase 6 core, C8). */
+  limit: number | null;
+  isAdmin: boolean;
 }) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState(EMPTY_FUNDING_SOURCE_DRAFT);
@@ -610,6 +633,7 @@ function FundingSourcesSection({
 
   const activeCount = fundingSources.filter((s) => !s.archived).length;
   const archivedCount = fundingSources.length - activeCount;
+  const atLimit = limit !== null && activeCount >= limit;
   // Archived sources are finished work, so the list opens on the active ones; the toggle is
   // still one click away because Unarchive lives on the archived rows.
   const [showArchived, setShowArchived] = useState(false);
@@ -681,7 +705,8 @@ function FundingSourcesSection({
               {source.archived ? (
                 <Button
                   variant="quiet"
-                  disabled={pending}
+                  disabled={pending || atLimit}
+                  aria-describedby={atLimit ? "funding-source-limit" : undefined}
                   onClick={() =>
                     run(() => unarchiveFundingSourceAction(source.id), "Funding source unarchived.")
                   }
@@ -739,11 +764,35 @@ function FundingSourcesSection({
           </div>
         </div>
       ) : (
-        // Disabled while a row is being edited: one draft at a time, and starting an add would
-        // silently replace the edit in progress.
-        <Button variant="secondary" disabled={pending || editingId !== null} onClick={startAdd}>
-          Add funding source
-        </Button>
+        <div>
+          {/* Disabled while a row is being edited: one draft at a time, and starting an add would
+              silently replace the edit in progress. Also disabled at the funding-source limit. */}
+          <Button
+            variant="secondary"
+            disabled={pending || editingId !== null || atLimit}
+            aria-describedby={atLimit ? "funding-source-limit" : undefined}
+            onClick={startAdd}
+          >
+            Add funding source
+          </Button>
+          {atLimit && (
+            <Helper id="funding-source-limit">
+              {isAdmin ? (
+                <>
+                  {UI.fundingSourceLimitReached}{" "}
+                  <Link
+                    href="/r/settings?section=plan"
+                    className="inline-flex items-center min-h-11 text-accent underline hover:text-accent-dark focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent rounded-[3px]"
+                  >
+                    {UI.billingSeePlans}
+                  </Link>
+                </>
+              ) : (
+                UI.fundingSourceLimitManager
+              )}
+            </Helper>
+          )}
+        </div>
       )}
     </div>
   );

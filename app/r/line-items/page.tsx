@@ -1,5 +1,3 @@
-import { redirect } from "next/navigation";
-
 import { PickFundingSource } from "@/src/components/app-shell/pick-funding-source";
 import { TourSequenceSkip } from "@/src/components/app-shell/tour-sequence-skip";
 import { PageHeader } from "@/src/components/ui/surfaces";
@@ -9,15 +7,14 @@ import { loadSourceContext } from "@/src/modules/funding-sources/queries";
 import { loadLineItemRows } from "@/src/modules/line-items/queries";
 import { LINE_ITEMS_TOUR_STEPS } from "@/src/modules/tours/line-items-tour";
 import { hasSeenTour } from "@/src/modules/tours/queries";
-import { getSession } from "@/src/services/auth/session";
+import { pageSession } from "@/src/lib/page-session";
 
 import { LineItemsManager } from "./line-items-manager";
 
 export const metadata = { title: pageTitle("Line Items") };
 
 export default async function LineItemsPage() {
-  const session = await getSession();
-  if (!session) redirect("/login");
+  const session = await pageSession();
 
   const { selectedId, activeSources } = await loadSourceContext(
     session.orgId,

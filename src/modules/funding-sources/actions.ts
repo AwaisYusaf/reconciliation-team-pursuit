@@ -15,8 +15,11 @@ import { fundingSourceType, fundingSources, organizations } from "@/src/db/schem
 import { isValidIsoDate } from "@/src/domain/dates";
 import { isDuplicateName } from "@/src/domain/line-item-rules";
 import { parseMoneyToCents } from "@/src/domain/money";
+import { UI } from "@/src/domain/strings";
 import { fail, ok, type ActionResult } from "@/src/lib/action-result";
-import { actionSession } from "@/src/lib/action-session";
+import { actionSession, actionSessionAnyPlan } from "@/src/lib/action-session";
+import { hasPaidAccess } from "@/src/services/auth/entitlement";
+import { fundingSourceLimitRefusal, lockedOrgEntitlement } from "@/src/modules/funding-sources/limit";
 import { listFundingSources, requireOwnedFundingSource } from "@/src/modules/funding-sources/queries";
 
 function revalidateAll(): void {
@@ -141,17 +144,31 @@ export async function createFundingSourceAction(input: FundingSourceInput): Prom
   const validated = await validate(current.orgId, input);
   if (!validated.ok) return validated;
 
-  const [{ value: maxSort }] = await db
-    .select({ value: sql<number>`coalesce(max(${fundingSources.sortOrder}), -1)` })
-    .from(fundingSources)
-    .where(eq(fundingSources.orgId, current.orgId));
-
   try {
-    await db.insert(fundingSources).values({
-      orgId: current.orgId,
-      sortOrder: Number(maxSort) + 1,
-      ...validated.data,
+    const refused = await db.transaction(async (tx) => {
+      // Locks the org row first so two concurrent creates in one org count active sources one
+      // at a time, same reasoning as archiveFundingSourceAction's lock below.
+      const locked = await lockedOrgEntitlement(tx, current.orgId);
+      if (!locked) return fail(UI.orgNoLongerExists);
+
+      const active = await listFundingSources(current.orgId, tx);
+      const activeCount = active.filter((row) => row.archivedAt === null).length;
+      const refusal = fundingSourceLimitRefusal({ ...locked, activeOthers: activeCount, role: current.role });
+      if (refusal) return fail(refusal);
+
+      const [{ value: maxSort }] = await tx
+        .select({ value: sql<number>`coalesce(max(${fundingSources.sortOrder}), -1)` })
+        .from(fundingSources)
+        .where(eq(fundingSources.orgId, current.orgId));
+
+      await tx.insert(fundingSources).values({
+        orgId: current.orgId,
+        sortOrder: Number(maxSort) + 1,
+        ...validated.data,
+      });
+      return null;
     });
+    if (refused) return refused;
   } catch (error) {
     if (isUniqueViolation(error)) return fail(DUPLICATE_NAME);
     throw error;
@@ -188,8 +205,11 @@ export async function updateFundingSourceAction(
 }
 
 export async function archiveFundingSourceAction(id: string): Promise<ActionResult> {
-  const current = await actionSession();
+  // On the paywall's allow-list (D2): an unpaid org's admin archives sources on the plan page to
+  // be able to choose Reconciliation, which includes one. Only the admin: that page is theirs.
+  const current = await actionSessionAnyPlan();
   if ("expired" in current) return current.expired;
+  if (!hasPaidAccess(current) && current.role !== "admin") return fail(UI.billingPlanRequired);
 
   const source = await requireOwnedFundingSource(current, id);
   if ("denied" in source) return source.denied;
@@ -239,10 +259,33 @@ export async function unarchiveFundingSourceAction(id: string): Promise<ActionRe
   const source = await requireOwnedFundingSource(current, id);
   if ("denied" in source) return source.denied;
 
-  await db
-    .update(fundingSources)
-    .set({ archivedAt: null })
-    .where(and(eq(fundingSources.id, source.id), eq(fundingSources.orgId, current.orgId)));
+  if (source.archivedAt === null) {
+    // Idempotent: already active.
+    revalidateAll();
+    return ok();
+  }
+
+
+  const refused = await db.transaction(async (tx) => {
+    // Same lock as create: two concurrent unarchives in one org count active sources one at a
+    // time, rather than each seeing "under the limit" and both succeeding.
+    const locked = await lockedOrgEntitlement(tx, current.orgId);
+    if (!locked) return fail(UI.orgNoLongerExists);
+
+    const active = await listFundingSources(current.orgId, tx);
+    const activeOthers = active.filter(
+      (row) => row.archivedAt === null && row.id !== source.id,
+    ).length;
+    const refusal = fundingSourceLimitRefusal({ ...locked, activeOthers, role: current.role });
+    if (refusal) return fail(refusal);
+
+    await tx
+      .update(fundingSources)
+      .set({ archivedAt: null })
+      .where(and(eq(fundingSources.id, source.id), eq(fundingSources.orgId, current.orgId)));
+    return null;
+  });
+  if (refused) return refused;
 
   revalidateAll();
   return ok();

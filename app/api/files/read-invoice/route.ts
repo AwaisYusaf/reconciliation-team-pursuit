@@ -8,7 +8,7 @@ import { readAmountsAllowedForOrg } from "@/src/modules/ai/access";
 import { beginRead, endRead } from "@/src/modules/amount-reading/in-flight";
 import { MAX_PAGES_READ } from "@/src/modules/amount-reading/page-cap";
 import { consume } from "@/src/services/rate-limit";
-import { getSession } from "@/src/services/auth/session";
+import { routeSession } from "@/src/lib/route-session";
 import { readInvoice } from "@/src/services/openai/read-invoice";
 import { costMicroUsd } from "@/src/services/openai/responses";
 import { inspectUpload } from "@/src/services/storage/inspect";
@@ -32,10 +32,11 @@ const READABLE_INVOICE_TYPES = ["application/pdf", "image/jpeg", "image/png", "i
  * reaches the read, whatever the outcome, unconditionally from that point on.
  */
 export async function POST(request: NextRequest) {
-  const session = await getSession();
+  const session = await routeSession("json");
   if (!session) {
     return NextResponse.json({ ok: false, error: SESSION_EXPIRED }, { status: 401 });
   }
+  if ("denied" in session) return session.denied;
 
   if (!sameOrigin(request)) {
     return NextResponse.json({ ok: false, error: "Bad origin." }, { status: 403 });

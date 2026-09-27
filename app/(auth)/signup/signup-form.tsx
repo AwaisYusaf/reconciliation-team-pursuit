@@ -8,8 +8,16 @@ import { FieldError, Helper, Input, Label } from "@/src/components/ui/field";
 import { DangerPanel } from "@/src/components/ui/surfaces";
 import { IDLE } from "@/src/lib/action-result";
 import { signUpAction } from "@/src/modules/auth/actions";
+import type { Interval, PlanId } from "@/src/modules/billing/rules";
 
-export function SignupForm() {
+export function SignupForm({
+  plan,
+  interval,
+}: {
+  /** From the landing page's plan links, already validated by the page (Phase 16, §4.9). */
+  plan?: PlanId | null;
+  interval?: Interval | null;
+}) {
   const [state, setState] = useState(IDLE);
   const [pending, startTransition] = useTransition();
   const [showPassword, setShowPassword] = useState(false);
@@ -32,6 +40,8 @@ export function SignupForm() {
 
   return (
     <form onSubmit={onSubmit} noValidate>
+      {plan && <input type="hidden" name="plan" value={plan} />}
+      {interval && <input type="hidden" name="interval" value={interval} />}
       {panelError && <DangerPanel className="mb-[22px]">{panelError}</DangerPanel>}
 
       {/*

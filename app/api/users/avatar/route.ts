@@ -4,7 +4,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/src/db";
 import { users } from "@/src/db/schema";
 import { INLINE_DISPOSITION } from "@/src/lib/http";
-import { getSession } from "@/src/services/auth/session";
+import { routeSession } from "@/src/lib/route-session";
 import { storage } from "@/src/services/storage/driver";
 import { keyBelongsToOrg } from "@/src/services/storage/keys";
 
@@ -45,8 +45,9 @@ function contentTypeFor(key: string): string {
 }
 
 export async function GET(request: Request) {
-  const session = await getSession();
+  const session = await routeSession("text");
   if (!session) return new NextResponse(SIGNED_OUT, { status: 401 });
+  if ("denied" in session) return session.denied;
 
   const key = new URL(request.url).searchParams.get("key");
   if (!key || !keyBelongsToOrg(key, session.orgId)) {

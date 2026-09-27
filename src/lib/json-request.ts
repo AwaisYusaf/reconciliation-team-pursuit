@@ -10,8 +10,8 @@ import { NextResponse, type NextRequest } from "next/server";
 
 import { UI } from "@/src/domain/strings";
 import { SESSION_EXPIRED } from "@/src/lib/action-result";
+import { routeSession } from "@/src/lib/route-session";
 import { sameOrigin } from "@/src/lib/same-origin";
-import { getSession } from "@/src/services/auth/session";
 
 /**
  * The body as text, or null once it passes `maxBytes`.
@@ -73,8 +73,10 @@ export async function readSignedInJson(
   request: NextRequest,
   maxBytes: number,
 ): Promise<{ body: unknown } | BodyRefusal> {
-  if (!(await getSession())) {
+  const session = await routeSession("json");
+  if (!session) {
     return { response: NextResponse.json({ ok: false, error: SESSION_EXPIRED }, { status: 401 }) };
   }
+  if ("denied" in session) return { response: session.denied };
   return readJsonBody(request, maxBytes);
 }

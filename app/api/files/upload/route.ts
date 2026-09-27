@@ -4,7 +4,7 @@ import { isValidMonthKey } from "@/src/domain/dates";
 import { UI } from "@/src/domain/strings";
 import { sameOrigin } from "@/src/lib/same-origin";
 import { consume } from "@/src/services/rate-limit";
-import { getSession } from "@/src/services/auth/session";
+import { routeSession } from "@/src/lib/route-session";
 import { findFundingSource } from "@/src/modules/funding-sources/queries";
 import { lockMonth } from "@/src/modules/packet/lock";
 import {
@@ -35,10 +35,11 @@ const MONTH_CATEGORIES: MonthDocumentCategory[] = [
  * ingestion service, which proves and normalises them before anything is recorded.
  */
 export async function POST(request: NextRequest) {
-  const session = await getSession();
+  const session = await routeSession("json");
   if (!session) {
     return NextResponse.json({ ok: false, error: SESSION_EXPIRED }, { status: 401 });
   }
+  if ("denied" in session) return session.denied;
 
   if (!sameOrigin(request)) {
     return NextResponse.json({ ok: false, error: "This upload couldn't be verified. Reload the page and try again." }, { status: 403 });

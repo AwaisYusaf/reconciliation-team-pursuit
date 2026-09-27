@@ -751,6 +751,189 @@ export const UI = {
   shareOpenFailed: "This file can't be opened right now. Please try again in a few minutes.",
   /** Wording to review: past the per-address open limit (`shareOpen`). */
   shareTooManyOpens: "Too many files opened in a short time. Please wait a few minutes and try again.",
+
+  // PHASE-16 Track A (billing actions)
+  billingNotEnabled: "Plan and billing will be available here soon.",
+  billingNotAdmin: "Only an admin can change the plan or billing.",
+  billingComplimentaryRefused: "Your organization has complimentary access, so there's nothing to pay.",
+  billingAlreadySubscribed: "Your organization already has a plan. Use Switch plan to change it.",
+  billingPaymentProcessing: "Your last payment is still going through. Try again once it's done.",
+  billingUnknownPlan: "That plan isn't available right now.",
+  billingNoPlan: "Your organization doesn't have a plan yet.",
+  billingPaymentFailedRefused: "Your last payment didn't go through. Update your card before changing plans.",
+  billingCancelPending: "Your plan is cancelled. Press Keep my plan before switching.",
+  billingPaymentPending: "A switch is waiting for payment. Pay for it or let it expire before making another change.",
+  billingChangePending: "A switch is already scheduled. Cancel it first.",
+  billingSamePlan: "That's your current plan.",
+  billingQuoteExpired: "The price has changed since you opened this. Open it again to see the new figures.",
+  billingPortalNotSetUp: `Card and invoices aren't available yet. Email ${SUPPORT_EMAIL}.`,
+  billingStripeError: "The payment service didn't respond. Check your plan below before trying again.",
+  billingDowngradeTooManySources: (n: number) =>
+    `Reconciliation includes one active funding source, and you have ${n}. Archive the ones you don't use in Funding sources, then switch.`,
+  staffStripeManaged: "Billing for this organization is managed in Stripe.",
+  billingRateLimited: "Too many billing requests. Wait a minute and try again.",
+
+  // PHASE-16 Track B (no free use)
+  billingChooseFor: (org: string) => `Choose a plan for ${org}`,
+  billingChooseNew: "Choose a plan to get started.",
+  billingEnded: "Your plan has ended. Your records are safe and come back as soon as you choose a plan.",
+  billingCompEnded: (date: string) =>
+    `Your complimentary access ended on ${date}. Your records are safe and come back as soon as you choose a plan.`,
+  billingSubscribe: "Continue to payment",
+  billingOpeningCheckout: "Opening the payment page…",
+  billingUnpaidManager: (names: string) =>
+    `Your organization doesn't have an active plan. Your admin (${names}) can choose one in Plan & billing.`,
+  billingPlanRequired: "Your organization's plan has ended, so this wasn't saved. Reload the page to see your options.",
+  billingChooseDifferent: "Choose a different plan",
+  billingIntervalMonthly: "Monthly",
+  billingIntervalYearly: "Yearly",
+  billingPerMonth: "/month",
+  billingPerYear: "/year",
+
+  // PHASE-16 Phase 5 (Plan & billing section, banners, Plus pill)
+  billingSectionTitle: "Plan & billing",
+  billingComplimentary: (plan: string) => `Your organization has complimentary access to ${plan}.`,
+  billingComplimentaryUntil: (plan: string, date: string) =>
+    `Your organization has complimentary access to ${plan} until ${date}.`,
+  billingQuestions: `Questions about your plan? Email ${SUPPORT_EMAIL}.`,
+  billingCompEnding: (date: string) =>
+    `Your complimentary access ends on ${date}. After that, you'll be asked to choose a plan to keep working.`,
+  billingCheckoutAbandoned: "Payment wasn't finished. Nothing was charged.",
+  billingBilledMonthly: "Billed monthly",
+  billingBilledYearly: "Billed yearly",
+  billingRenews: (date: string) => `Renews on ${date}.`,
+  billingSwitchPlan: "Switch plan",
+  billingYourPlan: "Your plan",
+  billingPortal: "Card and invoices",
+  billingPortalHelp: "Opens Stripe's secure page.",
+  billingOpeningPortal: "Opening Stripe…",
+  billingCancelPlan: "Cancel plan",
+  billingKeepPlan: "Keep my plan",
+  billingDowngradeQueued: (date: string, plan: string, interval: string) =>
+    `On ${date}, your plan switches to ${plan}, billed ${interval}.`,
+  billingPriceMoveQueued: (date: string) => `Your plan's price changes on ${date}.`,
+  billingCancelChange: "Cancel this change",
+  billingCancelling: (date: string) => `Your plan is cancelled. You keep access until ${date}.`,
+  billingUpgradeWaiting: (time: string) =>
+    `Your plan change is waiting for payment. Pay by ${time} to finish it. If you don't, nothing changes and nothing is charged.`,
+  billingPayNow: "Pay now",
+  billingPaymentFailed:
+    "Your last payment didn't go through. You still have access while we try the card again. Update your card to keep it.",
+  billingPaymentFailedManager: (names: string) =>
+    `Your organization's last payment didn't go through. Your admin (${names}) can update the card.`,
+  billingEndNow: "End plan now",
+  billingOnHold:
+    "Your last payment didn't go through, so your plan is on hold and the app is paused. Pay the bill or update your card in Card and invoices, or end the plan to choose a new one. Your records are safe.",
+  billingOnHoldManager: (names: string) =>
+    `Your organization's last payment didn't go through, so the app is paused. Your admin (${names}) can pay the bill or update the card.`,
+  billingManagerNote: "Only an admin can change the plan or billing.",
+  billingSwitchTitle: (plan: string, interval: string) => `Switch to ${plan}, billed ${interval}?`,
+  billingRowCurrent: "Current plan",
+  billingRowNew: "New plan",
+  billingRowChanges: "Changes",
+  billingRowToday: "Charged today",
+  billingRowAfter: "After that",
+  billingChangesNow: "Right away",
+  billingAfterThat: (amount: string, interval: string, date: string) => `${amount} per ${interval} from ${date}`,
+  billingUpgradeExplain: (plan: string, date: string) =>
+    `Today's charge covers ${plan} until ${date}, less the unused part of what you already paid.`,
+  billingDowngradeExplain: (plan: string) =>
+    `You keep ${plan} until then. Nothing is charged today, and you can cancel this change any time before it starts.`,
+  billingConfirmPay: (amount: string) => `Pay ${amount} and switch`,
+  billingConfirmSchedule: (date: string) => `Switch on ${date}`,
+  billingSwitching: "Switching…",
+  billingSwitchNow: "Switch now",
+  billingGoBack: "Go back",
+  billingCancelTitle: "Cancel your plan?",
+  billingCancelBody: (date: string) =>
+    `You keep full access until ${date}. After that, no one in your organization can open the app, download packets or use shared links until you choose a plan again. Your records are kept.`,
+  billingCancellingNow: "Cancelling…",
+  billingEndNowTitle: "End your plan now?",
+  billingEndNowBody:
+    "Your last payment didn't go through, so ending your plan now cancels that bill. No one in your organization can use the app until you choose a plan again. Your records are kept.",
+  billingEndingNow: "Ending…",
+  billingSeePlans: "See plans",
+  billingGoToSources: "Go to Funding sources",
+  billingSubscribeTooManySources: (count: number) =>
+    `Reconciliation includes one active funding source, and you have ${count}. Archive the ones you don't use, or choose Reconciliation + AI.`,
+  billingSourcesTitle: "Your funding sources",
+  billingSourcesHelp:
+    "Reconciliation includes one active funding source. Archiving keeps a source's records, and you can bring it back later from Settings.",
+  billingArchiveSource: "Archive",
+  billingSourceArchivedToast: "Funding source archived.",
+  billingChangedToast: "Your plan has changed.",
+  billingScheduledToast: "Your plan change is scheduled.",
+  billingCancelledToast: "Your plan is cancelled. You keep access until the end of the paid period.",
+  billingResumedToast: "Your plan will continue.",
+  billingChangeDroppedToast: "The scheduled change is cancelled.",
+  billingEndedToast: "Your plan has ended. Nothing more will be charged.",
+  plusPillLabel: "Plus plan, open Plan & billing",
+  billingPlansTitle: "Plans",
+  billingChangePlan: "Change plan",
+  billingHidePlans: "Hide plans",
+  billingCheckoutNote: "Cancel anytime. You keep access until the end of the period you paid for.",
+  billingCheckoutDeferred: (date: string) =>
+    `Nothing is charged today. Your complimentary access continues, and your first payment is on ${date}. Cancel anytime before then and nothing is charged.`,
+  billingCheckoutEndsComp:
+    "You pay today, and your complimentary access ends once the payment goes through. Cancel anytime. You keep access until the end of the period you paid for.",
+  billingCompBuyDeferred: (date: string) =>
+    `You can choose a plan now. Nothing is charged until your complimentary access ends: your first payment is on ${date}.`,
+  billingCompBuyNow:
+    "You can choose a plan now. You pay today, and your complimentary access ends once the payment goes through.",
+  billingCompUpcoming: (plan: string, interval: string, date: string) =>
+    `Your ${plan} plan, billed ${interval}, starts on ${date}. Nothing is charged before then.`,
+  billingCompUpcomingCancelled: "You cancelled the plan you chose, so it won't start and nothing will be charged.",
+  billingCancelUpcomingBody:
+    "The plan you chose won't start, and nothing will be charged. Your complimentary access continues as before.",
+  billingComplimentaryTag: "Complimentary",
+  // Staff dashboard (§4.6)
+  historyActorStripe: "Stripe",
+  staffBillingTitle: "Billing",
+  staffBillingNone: "No Stripe subscription.",
+  staffBillingStatus: "Stripe status",
+  staffBillingInterval: "Billed",
+  staffBillingRenews: "Renews on",
+  staffBillingEnds: "Ends on",
+  staffBillingQueued: "Scheduled change",
+  staffBillingQueuedValue: (plan: string, interval: string, date: string) => `${plan}, billed ${interval}, on ${date}`,
+  staffBillingPriceMove: (date: string) => `Price change on ${date}`,
+  staffBillingUpgradeWaiting: (time: string) => `Upgrade waiting for payment until ${time}`,
+  staffBillingPaymentFailed: "Last payment failed. Stripe is retrying the card.",
+  staffBillingPaused: "Collection paused while suspended.",
+  staffBillingDisputed: (date: string) => `Card dispute opened on ${date}. Review it in Stripe.`,
+  staffBillingOpenCustomer: "Open in Stripe",
+  staffBillingHeadPaid: "Paid",
+  staffBillingHeadFailed: "Payment failed",
+  staffBillingHeadNotYet: "Not charged yet",
+  staffBillingHeadCancelling: "Paid, cancelling",
+  staffBillingHeadCancelled: "Cancelled",
+  staffBillingHeadUnfinished: "Payment not finished",
+  staffBillingLastPaid: (amount: string, date: string) => `Last payment ${amount} on ${date}.`,
+  staffBillingLastPaidLabel: "Last payment",
+  staffBillingFirstCharge: (date: string) => `Card saved. The first payment is on ${date}.`,
+  staffBillingFirstChargeLabel: "First payment on",
+  staffBillingAccessEnds: (date: string) => `Won't renew. Access ends on ${date}.`,
+  staffPaymentsTitle: "Payments",
+  staffPaymentsNone: "No payments yet.",
+  staffPaymentsUnavailable: "Payments can't be loaded from Stripe right now. Reload the page to try again.",
+  staffPaymentsView: "View",
+  staffPaymentPaid: "Paid",
+  staffPaymentOpen: "Due",
+  staffPaymentVoid: "Cancelled",
+  staffPaymentUncollectible: "Not collected",
+  staffPaymentDraft: "Draft",
+  staffCompPaying: "This organization pays for a plan. Choose what happens to it.",
+  staffCompCancelNow: "Cancel the paid plan now",
+  staffCompCancelAtEnd: "Cancel the paid plan at the end of the paid period",
+  staffCompCancelRequired: "This organization pays for a plan. Choose whether to cancel it now or at the end of the paid period.",
+
+  // PHASE-16 Track C (landing, funding-source limit)
+  fundingSourceLimitReached:
+    "Reconciliation includes one active funding source. To add more, try Plus.",
+  fundingSourceLimitManager:
+    "Reconciliation includes one active funding source. Ask your admin about upgrading.",
+  fundingSourceLimitQueued: (date: string) =>
+    `Your plan switches to Reconciliation on ${date}, which includes one active funding source. To add another, cancel that switch in Plan & billing.`,
 } as const;
 
 /**

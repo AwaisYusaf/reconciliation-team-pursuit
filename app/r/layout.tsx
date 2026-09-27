@@ -3,6 +3,7 @@ import type { CSSProperties } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { after } from "next/server";
 
 import { AppHeader } from "@/src/components/app-shell/app-header";
 import { AppNav } from "@/src/components/app-shell/app-nav";
@@ -17,9 +18,14 @@ import { PlusBadge } from "@/src/components/ui/plus-badge";
 import { APP_NAME } from "@/src/domain/strings";
 import { aiPlanAllowed } from "@/src/modules/ai/access";
 import { signOutAction } from "@/src/modules/auth/actions";
+import { loadBillingBanner } from "@/src/modules/billing/plan-view-loader";
+import { billingEnabled } from "@/src/modules/billing/config";
+import { refreshOrgBilling } from "@/src/modules/billing/sync";
+import { BillingBanner } from "./billing-banner";
 import { loadSourceContext } from "@/src/modules/funding-sources/queries";
 import { avatarVersionOf } from "@/src/services/storage/keys";
 import { getSession } from "@/src/services/auth/session";
+import { hasPaidAccess } from "@/src/services/auth/entitlement";
 
 /**
  * The authenticated shell every feature screen renders inside (m00).
@@ -30,6 +36,52 @@ import { getSession } from "@/src/services/auth/session";
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const session = await getSession();
   if (!session) redirect("/login");
+
+  // The "any page" lost-webhook net (P13), for paid and unpaid orgs alike: an overdue copy is
+  // re-synced after the page is sent, never while it waits, so a slow Stripe can't hold up a
+  // page. The next page shows the result.
+  after(() => refreshOrgBilling(session.orgId, "stale"));
+
+  // Not the gate (`pageSession()` on every page is): but it must never send org data to an
+  // unpaid organization, and it must not loop — no onboarding redirect here, since an unpaid,
+  // not-yet-onboarded org would otherwise bounce between this and `/r/plan` (Phase 16 §4.7).
+  if (!hasPaidAccess(session)) {
+    return (
+      <div className="min-h-screen bg-paper">
+        <AppHeader
+          logo={
+            <Link href="/r" aria-label={APP_NAME}>
+              <Image
+                src="/brand/stayfunded-mark.png"
+                alt=""
+                width={628}
+                height={570}
+                className="h-8 w-auto"
+                style={{ width: "auto" }}
+              />
+            </Link>
+          }
+          nav={null}
+          controls={null}
+          account={
+            <ProfileMenu
+              name={session.userName ?? null}
+              email={session.email}
+              photoUrl={
+                session.avatarKey ? `/api/me/avatar?v=${avatarVersionOf(session.avatarKey)}` : null
+              }
+              signOut={signOutAction}
+            />
+          }
+        />
+        <main className="relative max-w-[1220px] mx-auto px-4 sm:px-6 pt-3 sm:pt-4 pb-12 sm:pb-16">
+          {children}
+        </main>
+        <AppToaster />
+      </div>
+    );
+  }
+
   if (!session.onboarded) redirect("/onboarding/line-items");
 
   const { sources, selectedId, single } = await loadSourceContext(
@@ -41,6 +93,14 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   // month an expense can be moved into.
   const months = await loadSelectableMonths(session.orgId, selectedId, [session.activeMonth]);
   const activeMonth = session.activeMonth;
+
+  // The Plus pill follows what the org has paid for, not the plan label alone (Phase 16 §4.2):
+  // `entitlement.plan` is the complimentary plan for a complimentary org, and a cancelled Plus
+  // org loses the pill with the features. `resolveSession` always sets it; the fallback only
+  // covers a hand-built session.
+  const ent = session.entitlement;
+  const showPlus = ent ? ent.paid && aiPlanAllowed(ent.plan) : aiPlanAllowed(session.plan);
+  const banner = await loadBillingBanner(session);
 
   return (
     <div className="min-h-screen bg-paper">
@@ -75,7 +135,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           <>
             {/* Only the AI plan gets a badge: on the plain plan a badge saying so would be
                 noise on every page, forever (Phase 9). */}
-            {aiPlanAllowed(session.plan) && <PlusBadge />}
+            {/* A link only once billing is on: until then there is no Plan & billing to open. */}
+            {showPlus && <PlusBadge href={billingEnabled() ? "/r/settings?section=plan" : undefined} />}
             <TourReplayButton />
           </>
         }
@@ -94,6 +155,14 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           />
         }
       />
+
+      {/* The one billing notice, if any (Phase 16 §4.5). Above `main`, not inside it, so the
+          floating month and funding-source selectors (absolute in `main`'s corner) never sit on it. */}
+      {banner && (
+        <div className="max-w-[1220px] mx-auto px-4 sm:px-6 pt-3 sm:pt-4">
+          <BillingBanner banner={banner} />
+        </div>
+      )}
 
       {/* Tight against the header: the bar has its own bottom padding, so a large top padding
           here stacked on it and left a band of empty page above every screen's first line. */}

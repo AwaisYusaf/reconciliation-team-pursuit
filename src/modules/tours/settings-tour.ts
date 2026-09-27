@@ -20,7 +20,7 @@ export const SETTINGS_TOUR_STEPS: readonly TourStep[] = [
     target: "settings-sidebar",
     autoOpen: "settings-tab-organization",
     title: "Settings sections",
-    body: "Switch between sections here. Refreshing the page or following a link to Settings starts again on Organization.",
+    body: "Switch between sections here. Refreshing the page starts again on the section Settings opened on.",
   },
   {
     target: "settings-doc-name",
@@ -59,6 +59,12 @@ export const SETTINGS_TOUR_STEPS: readonly TourStep[] = [
     autoOpen: "settings-tab-users",
     title: "Users",
     body: "Everyone with access to this organization's data. Only an admin can add users, edit their names or reset their passwords.",
+  },
+  {
+    target: "settings-plan",
+    autoOpen: "settings-tab-plan",
+    title: "Plan & billing",
+    body: "Your plan, what it costs and when it renews. Only an admin can switch plans, cancel, or update the card. The Plus pill at the top opens this section too.",
   },
   {
     target: "settings-app-guide",

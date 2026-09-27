@@ -8,11 +8,13 @@
  * transaction — the client calls `router.refresh()` after a success (Phase 4), which is why
  * nothing here calls `revalidatePath`.
  */
-import { eq, inArray } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 
-import { db, type Database } from "@/src/db";
+import { db } from "@/src/db";
+import { billingCopyOn, sameStripeMode } from "@/src/db/billing-copy";
 import {
   orgAccountEvents,
+  orgBilling,
   organizations,
   orgPlan,
   sessions,
@@ -22,14 +24,16 @@ import {
   type OrgPlan,
   type SubscriptionStatus,
 } from "@/src/db/schema";
+import { lockOrg, type Executor } from "@/src/db/org-lock";
 import { isValidIsoDate } from "@/src/domain/dates";
 import { ACCOUNT_NOTE_MAX_LENGTH, UI } from "@/src/domain/strings";
 import { fail, ok, type ActionResult } from "@/src/lib/action-result";
 import { requireStaff } from "@/src/lib/action-session";
 import { isUuid } from "@/src/lib/ids";
-
-/** Either the pooled handle or an open transaction's — same trick as `funding-sources/queries.ts`. */
-type Executor = Database | Parameters<Parameters<Database["transaction"]>[0]>[0];
+import { billingEnabled } from "@/src/modules/billing/config";
+import { isLive } from "@/src/modules/billing/rules";
+import { setCollectionPaused, staffCancelSubscription } from "@/src/modules/billing/billing";
+import { alert, refreshOrgBilling } from "@/src/modules/billing/sync";
 
 type OrgRow = {
   id: string;
@@ -37,7 +41,9 @@ type OrgRow = {
   subscriptionStatus: SubscriptionStatus;
   complimentary: boolean;
   complimentaryUntil: string | null;
+  complimentaryPlan: OrgPlan | null;
   suspendedAt: Date | null;
+  stripeStatus: string | null;
 };
 
 function isOrgPlan(value: string): value is OrgPlan {
@@ -79,21 +85,23 @@ async function withLockedOrg(
   if (!isUuid(orgId)) return fail(UI.orgNoLongerExists);
 
   return db.transaction(async (tx) => {
-    const [row] = await tx
-      .select({
-        id: organizations.id,
-        plan: organizations.plan,
-        subscriptionStatus: organizations.subscriptionStatus,
-        complimentary: organizations.complimentary,
-        complimentaryUntil: organizations.complimentaryUntil,
-        suspendedAt: organizations.suspendedAt,
-      })
-      .from(organizations)
-      .where(eq(organizations.id, orgId))
-      .for("update");
-
+    const row = await lockOrg(tx, orgId, {
+      id: organizations.id,
+      plan: organizations.plan,
+      subscriptionStatus: organizations.subscriptionStatus,
+      complimentary: organizations.complimentary,
+      complimentaryUntil: organizations.complimentaryUntil,
+      complimentaryPlan: organizations.complimentaryPlan,
+      suspendedAt: organizations.suspendedAt,
+    });
     if (!row) return fail(UI.orgNoLongerExists);
-    return fn(row, tx);
+
+    // Read after the lock, so this is the copy the last writer holding it committed.
+    const [billing] = await tx
+      .select({ stripeStatus: orgBilling.stripeStatus })
+      .from(orgBilling)
+      .where(and(eq(orgBilling.orgId, orgId), sameStripeMode()));
+    return fn({ ...row, stripeStatus: billing?.stripeStatus ?? null }, tx);
   });
 }
 
@@ -115,17 +123,27 @@ export async function changePlanAction(
   if ("refusal" in parsedNote) return parsedNote.refusal;
 
   return withLockedOrg(orgId, async (row, tx) => {
+    // Stripe is the one writer of plan/status while a subscription is live (P16); staff can act
+    // again once it lapses.
+    if (billingEnabled() && isLive(row.stripeStatus)) {
+      return fail(UI.staffStripeManaged);
+    }
+
     // Changing plan or status never touches suspension, complimentary access, or each other.
     // A save that changes nothing is refused rather than reported as saved: there is no event
     // action for "note only", so History would stay silent while the dialog said "updated".
-    if (row.plan === plan && row.subscriptionStatus === status) {
+    // A pinned free plan (`complimentary_plan`) that differs from the chosen one is a change:
+    // it is what a complimentary org actually gets.
+    if (row.plan === plan && row.subscriptionStatus === status && (row.complimentaryPlan ?? plan) === plan) {
       return fail(UI.accountNothingChanged);
     }
 
     const before = snapshot(row);
+    // The plan staff choose is the plan the org gets: a free plan pinned at Checkout would
+    // otherwise keep overriding it (P27).
     await tx
       .update(organizations)
-      .set({ plan, subscriptionStatus: status })
+      .set({ plan, subscriptionStatus: status, complimentaryPlan: null })
       .where(eq(organizations.id, orgId));
     const after = snapshot({ ...row, plan, subscriptionStatus: status });
 
@@ -148,6 +166,7 @@ export async function setComplimentaryAction(
   enabled: boolean,
   until: string,
   note: string,
+  cancelPaid: "now" | "period_end" | null = null,
 ): Promise<ActionResult> {
   const staff = await requireStaff();
   if ("denied" in staff) return staff.denied;
@@ -161,13 +180,38 @@ export async function setComplimentaryAction(
   const parsedNote = parseNote(note);
   if ("refusal" in parsedNote) return parsedNote.refusal;
 
+  // Granting free access to a paying org ends the paid plan in the same step (§4.6), so it is
+  // never billed for access it now gets free. Stripe first and outside the row lock: the sync
+  // this triggers writes the same row, and a Stripe failure then leaves nothing half done.
+  if (enabled && billingEnabled() && isUuid(orgId)) {
+    // Whether it pays is Stripe's answer, not our copy's, which can be a webhook behind (a
+    // Checkout finished a moment ago): re-sync first. Never throws; if Stripe can't be reached
+    // the last copy decides.
+    await refreshOrgBilling(orgId, "return");
+    const [current] = await db
+      .select({ complimentary: organizations.complimentary, stripeStatus: orgBilling.stripeStatus })
+      .from(organizations)
+      .leftJoin(orgBilling, billingCopyOn())
+      .where(eq(organizations.id, orgId));
+    if (current && !current.complimentary && isLive(current.stripeStatus)) {
+      if (cancelPaid !== "now" && cancelPaid !== "period_end") return fail(UI.staffCompCancelRequired);
+      try {
+        await staffCancelSubscription(orgId, cancelPaid);
+      } catch (e) {
+        console.error(`[admin] cancelling org ${orgId}'s subscription for a complimentary grant failed`, e);
+        return fail(UI.billingStripeError);
+      }
+    }
+  }
+
   return withLockedOrg(orgId, async (row, tx) => {
     if (!enabled) {
       if (!row.complimentary) return fail(UI.accountNothingChanged); // already off
       const before = snapshot(row);
+      // The pinned free plan (`complimentary_plan`) ends with the grant it belongs to.
       await tx
         .update(organizations)
-        .set({ complimentary: false, complimentaryUntil: null })
+        .set({ complimentary: false, complimentaryUntil: null, complimentaryPlan: null })
         .where(eq(organizations.id, orgId));
       const after = snapshot({ ...row, complimentary: false, complimentaryUntil: null });
       await tx.insert(orgAccountEvents).values({
@@ -231,7 +275,7 @@ export async function suspendOrgAction(orgId: string, reason: string): Promise<A
     return fail(UI.accountNoteTooLong(ACCOUNT_NOTE_MAX_LENGTH));
   }
 
-  return withLockedOrg(orgId, async (row, tx) => {
+  const result = await withLockedOrg(orgId, async (row, tx) => {
     if (row.suspendedAt !== null) return fail(UI.orgAlreadySuspended);
 
     const before = snapshot(row);
@@ -259,6 +303,17 @@ export async function suspendOrgAction(orgId: string, reason: string): Promise<A
     });
     return ok();
   });
+
+  // Outside the transaction, and never lets a Stripe failure undo a suspension that already
+  // committed (D3): the org is suspended either way, the card is just left charging.
+  if (result.ok) {
+    try {
+      await setCollectionPaused(orgId, true);
+    } catch (e) {
+      alert(`org ${orgId} suspended but its Stripe collection could not be paused; pause it by hand: ${e}`);
+    }
+  }
+  return result;
 }
 
 export async function reinstateOrgAction(orgId: string, note: string): Promise<ActionResult> {
@@ -268,7 +323,7 @@ export async function reinstateOrgAction(orgId: string, note: string): Promise<A
   const parsedNote = parseNote(note);
   if ("refusal" in parsedNote) return parsedNote.refusal;
 
-  return withLockedOrg(orgId, async (row, tx) => {
+  const result = await withLockedOrg(orgId, async (row, tx) => {
     if (row.suspendedAt === null) return fail(UI.orgNotSuspended);
 
     const before = snapshot(row);
@@ -285,4 +340,15 @@ export async function reinstateOrgAction(orgId: string, note: string): Promise<A
     });
     return ok();
   });
+
+  // Outside the transaction, same reasoning as suspend (D3): the reinstatement already
+  // committed either way.
+  if (result.ok) {
+    try {
+      await setCollectionPaused(orgId, false);
+    } catch (e) {
+      alert(`org ${orgId} reinstated but its Stripe collection could not be resumed; resume it by hand: ${e}`);
+    }
+  }
+  return result;
 }

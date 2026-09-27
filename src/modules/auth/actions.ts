@@ -11,10 +11,12 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 
 import { db } from "@/src/db";
+import { billingCopyOn } from "@/src/db/billing-copy";
 import {
   fundingSources,
   lineItems,
   orgAccountEvents,
+  orgBilling,
   organizations,
   paymentSources,
   staffUsers,
@@ -24,17 +26,18 @@ import {
 import { currentMonthKey, isValidMonthKey } from "@/src/domain/dates";
 import { parseMoneyToCents } from "@/src/domain/money";
 import { UI } from "@/src/domain/strings";
-import { fail, ok, SESSION_EXPIRED, type ActionResult } from "@/src/lib/action-result";
+import { fail, ok, type ActionResult } from "@/src/lib/action-result";
+import { actionSession } from "@/src/lib/action-session";
 import {
   endSession,
   getStaffSession,
   requireSession,
   startSession,
   startStaffSession,
-  UnauthenticatedError,
-  type SessionContext,
 } from "@/src/services/auth/session";
 import { hashPassword, validatePasswordPolicy, verifyPassword } from "@/src/services/auth/passwords";
+import { ENTITLEMENT_COLUMNS, entitlementOf, ORG_ENTITLEMENT_COLUMNS } from "@/src/services/auth/entitlement";
+import { isInterval, isPlanId } from "@/src/modules/billing/rules";
 import { emailInUse } from "@/src/modules/auth/emails";
 import { ORIGINAL_RULES } from "@/src/modules/expenses/reimbursement";
 import { primaryFundingSourceId, requireOwnedFundingSource } from "@/src/modules/funding-sources/queries";
@@ -59,22 +62,6 @@ const DEFAULT_SUPPORTING_DOC_TYPES = [
   "Narrative",
   "Other",
 ];
-
-/**
- * Run an authenticated action, turning an expired session into a typed result instead of
- * an error boundary — the client keeps the user's typed form state and shows a sign-in
- * prompt rather than discarding their work (review finding A13).
- */
-async function requireSessionOrExpired(): Promise<
-  SessionContext | { expired: ActionResult<never> }
-> {
-  try {
-    return await requireSession();
-  } catch (error) {
-    if (error instanceof UnauthenticatedError) return { expired: fail(SESSION_EXPIRED) };
-    throw error;
-  }
-}
 
 /** RFC 5321 caps a forward path at 256 characters; 320 leaves room and refuses the absurd. */
 const MAX_EMAIL_LENGTH = 320;
@@ -114,9 +101,11 @@ export async function signInAction(
       deactivatedAt: users.deactivatedAt,
       onboardedAt: organizations.onboardedAt,
       suspendedAt: organizations.suspendedAt,
+      ...ENTITLEMENT_COLUMNS,
     })
     .from(users)
     .innerJoin(organizations, eq(organizations.id, users.orgId))
+    .leftJoin(orgBilling, billingCopyOn())
     .where(sql`lower(${users.email}) = lower(${email})`)
     .limit(1);
 
@@ -174,6 +163,9 @@ export async function signInAction(
   reset("loginPerIp", ip);
   await db.update(users).set({ lastSignInAt: new Date() }).where(eq(users.id, user.id));
   await startSession(user.id);
+
+  // No free use (Phase 16, C6): an unpaid org reaches only the plan chooser, before onboarding.
+  if (!entitlementOf(user).paid) redirect("/r/plan");
 
   // Onboarding is resumable: an abandoned signup lands back here until it completes.
   redirect(user.onboardedAt ? "/r" : "/onboarding/line-items");
@@ -255,7 +247,15 @@ export async function signUpAction(
 
   const passwordHash = await hashPassword(password);
 
-  const userId = await db.transaction(async (tx) => {
+  // The landing page's plan links pass these along as hidden fields, so a preselected plan
+  // survives sign-up onto `/r/plan`; an invalid or absent value is simply dropped, never
+  // refused — this is a display preference, not a purchase (that happens on `/r/plan` itself).
+  const plan = formData.get("plan");
+  const interval = formData.get("interval");
+  const preselectedPlan = isPlanId(plan) ? plan : null;
+  const preselectedInterval = isInterval(interval) ? interval : null;
+
+  const { userId, org } = await db.transaction(async (tx) => {
     const [org] = await tx
       .insert(organizations)
       .values({
@@ -263,7 +263,7 @@ export async function signUpAction(
         docName: orgName,
         activeMonth: currentMonthKey(),
       })
-      .returning({ id: organizations.id });
+      .returning({ id: organizations.id, ...ORG_ENTITLEMENT_COLUMNS });
 
     const [user] = await tx
       .insert(users)
@@ -279,10 +279,21 @@ export async function signUpAction(
       ...ORIGINAL_RULES,
     });
 
-    return user.id;
+    return { userId: user.id, org };
   });
 
   await startSession(userId);
+
+  // No free use (Phase 16, C6): a new organization has never paid, so it always lands on the
+  // plan chooser rather than onboarding — `entitlementOf` still covers billing-off and
+  // complimentary-by-default test orgs (P28), so this is never true in either of those cases.
+  if (!entitlementOf(org).paid) {
+    const params = new URLSearchParams();
+    if (preselectedPlan) params.set("plan", preselectedPlan);
+    if (preselectedInterval) params.set("interval", preselectedInterval);
+    const query = params.toString();
+    redirect(query ? `/r/plan?${query}` : "/r/plan");
+  }
   redirect("/onboarding/line-items");
 }
 
@@ -299,7 +310,7 @@ export async function saveOnboardingLineItemsAction(
   _previous: ActionResult,
   formData: FormData,
 ): Promise<ActionResult> {
-  const session = await requireSessionOrExpired();
+  const session = await actionSession();
   if ("expired" in session) return session.expired;
   // Server Actions are directly invocable, so the page guard is not enough: a replayed or
   // stale-tab call would otherwise wipe a live organisation's approved budget.
@@ -359,7 +370,7 @@ export async function completeOnboardingAction(
   _previous: ActionResult,
   formData: FormData,
 ): Promise<ActionResult> {
-  const session = await requireSessionOrExpired();
+  const session = await actionSession();
   if ("expired" in session) return session.expired;
   if (session.onboarded) return fail("Your organization is already set up.");
   const skip = formData.get("intent") === "skip";
@@ -421,7 +432,7 @@ export async function completeOnboardingAction(
 /* ------------------------------------------------------------- shell state */
 
 export async function setActiveMonthAction(month: string): Promise<ActionResult> {
-  const session = await requireSessionOrExpired();
+  const session = await actionSession();
   if ("expired" in session) return session.expired;
   if (!isValidMonthKey(month)) return fail("That is not a valid month.");
 
@@ -435,7 +446,7 @@ export async function setActiveMonthAction(month: string): Promise<ActionResult>
 
 /** Persist the header's funding source selection (R2.3). `null` means "All". */
 export async function setActiveFundingSourceAction(id: string | null): Promise<ActionResult> {
-  const session = await requireSessionOrExpired();
+  const session = await actionSession();
   if ("expired" in session) return session.expired;
 
   if (id !== null) {
@@ -452,7 +463,7 @@ export async function setActiveFundingSourceAction(id: string | null): Promise<A
 }
 
 export async function dismissWelcomeAction(): Promise<ActionResult> {
-  const session = await requireSessionOrExpired();
+  const session = await actionSession();
   if ("expired" in session) return session.expired;
   await db
     .update(organizations)

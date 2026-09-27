@@ -157,7 +157,8 @@ export const organizations = pgTable("organizations", {
   onboardedAt: timestamp("onboarded_at", { withTimezone: true }),
   /** First-run banner dismissal (m00). */
   welcomeDismissedAt: timestamp("welcome_dismissed_at", { withTimezone: true }),
-  /** Hand-set until Stripe is connected (Phase 9). */
+  /** Hand-set until Stripe is connected (Phase 9); once billing is on, only a live
+   *  subscription's sync writes this (P16, P27). */
   plan: orgPlan().notNull().default("reconciliation"),
   subscriptionStatus: subscriptionStatus("subscription_status").notNull().default("trial"),
   /** Free access, independent of `subscriptionStatus` (Phase 9). */
@@ -173,6 +174,11 @@ export const organizations = pgTable("organizations", {
    *  `src/modules/ai/access.ts#canReadAmounts` — this column alone does not decide
    *  whether the feature is available. */
   readAmountsEnabled: boolean("read_amounts_enabled").notNull().default(true),
+  /** The plan a complimentary grant gives (Phase 16, P27); `null` means today's `plan`. Pinned
+   *  by Checkout during free access so a bought plan's sync never takes the free plan away;
+   *  cleared whenever staff change the plan or end the grant. The Stripe copy itself lives in
+   *  `org_billing` (D-125). */
+  complimentaryPlan: orgPlan("complimentary_plan"),
   createdAt: createdAt(),
   updatedAt: updatedAt(),
 });
@@ -330,9 +336,77 @@ export const orgAccountEvents = pgTable(
     before: jsonb("before").$type<OrgAccountSnapshot>().notNull(),
     after: jsonb("after").$type<OrgAccountSnapshot>().notNull(),
     note: text(),
+    /** True when Stripe's sync wrote this row rather than a staff action (Phase 16, P15); shown
+     *  as "Stripe" in History, reusing `plan_changed` rather than a new enum value. */
+    viaStripe: boolean("via_stripe").notNull().default(false),
     createdAt: createdAt(),
   },
   (t) => [index("org_account_events_org_idx").on(t.orgId, t.createdAt)],
+);
+
+/* ------------------------------------------------------------- org billing */
+
+/**
+ * The organization's copy of what Stripe knows (Phase 16, D-125), one row per org, created when
+ * its first Stripe customer is. Written only by `syncOrgBilling` and the billing actions
+ * (`src/modules/billing/`); Stripe stays the record (D-123). Kept off `organizations`, which
+ * every request reads, so a webhook rewrites this row rather than the org's.
+ *
+ * Every read goes through `billingCopyOn()` (a join) or `sameStripeMode()` (`org_billing` alone),
+ * both in `src/db/billing-copy.ts`, which match `livemode` to the configured key: a row from the
+ * other Stripe mode reads as absent (P11).
+ */
+export const orgBilling = pgTable(
+  "org_billing",
+  {
+    orgId: uuid("org_id")
+      .primaryKey()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    /** The Stripe customer the org pays as; how the sync finds the org (P11, P1). */
+    stripeCustomerId: text("stripe_customer_id").notNull(),
+    /** Which Stripe mode the customer belongs to. */
+    livemode: boolean().notNull(),
+    /** Stripe's exact status. No enum: an unknown future status is stored and treated as unpaid
+     *  rather than failing every webhook forever (P8). */
+    stripeStatus: text("stripe_status"),
+    billingInterval: text("billing_interval"),
+    /** Renewal date, or the cancel date while cancelling. */
+    currentPeriodEnd: timestamp("current_period_end", { withTimezone: true }),
+    /** Includes a dashboard `cancel_at` within this period. */
+    cancelAtPeriodEnd: boolean("cancel_at_period_end").notNull().default(false),
+    /** A queued downgrade or price move (existing plan values only, D-115). */
+    pendingPlan: orgPlan("pending_plan"),
+    pendingInterval: text("pending_interval"),
+    /** When the queued change starts. */
+    pendingAt: timestamp("pending_at", { withTimezone: true }),
+    pendingReason: text("pending_reason"),
+    /** An upgrade awaiting payment: Stripe's hosted invoice page. */
+    upgradePayUrl: text("upgrade_pay_url"),
+    upgradeExpiresAt: timestamp("upgrade_expires_at", { withTimezone: true }),
+    /** Stripe `pause_collection` while a paying org is suspended (D3). */
+    collectionPaused: boolean("collection_paused").notNull().default(false),
+    /** When the latest card dispute was opened; shown in `/a`, never changes access (§2.6). */
+    disputedAt: timestamp("disputed_at", { withTimezone: true }),
+    /** When the Stripe read behind this copy started. A sync whose read started earlier is
+     *  never written over a later one, so syncs order themselves across processes (D-125). */
+    syncedAt: timestamp("synced_at", { withTimezone: true }),
+  },
+  (t) => [
+    uniqueIndex("org_billing_stripe_customer_id_uq").on(t.stripeCustomerId),
+    check("org_billing_stripe_status_ck", sql`${t.stripeStatus} IS NULL OR length(${t.stripeStatus}) > 0`),
+    check(
+      "org_billing_billing_interval_ck",
+      sql`${t.billingInterval} IS NULL OR ${t.billingInterval} IN ('month', 'year')`,
+    ),
+    check(
+      "org_billing_pending_interval_ck",
+      sql`${t.pendingInterval} IS NULL OR ${t.pendingInterval} IN ('month', 'year')`,
+    ),
+    check(
+      "org_billing_pending_reason_ck",
+      sql`${t.pendingReason} IS NULL OR ${t.pendingReason} IN ('downgrade', 'price_move')`,
+    ),
+  ],
 );
 
 /* ------------------------------------------------------- contract settings */
@@ -1650,6 +1724,7 @@ export const monthlySummaries = pgTable(
 /* -------------------------------------------------------------------- types */
 
 export type Organization = typeof organizations.$inferSelect;
+export type OrgBilling = typeof orgBilling.$inferSelect;
 export type User = typeof users.$inferSelect;
 export type Session = typeof sessions.$inferSelect;
 export type StaffUser = typeof staffUsers.$inferSelect;

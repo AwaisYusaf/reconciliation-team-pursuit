@@ -1,12 +1,14 @@
 ﻿import { describe, expect, it } from "vitest";
 
 import {
-  complimentaryState,
   describeAccountEvent,
   parsePlanFilter,
   parseStatusFilter,
+  paymentStatusLabel,
+  staffBilling,
   usersFooter,
   type AccountEvent,
+  type BillingCopy,
   type DirectoryOrg,
 } from "./directory";
 
@@ -14,12 +16,174 @@ import {
 // assignable to `directory.ts`'s own re-declared types, or the two silently drift apart.
 // `import type` is erased at runtime (isolatedModules), so this never drags `server-only`
 // into this unit test.
-import type { OrgAccountEventRow, OrgDirectoryRow } from "./queries";
+import type { OrgAccountEventRow, OrgAccountRow, OrgDirectoryRow } from "./queries";
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 const _directoryRowCheck: DirectoryOrg = {} as OrgDirectoryRow;
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 const _accountEventCheck: AccountEvent = {} as OrgAccountEventRow;
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+const _billingCopyCheck: BillingCopy = {} as OrgAccountRow;
+
+describe("staffBilling: the org page's Billing card (Phase 16 §4.6)", () => {
+  const NOW = new Date("2026-09-25T16:00:00Z");
+  const none: BillingCopy = {
+    stripeCustomerId: null,
+    livemode: null,
+    stripeStatus: null,
+    billingInterval: null,
+    currentPeriodEnd: null,
+    cancelAtPeriodEnd: false,
+    pendingPlan: null,
+    pendingInterval: null,
+    pendingAt: null,
+    pendingReason: null,
+    upgradeExpiresAt: null,
+    collectionPaused: false,
+    disputedAt: null,
+  };
+  const paying: BillingCopy = {
+    ...none,
+    stripeCustomerId: "cus_123",
+    livemode: false,
+    stripeStatus: "active",
+    billingInterval: "month",
+    currentPeriodEnd: new Date("2026-10-25T16:00:00Z"),
+  };
+
+  it("nothing when Stripe has never seen the org", () => {
+    expect(staffBilling(none, null, NOW)).toBeNull();
+  });
+
+  const PAID = { amountCents: 49_700, at: new Date("2026-09-25T16:00:00Z") };
+
+  it("paid: a green Paid pill with the last payment, then interval, renewal and last payment as facts", () => {
+    expect(staffBilling(paying, PAID, NOW)).toEqual({
+      headline: { tone: "good", label: "Paid", detail: expect.stringMatching(/^Last payment \$497\.00 on /) },
+      facts: [
+        { label: "Billed", value: "monthly" },
+        { label: "Renews on", value: expect.stringContaining("2026") },
+        { label: "Last payment", value: expect.stringMatching(/^\$497\.00 · /) },
+      ],
+      warnings: [],
+      customerUrl: "https://dashboard.stripe.com/test/customers/cus_123",
+    });
+  });
+
+  it("active but no paid invoice read (Stripe unreachable): still Paid, no invented amount", () => {
+    const b = staffBilling(paying, null, NOW);
+    expect(b?.headline).toEqual({ tone: "good", label: "Paid", detail: null });
+    expect(b?.facts.map((f) => f.label)).not.toContain("Last payment");
+  });
+
+  it.each(["past_due", "unpaid"])("%s: a red Payment failed pill, with the retry line", (status) => {
+    expect(staffBilling({ ...paying, stripeStatus: status }, PAID, NOW)?.headline).toEqual({
+      tone: "bad",
+      label: "Payment failed",
+      detail: "Last payment failed. Stripe is retrying the card.",
+    });
+  });
+
+  it("trialing (bought during complimentary access): Not charged yet, with the first payment date", () => {
+    const b = staffBilling({ ...paying, stripeStatus: "trialing" }, null, NOW);
+    expect(b?.headline).toMatchObject({ tone: "neutral", label: "Not charged yet", detail: expect.stringMatching(/^Card saved\. The first payment is on /) });
+    expect(b?.facts.map((f) => f.label)).toContain("First payment on");
+  });
+
+  it("cancelling: Paid, cancelling, with when access ends; the fact says Ends on", () => {
+    const b = staffBilling({ ...paying, cancelAtPeriodEnd: true }, PAID, NOW);
+    expect(b?.headline).toMatchObject({ tone: "warn", label: "Paid, cancelling", detail: expect.stringMatching(/^Won't renew\. Access ends on /) });
+    expect(b?.facts.map((f) => f.label)).toContain("Ends on");
+  });
+
+  it.each(["canceled", "incomplete_expired"])("%s: Cancelled, and no renewal date", (status) => {
+    const b = staffBilling({ ...paying, stripeStatus: status }, PAID, NOW);
+    expect(b?.headline).toMatchObject({ tone: "neutral", label: "Cancelled" });
+    const labels = b?.facts.map((f) => f.label);
+    expect(labels).not.toContain("Renews on");
+    expect(labels).not.toContain("Ends on");
+  });
+
+  it("incomplete: Payment not finished", () => {
+    expect(staffBilling({ ...paying, stripeStatus: "incomplete" }, null, NOW)?.headline).toMatchObject({ tone: "warn", label: "Payment not finished" });
+  });
+
+  it("an unknown Stripe status is shown as is, never as Paid", () => {
+    expect(staffBilling({ ...paying, stripeStatus: "some_future_status" }, null, NOW)?.headline).toMatchObject({
+      tone: "neutral",
+      label: "some_future_status",
+    });
+  });
+
+  it("a customer with no subscription yet: No Stripe subscription", () => {
+    expect(staffBilling({ ...none, stripeCustomerId: "cus_1", livemode: false }, null, NOW)?.headline.label).toBe(
+      "No Stripe subscription.",
+    );
+  });
+
+  it("a live-mode customer links without /test/", () => {
+    expect(staffBilling({ ...paying, livemode: true }, null, NOW)?.customerUrl).toBe(
+      "https://dashboard.stripe.com/customers/cus_123",
+    );
+  });
+
+  it("a queued downgrade and a queued price move read differently", () => {
+    const at = new Date("2026-10-25T16:00:00Z");
+    const down = staffBilling(
+      { ...paying, pendingPlan: "reconciliation", pendingInterval: "year", pendingAt: at, pendingReason: "downgrade" },
+      null,
+      NOW,
+    );
+    expect(down?.facts.at(-1)?.value).toMatch(/^Reconciliation, billed yearly, on /);
+    const move = staffBilling(
+      { ...paying, pendingPlan: "reconciliation", pendingInterval: "month", pendingAt: at, pendingReason: "price_move" },
+      null,
+      NOW,
+    );
+    expect(move?.facts.at(-1)?.value).toMatch(/^Price change on /);
+  });
+
+  it("upgrade waiting, paused collection and a card dispute are warnings (a failed payment is the pill)", () => {
+    const b = staffBilling(
+      {
+        ...paying,
+        upgradeExpiresAt: new Date(NOW.getTime() + 3600_000),
+        collectionPaused: true,
+        disputedAt: new Date("2026-09-20T16:00:00Z"),
+      },
+      null,
+      NOW,
+    );
+    expect(b?.warnings).toEqual([
+      expect.stringMatching(/^Upgrade waiting for payment until /),
+      "Collection paused while suspended.",
+      "Card dispute opened on 20 Sep 2026. Review it in Stripe.",
+    ]);
+  });
+
+  it("an expired upgrade is not a warning", () => {
+    expect(staffBilling({ ...paying, upgradeExpiresAt: new Date(NOW.getTime() - 1) }, null, NOW)?.warnings).toEqual([]);
+  });
+
+  it("the customer id is encoded into the link", () => {
+    expect(staffBilling({ ...paying, stripeCustomerId: "cus_a/../b" }, null, NOW)?.customerUrl).toBe(
+      "https://dashboard.stripe.com/test/customers/cus_a%2F..%2Fb",
+    );
+  });
+});
+
+describe("paymentStatusLabel", () => {
+  it.each([
+    ["paid", "Paid"],
+    ["open", "Due"],
+    ["void", "Cancelled"],
+    ["uncollectible", "Not collected"],
+    ["draft", "Draft"],
+    ["something_new", "something_new"],
+  ])("%s → %s", (status, label) => {
+    expect(paymentStatusLabel(status)).toBe(label);
+  });
+});
 
 describe("parsePlanFilter / parseStatusFilter (Phase 9 §6)", () => {
   it("accepts the real values", () => {
@@ -65,44 +229,8 @@ describe("usersFooter (Phase 9 §6)", () => {
   });
 });
 
-describe("complimentaryState (Phase 9 §7 Q6)", () => {
-  const today = "2027-01-01";
-
-  it("is 'none' when complimentary is off, even with a date set", () => {
-    expect(complimentaryState({ complimentary: false, complimentaryUntil: null }, today)).toBe("none");
-    expect(complimentaryState({ complimentary: false, complimentaryUntil: "2099-01-01" }, today)).toBe(
-      "none",
-    );
-  });
-
-  it("is 'active' with no end date", () => {
-    expect(complimentaryState({ complimentary: true, complimentaryUntil: null }, today)).toBe("active");
-  });
-
-  it("an end date of exactly today is still active (Q6)", () => {
-    expect(complimentaryState({ complimentary: true, complimentaryUntil: today }, today)).toBe("active");
-  });
-
-  it("an end date of yesterday has ended", () => {
-    expect(complimentaryState({ complimentary: true, complimentaryUntil: "2026-12-31" }, today)).toBe(
-      "ended",
-    );
-  });
-
-  it("an end date far in the future is active", () => {
-    expect(complimentaryState({ complimentary: true, complimentaryUntil: "2030-06-01" }, today)).toBe(
-      "active",
-    );
-  });
-
-  it("compares safely across a year/month rollover, not lexically within one field", () => {
-    // 2026-12-31 < 2027-01-01 as ISO strings, but a naive "same year" or "same month" compare
-    // would get this wrong; the plain string comparison the implementation uses is exercised here.
-    expect(complimentaryState({ complimentary: true, complimentaryUntil: "2026-12-31" }, "2027-01-01")).toBe(
-      "ended",
-    );
-  });
-});
+// complimentaryState moved to src/domain/complimentary.ts (Phase 16, P10); its tests moved to
+// src/domain/complimentary.test.ts.
 
 describe("describeAccountEvent (Phase 9 §5)", () => {
   const base = {
@@ -115,6 +243,17 @@ describe("describeAccountEvent (Phase 9 §5)", () => {
   function event(overrides: Partial<AccountEvent>): AccountEvent {
     return { action: "plan_changed", ...base, ...overrides } as AccountEvent;
   }
+
+  it("a row Stripe's sync wrote names Stripe, not Unknown (Phase 16 P15)", () => {
+    const e = event({
+      actorName: null,
+      actorEmail: null,
+      viaStripe: true,
+      after: { ...base.after, status: "active" },
+    });
+    expect(describeAccountEvent(e)).toBe("Stripe changed status from Trial to Active");
+    expect(describeAccountEvent({ ...e, viaStripe: false })).toBe("Unknown changed status from Trial to Active");
+  });
 
   it("plan_changed: plan only", () => {
     const e = event({

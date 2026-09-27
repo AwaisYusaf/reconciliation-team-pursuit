@@ -9,19 +9,26 @@
 import { config } from "dotenv";
 
 vi.mock("next/cache", () => ({ revalidatePath: () => {} }));
-vi.mock("@/src/lib/action-session", () => ({ actionSession: vi.fn() }));
+// One mock for both: archive uses the any-plan session (D2), everything else the guarded one.
+vi.mock("@/src/lib/action-session", () => {
+  const session = vi.fn();
+  return { actionSession: session, actionSessionAnyPlan: session };
+});
 
 config({ path: ".env.local", quiet: true });
 
 import { and, eq, sql } from "drizzle-orm";
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { formatDateUS, todayIso } from "@/src/domain/dates";
+import { UI } from "@/src/domain/strings";
+
 const hasDatabase = Boolean(process.env.DATABASE_URL);
 
 describe.skipIf(!hasDatabase)("funding source management actions (integration)", async () => {
   const { db } = await import("@/src/db");
   const { fundingSources, organizations } = await import("@/src/db/schema");
-  const { createTestOrg } = await import("@/src/db/test-org");
+  const { createTestOrg, setBillingCopy } = await import("@/src/db/test-org");
   const { actionSession } = await import("@/src/lib/action-session");
   const {
     archiveFundingSourceAction,
@@ -29,7 +36,8 @@ describe.skipIf(!hasDatabase)("funding source management actions (integration)",
     unarchiveFundingSourceAction,
     updateFundingSourceAction,
   } = await import("./actions");
-  const { findFundingSource } = await import("./queries");
+  const { findFundingSource, listFundingSources } = await import("./queries");
+  const { loadFundingSourceLimit } = await import("./limit");
 
   const session = vi.mocked(actionSession);
 
@@ -440,6 +448,344 @@ describe.skipIf(!hasDatabase)("funding source management actions (integration)",
         // Whatever the outcome, the unique index guarantees the name is never duplicated.
         expect(rows.length).toBeLessThanOrEqual(1);
       }
+    });
+  });
+
+  describe("one active funding source limit on Reconciliation (Phase 16 Track C, C8, I-13)", () => {
+    const originalBillingEnabled = process.env.BILLING_ENABLED;
+
+    beforeEach(() => {
+      process.env.BILLING_ENABLED = "true";
+    });
+
+    afterAll(() => {
+      if (originalBillingEnabled === undefined) delete process.env.BILLING_ENABLED;
+      else process.env.BILLING_ENABLED = originalBillingEnabled;
+    });
+
+    /** A paying, non-complimentary org on the given plan. */
+    async function paidOrg(name: string, plan: "reconciliation" | "reconciliation_ai" = "reconciliation") {
+      const created = await org(name);
+      await db.update(organizations).set({ plan, complimentary: false }).where(eq(organizations.id, created.orgId));
+      await setBillingCopy(created.orgId, { stripeStatus: "active" });
+      return created;
+    }
+
+    async function activeCountOf(orgId: string) {
+      const rows = await listFundingSources(orgId);
+      return rows.filter((row) => row.archivedAt === null).length;
+    }
+
+    it("refuses create at the limit with the admin text, and inserts nothing", async () => {
+      const a = await paidOrg("Limit Create Admin Org");
+      asSession(a.orgId, "admin");
+
+      const before = await listFundingSources(a.orgId);
+      const result = await createFundingSourceAction({ ...BASE_INPUT, name: "Second Source" });
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.error).toBe(UI.fundingSourceLimitReached);
+
+      const after = await listFundingSources(a.orgId);
+      expect(after).toHaveLength(before.length);
+    });
+
+    it("refuses create at the limit with the manager text", async () => {
+      const a = await paidOrg("Limit Create Manager Org");
+      asSession(a.orgId, "manager");
+
+      const result = await createFundingSourceAction({ ...BASE_INPUT, name: "Second Source" });
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.error).toBe(UI.fundingSourceLimitManager);
+    });
+
+    describe("a downgrade to Reconciliation already queued (P24)", () => {
+      const startsAt = new Date(Date.now() + 20 * 86_400_000);
+      /** The copy the sync writes once the downgrade is scheduled in Stripe. */
+      const queue = (orgId: string, reason: "downgrade" | "price_move" = "downgrade") =>
+        setBillingCopy(orgId, { pendingPlan: "reconciliation", pendingInterval: "month", pendingReason: reason, pendingAt: startsAt });
+
+      it("refuses a second source on Reconciliation + AI, saying when the switch happens", async () => {
+        const a = await paidOrg("Queued Downgrade Create Org", "reconciliation_ai");
+        await queue(a.orgId);
+        asSession(a.orgId, "admin");
+        const before = await listFundingSources(a.orgId);
+
+        const result = await createFundingSourceAction({ ...BASE_INPUT, name: "Second Source" });
+        expect(result).toEqual({ ok: false, error: UI.fundingSourceLimitQueued(formatDateUS(todayIso(startsAt))) });
+        expect(await listFundingSources(a.orgId)).toHaveLength(before.length);
+      });
+
+      it("refuses unarchiving one too, and it stays archived", async () => {
+        const a = await paidOrg("Queued Downgrade Unarchive Org", "reconciliation_ai");
+        const [second] = await db
+          .insert(fundingSources)
+          .values({
+            orgId: a.orgId,
+            name: "Second Source",
+            type: "grant",
+            sortOrder: 1,
+            archivedAt: new Date(),
+            taxReimbursable: false,
+            feesReimbursable: true,
+          })
+          .returning({ id: fundingSources.id });
+        await queue(a.orgId);
+        asSession(a.orgId, "admin");
+
+        const result = await unarchiveFundingSourceAction(second.id);
+        expect(result).toEqual({ ok: false, error: UI.fundingSourceLimitQueued(formatDateUS(todayIso(startsAt))) });
+        expect((await findFundingSource(a.orgId, second.id))?.archivedAt).not.toBeNull();
+      });
+
+      it("with nothing queued, or only a price move, Reconciliation + AI still adds sources freely", async () => {
+        const a = await paidOrg("Nothing Queued Org", "reconciliation_ai");
+        asSession(a.orgId, "admin");
+        expect(await createFundingSourceAction({ ...BASE_INPUT, name: "Second Source" })).toMatchObject({ ok: true });
+        await queue(a.orgId, "price_move");
+        expect(await createFundingSourceAction({ ...BASE_INPUT, name: "Third Source" })).toMatchObject({ ok: true });
+      });
+    });
+
+    it("refuses unarchive at the limit, and the row stays archived", async () => {
+      const a = await paidOrg("Limit Unarchive Org");
+      const [second] = await db
+        .insert(fundingSources)
+        .values({
+          orgId: a.orgId,
+          name: "Second Source",
+          type: "grant",
+          sortOrder: 1,
+          archivedAt: new Date(),
+          taxReimbursable: false,
+          feesReimbursable: true,
+        })
+        .returning({ id: fundingSources.id });
+
+      asSession(a.orgId);
+      const result = await unarchiveFundingSourceAction(second.id);
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.error).toBe(UI.fundingSourceLimitReached);
+
+      const row = await findFundingSource(a.orgId, second.id);
+      expect(row?.archivedAt).not.toBeNull();
+    });
+
+    it("allows unarchive once the only other active source is archived first (activeOthers 0)", async () => {
+      const a = await paidOrg("Limit Unarchive Freed Org");
+      const [second] = await db
+        .insert(fundingSources)
+        .values({
+          orgId: a.orgId,
+          name: "Second Source",
+          type: "grant",
+          sortOrder: 1,
+          archivedAt: new Date(),
+          taxReimbursable: false,
+          feesReimbursable: true,
+        })
+        .returning({ id: fundingSources.id });
+
+      // The org's own seed source is the only other active one; archiving it directly (not
+      // through the action, which refuses to archive the last active source) is the setup step
+      // that produces activeOthers 0 for the unarchive under test.
+      await db
+        .update(fundingSources)
+        .set({ archivedAt: new Date() })
+        .where(eq(fundingSources.id, a.fundingSourceId));
+
+      asSession(a.orgId);
+      const unarchiveResult = await unarchiveFundingSourceAction(second.id);
+      expect(unarchiveResult.ok).toBe(true);
+      const row = await findFundingSource(a.orgId, second.id);
+      expect(row?.archivedAt).toBeNull();
+    });
+
+    it("unarchiving an already-active source at the limit is a no-op ok", async () => {
+      const a = await paidOrg("Limit Unarchive Noop Org");
+      asSession(a.orgId);
+
+      const result = await unarchiveFundingSourceAction(a.fundingSourceId);
+      expect(result.ok).toBe(true);
+      const row = await findFundingSource(a.orgId, a.fundingSourceId);
+      expect(row?.archivedAt).toBeNull();
+    });
+
+    it("an org somehow already over the limit (2 active on Reconciliation) refuses a third create and any unarchive", async () => {
+      const a = await paidOrg("Over Limit Org");
+      const [second] = await db
+        .insert(fundingSources)
+        .values({
+          orgId: a.orgId,
+          name: "Second Active Source",
+          type: "grant",
+          sortOrder: 1,
+          taxReimbursable: false,
+          feesReimbursable: true,
+        })
+        .returning({ id: fundingSources.id });
+      const [third] = await db
+        .insert(fundingSources)
+        .values({
+          orgId: a.orgId,
+          name: "Third Source",
+          type: "grant",
+          sortOrder: 2,
+          archivedAt: new Date(),
+          taxReimbursable: false,
+          feesReimbursable: true,
+        })
+        .returning({ id: fundingSources.id });
+      expect(second.id).toBeTruthy();
+
+      asSession(a.orgId);
+      const createResult = await createFundingSourceAction({ ...BASE_INPUT, name: "Fourth Source" });
+      expect(createResult.ok).toBe(false);
+
+      const unarchiveResult = await unarchiveFundingSourceAction(third.id);
+      expect(unarchiveResult.ok).toBe(false);
+    });
+
+    it("concurrency: 5 concurrent creates from 0 active sources leave exactly one active row, run repeatedly", async () => {
+      // Repeated across fresh orgs (same discipline as this file's other race tests, above):
+      // a single trial does not reliably catch a missing lock on a fast local database, where
+      // five transactions can pipeline through the pool without ever truly overlapping.
+      for (let i = 0; i < 10; i++) {
+        const a = await paidOrg(`Concurrent Create Org ${i}`);
+        // Start from 0 active: archive the seed source directly (no admin lock contention in setup).
+        await db
+          .update(fundingSources)
+          .set({ archivedAt: new Date() })
+          .where(eq(fundingSources.id, a.fundingSourceId));
+
+        asSession(a.orgId);
+        const names = ["Race A", "Race B", "Race C", "Race D", "Race E"];
+        const results = await Promise.all(
+          names.map((name) => createFundingSourceAction({ ...BASE_INPUT, name })),
+        );
+
+        expect(results.filter((r) => r.ok)).toHaveLength(1);
+        expect(results.filter((r) => !r.ok)).toHaveLength(4);
+        expect(await activeCountOf(a.orgId)).toBe(1);
+      }
+    });
+
+    it("concurrency: 5 concurrent unarchives of 5 archived sources leave exactly one active, run repeatedly", async () => {
+      for (let i = 0; i < 10; i++) {
+        const a = await paidOrg(`Concurrent Unarchive Org ${i}`);
+        await db
+          .update(fundingSources)
+          .set({ archivedAt: new Date() })
+          .where(eq(fundingSources.id, a.fundingSourceId));
+
+        const inserted = await db
+          .insert(fundingSources)
+          .values(
+            ["Archived A", "Archived B", "Archived C", "Archived D"].map((name, j) => ({
+              orgId: a.orgId,
+              name,
+              type: "grant" as const,
+              sortOrder: j + 1,
+              archivedAt: new Date(),
+              taxReimbursable: false,
+              feesReimbursable: true,
+            })),
+          )
+          .returning({ id: fundingSources.id });
+
+        const ids = [a.fundingSourceId, ...inserted.map((row) => row.id)];
+        expect(ids).toHaveLength(5);
+
+        asSession(a.orgId);
+        const results = await Promise.all(ids.map((id) => unarchiveFundingSourceAction(id)));
+
+        expect(results.filter((r) => r.ok)).toHaveLength(1);
+        expect(results.filter((r) => !r.ok)).toHaveLength(4);
+        expect(await activeCountOf(a.orgId)).toBe(1);
+      }
+    });
+
+    it("Reconciliation + AI paid: several creates and unarchives all succeed", async () => {
+      const a = await paidOrg("Unlimited Plan Org", "reconciliation_ai");
+      asSession(a.orgId);
+
+      for (const name of ["Extra 1", "Extra 2", "Extra 3"]) {
+        const result = await createFundingSourceAction({ ...BASE_INPUT, name });
+        expect(result.ok).toBe(true);
+      }
+
+      const [toArchive] = await listFundingSources(a.orgId);
+      await archiveFundingSourceAction(toArchive.id);
+      const unarchiveResult = await unarchiveFundingSourceAction(toArchive.id);
+      expect(unarchiveResult.ok).toBe(true);
+
+      expect(await activeCountOf(a.orgId)).toBe(4);
+    });
+
+    it("complimentary org on the reconciliation complimentary_plan is limited", async () => {
+      const a = await org("Complimentary Reconciliation Org");
+      await db
+        .update(organizations)
+        .set({ complimentary: true, complimentaryUntil: null, complimentaryPlan: "reconciliation" })
+        .where(eq(organizations.id, a.orgId));
+
+      asSession(a.orgId);
+      const result = await createFundingSourceAction({ ...BASE_INPUT, name: "Second Source" });
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.error).toBe(UI.fundingSourceLimitReached);
+    });
+
+    it("complimentary org on the reconciliation_ai complimentary_plan is unlimited", async () => {
+      const a = await org("Complimentary Reconciliation AI Org");
+      await db
+        .update(organizations)
+        .set({ complimentary: true, complimentaryUntil: null, complimentaryPlan: "reconciliation_ai" })
+        .where(eq(organizations.id, a.orgId));
+
+      asSession(a.orgId);
+      const result = await createFundingSourceAction({ ...BASE_INPUT, name: "Second Source" });
+      expect(result.ok).toBe(true);
+    });
+
+    it("billing off: a Reconciliation org can still create and unarchive past 1 (today's behaviour)", async () => {
+      process.env.BILLING_ENABLED = "false";
+      const a = await paidOrg("Billing Off Org");
+      asSession(a.orgId);
+
+      const createResult = await createFundingSourceAction({ ...BASE_INPUT, name: "Second Source" });
+      expect(createResult.ok).toBe(true);
+
+      const [second] = await db
+        .insert(fundingSources)
+        .values({
+          orgId: a.orgId,
+          name: "Third Source",
+          type: "grant",
+          sortOrder: 2,
+          archivedAt: new Date(),
+          taxReimbursable: false,
+          feesReimbursable: true,
+        })
+        .returning({ id: fundingSources.id });
+      const unarchiveResult = await unarchiveFundingSourceAction(second.id);
+      expect(unarchiveResult.ok).toBe(true);
+    });
+
+    describe("loadFundingSourceLimit", () => {
+      it("is null when billing is off", async () => {
+        process.env.BILLING_ENABLED = "false";
+        const a = await paidOrg("Load Limit Billing Off Org");
+        expect(await loadFundingSourceLimit(a.orgId)).toBeNull();
+      });
+
+      it("is 1 for a paid Reconciliation org", async () => {
+        const a = await paidOrg("Load Limit Reconciliation Org");
+        expect(await loadFundingSourceLimit(a.orgId)).toBe(1);
+      });
+
+      it("is null for a paid Reconciliation + AI org", async () => {
+        const a = await paidOrg("Load Limit Reconciliation AI Org", "reconciliation_ai");
+        expect(await loadFundingSourceLimit(a.orgId)).toBeNull();
+      });
     });
   });
 });

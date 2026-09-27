@@ -62,6 +62,19 @@ either screen renders more rows than it asks for: ten organizations per page
 - **The four actions**: each opens an overlay (two `Modal`s, two `Dialog`s), shows a refusal
   inside the overlay rather than as a toast, and on success calls `reportResult` +
   `router.refresh()` — the same pattern as `month-lock.tsx`'s lock/unlock dialogs.
+- **Billing (Phase 16 §4.6)**: once Stripe has seen an organization, a Billing card between AI
+  usage and Actions shows our copy of its state (`staffBilling()` in `directory.ts`): Stripe
+  status, billed monthly/yearly, "Renews on" or "Ends on", a scheduled change, and warnings for
+  a failed payment, an upgrade waiting for payment, collection paused, and a card dispute
+  ("Card dispute opened on {date}", from `org_billing.disputed_at`, never cleared); plus "Open in Stripe" (the dashboard customer page, `/test/` for a test
+  customer). While billing is on and a subscription is live, Change plan is disabled with
+  "Billing for this organization is managed in Stripe." (the server refuses too, P16).
+  Complimentary access for a paying organization asks, in the same dialog, whether to cancel the
+  paid plan now (no refund, open invoices voided) or at the end of the paid period. Whether it
+  pays is asked of Stripe on save (a re-sync first), so if the page's copy was behind, Save
+  refuses and the dialog then shows the choice; Stripe is
+  cancelled first, and a Stripe failure grants nothing. Suspend pauses collection, reinstate
+  resumes it (D3). History lines written by the sync read "Stripe" as the actor.
 
 ## Acceptance
 Only staff reach either route (Phase 9 P1 tests + a manual customer-admin check). Search, the

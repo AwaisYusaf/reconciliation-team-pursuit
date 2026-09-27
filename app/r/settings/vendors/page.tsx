@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { PageHeader } from "@/src/components/ui/surfaces";
 import { pageTitle } from "@/src/domain/strings";
 import { loadVendorsPage, VENDORS_PAGE_SIZE } from "@/src/modules/settings/queries";
-import { getSession } from "@/src/services/auth/session";
+import { pageSession } from "@/src/lib/page-session";
 
 import { VendorLibraryFull } from "./vendor-library-full";
 
@@ -15,8 +15,7 @@ export default async function VendorsPage({
 }: {
   searchParams: Promise<{ q?: string; page?: string }>;
 }) {
-  const session = await getSession();
-  if (!session) redirect("/login");
+  const session = await pageSession();
 
   const { q, page: pageParam } = await searchParams;
   const query = q ?? "";

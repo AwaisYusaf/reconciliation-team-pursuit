@@ -288,6 +288,13 @@
       "when": 1790244001328,
       "tag": "0040_expense_audit_actor_idx",
       "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1790406350061,
+      "tag": "0041_stripe_billing",
+      "breakpoints": true
     }
   ]
 }

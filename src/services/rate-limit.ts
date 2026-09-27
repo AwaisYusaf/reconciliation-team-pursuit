@@ -136,6 +136,8 @@ export const LIMITS = {
    * sign-in uses, the same reasoning as `userProvisioning`.
    */
   sharePasswordSet: { limit: 20, windowMs: 60 * 60 * 1000 },
+  /** Billing actions (PHASE-16), per user: enough for normal use, bounds a scripted Stripe hammer. */
+  billing: { limit: 20, windowMs: 60 * 1000 },
 } as const;
 
 export type LimitName = keyof typeof LIMITS;

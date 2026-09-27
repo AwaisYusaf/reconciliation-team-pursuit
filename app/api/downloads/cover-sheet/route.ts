@@ -18,7 +18,7 @@ import { COVER_SHEET_GENERATOR_VERSION } from "@/src/generation/versions";
 import { attachmentHeader } from "@/src/lib/http";
 import { isUuid } from "@/src/lib/ids";
 import { findFundingSource, loadSourceContext } from "@/src/modules/funding-sources/queries";
-import { getSession } from "@/src/services/auth/session";
+import { routeSession } from "@/src/lib/route-session";
 import { consume } from "@/src/services/rate-limit";
 import { SESSION_EXPIRED } from "@/src/lib/action-result";
 
@@ -32,8 +32,9 @@ export const dynamic = "force-dynamic";
  * document rather than two renderings that might disagree.
  */
 export async function GET(request: Request) {
-  const session = await getSession();
+  const session = await routeSession("text");
   if (!session) return new NextResponse(SESSION_EXPIRED, { status: 401 });
+  if ("denied" in session) return session.denied;
 
   // Generation writes storage and pins a permanent row, so it must not be reachable by a
   // cross-site navigation carrying the SameSite=Lax session cookie.
