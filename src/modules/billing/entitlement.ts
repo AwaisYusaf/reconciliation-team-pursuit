@@ -8,14 +8,7 @@
  */
 import { complimentaryState, isComplimentaryNow } from "@/src/domain/complimentary";
 import { todayIso, type IsoDate } from "@/src/domain/dates";
-import {
-  dayAfterStart,
-  fundingSourceLimit,
-  isLive,
-  KNOWN_STRIPE_STATUSES,
-  PAID_STATUSES,
-  type PlanId,
-} from "@/src/modules/billing/rules";
+import { fundingSourceLimit, KNOWN_STRIPE_STATUSES, PAID_STATUSES, type PlanId } from "@/src/modules/billing/rules";
 
 export type Entitlement =
   | { paid: true; plan: PlanId; reason: "billing_off" | "complimentary" | "subscription" }
@@ -65,22 +58,19 @@ export function activeFundingSourceLimit(ent: Entitlement): number | null {
   return fundingSourceLimit(ent.plan);
 }
 
-export type UpcomingPlanOrg = EntitlementOrg & {
+export type UpcomingPlanOrg = {
   pendingPlan: PlanId | null;
   pendingReason: string | null;
   pendingAt: Date | null;
 };
 
 /**
- * The day an org that has more today moves onto Reconciliation, or `null` (P24). Adding or
- * unarchiving a funding source is refused while this is set, so the org can't arrive on
- * Reconciliation with several active sources. Two ways it happens:
- *  - a downgrade to Reconciliation queued in the Stripe copy (`pending_*`);
- *  - a complimentary org on Reconciliation + AI that bought Reconciliation with a deferred first
- *    charge: `plan` is what it bought and pays for from the day after `complimentary_until`,
- *    `complimentary_plan` the free plan it keeps until then.
+ * The day a downgrade to Reconciliation queued in the Stripe copy (`pending_*`) starts, or
+ * `null` (P24). Adding or unarchiving a funding source is refused while it waits, so the org
+ * can't arrive on Reconciliation with several active sources. A plan bought during complimentary
+ * access is not a case here: it starts the day it is paid for (D-128).
  */
-export function reconciliationStartsOn(org: UpcomingPlanOrg, today: IsoDate, now: Date): IsoDate | null {
+export function reconciliationStartsOn(org: UpcomingPlanOrg, now: Date): IsoDate | null {
   if (
     org.pendingPlan === "reconciliation" &&
     org.pendingReason === "downgrade" &&
@@ -88,15 +78,6 @@ export function reconciliationStartsOn(org: UpcomingPlanOrg, today: IsoDate, now
     org.pendingAt > now
   ) {
     return todayIso(org.pendingAt);
-  }
-  if (
-    isComplimentaryNow(org, today) &&
-    org.complimentaryUntil !== null &&
-    org.plan === "reconciliation" &&
-    (org.complimentaryPlan ?? org.plan) !== "reconciliation" &&
-    isLive(org.stripeStatus)
-  ) {
-    return todayIso(dayAfterStart(org.complimentaryUntil));
   }
   return null;
 }

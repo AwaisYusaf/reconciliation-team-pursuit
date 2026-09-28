@@ -45,12 +45,9 @@ export function entitlementOf(row: Omit<EntitlementOrg, "stripeStatus"> & { stri
   return orgEntitlement({ ...row, stripeStatus: row.stripeStatus ?? null }, todayIso(), billingEnabled());
 }
 
-/** `reconciliationStartsOn` for a row read with `ENTITLEMENT_COLUMNS` plus the `pending_*` copy. */
-export function reconciliationStartsOf(
-  row: Omit<UpcomingPlanOrg, "stripeStatus"> & { stripeStatus?: string | null },
-): IsoDate | null {
-  const now = new Date();
-  return reconciliationStartsOn({ ...row, stripeStatus: row.stripeStatus ?? null }, todayIso(now), now);
+/** `reconciliationStartsOn` for a row read with the `pending_*` copy. */
+export function reconciliationStartsOf(row: UpcomingPlanOrg): IsoDate | null {
+  return reconciliationStartsOn(row, new Date());
 }
 
 /**

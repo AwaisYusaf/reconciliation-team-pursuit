@@ -6,7 +6,6 @@
  */
 import type { AiUsageFeature, OrgPlan } from "@/src/db/schema";
 import { orgPlan } from "@/src/db/schema";
-import { todayIso } from "@/src/domain/dates";
 
 export const INTERVALS = ["month", "year"] as const;
 export type Interval = (typeof INTERVALS)[number];
@@ -119,70 +118,12 @@ export function changeBlockedReason(sub: {
   return null;
 }
 
-// ── Buying a plan while complimentary (decided 2026-09-25) ────────────────────
-
-/** Stripe refuses a deferred first charge (`trial_end`) less than two days out; an hour of
- *  margin covers the time between creating Checkout and the admin paying. */
-export const MIN_DEFERRED_START_MS = 49 * 3600 * 1000;
+// ── Buying a plan while complimentary (D-128, 2026-09-28) ────────────────────
 
 /**
- * The first instant of the day after `until`, in the org's timezone: when complimentary access
- * has run out (`complimentaryState` counts `until` itself as still free). Detroit is always
- * UTC-4 or UTC-5, so one of those two hours is local midnight.
+ * Subscription metadata: end complimentary access once this subscription's payment succeeds.
+ * Buying a plan always ends complimentary access (D-128): the customer's admin decided to pay,
+ * so they pay today and the free access stops once that payment goes through, however much of
+ * it was left. There is no deferred first charge.
  */
-export function dayAfterStart(until: string): Date {
-  const [y, m, d] = until.split("-").map(Number);
-  const next = todayIso(new Date(Date.UTC(y, m - 1, d + 1, 12)));
-  for (const hour of [4, 5]) {
-    const t = Date.UTC(y, m - 1, d + 1, hour);
-    if (todayIso(new Date(t)) === next && todayIso(new Date(t - 3600_000)) !== next) return new Date(t);
-  }
-  throw new Error(`no local midnight found after ${until}`);
-}
-
-/**
- * How Checkout charges an org that is complimentary now. `defer`: nothing today, the first
- * charge the moment complimentary access runs out (Stripe `trial_end`). `now`: charged today,
- * and complimentary access ends once that payment succeeds, because it has no end date or ends
- * too soon for Stripe to defer to.
- */
-export type ComplimentaryStart = { kind: "defer"; firstChargeAt: Date } | { kind: "now" };
-
-export function complimentaryStart(
-  until: string | null,
-  now: Date,
-): ComplimentaryStart {
-  if (until === null) return { kind: "now" };
-  const at = dayAfterStart(until);
-  return at.getTime() - now.getTime() >= MIN_DEFERRED_START_MS ? { kind: "defer", firstChargeAt: at } : { kind: "now" };
-}
-
-/** Subscription metadata: end complimentary access once this subscription's payment succeeds. */
 export const END_COMPLIMENTARY_KEY = "endComplimentary";
-
-/**
- * What staff changing complimentary access must do in Stripe first (§4.6), from the org's
- * current state and the change asked for:
- *  - `cancel`: a plan is charging, or would be once free access has no end, for access that is
- *    now free, so staff choose to cancel it now or at the end of the paid period;
- *  - `move_first_charge`: a plan bought during free access, not charged yet (`trialing`, first
- *    charge the day after the grant ends), whose first charge must follow the grant's new end,
- *    or come now when the grant is removed;
- *  - `none`: nothing is live, or nothing actually changes.
- * A paid plan under a grant (not `trialing`) is the moment before the sync ends that grant, so it
- * is left alone, as before.
- */
-export type ComplimentaryStripeStep = "none" | "cancel" | "move_first_charge";
-
-export function complimentaryStripeStep(
-  current: { complimentary: boolean; complimentaryUntil: string | null; stripeStatus: string | null },
-  enabled: boolean,
-  until: string | null,
-): ComplimentaryStripeStep {
-  if (!isLive(current.stripeStatus)) return "none";
-  if (current.complimentary === enabled && (!enabled || current.complimentaryUntil === until)) return "none";
-  if (!current.complimentary) return enabled ? "cancel" : "none";
-  if (current.stripeStatus !== "trialing") return "none";
-  // Open-ended free access would put the first charge off for ever: end the bought plan instead.
-  return enabled && until === null ? "cancel" : "move_first_charge";
-}

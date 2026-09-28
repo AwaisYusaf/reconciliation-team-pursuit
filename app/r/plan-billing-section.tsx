@@ -154,8 +154,8 @@ export function PlanBillingSection({ data }: { data: PlanBillingData }) {
   function planActions(plan: PlanId) {
     if (plan === currentPlan) return <CurrentPlanMarker label={UI.billingYourPlan} />;
     if (!isAdmin) return null;
-    // Complimentary: buy now, unless a plan was already bought during the free access.
-    if (view.kind === "none" || (view.kind === "complimentaryAccess" && !view.upcoming)) {
+    // Complimentary: buy at any time; paying ends the complimentary access (D-128).
+    if (view.kind === "none" || view.kind === "complimentaryAccess") {
       return (
         <SubscribeButton
           plan={plan}
@@ -246,17 +246,6 @@ export function PlanBillingSection({ data }: { data: PlanBillingData }) {
                     ? UI.billingBilledYearly
                     : UI.billingBilledMonthly}
             </p>
-            {view.kind === "complimentaryAccess" && view.upcoming && (
-              <p className="text-sm text-on-surface mt-2">
-                {view.upcoming.cancelling
-                  ? UI.billingCompUpcomingCancelled
-                  : UI.billingCompUpcoming(
-                      PLAN_LABELS[view.upcoming.plan],
-                      view.upcoming.interval ? intervalAdverb(view.upcoming.interval) : "",
-                      dayOf(view.upcoming.startsOn),
-                    )}
-              </p>
-            )}
           </>
         )}
 
@@ -298,23 +287,8 @@ export function PlanBillingSection({ data }: { data: PlanBillingData }) {
                 {showPlans ? UI.billingHidePlans : view.kind === "subscribed" && isAdmin ? UI.billingChangePlan : UI.billingSeePlans}
               </button>
             )}
-            {isAdmin &&
-              ((view.kind === "subscribed" && !view.paymentFailed && !view.cancelling) ||
-                (view.kind === "complimentaryAccess" && view.upcoming)) &&
-              portalButton}
-            {view.kind === "complimentaryAccess" && view.upcoming?.cancelling && isAdmin && (
-              <button
-                type="button"
-                className={LIGHT}
-                disabled={pending}
-                onClick={() => act(() => resumePlanAction(), UI.billingResumedToast)}
-              >
-                {UI.billingKeepPlan}
-              </button>
-            )}
-            {isAdmin &&
-              ((view.kind === "subscribed" && !view.paymentFailed && !view.cancelling) ||
-                (view.kind === "complimentaryAccess" && view.upcoming && !view.upcoming.cancelling)) && (
+            {isAdmin && view.kind === "subscribed" && !view.paymentFailed && !view.cancelling && portalButton}
+            {isAdmin && view.kind === "subscribed" && !view.paymentFailed && !view.cancelling && (
                 <button type="button" className={QUIET} disabled={pending} onClick={() => setConfirm("cancel")}>
                   {UI.billingCancelPlan}
                 </button>
@@ -431,10 +405,8 @@ export function PlanBillingSection({ data }: { data: PlanBillingData }) {
               ))}
             </div>
           </div>
-          {view.kind === "complimentaryAccess" && !view.upcoming && isAdmin && (
-            <p className="text-[15px] text-sub mb-4">
-              {view.buy.kind === "defer" ? UI.billingCompBuyDeferred(dayOf(view.buy.firstChargeOn)) : UI.billingCompBuyNow}
-            </p>
+          {view.kind === "complimentaryAccess" && isAdmin && (
+            <p className="text-[15px] text-sub mb-4">{UI.billingCompBuyNow}</p>
           )}
           {isAdmin && switchBlocked && <p className="text-[15px] text-sub mb-4">{switchBlocked}</p>}
           {!isAdmin && <Helper className="mb-4">{UI.billingManagerNote}</Helper>}
@@ -444,7 +416,7 @@ export function PlanBillingSection({ data }: { data: PlanBillingData }) {
 
       {view.kind === "complimentaryAccess" && <Helper className="mt-6">{UI.billingQuestions}</Helper>}
 
-      {(view.kind === "subscribed" || view.kind === "complimentaryAccess") && (
+      {view.kind === "subscribed" && (
         <Dialog
           open={confirm === "cancel"}
           title={UI.billingCancelTitle}
@@ -455,16 +427,10 @@ export function PlanBillingSection({ data }: { data: PlanBillingData }) {
             label: pending ? UI.billingCancellingNow : UI.billingCancelPlan,
             disabled: pending,
             onConfirm: () =>
-              act(
-                () => cancelPlanAction(),
-                view.kind === "subscribed" ? UI.billingCancelledToast : UI.billingCompUpcomingCancelled,
-                () => setConfirm(null),
-              ),
+              act(() => cancelPlanAction(), UI.billingCancelledToast, () => setConfirm(null)),
           }}
         >
-          {/* Cancelling a plan bought during free access only stops it starting: the free access
-              itself is untouched, so the "you lose access" warning would be wrong there. */}
-          {view.kind === "subscribed" ? UI.billingCancelBody(dayOf(view.periodEnd)) : UI.billingCancelUpcomingBody}
+          {UI.billingCancelBody(dayOf(view.periodEnd))}
         </Dialog>
       )}
     </Card>

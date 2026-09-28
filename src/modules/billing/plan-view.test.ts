@@ -112,47 +112,17 @@ describe("planBillingView", () => {
       plan: "reconciliation_ai",
       until: null,
       endingSoon: false,
-      buy: { kind: "now" },
-      upcoming: null,
     });
   });
 
-  it("complimentary with an end date far enough out: buying defers the first charge to the day after it", () => {
-    const view = planBillingView(row({ complimentary: true, complimentaryUntil: "2026-10-10", stripeStatus: null }), on);
-    expect(view).toMatchObject({ buy: { kind: "defer", firstChargeOn: "2026-10-11" }, upcoming: null });
-  });
-
-  it("complimentary ending tomorrow: too soon to defer, buying charges now", () => {
-    const view = planBillingView(row({ complimentary: true, complimentaryUntil: "2026-09-26", stripeStatus: null }), on);
-    expect(view).toMatchObject({ buy: { kind: "now" } });
-  });
-
-  it("a plan bought during complimentary access shows as upcoming, with its start date", () => {
+  it("complimentary with a plan being paid for: still the complimentary view until the sync ends it (D-128)", () => {
+    // The payment went through; the sync ends the free access in the same write, so this state
+    // only lasts until then. No "upcoming plan" state exists any more.
     const view = planBillingView(
-      row({
-        complimentary: true,
-        complimentaryUntil: "2026-10-10",
-        complimentaryPlan: "reconciliation_ai",
-        plan: "reconciliation",
-        stripeStatus: "trialing",
-        billingInterval: "year",
-        currentPeriodEnd: new Date("2026-10-11T04:00:00Z"),
-      }),
+      row({ complimentary: true, complimentaryUntil: "2026-10-10", complimentaryPlan: "reconciliation_ai", stripeStatus: "active" }),
       on,
     );
-    expect(view).toMatchObject({
-      kind: "complimentaryAccess",
-      plan: "reconciliation_ai",
-      upcoming: { plan: "reconciliation", interval: "year", startsOn: "2026-10-11", cancelling: false },
-    });
-  });
-
-  it("an upcoming plan that was cancelled is flagged, so the section offers Keep my plan", () => {
-    const view = planBillingView(
-      row({ complimentary: true, stripeStatus: "trialing", cancelAtPeriodEnd: true }),
-      on,
-    );
-    expect(view).toMatchObject({ upcoming: { cancelling: true } });
+    expect(view).toEqual({ kind: "complimentaryAccess", plan: "reconciliation_ai", until: "2026-10-10", endingSoon: false });
   });
 
   it(`complimentary ending: warned from ${COMP_WARNING_DAYS} days out, not 15`, () => {
@@ -176,8 +146,7 @@ describe("Plan & billing section renders each state", () => {
 
   it.each([
     ["none", ["UI.billingNoPlan", "<SubscribeButton", "UI.billingManagerNote"]],
-    ["complimentary", ["UI.billingComplimentaryUntil", "UI.billingComplimentary(", "UI.billingCompBuyDeferred", "UI.billingCompBuyNow", "UI.billingQuestions"]],
-    ["complimentary with a plan bought", ["UI.billingCompUpcoming(", "UI.billingCompUpcomingCancelled", "UI.billingCancelUpcomingBody"]],
+    ["complimentary", ["UI.billingComplimentaryUntil", "UI.billingComplimentary(", "UI.billingCompBuyNow", "UI.billingQuestions"]],
     ["subscribed", ["UI.billingRenews", "UI.billingCancelling", "UI.billingSwitchPlan", "UI.billingPortal", "UI.billingCancelPlan"]],
     ["plans", ["<PlanCards", "UI.billingPlansTitle", "UI.billingYourPlan"]],
     ["switch refused", ["UI.billingPaymentFailedRefused", "UI.billingCancelPending", "UI.billingPaymentPending", "UI.billingChangePending"]],

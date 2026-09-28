@@ -878,19 +878,10 @@ export const UI = {
   billingChangePlan: "Change plan",
   billingHidePlans: "Hide plans",
   billingCheckoutNote: "Cancel anytime. You keep access until the end of the period you paid for.",
-  billingCheckoutDeferred: (date: string) =>
-    `Nothing is charged today. Your complimentary access continues, and your first payment is on ${date}. Cancel anytime before then and nothing is charged.`,
   billingCheckoutEndsComp:
     "You pay today, and your complimentary access ends once the payment goes through. Cancel anytime. You keep access until the end of the period you paid for.",
-  billingCompBuyDeferred: (date: string) =>
-    `You can choose a plan now. Nothing is charged until your complimentary access ends: your first payment is on ${date}.`,
   billingCompBuyNow:
     "You can choose a plan now. You pay today, and your complimentary access ends once the payment goes through.",
-  billingCompUpcoming: (plan: string, interval: string, date: string) =>
-    `Your ${plan} plan, billed ${interval}, starts on ${date}. Nothing is charged before then.`,
-  billingCompUpcomingCancelled: "You cancelled the plan you chose, so it won't start and nothing will be charged.",
-  billingCancelUpcomingBody:
-    "The plan you chose won't start, and nothing will be charged. Your complimentary access continues as before.",
   billingComplimentaryTag: "Complimentary",
   // Staff dashboard (§4.6)
   historyActorStripe: "Stripe",
@@ -934,10 +925,6 @@ export const UI = {
   staffCompCancelNow: "Cancel the paid plan now",
   staffCompCancelAtEnd: "Cancel the paid plan at the end of the paid period",
   staffCompCancelRequired: "This organization pays for a plan. Choose whether to cancel it now or at the end of the paid period.",
-  staffCompChangeQueued:
-    "This organization's plan has a change scheduled in Stripe. Cancel that change in Stripe first, then change the free access.",
-
-  // PHASE-16 Track C (landing, funding-source limit)
   fundingSourceLimitReached:
     "Reconciliation includes one active funding source. To add more, try Plus.",
   fundingSourceLimitManager:

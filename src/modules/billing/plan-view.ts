@@ -7,7 +7,7 @@
 import type { IsoDate } from "@/src/domain/dates";
 import { todayIso } from "@/src/domain/dates";
 import { isComplimentaryNow } from "@/src/domain/complimentary";
-import { complimentaryStart, isInterval, isPlanId, type Interval, type PlanId } from "@/src/modules/billing/rules";
+import { isInterval, isPlanId, type Interval, type PlanId } from "@/src/modules/billing/rules";
 
 /** Admins are warned this many days before complimentary access ends (D4). */
 export const COMP_WARNING_DAYS = 14;
@@ -43,10 +43,6 @@ export type PlanBillingView =
       plan: PlanId;
       until: IsoDate | null;
       endingSoon: boolean;
-      /** Buying now: the first charge waits for the free access to run out, or is today. */
-      buy: { kind: "defer"; firstChargeOn: IsoDate } | { kind: "now" };
-      /** A plan already bought during the free access, starting when it runs out. */
-      upcoming: { plan: PlanId; interval: Interval | null; startsOn: IsoDate | null; cancelling: boolean } | null;
     }
   | {
       kind: "subscribed";
@@ -79,22 +75,11 @@ export function planBillingView(row: PlanBillingRow, ctx: { now: Date }): PlanBi
   const today = todayIso(ctx.now);
   if (isComplimentaryNow(row, today)) {
     const until = row.complimentaryUntil;
-    const start = complimentaryStart(until, ctx.now);
-    const bought = row.stripeStatus === "trialing" || row.stripeStatus === "active";
     return {
       kind: "complimentaryAccess",
       plan: row.complimentaryPlan ?? row.plan,
       until,
       endingSoon: until !== null && isoDaysBetween(today, until) <= COMP_WARNING_DAYS,
-      buy: start.kind === "defer" ? { kind: "defer", firstChargeOn: todayIso(start.firstChargeAt) } : { kind: "now" },
-      upcoming: bought
-        ? {
-            plan: row.plan,
-            interval: isInterval(row.billingInterval) ? row.billingInterval : null,
-            startsOn: row.currentPeriodEnd ? todayIso(row.currentPeriodEnd) : null,
-            cancelling: row.cancelAtPeriodEnd,
-          }
-        : null,
     };
   }
 

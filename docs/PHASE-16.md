@@ -142,7 +142,7 @@ off is the rollback.
 | D2 | **A lapsed Reconciliation + AI org with three funding sources re-subscribes to Reconciliation** | **Decided 2026-09-25:** Reconciliation is refused at Checkout while more than one source is active, and the admin can archive sources from the plan page (archiving is on the paywall's allow-list); they can also choose Reconciliation + AI |
 | D3 | **Staff suspend an org that is paying**: Stripe keeps charging an org that can't sign in | **Decided 2026-09-25:** suspending pauses collection (Stripe `pause_collection`, bills voided) and reinstating resumes it; the interaction with a queued change is settled by a sandbox test (S-30) |
 | D4 | **Usability changes that go beyond the ticket** | **Decided 2026-09-25:** warn admins 14 days before complimentary access ends (yes); the funding-source limit is a disabled button with the reason under it, worded "To add more, try Plus." (the user's wording, a deliberate exception to P18); Plan & billing is a Settings section ("in settings"; placed near the end, Organization stays the default); the landing plan buttons keep **Get started** and each pricing card gets a **Book a demo** button, the "Early access" button goes |
-| D5 | **A complimentary org wants to buy a plan before its free access ends** | **Decided 2026-09-25 (while testing):** allowed. With an end date 2 or more days away (Stripe's minimum for `trial_end`, plus an hour), Checkout saves the card and defers the first charge to local midnight after the last free day; otherwise it charges today and the sync ends the free access once paid (subscription metadata `endComplimentary`, only for a grant older than the subscription, so a later staff grant is never undone). The free plan is pinned in `complimentary_plan` before Checkout, so buying Reconciliation during free Reconciliation + AI keeps the AI features until the free access ends. Switching plan and End plan now stay refused while complimentary; cancel, keep and Card and invoices are allowed for the bought plan |
+| D5 | **A complimentary org wants to buy a plan before its free access ends** | **Decided 2026-09-25 (while testing):** allowed. With an end date 2 or more days away (Stripe's minimum for `trial_end`, plus an hour), Checkout saves the card and defers the first charge to local midnight after the last free day; otherwise it charges today and the sync ends the free access once paid (subscription metadata `endComplimentary`, only for a grant older than the subscription, so a later staff grant is never undone). The free plan is pinned in `complimentary_plan` before Checkout, so buying Reconciliation during free Reconciliation + AI keeps the AI features until the free access ends. Switching plan and End plan now stay refused while complimentary; cancel, keep and Card and invoices are allowed for the bought plan. **Replaced by D-128 (2026-09-28):** buying always pays today and ends the free access once paid, whatever was left of it; no deferred first charge, no pinned free plan, and Keep my plan is refused while complimentary |
 
 Adopted without asking (reviewers' recommendations, reversible): an unpaid admin can still change
 their password and remove a departed user; a card dispute changes no access but logs `ALERT` and
@@ -849,11 +849,9 @@ checklist clear.
   the archived sources come back only by switching to Reconciliation + AI, which is true on
   Reconciliation: unarchiving is refused at the limit, and the last active source can't be
   archived, so the kept source can't be swapped either (a product question for later).
-- **Fixed after the merge (2026-09-28):** a complimentary Reconciliation + AI org that bought
-  Reconciliation with a deferred first charge is refused a second source during its free access,
-  with the same `fundingSourceLimitQueued` message dated the day the bought plan starts.
-  `reconciliationStartsOn` (`src/modules/billing/entitlement.ts`) is now the one answer to "when
-  does this org move onto Reconciliation", for both this and a queued downgrade.
+- **After the merge (2026-09-28):** `reconciliationStartsOn` (`src/modules/billing/entitlement.ts`)
+  is the one answer to "when does this org move onto Reconciliation" (a queued downgrade). A plan
+  bought during complimentary access is not a case: it starts the day it is paid for (D-128).
 - **Not built (remaining for Phase 6):** S-27, and the `/a` warning for an org over the limit.
 - **Tests:** 12 unit (`limit.test.ts`) and 15 integration (I-13: admin and manager refusals, no
   row written, unarchive refused and left archived, an org already over the limit, 5 concurrent

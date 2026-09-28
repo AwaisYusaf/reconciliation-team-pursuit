@@ -24,7 +24,7 @@ Postgres, single database, org-scoped rows (single-tenant-per-org from day one; 
 | complimentary_until | date null | Null → no end. A past date is allowed and shows as ended |
 | suspended_at | timestamptz null | Set → every session for this org is refused and its users can't sign in. Enforced in `resolveSession` (Phase 9 part 2, D-99); written by `suspendOrgAction`/`reinstateOrgAction` and read by `signInAction`'s paused branch |
 | read_amounts_enabled | boolean | Settings → Organization switch (Phase 10, D-105). Default `true`, admin-only to change. Combined with `plan` and the server's OpenAI configuration in `canReadAmounts` — never decided from this column alone |
-| complimentary_plan | org_plan null | The plan a complimentary grant gives (Phase 16, P27); null means `plan`. Pinned when an admin buys a plan during free access, so the bought plan's sync never takes the free plan away; cleared when staff change the plan or end the grant |
+| complimentary_plan | org_plan null | The plan a complimentary grant gives (Phase 16, P27); null means `plan`. No longer written: Checkout used to pin the free plan here, but buying now ends complimentary access at once (D-128). Kept for rows written before, and cleared when staff change the plan or end the grant |
 
 The five columns above arrive in migration `0027`, which ends with a one-off
 `UPDATE organizations SET subscription_status = 'active', complimentary = true;` — every

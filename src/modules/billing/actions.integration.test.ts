@@ -96,7 +96,6 @@ describe.skipIf(!hasDatabase)("billing actions (integration, Phase 16)", async (
   const { BILLING_RETURN_PATH, PLAN_CANCELLED_PATH, SETTINGS_PLAN_PATH, clearPortalConfigCache, planPriceMoves } =
     await import("./billing");
   const { PORTAL_TAG } = await import("./pricing");
-  const { dayAfterStart } = await import("./rules");
 
   if (stripeKeyIsLive()) throw new Error("refuse to run this suite against a live-looking Stripe key");
 
@@ -262,21 +261,22 @@ describe.skipIf(!hasDatabase)("billing actions (integration, Phase 16)", async (
   /* --------------------------------------------------------------------- I-1 */
 
   describe("I-1: complimentary org", () => {
-    it("switching (quote, apply, cancel a queued change) and End plan now refuse billingComplimentaryRefused before any Stripe call", async () => {
+    it("switching (quote, apply, cancel a queued change), End plan now and Keep my plan refuse billingComplimentaryRefused before any Stripe call", async () => {
       const orgId = await freshOrg({ complimentary: true });
       asAdmin(orgId);
       expect(await quoteChangeAction("reconciliation", "month")).toEqual(fail(UI.billingComplimentaryRefused));
       expect(await applyChangeAction("reconciliation", "month", 1_650_000_000)).toEqual(fail(UI.billingComplimentaryRefused));
       expect(await cancelPendingChangeAction()).toEqual(fail(UI.billingComplimentaryRefused));
       expect(await endPlanNowAction()).toEqual(fail(UI.billingComplimentaryRefused));
+      // Undoing a cancel made when the free access was granted would charge for free access (D-128).
+      expect(await resumePlanAction()).toEqual(fail(UI.billingComplimentaryRefused));
       noStripeCallsMade();
     });
 
-    it("cancel, keep and Card and invoices get past the complimentary check (for a plan bought during it); with no customer they answer billingNoPlan, still with no Stripe call", async () => {
+    it("cancel and Card and invoices get past the complimentary check (neither charges); with no customer they answer billingNoPlan, still with no Stripe call", async () => {
       const orgId = await freshOrg({ complimentary: true });
       asAdmin(orgId);
       expect(await cancelPlanAction()).toEqual(fail(UI.billingNoPlan));
-      expect(await resumePlanAction()).toEqual(fail(UI.billingNoPlan));
       expect(await billingPortalAction()).toEqual(fail(UI.billingNoPlan));
       noStripeCallsMade();
     });
@@ -293,52 +293,30 @@ describe.skipIf(!hasDatabase)("billing actions (integration, Phase 16)", async (
     const isoIn = (days: number) => todayIso(new Date(Date.now() + days * 86_400_000));
     const sessionArgs = () => checkoutSessionsCreateMock.mock.calls.at(-1)![0];
 
-    it("Checkout with no end date: charged today, the subscription is marked to end the free access once paid", async () => {
-      await compOrg(null);
-      const result = await startCheckoutAction("reconciliation", "month");
-      expect(result.ok).toBe(true);
-      const args = sessionArgs();
-      expect(args.subscription_data.metadata.endComplimentary).toBe("on_payment");
-      expect(args.subscription_data.trial_end).toBeUndefined();
-      expect(args.custom_text.submit.message).toBe(UI.billingCheckoutEndsComp);
-    });
-
-    it("Checkout with an end date 2+ days away: nothing today, first charge at the start of the next day, no end marker", async () => {
-      const until = isoIn(10);
+    // D-128: buying a plan ends complimentary access, whatever was left of it. Always charged
+    // today, marked so the sync ends the free access once the payment goes through.
+    it.each([
+      ["no end date", null],
+      ["an end date tomorrow", isoIn(1)],
+      ["an end date two months away", isoIn(60)],
+    ])("Checkout during complimentary access with %s: charged today, ends the free access once paid", async (_case, until) => {
       await compOrg(until);
       const result = await startCheckoutAction("reconciliation", "year");
       expect(result.ok).toBe(true);
       const args = sessionArgs();
-      expect(args.subscription_data.trial_end).toBe(Math.floor(dayAfterStart(until).getTime() / 1000));
-      expect(args.subscription_data.metadata.endComplimentary).toBeUndefined();
-    });
-
-    it("Checkout with an end date tomorrow (too soon for Stripe to defer): charged today with the end marker", async () => {
-      await compOrg(isoIn(1));
-      await startCheckoutAction("reconciliation", "month");
-      const args = sessionArgs();
-      expect(args.subscription_data.trial_end).toBeUndefined();
       expect(args.subscription_data.metadata.endComplimentary).toBe("on_payment");
+      expect(args.subscription_data).not.toHaveProperty("trial_end");
+      expect(args.custom_text.submit.message).toBe(UI.billingCheckoutEndsComp);
     });
 
-    it("pins the free plan before Checkout, so buying Reconciliation during free Reconciliation + AI keeps the AI features until the free access ends", async () => {
-      const orgId = await compOrg(null);
+    it("pins no free plan: the plan paid for takes over once the payment goes through", async () => {
+      const orgId = await compOrg(isoIn(60));
       await startCheckoutAction("reconciliation", "month");
       const [row] = await db
         .select({ complimentaryPlan: organizations.complimentaryPlan })
         .from(organizations)
         .where(eq(organizations.id, orgId));
-      expect(row.complimentaryPlan).toBe("reconciliation_ai");
-    });
-
-    it("an already pinned free plan is left as it is", async () => {
-      const orgId = await compOrg(null, "reconciliation");
-      await startCheckoutAction("reconciliation", "month");
-      const [row] = await db
-        .select({ complimentaryPlan: organizations.complimentaryPlan })
-        .from(organizations)
-        .where(eq(organizations.id, orgId));
-      expect(row.complimentaryPlan).toBe("reconciliation");
+      expect(row.complimentaryPlan).toBeNull();
     });
 
     it("a paying org's Checkout is unchanged: no deferral, no end marker, the usual note", async () => {

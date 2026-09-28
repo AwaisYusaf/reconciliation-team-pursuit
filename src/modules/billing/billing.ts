@@ -8,8 +8,9 @@ import "server-only";
  *  1. Decide from Stripe's live state, never from our copy (which may be a webhook behind).
  *  2. Re-derive the change server-side; nothing from a form is trusted beyond "which plan/interval".
  *  3. A complimentary org can't switch plans while complimentary (P10), checked before any call.
- *     It can buy a plan (the first charge waits for the free access to run out, or ends it once
- *     paid), and cancel, keep or manage the card of one it bought (decided 2026-09-25).
+ *     It can buy a plan at any time: it pays today and the free access ends once that payment
+ *     goes through (D-128). Keep my plan is refused too: undoing a cancel made when the free
+ *     access was granted would bill it for access it has free.
  *  4. Mutating functions run one at a time per org (`withLock`), so a double-click can't double-act.
  *  5. After Stripe has changed, best-effort refresh our copy and the Stripe customer's email, but
  *     never fail the action because of either: the money already moved.
@@ -22,7 +23,7 @@ import { billingCopyOn, sameStripeMode } from "@/src/db/billing-copy";
 import { lockOrg } from "@/src/db/org-lock";
 import { fundingSources, orgBilling, organizations } from "@/src/db/schema";
 import { isComplimentaryNow } from "@/src/domain/complimentary";
-import { formatDateUS, todayIso, type IsoDate } from "@/src/domain/dates";
+import { todayIso, type IsoDate } from "@/src/domain/dates";
 import { APP_NAME, UI } from "@/src/domain/strings";
 import { siteOrigin } from "@/src/lib/site-url";
 import { billingEnabled, stripeKeyIsLive } from "@/src/modules/billing/config";
@@ -31,11 +32,9 @@ import { lookupKey, PORTAL_TAG } from "@/src/modules/billing/pricing";
 import {
   changeBlockedReason,
   classifyChange,
-  dayAfterStart,
   isInterval,
   isLive,
   isPlanId,
-  complimentaryStart,
   END_COMPLIMENTARY_KEY,
   pickCurrent,
   type Change,
@@ -350,9 +349,10 @@ export function startCheckout(actor: Actor, plan: unknown, interval: unknown): P
   return orgLock(actor.orgId, async () => {
     const row = await loadOrg(actor.orgId);
     if (!isPlanId(plan) || !isInterval(interval)) throw new BillingError("unknown_plan");
-    // A complimentary org may buy now (decided 2026-09-25): the first charge waits until the
-    // free access runs out, or is taken today and ends the free access once paid.
-    const compStart = isComplimentaryNow(row, todayIso()) ? complimentaryStart(row.complimentaryUntil, new Date()) : null;
+    // A complimentary org may buy at any time (D-128): it pays today, and its complimentary
+    // access ends once that payment goes through (the sync, `endsComplimentaryAt`), however much
+    // of it was left. The customer's admin chose to pay, so nothing waits for the free days.
+    const endsComplimentary = isComplimentaryNow(row, todayIso());
     // Reconciliation allows one active funding source (C8, P24) — refused before any Stripe call.
     if (plan === "reconciliation") {
       const n = await activeFundingSourceCount(actor.orgId);
@@ -376,16 +376,6 @@ export function startCheckout(actor: Actor, plan: unknown, interval: unknown): P
     const open = await stripe().checkout.sessions.list({ customer: customerId, status: "open", limit: 10 });
     for (const s of open.data) await stripe().checkout.sessions.expire(s.id);
 
-    // The sync writes `plan` from a live subscription, and a complimentary org's free plan is
-    // `complimentary_plan ?? plan` (P27). Pin it first, so buying Reconciliation during free
-    // Reconciliation + AI never takes the AI features away before the free access ends.
-    if (compStart && row.complimentaryPlan === null) {
-      await db
-        .update(organizations)
-        .set({ complimentaryPlan: row.plan })
-        .where(and(eq(organizations.id, row.id), isNull(organizations.complimentaryPlan)));
-    }
-
     const origin = siteOrigin();
     const session = await stripe().checkout.sessions.create({
       mode: "subscription",
@@ -394,8 +384,7 @@ export function startCheckout(actor: Actor, plan: unknown, interval: unknown): P
       client_reference_id: actor.orgId,
       line_items: [{ price: price.id, quantity: 1 }],
       subscription_data: {
-        metadata: { orgId: actor.orgId, ...(compStart?.kind === "now" ? { [END_COMPLIMENTARY_KEY]: "on_payment" } : {}) },
-        ...(compStart?.kind === "defer" ? { trial_end: Math.floor(compStart.firstChargeAt.getTime() / 1000) } : {}),
+        metadata: { orgId: actor.orgId, ...(endsComplimentary ? { [END_COMPLIMENTARY_KEY]: "on_payment" } : {}) },
       },
       success_url: `${origin}${BILLING_RETURN_PATH}`,
       cancel_url: `${origin}${PLAN_CANCELLED_PATH}`,
@@ -405,12 +394,7 @@ export function startCheckout(actor: Actor, plan: unknown, interval: unknown): P
       ...checkoutBranding(origin),
       custom_text: {
         submit: {
-          message:
-            compStart?.kind === "defer"
-              ? UI.billingCheckoutDeferred(formatDateUS(todayIso(compStart.firstChargeAt)))
-              : compStart?.kind === "now"
-                ? UI.billingCheckoutEndsComp
-                : UI.billingCheckoutNote,
+          message: endsComplimentary ? UI.billingCheckoutEndsComp : UI.billingCheckoutNote,
         },
       },
     });
@@ -588,7 +572,7 @@ export function cancelPendingChange(actor: Actor): Promise<void> {
 export function cancelAtPeriodEnd(actor: Actor): Promise<void> {
   return orgLock(actor.orgId, async () => {
     const row = await loadOrg(actor.orgId);
-    // A complimentary org may already have bought a plan that starts later (2026-09-25).
+    // Allowed while complimentary: cancelling or opening the card page never charges anything.
     const customerId = row.stripeCustomerId;
     if (!customerId) throw new BillingError("no_plan");
     await syncEmail(actor, customerId);
@@ -629,7 +613,9 @@ export function endPlanNow(actor: Actor): Promise<void> {
 export function resume(actor: Actor): Promise<void> {
   return orgLock(actor.orgId, async () => {
     const row = await loadOrg(actor.orgId);
-    // A complimentary org may already have bought a plan that starts later (2026-09-25).
+    // Refused while complimentary: the only plan it can still have is one cancelled when the free
+    // access was granted (§4.6), and undoing that would charge for access it has free.
+    assertNotComplimentary(row);
     const customerId = row.stripeCustomerId;
     if (!customerId) throw new BillingError("no_plan");
     await syncEmail(actor, customerId);
@@ -649,7 +635,7 @@ let portalConfigId: string | undefined;
 /** Stripe's hosted page for updating the card and downloading invoices. Plan changes stay in-app. */
 export async function portalUrl(actor: Actor): Promise<string> {
   const row = await loadOrg(actor.orgId);
-  // A complimentary org may already have bought a plan that starts later (2026-09-25).
+  // Allowed while complimentary: cancelling or opening the card page never charges anything.
   const customerId = row.stripeCustomerId;
   if (!customerId) throw new BillingError("no_plan");
   await syncEmail(actor, customerId);
@@ -712,32 +698,6 @@ export async function staffCancelSubscription(orgId: string, when: "now" | "peri
     } else {
       await stripe().subscriptions.update(sub.id, { cancel_at_period_end: true });
     }
-    await refresh(customerId);
-  });
-}
-
-/**
- * A plan bought during complimentary access waits for the grant to end before its first charge
- * (Stripe `trial_end`, set at Checkout). When staff move or remove the grant, the first charge
- * moves with it: to the first instant after the new end date, or now when `until` is null (the
- * grant was removed). No proration: nothing was charged yet. No-op when billing is off, there is
- * no customer, or the subscription isn't waiting for its first charge.
- *
- * Refuses (`change_pending`) when a schedule is attached: a queued price move repeats the trial
- * in its phases (P21), and changing the subscription under it could contradict the schedule.
- * Staff drop the queued change first. ponytail: rare (a price move queued on a plan not yet
- * started); rewrite the schedule's current phase instead if it ever matters.
- */
-export async function staffMoveFirstCharge(orgId: string, until: IsoDate | null): Promise<void> {
-  await orgLock(orgId, async () => {
-    if (!billingEnabled()) return;
-    const customerId = (await loadOrg(orgId)).stripeCustomerId;
-    if (!customerId) return;
-    const sub = pickCurrent(await subscriptionsOf(customerId));
-    if (!sub || sub.status !== "trialing") return;
-    if (sub.schedule) throw new BillingError("change_pending");
-    const trialEnd = until === null ? ("now" as const) : Math.floor(dayAfterStart(until).getTime() / 1000);
-    await stripe().subscriptions.update(sub.id, { trial_end: trialEnd, proration_behavior: "none" });
     await refresh(customerId);
   });
 }
