@@ -13,8 +13,9 @@ import { SESSION_COOKIE } from "@/src/services/auth/tokens";
  *
  * Renamed from `middleware.ts` — Next.js 16 replaced that convention with `proxy`.
  */
-// Public: the marketing landing page, the auth entry points, and the SEO files.
-const PUBLIC_PATHS = new Set(["/", "/login", "/signup", "/robots.txt", "/sitemap.xml"]);
+// Public: the marketing landing page, the legal pages it links to, the auth entry points, and
+// the SEO files.
+const PUBLIC_PATHS = new Set(["/", "/privacy", "/terms", "/login", "/signup", "/robots.txt", "/sitemap.xml"]);
 
 /**
  * Shared links (PHASE-12, D-112): opened by people with no account. `/s/` with the slash — a

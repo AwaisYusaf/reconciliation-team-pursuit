@@ -25,10 +25,10 @@ describe("LandingPage render (signupOpen true)", () => {
     expect(html).toContain('href="/signup?plan=reconciliation_ai&amp;interval=month"');
   });
 
-  it("has three Book a demo links (two cards + closing section), all to the mailto address", () => {
+  it("has three Book a demo links (two pricing cards + the footer), all to the mailto address", () => {
     const matches = html.match(/Book a demo/g) ?? [];
     expect(matches).toHaveLength(3);
-    const mailtoMatches = html.match(/href="mailto:tech@teampursuit\.org\?subject=Stay%20Funded%20360%20demo%20request"/g) ?? [];
+    const mailtoMatches = html.match(/href="mailto:tech@authenticbusiness\.io\?subject=Stay%20Funded%20360%20demo%20request"/g) ?? [];
     expect(mailtoMatches).toHaveLength(3);
   });
 
@@ -42,9 +42,9 @@ describe("LandingPage render (signupOpen true)", () => {
     expect(html.toLowerCase()).not.toContain("early access");
   });
 
-  it("has a header link to /login (Sign in)", () => {
-    expect(html).toContain('href="/login"');
-    expect(html).toContain("Sign in");
+  it("has no Sign in link: the header offers only Get Started (removed by request, 2026-09-28)", () => {
+    expect(html).not.toContain('href="/login"');
+    expect(html).not.toContain(">Sign in<");
   });
 
   it("embeds a FAQ JSON-LD script that parses as JSON", () => {
@@ -61,11 +61,12 @@ describe("LandingPage render (signupOpen true)", () => {
 describe("LandingPage render (signupOpen false)", () => {
   const html = render(false);
 
-  it("sends every Get Started link to the walkthrough anchor instead of /signup", () => {
+  it("sends every Get Started link to the demo email instead of /signup", () => {
     expect(html).not.toContain('href="/signup');
-    // Both header and hero "Get Started" plus both pricing cards' Get Started links.
-    const anchorMatches = html.match(/href="#schedule-walkthrough"/g) ?? [];
-    expect(anchorMatches.length).toBeGreaterThanOrEqual(4);
+    expect(html).not.toContain("#schedule-walkthrough"); // the section it pointed at is gone
+    // Header and hero Get Started, plus both pricing cards' Get Started links.
+    const demoMatches = html.match(/href="mailto:[^"]*demo%20request"/g) ?? [];
+    expect(demoMatches.length).toBeGreaterThanOrEqual(4);
   });
 
   it("still has no 'early access' text", () => {

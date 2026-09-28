@@ -59,7 +59,7 @@ describe("UI copy (R12)", () => {
       "The following records are missing a receipt/justification, proof of payment, or narrative:",
     );
     expect(UI.forgotPassword).toBe("Forgot your password? Email");
-    expect(UI.supportEmail).toBe("tech@teampursuit.org");
+    expect(UI.supportEmail).toBe("tech@authenticbusiness.io");
     expect(UI.taxExceedsSubtotalWarning).toBe(
       "Tax is more than the subtotal. Double-check this entry.",
     );

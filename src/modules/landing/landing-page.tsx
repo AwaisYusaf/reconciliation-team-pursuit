@@ -3,9 +3,10 @@ import Link from "next/link";
 
 import { APP_NAME } from "@/src/domain/strings";
 
+import { LandingFooter } from "./landing-footer";
 import { LandingIcon } from "./landing-icons";
 import { type Faq, FaqList, LandingNav, type NavLink, Reveal } from "./landing-islands";
-import { DEMO_REQUEST_HREF, getStartedHref } from "./plan-links";
+import { getStartedHref } from "./plan-links";
 import { planPrice, PLANS } from "./plans";
 import { PricingPlans } from "./pricing-plans";
 
@@ -74,7 +75,7 @@ const FAQS: readonly Faq[] = [
   {
     question: "How long does it take to generate a month-end filing packet?",
     answer:
-      "One click compiles the official Word cover sheet, Excel sub-ledger, and a merged filing PDF under 25MB. Because expenses arrive already documented and categorized, the packet confirms what is already there instead of rebuilding it. Team Pursuit Global in Detroit went from a 3-day manual ordeal to a 30-minute formality.",
+      "One click compiles the official Word cover sheet, Excel sub-ledger, and a merged filing PDF under 25MB. Because expenses arrive already documented and categorized, the packet confirms what is already there instead of rebuilding it. Month-end assembly that used to take days of manual work becomes a quick final check.",
   },
   {
     question: "How long are our records retained, and is the audit trail tamper-proof?",
@@ -103,14 +104,9 @@ export function LandingPage({ signupOpen }: { signupOpen: boolean }) {
 <LandingNav links={NAV_LINKS} />
 
 <div className="flex items-center space-x-2 sm:space-x-4">
-{/* Get Started used to be the header's way to /login; now that it follows the sign-up switch,
-    this is the sign-in entry point. No wrapping: at 375px both links sit on one line. */}
-<Link
-  className="whitespace-nowrap inline-flex items-center min-h-11 text-[#edbca5]/85 hover:text-white text-xs font-medium px-1.5 transition-colors"
-  href="/login"
->
-  Sign in
-</Link>
+{/* No Sign in link here, by request: the header offers only Get Started. Customers reach
+    /login from sign-up's own link, or by opening the app (/r sends a signed-out visitor to
+    /login). */}
 <a
   // The pill stays its size; the invisible ::before stretches what a thumb can hit to 44px.
   className="relative whitespace-nowrap before:absolute before:inset-x-0 before:-inset-y-2 before:content-[''] bg-lp-surface-container-lowest/80 backdrop-blur-md border border-outline-variant/65 text-on-surface inline-flex items-center justify-center px-3 sm:px-5 py-1.5 rounded-full text-xs font-semibold shadow-[0_2px_6px_rgba(0,0,0,0.25),inset_0_1px_0_rgba(255,255,255,0.5)]"
@@ -306,7 +302,7 @@ export function LandingPage({ signupOpen }: { signupOpen: boolean }) {
 <div className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-3 text-sm text-on-surface-variant">
 <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-lp-surface-container border border-outline-variant/50 text-xs text-on-surface-variant">
 <span className="w-1.5 h-1.5 rounded-full bg-secondary"></span>
-<span className="">From award to audit, know where your funding stands. Field-tested with <strong className="text-on-surface font-semibold">Team Pursuit Global</strong> in Detroit.</span>
+<span className="">From award to audit, know where your funding stands. Field-tested with <strong className="text-on-surface font-semibold">frontline teams</strong> in Detroit.</span>
 </div>
 </div>
 </div>
@@ -899,13 +895,13 @@ Receipt + Bank Proof
 </Reveal>
 </section>
 <section className="py-24 bg-lp-surface-container-low border-t border-outline-variant/40" data-purpose="origin-section" id="origin">
-<div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-left">
+<div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 text-left">
 <div className="text-center mb-12">
 <div className="inline-flex items-center px-3.5 py-1 rounded-full bg-lp-surface-container-high border border-outline-variant text-xs font-semibold text-brand-800 mb-3">
           Our Origin
         </div>
 <h2 className="text-3xl sm:text-4xl font-semibold tracking-tight text-on-surface font-lp-serif mb-4">
-          Born in Detroit with Team Pursuit Global
+          Born in Detroit, on the front line
         </h2>
 <p className="text-sm sm:text-base text-on-surface-variant max-w-xl mx-auto">
           {APP_NAME} wasn&apos;t conceived in Silicon Valley. It was built shoulder-to-shoulder with frontline violence intervention workers.
@@ -913,7 +909,7 @@ Receipt + Bank Proof
 </div>
 <div className="glass-tile bg-lp-surface-container-lowest/60 backdrop-blur-xl rounded-3xl p-8 sm:p-12 border-2 border-primary/45 shadow-warm-card ring-1 ring-inset ring-white/30 space-y-6 text-sm sm:text-base text-on-surface-variant leading-relaxed">
 <p className="">
-          In Detroit, community organizations like <strong>Team Pursuit Global</strong> do life-saving work every day on the ground, mediating disputes, conducting safe passage patrols for youth, and mentoring young people in high-risk neighborhoods.
+          In Detroit, community organizations do life-saving work every day on the ground, mediating disputes, conducting safe passage patrols for youth, and mentoring young people in high-risk neighborhoods.
         </p>
 <p className="">
           Yet every month, the same nightmare occurred: executive staff and frontline outreach leaders were pulled away from the streets for <strong>two to three full days</strong>. They were buried under shoeboxes of faded gas receipts, mismatched credit card statements, and fragile Excel sheets where a single broken formula would delay six-figure municipal reimbursements for weeks.
@@ -922,7 +918,7 @@ Receipt + Bank Proof
           &quot;We watched brilliant community heroes spend 20% of their lives fighting Word tables and PDF merge errors. We built {APP_NAME} to eliminate the paperwork hostage situation.&quot;
         </blockquote>
 <p className="">
-          Reconciliation is something you do. Readiness is something you maintain. That is the difference {APP_NAME} was built to make, for Team Pursuit Global first and for every organization carrying the same load.
+          Reconciliation is something you do. Readiness is something you maintain. That is the difference {APP_NAME} was built to make, for the frontline teams it started with and for every organization carrying the same load.
         </p>
 </div>
 </div>
@@ -1035,53 +1031,8 @@ Receipt + Bank Proof
 </div>
 </div>
 </section>
-<section className="surface-dark relative py-20 bg-[#201a15] text-white overflow-hidden" data-purpose="cta-banner" id="schedule-walkthrough">
-
-<div className="absolute -top-24 -left-24 w-96 h-96 bg-brand-600/30 rounded-full blur-3xl pointer-events-none"></div>
-<div className="absolute -bottom-24 -right-24 w-96 h-96 bg-terracotta-500/25 rounded-full blur-3xl pointer-events-none"></div>
-<div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 text-center relative z-10">
-<h2 className="text-3xl sm:text-4xl lg:text-5xl font-semibold tracking-tight font-lp-serif mb-4 text-white">
-        Don&apos;t get ready. Stay ready.
-      </h2>
-<p className="text-primary-fixed-dim text-sm sm:text-base max-w-2xl mx-auto mb-8 leading-relaxed">
-        {APP_NAME}. Track &middot; Document &middot; Comply. 360&deg; funding accountability from award to audit. Because staying funded means staying ready.<span className="align-super text-[0.5em]">&trade;</span>
-      </p>
-<ul className="flex flex-wrap items-center justify-center gap-2 mb-8">
-{["Stay organized", "Stay bookkeeping ready", "Stay reconciliation ready", "Stay reporting ready", "Stay funder ready", "Stay audit ready"].map((line) => (
-  <li key={line} className="rounded-full border border-white/20 bg-white/5 px-3.5 py-1.5 text-xs sm:text-sm font-medium text-primary-fixed-dim">{line}</li>
-))}
-</ul>
-<div className="flex flex-wrap items-center justify-center gap-4">
-<a className="glass-btn glass-btn-primary inline-flex items-center gap-2 px-8 py-3.5 rounded-full text-sm font-semibold" href={DEMO_REQUEST_HREF}>
-          <span>Book a demo</span>
-          <span className="glass-btn-arrow">
-              <svg className="w-3.5 h-3.5 -rotate-90" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6" strokeLinecap="round" strokeLinejoin="round" strokeWidth="3"></path></svg>
-            </span>
-        </a>
-</div>
-</div>
-</section>
 </main>
-<footer className="surface-dark bg-[#201a15] py-12 text-[#edbca5]/80 text-xs">
-<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col lg:flex-row items-center justify-between gap-4 lg:gap-6">
-<div className="flex items-center gap-3 flex-shrink-0">
-{/* Same white capsule as the nav: the brown logo would vanish on the dark footer. */}
-<div className="flex items-center gap-2 rounded-full bg-white pl-1.5 pr-4 py-1 shadow-sm flex-shrink-0">
-<Image src="/brand/stayfunded-mark.png" alt="" width={628} height={570} className="h-7" style={{ width: "auto" }} />
-<Image src="/brand/stayfunded-wordmark.png" alt={APP_NAME} width={720} height={84} className="h-[15px]" style={{ width: "auto" }} />
-</div>
-<span className="hidden 2xl:inline text-[#edbca5]/80 whitespace-nowrap">• Funding Accountability &amp; Readiness Platform</span>
-</div>
-<div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2 lg:flex-nowrap lg:whitespace-nowrap">
-<a className="inline-flex items-center min-h-11 lg:min-h-0 hover:text-white transition-colors" href="#problem">The Problem</a>
-<a className="inline-flex items-center min-h-11 lg:min-h-0 hover:text-white transition-colors" href="#system-features">One System</a>
-<a className="inline-flex items-center min-h-11 lg:min-h-0 hover:text-white transition-colors" href="#ai-narratives">The Story</a>
-<a className="inline-flex items-center min-h-11 lg:min-h-0 hover:text-white transition-colors" href="#pricing">Pricing</a>
-<a className="inline-flex items-center min-h-11 lg:min-h-0 hover:text-white transition-colors" href="#faq">FAQ</a>
-</div>
-<div className="text-[#edbca5]/80 flex-shrink-0 text-center md:text-right">© 2026 {APP_NAME}. Built for frontline teams. All rights reserved.</div>
-</div>
-</footer>
+<LandingFooter />
     </>
   );
 }

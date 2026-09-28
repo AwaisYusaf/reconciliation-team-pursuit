@@ -34,6 +34,14 @@ describe("unauthenticated routing", () => {
     expect(redirectTarget(proxy(request("/signup")))).toBeNull();
     expect(redirectTarget(proxy(request("/onboarding/line-items")))).toBeNull();
   });
+
+  it("lets anyone read the Privacy Policy and Terms of Service without signing in", () => {
+    expect(redirectTarget(proxy(request("/privacy")))).toBeNull();
+    expect(redirectTarget(proxy(request("/terms")))).toBeNull();
+    // Exact paths only: nothing under or beside them is opened by this.
+    expect(redirectTarget(proxy(request("/privacy/anything")))).toBe("/login");
+    expect(redirectTarget(proxy(request("/terms-old")))).toBe("/login");
+  });
 });
 
 describe("shared links (PHASE-12)", () => {

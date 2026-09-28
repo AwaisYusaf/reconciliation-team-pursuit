@@ -5,7 +5,7 @@
  * recipient's inbox. Production therefore refuses to start without a valid `APP_URL`
  * (`instrumentation.ts`, using `appUrlProblem` below); development falls back to the dev server.
  *
- * Call it at request time only. `robots.ts`, `sitemap.ts` and the landing page keep their own
+ * Call it at request time only. `robots.ts`, `sitemap.ts`, the landing page and the legal pages keep their own
  * `APP_URL ?? …` fallback on purpose: they are prerendered by `next build`, and the image is built
  * without the production `.env` (it arrives at container start), where this would throw.
  */
