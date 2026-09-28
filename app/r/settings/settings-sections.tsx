@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { AvatarField } from "@/src/components/app-shell/avatar-field";
 import { useState, useTransition } from "react";
 
+import { Badge } from "@/src/components/ui/badge";
 import { Button, buttonClassName } from "@/src/components/ui/button";
 import { Helper, Input, Label, MoneyInput } from "@/src/components/ui/field";
 import { Select } from "@/src/components/ui/select";
@@ -519,11 +520,12 @@ function FundingSourceDetails({
             {value}
           </DetailField>
         ))}
-        {/* What prints on this source's documents: its own name if set, else the org's (R6.1). */}
-        <DetailField label="Name on documents">
+        {/* What prints on this source's documents: its own name if set, else the org's (R6.1).
+            Named as the Edit form and Organization settings name it. */}
+        <DetailField label="Document display name">
           <span className="inline-flex flex-wrap items-center gap-2">
             {source.docName || orgDocName}
-            {!source.docName && <span className={CHIP}>Organization name</span>}
+            {!source.docName && <Badge tone="neutral">Same as the organization</Badge>}
           </span>
         </DetailField>
         <DetailField label="Reimbursement">
@@ -534,17 +536,11 @@ function FundingSourceDetails({
         </DetailField>
       </dl>
 
-      {missing.length > 0 && (
-        <p className="text-[13px] text-sub">
-          Not set yet: {missing.join(", ")}. Use Edit to add {missing.length === 1 ? "it" : "them"}.
-        </p>
-      )}
+      {/* Optional fields, so a plain list rather than a to-do. */}
+      {missing.length > 0 && <p className="text-[13px] text-sub">Not filled in: {missing.join(", ")}.</p>}
     </div>
   );
 }
-
-/** A small neutral chip: a funding source's type, "Archived", the org-name marker. */
-const CHIP = "inline-flex items-center rounded-full bg-section px-2.5 py-0.5 text-[12px] font-semibold text-sub";
 
 /** A labelled value in the details grid. The label is `StatTile`'s: the same small uppercase word
  *  that names a figure, so the tiles above and the fields below read as one card. */
@@ -697,10 +693,10 @@ function FundingSourcesSection({
                 </svg>
                 {source.name}
               </button>
-              <span className={CHIP}>
+              <Badge tone="neutral">
                 {FUNDING_SOURCE_TYPES.find(([value]) => value === source.type)?.[1] ?? source.type}
-              </span>
-              {source.archived && <span className={cn(CHIP, "bg-surface border border-dashed border-line")}>Archived</span>}
+              </Badge>
+              {source.archived && <Badge tone="neutral">Archived</Badge>}
             </div>
             <div className="flex items-center gap-3.5">
               <Button
@@ -722,17 +718,19 @@ function FundingSourcesSection({
                   Unarchive
                 </Button>
               ) : (
-                <Button
-                  variant="quiet"
-                  disabled={pending || activeCount <= 1}
-                  // A disabled button says why (usability rule 4): the last active source stays.
-                  title={activeCount <= 1 ? "Keep at least one active funding source." : undefined}
-                  onClick={() =>
-                    run(() => archiveFundingSourceAction(source.id), "Funding source archived.")
-                  }
-                >
-                  Archive
-                </Button>
+                // Not offered on the only active source: an org always keeps one, and a greyed
+                // button that explains itself only on hover helps nobody (the server refuses too).
+                activeCount > 1 && (
+                  <Button
+                    variant="quiet"
+                    disabled={pending}
+                    onClick={() =>
+                      run(() => archiveFundingSourceAction(source.id), "Funding source archived.")
+                    }
+                  >
+                    Archive
+                  </Button>
+                )
               )}
             </div>
             {/* Editing replaces this row's details in place with the same fields as inputs. */}
@@ -760,8 +758,8 @@ function FundingSourcesSection({
           opens the same form inside that source's own row, above. */}
       {editingId === NEW_FUNDING_SOURCE ? (
         // Same card and panel as editing a row, so adding and editing look like one thing.
-        <div className="flex flex-wrap items-center gap-3.5 border border-line rounded-[3px] px-4 py-3 bg-surface">
-          <span className="text-base text-ink font-medium">New funding source</span>
+        <div className="flex flex-wrap items-center gap-3.5 border border-line rounded-[10px] px-4 py-3 sm:px-5 bg-surface">
+          <span className="text-base text-ink font-semibold">New funding source</span>
           <div className="basis-full mt-1 rounded-[3px] bg-section p-4">
             <FundingSourceForm
               draft={draft}
