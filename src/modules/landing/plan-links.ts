@@ -6,6 +6,7 @@
 import type { Interval, PlanId } from "@/src/modules/billing/rules";
 import { PRICES_CENTS } from "@/src/modules/billing/pricing";
 import { splitMoney } from "@/src/domain/format";
+import { UI } from "@/src/domain/strings";
 
 /** A whole-dollar price prints without its trailing `.00`; anything else keeps its cents.
  *  Never rounds, so a mismatch with the actual cents figure fails loudly rather than printing
@@ -22,7 +23,7 @@ export function yearlySavingCents(prices: { month: number; year: number }): numb
   return saving > 0 ? saving : null;
 }
 
-export const DEMO_REQUEST_HREF = "mailto:tech@teampursuit.org?subject=Stay%20Funded%20360%20demo%20request";
+export const DEMO_REQUEST_HREF = `mailto:${UI.supportEmail}?subject=Stay%20Funded%20360%20demo%20request`;
 
 /**
  * Where a pricing card's "Get Started" button goes.
@@ -35,7 +36,8 @@ export const DEMO_REQUEST_HREF = "mailto:tech@teampursuit.org?subject=Stay%20Fun
  * a return-to parameter.
  */
 export function getStartedHref(signupOpen: boolean, plan?: string, interval?: string): string {
-  if (!signupOpen) return "#schedule-walkthrough";
+  // Sign-up closed: the way in is a demo, so Get Started opens the same email as Book a demo.
+  if (!signupOpen) return DEMO_REQUEST_HREF;
   if (!plan) return "/signup";
   if (
     !Object.hasOwn(PRICES_CENTS, plan) ||

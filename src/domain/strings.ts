@@ -117,7 +117,7 @@ function amountsLine(amounts: ReadAmounts, totalLabel: string): string {
 
 /** Where "contact support" points, everywhere the app says it (D-24). Its own constant so a
  *  message inside `UI` can name it before `UI.supportEmail` exists. */
-const SUPPORT_EMAIL = "tech@teampursuit.org";
+const SUPPORT_EMAIL = "tech@authenticbusiness.io";
 
 export const UI = {
   /** Add Expense reimbursable box (R1.3). */

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { getStartedHref, planPriceLabel, yearlySavingCents } from "@/src/modules/landing/plan-links";
+import { DEMO_REQUEST_HREF, getStartedHref, planPriceLabel, yearlySavingCents } from "@/src/modules/landing/plan-links";
 
 describe("planPriceLabel", () => {
   it("drops the fraction when it's .00", () => {
@@ -29,8 +29,8 @@ describe("yearlySavingCents", () => {
 
 describe("getStartedHref", () => {
   it("always lands on the walkthrough anchor while signup is closed", () => {
-    expect(getStartedHref(false)).toBe("#schedule-walkthrough");
-    expect(getStartedHref(false, "reconciliation", "month")).toBe("#schedule-walkthrough");
+    expect(getStartedHref(false)).toBe(DEMO_REQUEST_HREF);
+    expect(getStartedHref(false, "reconciliation", "month")).toBe(DEMO_REQUEST_HREF);
   });
 
   it("is plain /signup when signup is open with no plan given", () => {

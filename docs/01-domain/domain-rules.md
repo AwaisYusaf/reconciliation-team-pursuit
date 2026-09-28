@@ -123,7 +123,7 @@ Let `opening` = line item's opening previously-billed balance (setup figure), `e
 | no-receipt-reason-required (UI) | `Enter the reason no receipt is available.` |
 | expense-missing-narrative (UI) | `Enter a narrative for this expense.` |
 | upload-failed (UI) | `Upload failed. Try again.` |
-| forgot-password (UI) | `Forgot your password? Email` + a mailto link to `tech@teampursuit.org` |
+| forgot-password (UI) | `Forgot your password? Email` + a mailto link to `tech@authenticbusiness.io` (`UI.supportEmail`, D-130) |
 | tax-exceeds-subtotal-warning (UI) | `Tax is more than the subtotal. Double-check this entry.` |
 | subtotal-is-zero-warning (UI) | `Subtotal is $0.00. Double-check this entry.` |
 | month-locked (UI) | `{Month YYYY} is locked. Unlock it on the Month-End Packet tab to make changes.` (R10.7) |

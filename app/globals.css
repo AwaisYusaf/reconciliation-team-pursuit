@@ -323,6 +323,20 @@ body {
   animation: overlay-panel-out 0.16s ease-in both;
 }
 
+/** The landing demo's play button halo: grows out and fades, then rests before the next. Scale
+ *  from the centre, so it stays concentric with the button it sits behind. */
+@keyframes demo-halo {
+  0% {
+    transform: scale(1);
+    opacity: 0.55;
+  }
+  70%,
+  100% {
+    transform: scale(1.7);
+    opacity: 0;
+  }
+}
+
 /** The dashboard's spend bars, growing from the axis they are measured from. */
 .grow-up {
   transform-origin: bottom;

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState, useTransition, type FormEvent } from "react";
 
 import { AUTH_FIELD } from "@/src/components/ui/auth-card";
@@ -139,6 +140,18 @@ export function SignupForm({
       <Button type="submit" fullWidth disabled={pending}>
         {pending ? "Creating…" : "Create account"}
       </Button>
+      {/* New tab: following a link must not throw away what has been typed into the form. */}
+      <p className="text-[13px] text-sub text-center mt-3 leading-relaxed">
+        By creating an account, you agree to our{" "}
+        <Link href="/terms" target="_blank" rel="noopener" className="text-accent underline underline-offset-2 hover:text-accent-dark">
+          Terms of Service
+        </Link>{" "}
+        and{" "}
+        <Link href="/privacy" target="_blank" rel="noopener" className="text-accent underline underline-offset-2 hover:text-accent-dark">
+          Privacy Policy
+        </Link>
+        .
+      </p>
     </form>
   );
 }
