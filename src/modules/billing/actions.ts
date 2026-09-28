@@ -78,7 +78,9 @@ export async function startCheckoutAction(input: {
 }): Promise<ActionResult<{ url: string }>> {
   const g = await guard();
   if ("result" in g) return g.result;
-  return run(async () => ({ url: await billing.startCheckout(g.actor, input) }));
+  // Named field by field, so nothing else a client sends reaches the core.
+  const { plan, interval, keepFundingSourceId = null } = input ?? {};
+  return run(async () => ({ url: await billing.startCheckout(g.actor, { plan, interval, keepFundingSourceId }) }));
 }
 
 export async function quoteChangeAction(plan: string, interval: string): Promise<ActionResult<billing.ChangeQuote>> {

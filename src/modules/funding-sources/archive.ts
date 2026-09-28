@@ -34,17 +34,17 @@ export async function archiveFundingSources(tx: Transaction, orgId: string, ids:
  * Leaves the org one active funding source, `keepId`, and archives the rest (Reconciliation,
  * C8). When `keepId` is no longer active (archived in Settings while Checkout was open, say), the
  * first active source in the picker's order is kept instead and a line is logged: the plan's
- * limit still holds, and nothing is lost, since archived sources keep their records. Returns
- * the ids archived.
+ * limit still holds, and nothing is lost, since archived sources keep their records. Each
+ * archive is logged with what was kept, since it happens in a webhook with no one watching.
  */
-export async function keepOneFundingSource(tx: Transaction, orgId: string, keepId: string): Promise<string[]> {
+export async function keepOneFundingSource(tx: Transaction, orgId: string, keepId: string): Promise<void> {
   const active = (await listFundingSources(orgId, tx)).filter((source) => source.archivedAt === null);
-  if (active.length <= 1) return [];
+  if (active.length <= 1) return;
   const kept = active.find((source) => source.id === keepId) ?? active[0];
   if (kept.id !== keepId) {
     console.error(`[billing] org ${orgId}: the funding source chosen at Checkout (${keepId}) is no longer active; kept ${kept.id}`);
   }
   const archive = active.filter((source) => source.id !== kept.id).map((source) => source.id);
   await archiveFundingSources(tx, orgId, archive);
-  return archive;
+  console.log(`[billing] org ${orgId}: Reconciliation paid for; kept funding source ${kept.id}, archived ${archive.join(", ")}`);
 }

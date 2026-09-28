@@ -34,6 +34,8 @@ export type PaidPlanView = {
   /** The day it ends when cancelling, else the day it renews. */
   periodEnd: IsoDate | null;
   cancelling: boolean;
+  /** Its last payment failed: Stripe refuses a cancel then (`payment_failed`), so none is offered. */
+  paymentFailed: boolean;
 };
 
 export type PendingChangeView = {
@@ -96,7 +98,14 @@ export function planBillingView(row: PlanBillingRow, ctx: { now: Date }): PlanBi
       until,
       endingSoon: until !== null && isoDaysBetween(today, until) <= COMP_WARNING_DAYS,
       // `plan` is what the live subscription pays for: the sync writes it (P27).
-      paidPlan: live ? { plan: row.plan, periodEnd, cancelling: row.cancelAtPeriodEnd } : null,
+      paidPlan: live
+        ? {
+            plan: row.plan,
+            periodEnd,
+            cancelling: row.cancelAtPeriodEnd,
+            paymentFailed: row.stripeStatus !== "active" && row.stripeStatus !== "trialing",
+          }
+        : null,
     };
   }
 

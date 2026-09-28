@@ -865,7 +865,7 @@ export const UI = {
     "Reconciliation includes one active funding source. Once your payment goes through, the others are archived. Their records are kept, but you can only make them active again by switching to Reconciliation + AI.",
   billingKeepWhichLegend: "Funding source to keep",
   billingKeepAndContinue: "Keep it and continue to payment",
-  billingKeepSourceRefused: "Your funding sources have changed. Reload the page and choose which one to keep.",
+  billingKeepSourceRefused: "Your funding sources changed since this page opened. Choose again which one to keep.",
   billingChangedToast: "Your plan has changed.",
   billingScheduledToast: "Your plan change is scheduled.",
   billingCancelledToast: "Your plan is cancelled. You keep access until the end of the paid period.",
@@ -884,9 +884,13 @@ export const UI = {
   billingCompPaidEnds: (plan: string, date: string) =>
     `Your paid ${plan} plan ends on ${date}. Your complimentary access continues.`,
   billingCompPaidRenews: (plan: string, date: string) =>
-    `Your paid ${plan} plan renews on ${date}. Your complimentary access continues.`,
+    `You also pay for ${plan}. It renews on ${date} and is charged unless you cancel it. Your complimentary access continues either way.`,
+  billingCompPaidFailed: (plan: string) =>
+    `The last payment for your paid ${plan} plan didn't go through. Your complimentary access continues.`,
+  billingCancelPaidTitle: "Cancel your paid plan?",
   billingCancelBodyComp: (date: string) =>
     `Your paid plan ends on ${date} and won't renew, so nothing more is charged. Your complimentary access continues.`,
+  billingCancelledCompToast: "Your paid plan won't renew. Your complimentary access continues.",
   billingComplimentaryTag: "Complimentary",
   // Staff dashboard (§4.6)
   historyActorStripe: "Stripe",

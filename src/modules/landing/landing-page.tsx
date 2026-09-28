@@ -342,7 +342,7 @@ export function LandingPage({ signupOpen }: { signupOpen: boolean }) {
 <svg aria-hidden="true" className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
                 Staples Office Pack
               </span>
-<span className="font-semibold text-xs bg-tertiary-container text-tertiary px-2 py-0.5 rounded whitespace-nowrap shrink-0">Missing Proof of Pay</span>
+<span className="font-semibold text-xs bg-tertiary-container text-tertiary px-2 py-0.5 rounded whitespace-nowrap shrink-0">Missing proof of payment</span>
 </div>
 <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-0.5 text-xs p-2.5 rounded-lg bg-lp-surface-container-lowest/70 backdrop-blur-md border border-outline-variant/50 text-on-surface-variant">
 <span className="">Youth Workshop Refreshments</span>

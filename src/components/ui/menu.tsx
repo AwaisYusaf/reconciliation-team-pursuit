@@ -269,8 +269,11 @@ export function Menu({
                 : { top: position.top, marginTop: 4 }),
             }}
             // Any item click closes the menu — items are navigation/action triggers, not
-            // something a user picks more than one of per open.
-            onClick={() => close()}
+            // something a user picks more than one of per open. Focus goes back to ⋮ first, while
+            // the clicked item is still in the page: a dialog the item opens records what had
+            // focus when it mounts, and the item is gone by then, so it would record <body> and
+            // hand focus back there on close.
+            onClick={() => close(true)}
             className="z-50 min-w-[160px] bg-surface border border-line rounded-[3px] shadow-lg py-1 flex flex-col"
           >
             {children}

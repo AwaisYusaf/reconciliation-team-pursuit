@@ -669,7 +669,12 @@ function FundingSourcesSection({
         {visibleSources.map((source) => (
           <div
             key={source.id}
-            className="flex flex-wrap items-center gap-3.5 justify-between border border-line rounded-[10px] px-4 py-3 sm:px-5 bg-surface"
+            // An archived row sits on the section tint, so it reads as set aside at a glance
+            // rather than by its badge alone.
+            className={cn(
+              "flex flex-wrap items-center gap-3.5 justify-between border border-line rounded-[10px] px-4 py-3 sm:px-5",
+              source.archived ? "bg-section" : "bg-surface",
+            )}
           >
             <div className="flex items-center gap-2.5 flex-1 min-w-[220px]">
               <button

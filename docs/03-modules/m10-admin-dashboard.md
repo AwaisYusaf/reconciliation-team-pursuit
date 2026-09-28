@@ -80,8 +80,8 @@ either screen renders more rows than it asks for: ten organizations per page
   (`complimentaryUntilPast`); removing a grant that has already ended is never refused for its
   date. No other change to complimentary access touches Stripe: a plan bought during free access
   is paid for at once and ends the grant once paid (D-128), so no subscription waits on a
-  complimentary date. A grant staff make after a subscription was bought is never ended by it,
-  even one made while its Checkout was still open (D-129). Suspend pauses collection, reinstate
+  complimentary date. Every Checkout carries the end marker, so a grant made while a Checkout is
+  still open ends once it is paid; one made after the subscription exists never does (D-129). Suspend pauses collection, reinstate
   resumes it (D3). History lines written by the sync read "Stripe" as the actor.
 - **Feature requests (PHASE-17, D-127)**: the top of `/a` and of `/a/feature-requests` carries
   **Organizations** · **Feature requests (N)** (`src/components/admin/section-links.tsx`), N

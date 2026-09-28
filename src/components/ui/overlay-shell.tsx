@@ -94,8 +94,8 @@ const openStack: string[] = [];
  *
  * A portal because the overlay must escape whatever card, table cell or stacking context it
  * is opened from. `initialFocusRef` picks what receives focus on open — the dialog's dismiss
- * button, or the first field of a form popup — and always gets focus back on close, so a
- * keyboard user isn't dropped at the top of the document.
+ * button, or the first field of a form popup — and whatever had focus before it opened gets it
+ * back on close, so a keyboard user isn't dropped at the top of the document.
  */
 export function OverlayShell({
   open,
@@ -151,7 +151,12 @@ export function OverlayShell({
     }
     initialFocusRef.current?.focus();
     return () => {
-      for (const element of marked) element.removeAttribute("inert");
+      // An overlay under this one that is fading out in the same commit keeps its `inert`: React
+      // set it for the fade (`inert={closing}`), and clearing it would make the fading panel
+      // reachable again.
+      for (const element of marked) {
+        if (!element.hasAttribute("data-closing")) element.removeAttribute("inert");
+      }
       returnFocusTo.current?.focus?.();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -181,7 +186,9 @@ export function OverlayShell({
   useEffect(() => {
     if (!active) return;
     function onKey(event: KeyboardEvent) {
-      if (event.key !== "Escape") return;
+      // Already answered by an overlay stacked on this one. Its listener runs first, and React can
+      // commit its close (taking it off the stack) before this listener runs for the same key.
+      if (event.key !== "Escape" || event.defaultPrevented) return;
       // Only the topmost overlay answers Escape — otherwise both this instance's listener
       // and an overlay stacked underneath it would fire for the same keypress, dismissing
       // the one behind it too.

@@ -46,6 +46,9 @@ export function SubscribeButton({
   const [keepId, setKeepId] = useState<string | null>(null);
   const legendId = useId();
   const mustChoose = keepOneOf !== undefined && keepOneOf.length > 1;
+  // A choice counts only while that source is still offered: after a refresh the list can have
+  // changed under it, and a stale id would only be refused again.
+  const chosen = keepId !== null && keepOneOf?.some((source) => source.id === keepId) ? keepId : null;
 
   /** Opens Checkout; `keep` is the source chosen in the dialog, when there was one to choose. */
   function checkout(keep: string | null = null) {
@@ -57,6 +60,7 @@ export function SubscribeButton({
         // Refused (the sources changed since the page loaded, say): close the question and show
         // the sources as they are now, so the next click asks about the right ones.
         setAsking(false);
+        setKeepId(null);
         router.refresh();
       }
     });
@@ -85,8 +89,8 @@ export function SubscribeButton({
           onDismiss={() => setAsking(false)}
           confirm={{
             label: pending ? UI.billingOpeningCheckout : UI.billingKeepAndContinue,
-            disabled: pending || keepId === null,
-            onConfirm: () => keepId && checkout(keepId),
+            disabled: pending || chosen === null,
+            onConfirm: () => chosen && checkout(chosen),
           }}
         >
           <p className="mb-4">{UI.billingKeepWhichBody}</p>
@@ -99,14 +103,14 @@ export function SubscribeButton({
                 key={source.id}
                 className={cn(
                   "flex items-center gap-3 min-h-11 px-3.5 py-2 rounded-[10px] border cursor-pointer text-ink",
-                  keepId === source.id ? "border-accent bg-section" : "border-line bg-surface hover:bg-section",
+                  chosen === source.id ? "border-accent bg-section" : "border-line bg-surface hover:bg-section",
                 )}
               >
                 <input
                   type="radio"
                   name={`keep-${plan}-${interval}`}
                   value={source.id}
-                  checked={keepId === source.id}
+                  checked={chosen === source.id}
                   disabled={pending}
                   onChange={() => setKeepId(source.id)}
                   className="w-4 h-4 accent-[var(--color-accent)]"

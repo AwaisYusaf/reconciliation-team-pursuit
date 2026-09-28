@@ -260,6 +260,16 @@ describe.skipIf(!hasDatabase)("billing sync (integration, Phase 16)", async () =
       expect(await activeIds(orgId)).toEqual([kept, later]);
     });
 
+    it("the archive helper changes nothing outside the org it is given, even when handed another org's ids", async () => {
+      const a = await orgWithSources(1);
+      const b = await orgWithSources(1);
+      await db.update(organizations).set({ activeFundingSourceId: b.ids[0] }).where(eq(organizations.id, b.orgId));
+      const { archiveFundingSources } = await import("@/src/modules/funding-sources/archive");
+      await db.transaction((tx) => archiveFundingSources(tx, a.orgId, b.ids));
+      expect(await activeIds(b.orgId)).toEqual(b.ids);
+      expect(await headerSelection(b.orgId)).toBe(b.ids[0]);
+    });
+
     it("a header selection on the kept source stays", async () => {
       const { orgId, customerId, ids } = await orgWithSources(1);
       await db.update(organizations).set({ activeFundingSourceId: ids[1] }).where(eq(organizations.id, orgId));

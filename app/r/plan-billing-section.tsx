@@ -249,12 +249,14 @@ export function PlanBillingSection({ data }: { data: PlanBillingData }) {
                     ? UI.billingBilledYearly
                     : UI.billingBilledMonthly}
             </p>
-            {paidBeside?.periodEnd && (
+            {paidBeside && (paidBeside.paymentFailed || paidBeside.periodEnd) && (
               <p className="text-sm text-on-surface-variant mt-1">
-                {(paidBeside.cancelling ? UI.billingCompPaidEnds : UI.billingCompPaidRenews)(
-                  PLAN_LABELS[paidBeside.plan],
-                  formatDateUS(paidBeside.periodEnd),
-                )}
+                {paidBeside.paymentFailed || !paidBeside.periodEnd
+                  ? UI.billingCompPaidFailed(PLAN_LABELS[paidBeside.plan])
+                  : (paidBeside.cancelling ? UI.billingCompPaidEnds : UI.billingCompPaidRenews)(
+                      PLAN_LABELS[paidBeside.plan],
+                      formatDateUS(paidBeside.periodEnd),
+                    )}
               </p>
             )}
           </>
@@ -286,7 +288,8 @@ export function PlanBillingSection({ data }: { data: PlanBillingData }) {
                 {portalButton}
               </>
             )}
-            {!(view.kind === "subscribed" && isAdmin && (view.paymentFailed || view.cancelling)) && (
+            {/* No See plans beside a paid plan still running: none can be bought until it ends. */}
+            {!(view.kind === "subscribed" && isAdmin && (view.paymentFailed || view.cancelling)) && !(isAdmin && paidBeside) && (
               <button
                 type="button"
                 className={view.kind === "subscribed" && isAdmin ? PRIMARY : LIGHT}
@@ -305,7 +308,7 @@ export function PlanBillingSection({ data }: { data: PlanBillingData }) {
                 </button>
               )}
             {isAdmin && paidBeside && portalButton}
-            {isAdmin && paidBeside && !paidBeside.cancelling && (
+            {isAdmin && paidBeside && !paidBeside.cancelling && !paidBeside.paymentFailed && (
               <button type="button" className={QUIET} disabled={pending} onClick={() => setConfirm("cancel")}>
                 {UI.billingCancelPlan}
               </button>
@@ -436,7 +439,7 @@ export function PlanBillingSection({ data }: { data: PlanBillingData }) {
       {(view.kind === "subscribed" || paidBeside) && (
         <Dialog
           open={confirm === "cancel"}
-          title={UI.billingCancelTitle}
+          title={paidBeside ? UI.billingCancelPaidTitle : UI.billingCancelTitle}
           dismissLabel={UI.billingKeepPlan}
           dismissDisabled={pending}
           onDismiss={() => setConfirm(null)}
@@ -444,7 +447,11 @@ export function PlanBillingSection({ data }: { data: PlanBillingData }) {
             label: pending ? UI.billingCancellingNow : UI.billingCancelPlan,
             disabled: pending,
             onConfirm: () =>
-              act(() => cancelPlanAction(), UI.billingCancelledToast, () => setConfirm(null)),
+              act(
+                () => cancelPlanAction(),
+                paidBeside ? UI.billingCancelledCompToast : UI.billingCancelledToast,
+                () => setConfirm(null),
+              ),
           }}
         >
           {view.kind === "subscribed"

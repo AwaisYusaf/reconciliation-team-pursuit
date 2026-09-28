@@ -132,13 +132,23 @@ describe("planBillingView", () => {
       plan: "reconciliation_ai",
       until: "2026-12-31",
       endingSoon: false,
-      paidPlan: { plan: "reconciliation", periodEnd: "2026-10-25", cancelling: true },
+      paidPlan: { plan: "reconciliation", periodEnd: "2026-10-25", cancelling: true, paymentFailed: false },
     });
   });
 
   it("a paid plan beside the free access that would renew (a grant made while Stripe couldn't be reached)", () => {
-    const view = planBillingView(row({ complimentary: true, stripeStatus: "past_due" }), on);
-    expect(view).toMatchObject({ kind: "complimentaryAccess", paidPlan: { plan: "reconciliation", periodEnd: "2026-10-25", cancelling: false } });
+    const view = planBillingView(row({ complimentary: true, stripeStatus: "active" }), on);
+    expect(view).toMatchObject({
+      kind: "complimentaryAccess",
+      paidPlan: { plan: "reconciliation", periodEnd: "2026-10-25", cancelling: false, paymentFailed: false },
+    });
+  });
+
+  it.each(["past_due", "unpaid", "paused"])("a paid plan beside the free access whose payment failed (%s): flagged, since Stripe refuses a cancel then", (status) => {
+    expect(planBillingView(row({ complimentary: true, stripeStatus: status }), on)).toMatchObject({
+      kind: "complimentaryAccess",
+      paidPlan: { paymentFailed: true },
+    });
   });
 
   it.each([null, "canceled", "incomplete", "incomplete_expired"])("complimentary with a Stripe status %s: no paid plan beside it", (status) => {
@@ -170,7 +180,7 @@ describe("Plan & billing section renders each state", () => {
   it.each([
     ["none", ["UI.billingNoPlan", "<SubscribeButton", "UI.billingManagerNote"]],
     ["complimentary", ["UI.billingComplimentaryUntil", "UI.billingComplimentary(", "UI.billingCompBuyNow", "UI.billingQuestions"]],
-    ["complimentary beside a paid plan", ["UI.billingCompPaidEnds", "UI.billingCompPaidRenews", "UI.billingCancelBodyComp"]],
+    ["complimentary beside a paid plan", ["UI.billingCompPaidEnds", "UI.billingCompPaidRenews", "UI.billingCompPaidFailed", "UI.billingCancelBodyComp", "UI.billingCancelPaidTitle", "UI.billingCancelledCompToast"]],
     ["subscribed", ["UI.billingRenews", "UI.billingCancelling", "UI.billingSwitchPlan", "UI.billingPortal", "UI.billingCancelPlan"]],
     ["plans", ["<PlanCards", "UI.billingPlansTitle", "UI.billingYourPlan"]],
     ["switch refused", ["UI.billingPaymentFailedRefused", "UI.billingCancelPending", "UI.billingPaymentPending", "UI.billingChangePending"]],
@@ -189,6 +199,13 @@ describe("Plan & billing section renders each state", () => {
   it("a manager gets no plan buttons: the card actions stop for anyone but an admin", () => {
     const fn = source.slice(source.indexOf("function planActions"), source.indexOf("return (", source.indexOf("function planActions") + 400));
     expect(fn).toContain("if (!isAdmin) return null;");
+  });
+
+  it("beside a paid plan still running, a complimentary admin gets no Subscribe, no See plans, and Cancel plan only when Stripe would accept it", () => {
+    expect(source).toContain('if (view.kind === "none" || (view.kind === "complimentaryAccess" && !paidBeside)) {');
+    expect(source).toContain("!(isAdmin && paidBeside) && (");
+    expect(source).toContain("isAdmin && paidBeside && !paidBeside.cancelling && !paidBeside.paymentFailed && (");
+    expect(source).toContain('view.kind === "complimentaryAccess" && isAdmin && !paidBeside && (');
   });
 
   it("the Cancel this change button is for a downgrade only, never a price move", () => {
