@@ -840,10 +840,15 @@ checklist clear.
   one is queued. `applyChange` re-syncs the copy right after it schedules the downgrade, so no
   Stripe call is made on every source added. The Add button isn't disabled ahead of time for it:
   the refusal shows when the admin saves.
-- **Also built in the review:** D2. With more than one active source, the Reconciliation card on
-  `/r/plan` (and in Plan & billing) is disabled with the reason under it, Checkout refuses the same,
-  and `/r/plan` lists the admin's active sources with Archive (`archiveFundingSourceAction` uses the
-  any-plan session: an unpaid org's admin may archive, a manager may not).
+- **Also built in the review:** D2. With more than one active source, Checkout to Reconciliation
+  refuses (`billingSubscribeTooManySources`). In Plan & billing the card is disabled with that
+  reason under it, since Funding sources is one section away. **Changed 2026-09-28:** on
+  `/r/plan` nothing is listed up front; choosing Reconciliation asks "Which funding source do you
+  want to keep?", archives the others (`archiveFundingSourceAction`, any-plan session: an unpaid
+  org's admin may archive, a manager may not), then opens Checkout. The dialog says plainly that
+  the archived sources come back only by switching to Reconciliation + AI, which is true on
+  Reconciliation: unarchiving is refused at the limit, and the last active source can't be
+  archived, so the kept source can't be swapped either (a product question for later).
 - **Fixed after the merge (2026-09-28):** a complimentary Reconciliation + AI org that bought
   Reconciliation with a deferred first charge is refused a second source during its free access,
   with the same `fundingSourceLimitQueued` message dated the day the bought plan starts.

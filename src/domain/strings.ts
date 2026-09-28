@@ -862,11 +862,11 @@ export const UI = {
   billingGoToSources: "Go to Funding sources",
   billingSubscribeTooManySources: (count: number) =>
     `Reconciliation includes one active funding source, and you have ${count}. Archive the ones you don't use, or choose Reconciliation + AI.`,
-  billingSourcesTitle: "Your funding sources",
-  billingSourcesHelp:
-    "Reconciliation includes one active funding source. Archiving keeps a source's records, and you can bring it back later from Settings.",
-  billingArchiveSource: "Archive",
-  billingSourceArchivedToast: "Funding source archived.",
+  billingKeepWhichTitle: "Which funding source do you want to keep?",
+  billingKeepWhichBody:
+    "Reconciliation includes one active funding source. The others will be archived. Their records are kept, but you can only make them active again by switching to Reconciliation + AI.",
+  billingKeepWhichLegend: "Funding source to keep",
+  billingKeepAndContinue: "Keep it and continue to payment",
   billingChangedToast: "Your plan has changed.",
   billingScheduledToast: "Your plan change is scheduled.",
   billingCancelledToast: "Your plan is cancelled. You keep access until the end of the paid period.",

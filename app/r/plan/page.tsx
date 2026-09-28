@@ -16,7 +16,6 @@ import { PLAN_CARD_IDS, PlanCards } from "@/src/modules/landing/plan-cards";
 import { listFundingSources } from "@/src/modules/funding-sources/queries";
 
 import { PlanBillingSection } from "../plan-billing-section";
-import { ArchiveSources } from "./archive-sources";
 import { SubscribeButton } from "../subscribe-button";
 
 // Not "Choose a plan": a plan on hold shows its Plan & billing panel here instead (D-126).
@@ -78,9 +77,9 @@ export default async function PlanPage({
 
   const plansToShow = preselected ? [preselected] : PLAN_CARD_IDS;
   const managerNoticeNames = billing.adminNames; // "" for an admin
-  // Reconciliation includes one active funding source (C8): with more, its card says why it
-  // can't be chosen and the sources are listed below to archive (D2), rather than Checkout
-  // refusing after the click.
+  // Reconciliation includes one active funding source (C8): with more, choosing it asks which
+  // one to keep and archives the rest before Checkout (D2). Asked only after that choice, never
+  // shown up front.
   const activeSources = isAdmin
     ? (await listFundingSources(session.orgId)).filter((source) => source.archivedAt === null)
     : [];
@@ -147,18 +146,15 @@ export default async function PlanPage({
                   plan={plan}
                   interval={interval}
                   primary={plan === "reconciliation_ai"}
-                  disabledReason={
+                  keepOneOf={
                     plan === "reconciliation" && tooManySources
-                      ? UI.billingSubscribeTooManySources(activeSources.length)
+                      ? activeSources.map(({ id, name }) => ({ id, name }))
                       : undefined
                   }
                 />
               )}
             />
           </div>
-          {tooManySources && plansToShow.includes("reconciliation") && (
-            <ArchiveSources sources={activeSources.map(({ id, name }) => ({ id, name }))} />
-          )}
         </>
       )}
     </div>

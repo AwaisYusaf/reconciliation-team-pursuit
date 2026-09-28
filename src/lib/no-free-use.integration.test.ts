@@ -229,10 +229,9 @@ describe.skipIf(!hasDatabase)("no free use at every entry point (I-9, I-16)", as
       }
     });
 
-    it("with two active sources, /r/plan disables Reconciliation with the reason and lists those two to archive", async () => {
+    it("with two active sources, choosing Reconciliation on /r/plan asks which of those two to keep; nothing is listed up front", async () => {
       const { fundingSources } = await import("@/src/db/schema");
       const { ORIGINAL_RULES } = await import("@/src/modules/expenses/reimbursement");
-      const { ArchiveSources } = await import("@/app/r/plan/archive-sources");
       const { SubscribeButton } = await import("@/app/r/subscribe-button");
       const added = await db
         .insert(fundingSources)
@@ -253,12 +252,13 @@ describe.skipIf(!hasDatabase)("no free use at every entry point (I-9, I-16)", as
         const PlanPage = (await import("@/app/r/plan/page")).default;
         const page = await PlanPage({ searchParams: Promise.resolve({}) });
         const buttons = find(page, SubscribeButton);
-        expect(buttons.find((b) => b.props.plan === "reconciliation")?.props.disabledReason).toBe(
-          UI.billingSubscribeTooManySources(2),
-        );
-        expect(buttons.find((b) => b.props.plan === "reconciliation_ai")?.props.disabledReason).toBeUndefined();
-        const [list] = find(page, ArchiveSources);
-        expect(new Set(list?.props.sources as unknown[])).toEqual(new Set(active));
+        const reconciliation = buttons.find((b) => b.props.plan === "reconciliation");
+        // Not disabled: the question comes after the click, with exactly the active sources.
+        expect(reconciliation?.props.disabledReason).toBeUndefined();
+        expect(new Set(reconciliation?.props.keepOneOf as unknown[])).toEqual(new Set(active));
+        const ai = buttons.find((b) => b.props.plan === "reconciliation_ai");
+        expect(ai?.props.keepOneOf).toBeUndefined();
+        expect(ai?.props.disabledReason).toBeUndefined();
       } finally {
         await endSession();
         await db.delete(fundingSources).where(inArray(fundingSources.id, added.map((row) => row.id)));
