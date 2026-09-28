@@ -3,7 +3,7 @@
 import type { ReactNode } from "react";
 import { useId, useRef } from "react";
 
-import { OverlayShell } from "@/src/components/ui/overlay-shell";
+import { OverlayShell, useOverlayPresence } from "@/src/components/ui/overlay-shell";
 import { GRADIENT_TEXT } from "@/src/components/ui/surfaces";
 import { cn } from "@/src/lib/cn";
 
@@ -41,12 +41,14 @@ export function Modal({
 }) {
   const titleId = useId();
   const closeRef = useRef<HTMLButtonElement>(null);
+  // Stays on screen, showing what it last showed, while it fades out.
+  const { mounted, closing, shown } = useOverlayPresence(open, { title, children, size });
 
-  if (!open) return null;
+  if (!mounted) return null;
 
   return (
-    <OverlayShell open onDismiss={dismissDisabled ? () => {} : onClose} initialFocusRef={closeRef}>
-      <div className={`w-full ${MODAL_WIDTH[size]} max-h-[calc(100dvh-2rem)] overflow-y-auto`}>
+    <OverlayShell open onDismiss={dismissDisabled ? () => {} : onClose} initialFocusRef={closeRef} closing={closing}>
+      <div className={`w-full ${MODAL_WIDTH[shown.size]} max-h-[calc(100dvh-2rem)] overflow-y-auto`}>
         <div
           role="dialog"
           aria-modal="true"
@@ -73,7 +75,7 @@ export function Modal({
             )}
           >
             <div id={titleId} className="font-serif text-lg sm:text-xl font-bold min-w-0">
-              <span className={GRADIENT_TEXT}>{title}</span>
+              <span className={GRADIENT_TEXT}>{shown.title}</span>
             </div>
             <button
               ref={closeRef}
@@ -104,7 +106,7 @@ export function Modal({
           </div>
           {/* Matching the header's side padding, and more of it than the old 16px — a form
               pressed against the panel edge is what made this feel cramped. */}
-          <div className="px-5 sm:px-6 py-5">{children}</div>
+          <div className="px-5 sm:px-6 py-5">{shown.children}</div>
         </div>
       </div>
     </OverlayShell>

@@ -1,8 +1,47 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { useEffect, useId, useRef } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+
+/** How long a closing overlay stays on screen to fade out; matches `.overlay-backdrop[data-closing]`
+ *  in globals.css. Under a quarter second, per the motion rules there. */
+export const OVERLAY_EXIT_MS = 160;
+
+/**
+ * Keeps an overlay mounted for its closing animation. `open` going false leaves it `closing`
+ * for `OVERLAY_EXIT_MS`, then unmounted. `snapshot` is what the overlay showed while open,
+ * handed back unchanged while it fades: callers often clear their state in the same click that
+ * closes (a quote set to null, say), and without this the panel would go blank mid-fade.
+ * With reduce-motion set the CSS ends the animation at once, so the overlay is simply invisible
+ * and click-through for those 160ms.
+ */
+export function useOverlayPresence<T>(open: boolean, snapshot: T): { mounted: boolean; closing: boolean; shown: T } {
+  const [prevOpen, setPrevOpen] = useState(open);
+  const [closing, setClosing] = useState(false);
+  // The last snapshot an open render committed. Written after commit, so the render that
+  // closes still reads the previous (open) one.
+  const lastOpen = useRef(snapshot);
+  // Adjusting state while rendering when `open` changes (React's documented pattern for a prop
+  // change), so the frame that closes is already the closing frame.
+  if (open !== prevOpen) {
+    setPrevOpen(open);
+    setClosing(!open);
+  }
+
+  useEffect(() => {
+    if (open) lastOpen.current = snapshot;
+  });
+
+  useEffect(() => {
+    if (!closing) return;
+    const timer = setTimeout(() => setClosing(false), OVERLAY_EXIT_MS);
+    return () => clearTimeout(timer);
+  }, [closing]);
+
+  // eslint-disable-next-line react-hooks/refs -- read only while closing, after the open render committed it
+  return { mounted: open || closing, closing, shown: open ? snapshot : lastOpen.current };
+}
 
 /**
  * Which open overlays exist, oldest first — the last entry is whichever is stacked on top
@@ -28,11 +67,14 @@ export function OverlayShell({
   onDismiss,
   initialFocusRef,
   children,
+  closing = false,
 }: {
   open: boolean;
   onDismiss: () => void;
   initialFocusRef: React.RefObject<HTMLElement | null>;
   children: ReactNode;
+  /** Fading out (`useOverlayPresence`): drawn, but no longer answering clicks or Escape. */
+  closing?: boolean;
 }) {
   const rootRef = useRef<HTMLDivElement>(null);
   const returnFocusTo = useRef<HTMLElement | null>(null);
@@ -75,11 +117,11 @@ export function OverlayShell({
       // the one behind it too.
       if (openStack[openStack.length - 1] !== id) return;
       event.preventDefault();
-      onDismiss();
+      if (!closing) onDismiss();
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [open, onDismiss, id]);
+  }, [open, onDismiss, id, closing]);
 
   // Focus containment: everything behind the overlay becomes `inert` (unreachable by Tab or
   // a screen reader) for as long as it's open. Only the elements this effect itself marked
@@ -113,10 +155,12 @@ export function OverlayShell({
   return createPortal(
     <div
       ref={rootRef}
-      className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4 overflow-y-auto"
+      // `overlay-backdrop` fades the dim in and out and animates the panel (globals.css).
+      className="overlay-backdrop fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4 overflow-y-auto"
+      data-closing={closing ? "" : undefined}
       onClick={(event) => {
         // Only the backdrop itself dismisses; a click that started on the panel must not.
-        if (event.target === event.currentTarget) onDismiss();
+        if (event.target === event.currentTarget && !closing) onDismiss();
       }}
     >
       {children}
