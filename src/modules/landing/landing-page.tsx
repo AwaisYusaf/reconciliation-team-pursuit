@@ -3,6 +3,7 @@ import Link from "next/link";
 
 import { APP_NAME } from "@/src/domain/strings";
 
+import { LandingIcon } from "./landing-icons";
 import { type Faq, FaqList, LandingNav, type NavLink, Reveal } from "./landing-islands";
 import { DEMO_REQUEST_HREF, getStartedHref } from "./plan-links";
 import { planPrice, PLANS } from "./plans";
@@ -725,8 +726,8 @@ Receipt + Bank Proof
 
 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
 <div className="glass-tile bg-lp-surface-container-lowest/60 backdrop-blur-xl rounded-3xl p-6 border-2 border-primary/45 shadow-warm-card hover:shadow-warm-card-hover ring-1 ring-inset ring-white/30">
-<div className="w-10 h-10 rounded-xl bg-primary-fixed/75 backdrop-blur-md text-primary flex items-center justify-center mb-4 ring-1 ring-inset ring-white/30 border border-primary/12">
-<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
+<div className="w-11 h-11 rounded-2xl backdrop-blur-md ring-1 ring-inset ring-white/40 border border-primary/15 flex items-center justify-center bg-primary-fixed/75 text-primary mb-4">
+<LandingIcon name="calendarCheck" />
 </div>
 <h4 className="text-lg font-semibold text-on-surface font-lp-serif mb-1">Not when the report is due</h4>
 <p className="text-xs text-on-surface-variant mb-4 leading-relaxed">
@@ -738,8 +739,8 @@ Receipt + Bank Proof
 </div>
 </div>
 <div className="glass-tile bg-lp-surface-container-lowest/60 backdrop-blur-xl rounded-3xl p-6 border-2 border-primary/45 shadow-warm-card hover:shadow-warm-card-hover ring-1 ring-inset ring-white/30">
-<div className="w-10 h-10 rounded-xl bg-secondary-container/75 backdrop-blur-md text-secondary flex items-center justify-center mb-4 ring-1 ring-inset ring-white/30 border border-primary/12">
-<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M3 10h18M3 14h18m-9-4v8m-7 4h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
+<div className="w-11 h-11 rounded-2xl backdrop-blur-md ring-1 ring-inset ring-white/40 border border-primary/15 flex items-center justify-center bg-secondary-container/75 text-secondary mb-4">
+<LandingIcon name="scales" />
 </div>
 <h4 className="text-lg font-semibold text-on-surface font-lp-serif mb-1">Not when reconciliation starts</h4>
 <p className="text-xs text-on-surface-variant mb-4 leading-relaxed">
@@ -751,8 +752,8 @@ Receipt + Bank Proof
 </div>
 </div>
 <div className="glass-tile bg-lp-surface-container-lowest/60 backdrop-blur-xl rounded-3xl p-6 border-2 border-primary/45 shadow-warm-card hover:shadow-warm-card-hover ring-1 ring-inset ring-white/30">
-<div className="w-10 h-10 rounded-xl bg-brand-100/75 backdrop-blur-md text-brand-800 flex items-center justify-center mb-4 ring-1 ring-inset ring-white/30 border border-primary/12">
-<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
+<div className="w-11 h-11 rounded-2xl backdrop-blur-md ring-1 ring-inset ring-white/40 border border-primary/15 flex items-center justify-center bg-brand-100/75 text-brand-800 mb-4">
+<LandingIcon name="sealCheck" />
 </div>
 <h4 className="text-lg font-semibold text-on-surface font-lp-serif mb-1">Not when the auditor arrives</h4>
 <p className="text-xs text-on-surface-variant mb-4 leading-relaxed">
@@ -858,28 +859,36 @@ Receipt + Bank Proof
 </div>
 <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
 <div className="glass-tile bg-lp-surface-container-lowest/60 backdrop-blur-xl p-6 rounded-2xl border-2 border-primary/45 shadow-warm-card ring-1 ring-inset ring-white/30">
-<div className="w-9 h-9 rounded-xl bg-brand-100/75 backdrop-blur-md text-primary ring-1 ring-inset ring-white/40 border-2 border-primary/15 flex items-center justify-center font-semibold text-sm mb-3">Ø</div>
+<div className="w-11 h-11 rounded-2xl backdrop-blur-md ring-1 ring-inset ring-white/40 border border-primary/15 flex items-center justify-center bg-brand-100/75 text-primary mb-3">
+<LandingIcon name="chartLineUp" />
+</div>
 <h3 className="text-base font-semibold text-on-surface font-lp-serif mb-2">Track</h3>
 <p className="text-xs text-on-surface-variant leading-relaxed">
               Monitor budgets, expenses, funding sources, spending categories, and remaining balances.
           </p>
 </div>
 <div className="glass-tile bg-lp-surface-container-lowest/60 backdrop-blur-xl p-6 rounded-2xl border-2 border-primary/45 shadow-warm-card ring-1 ring-inset ring-white/30">
-<div className="w-9 h-9 rounded-xl bg-secondary-container/75 backdrop-blur-md text-secondary ring-1 ring-inset ring-white/40 border-2 border-primary/15 flex items-center justify-center font-semibold text-sm mb-3">√</div>
+<div className="w-11 h-11 rounded-2xl backdrop-blur-md ring-1 ring-inset ring-white/40 border border-primary/15 flex items-center justify-center bg-secondary-container/75 text-secondary mb-3">
+<LandingIcon name="receipt" />
+</div>
 <h3 className="text-base font-semibold text-on-surface font-lp-serif mb-2">Document</h3>
 <p className="text-xs text-on-surface-variant leading-relaxed">
               Connect receipts, invoices, approvals, supporting records, and program activity to the expenses they support.
           </p>
 </div>
 <div className="glass-tile bg-lp-surface-container-lowest/60 backdrop-blur-xl p-6 rounded-2xl border-2 border-primary/45 shadow-warm-card ring-1 ring-inset ring-white/30">
-<div className="w-9 h-9 rounded-xl bg-primary-fixed/75 backdrop-blur-md text-primary ring-1 ring-inset ring-white/40 border-2 border-primary/15 flex items-center justify-center font-semibold text-sm mb-3">∞</div>
+<div className="w-11 h-11 rounded-2xl backdrop-blur-md ring-1 ring-inset ring-white/40 border border-primary/15 flex items-center justify-center bg-primary-fixed/75 text-primary mb-3">
+<LandingIcon name="shieldCheck" />
+</div>
 <h3 className="text-base font-semibold text-on-surface font-lp-serif mb-2">Comply</h3>
 <p className="text-xs text-on-surface-variant leading-relaxed">
               Stay aligned with funding requirements while preparing for reconciliation, reporting, monitoring, and audit.
           </p>
 </div>
 <div className="glass-tile bg-lp-surface-container-lowest/60 backdrop-blur-xl p-6 rounded-2xl border-2 border-primary/45 shadow-warm-card ring-1 ring-inset ring-white/30">
-<div className="w-9 h-9 rounded-xl bg-terracotta-100/75 backdrop-blur-md text-terracotta-700 ring-1 ring-inset ring-white/40 border-2 border-primary/15 flex items-center justify-center font-semibold text-sm mb-3">§</div>
+<div className="w-11 h-11 rounded-2xl backdrop-blur-md ring-1 ring-inset ring-white/40 border border-primary/15 flex items-center justify-center bg-terracotta-100/75 text-terracotta-700 mb-3">
+<LandingIcon name="stack" />
+</div>
 <h3 className="text-base font-semibold text-on-surface font-lp-serif mb-2">Multiple grants</h3>
 <p className="text-xs text-on-surface-variant leading-relaxed">
               Each can maintain its own budget, guidelines, expenses, documentation, and requirements while leadership maintains visibility across the organization.
@@ -934,28 +943,36 @@ Receipt + Bank Proof
 </div>
 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
 <div className="glass-tile bg-lp-surface-container-lowest/60 backdrop-blur-xl p-6 rounded-2xl border-2 border-primary/45 shadow-warm-card ring-1 ring-inset ring-white/30">
-<div className="w-10 h-10 rounded-xl bg-primary-fixed/75 backdrop-blur-md text-primary ring-1 ring-inset ring-white/40 border-2 border-primary/15 flex items-center justify-center font-semibold text-sm mb-4">01</div>
+<div className="w-11 h-11 rounded-2xl backdrop-blur-md ring-1 ring-inset ring-white/40 border border-primary/15 flex items-center justify-center bg-primary-fixed/75 text-primary mb-4">
+<LandingIcon name="bookOpenText" />
+</div>
 <h3 className="text-base font-semibold text-on-surface font-lp-serif mb-2">Stay bookkeeping ready</h3>
 <p className="text-xs text-on-surface-variant leading-relaxed">
               Records stay organized and connected as expenses happen, so the books are easier to keep.
           </p>
 </div>
 <div className="glass-tile bg-lp-surface-container-lowest/60 backdrop-blur-xl p-6 rounded-2xl border-2 border-primary/45 shadow-warm-card ring-1 ring-inset ring-white/30">
-<div className="w-10 h-10 rounded-xl bg-secondary-container/75 backdrop-blur-md text-secondary ring-1 ring-inset ring-white/40 border-2 border-primary/15 flex items-center justify-center font-semibold text-sm mb-4">02</div>
+<div className="w-11 h-11 rounded-2xl backdrop-blur-md ring-1 ring-inset ring-white/40 border border-primary/15 flex items-center justify-center bg-secondary-container/75 text-secondary mb-4">
+<LandingIcon name="listChecks" />
+</div>
 <h3 className="text-base font-semibold text-on-surface font-lp-serif mb-2">Stay reconciliation ready</h3>
 <p className="text-xs text-on-surface-variant leading-relaxed">
               Expenses arrive documented and categorized, so reconciliation confirms what is already there.
           </p>
 </div>
 <div className="glass-tile bg-lp-surface-container-lowest/60 backdrop-blur-xl p-6 rounded-2xl border-2 border-primary/45 shadow-warm-card ring-1 ring-inset ring-white/30">
-<div className="w-10 h-10 rounded-xl bg-brand-100/75 backdrop-blur-md text-brand-800 ring-1 ring-inset ring-white/40 border-2 border-primary/15 flex items-center justify-center font-semibold text-sm mb-4">03</div>
+<div className="w-11 h-11 rounded-2xl backdrop-blur-md ring-1 ring-inset ring-white/40 border border-primary/15 flex items-center justify-center bg-brand-100/75 text-brand-800 mb-4">
+<LandingIcon name="presentationChart" />
+</div>
 <h3 className="text-base font-semibold text-on-surface font-lp-serif mb-2">Stay reporting ready</h3>
 <p className="text-xs text-on-surface-variant leading-relaxed">
               The numbers and the narrative stay connected, so reports don&apos;t start from memory.
           </p>
 </div>
 <div className="glass-tile bg-lp-surface-container-lowest/60 backdrop-blur-xl p-6 rounded-2xl border-2 border-primary/45 shadow-warm-card ring-1 ring-inset ring-white/30">
-<div className="w-10 h-10 rounded-xl bg-terracotta-100/75 backdrop-blur-md text-terracotta-700 ring-1 ring-inset ring-white/40 border-2 border-primary/15 flex items-center justify-center font-semibold text-sm mb-4">04</div>
+<div className="w-11 h-11 rounded-2xl backdrop-blur-md ring-1 ring-inset ring-white/40 border border-primary/15 flex items-center justify-center bg-terracotta-100/75 text-terracotta-700 mb-4">
+<LandingIcon name="clipboardText" />
+</div>
 <h3 className="text-base font-semibold text-on-surface font-lp-serif mb-2">Stay audit ready</h3>
 <p className="text-xs text-on-surface-variant leading-relaxed">
               Documentation, approvals, and funding requirements stay in place, so a monitoring request isn&apos;t a scramble.
