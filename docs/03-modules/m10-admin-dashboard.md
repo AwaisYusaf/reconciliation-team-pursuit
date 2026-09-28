@@ -67,7 +67,7 @@ either screen renders more rows than it asks for: ten organizations per page
   usage and Actions shows our copy of its state (`staffBilling()` in `directory.ts`): Stripe
   status, billed monthly/yearly, "Renews on" or "Ends on", the last payment, "Total paid" (the
   sum of every paid invoice, read page by page from Stripe by `staffTotalPaid` when the page opens,
-  before any refunds; left out if Stripe can't be reached), a scheduled change, and warnings for
+  before any refunds; left out while billing is off or if Stripe can't be reached), a scheduled change, and warnings for
   a failed payment, an upgrade waiting for payment, collection paused, and a card dispute
   ("Card dispute opened on {date}", from `org_billing.disputed_at`, never cleared); plus "Open in Stripe" (the dashboard customer page, `/test/` for a test
   customer). While billing is on and a subscription is live, Change plan is disabled with
@@ -77,11 +77,11 @@ either screen renders more rows than it asks for: ten organizations per page
   pays is asked of Stripe on save (a re-sync first), so if the page's copy was behind, Save
   refuses and the dialog then shows the choice; Stripe is
   cancelled first, and a Stripe failure grants nothing. An end date must be today or later
-  (`complimentaryUntilPast`). When the org bought a plan during its free access (not charged yet),
-  that plan's first charge follows the grant (`complimentaryStripeStep`): a new end date moves it
-  to the day after, removing the grant starts it now, and making the grant open-ended asks the same
-  cancel choice instead. A change already scheduled on that plan in Stripe refuses
-  (`staffCompChangeQueued`) rather than guess. Suspend pauses collection, reinstate
+  (`complimentaryUntilPast`); removing a grant that has already ended is never refused for its
+  date. No other change to complimentary access touches Stripe: a plan bought during free access
+  is paid for at once and ends the grant once paid (D-128), so no subscription waits on a
+  complimentary date. A grant staff make after a subscription was bought is never ended by it,
+  even one made while its Checkout was still open (D-129). Suspend pauses collection, reinstate
   resumes it (D3). History lines written by the sync read "Stripe" as the actor.
 - **Feature requests (PHASE-17, D-127)**: the top of `/a` and of `/a/feature-requests` carries
   **Organizations** · **Feature requests (N)** (`src/components/admin/section-links.tsx`), N
