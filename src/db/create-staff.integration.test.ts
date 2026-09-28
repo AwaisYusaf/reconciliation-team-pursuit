@@ -11,12 +11,22 @@ import { config } from "dotenv";
 config({ path: ".env.local", quiet: true });
 
 import { execFile } from "node:child_process";
+import path from "node:path";
 import { promisify } from "node:util";
 
 import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 const run = promisify(execFile);
+
+/**
+ * tsx's own entry, run by this Node directly (Phase 0 B9). Going through `npx` in a shell added
+ * seconds of package resolution to every case, which pushed them past their limit when the
+ * whole suite ran at once.
+ */
+const TSX = path.join(process.cwd(), "node_modules", "tsx", "dist", "cli.mjs");
+/** Each case starts one or two scripts that connect to the database and hash a password. */
+const SCRIPT_TIMEOUT = 60_000;
 const hasDatabase = Boolean(process.env.DATABASE_URL);
 
 describe.skipIf(!hasDatabase)("db:create-staff / db:reset-password staff fallback (subprocess, integration)", async () => {
@@ -47,10 +57,9 @@ describe.skipIf(!hasDatabase)("db:create-staff / db:reset-password staff fallbac
 
   async function runScript(script: string, args: string[], extraEnv: Record<string, string> = {}) {
     try {
-      const { stdout } = await run("npx", ["tsx", "--conditions=react-server", script, ...args], {
+      const { stdout } = await run(process.execPath, [TSX, "--conditions=react-server", script, ...args], {
         cwd: process.cwd(),
         env: { ...process.env, ...extraEnv },
-        shell: true,
       });
       return { exitCode: 0, stdout };
     } catch (error) {
@@ -70,7 +79,7 @@ describe.skipIf(!hasDatabase)("db:create-staff / db:reset-password staff fallbac
 
     const rows = await db.select({ id: staffUsers.id }).from(staffUsers).where(eq(staffUsers.email, customerEmail));
     expect(rows).toHaveLength(0);
-  }, 30_000);
+  }, SCRIPT_TIMEOUT);
 
   it("creates a staff row with valid args, prints the password once, and the password verifies", async () => {
     const email = `create-staff-new-${Date.now()}@example.test`;
@@ -90,7 +99,7 @@ describe.skipIf(!hasDatabase)("db:create-staff / db:reset-password staff fallbac
       .where(eq(staffUsers.email, email));
     expect(row).toBeDefined();
     expect(await verifyPassword(row.passwordHash, password)).toBe(true);
-  }, 30_000);
+  }, SCRIPT_TIMEOUT);
 
   it("refuses an existing staff email in a different case, no second row", async () => {
     const email = `create-staff-dup-${Date.now()}@example.test`;
@@ -104,7 +113,7 @@ describe.skipIf(!hasDatabase)("db:create-staff / db:reset-password staff fallbac
 
     const rows = await db.select({ id: staffUsers.id }).from(staffUsers).where(eq(staffUsers.email, email));
     expect(rows).toHaveLength(1);
-  }, 30_000);
+  }, SCRIPT_TIMEOUT);
 
   it("refuses a weak --password, no row created", async () => {
     const email = `create-staff-weak-${Date.now()}@example.test`;
@@ -121,7 +130,7 @@ describe.skipIf(!hasDatabase)("db:create-staff / db:reset-password staff fallbac
 
     const rows = await db.select({ id: staffUsers.id }).from(staffUsers).where(eq(staffUsers.email, email));
     expect(rows).toHaveLength(0);
-  }, 30_000);
+  }, SCRIPT_TIMEOUT);
 
   /* ----------------------------------------- the deploy path (--skip-existing + env vars) */
 
@@ -129,7 +138,7 @@ describe.skipIf(!hasDatabase)("db:create-staff / db:reset-password staff fallbac
     const result = await runScript("src/db/create-staff.ts", ["--skip-existing"], { STAFF_EMAIL: "" });
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toMatch(/No STAFF_EMAIL configured/);
-  }, 30_000);
+  }, SCRIPT_TIMEOUT);
 
   it("--skip-existing creates the account from the environment without printing the password", async () => {
     const email = `create-staff-deploy-${Date.now()}@example.test`;
@@ -151,7 +160,7 @@ describe.skipIf(!hasDatabase)("db:create-staff / db:reset-password staff fallbac
       .where(eq(staffUsers.email, email));
     expect(row.name).toBe("Deploy Created");
     expect(await verifyPassword(row.passwordHash, "a-configured-password-1")).toBe(true);
-  }, 30_000);
+  }, SCRIPT_TIMEOUT);
 
   it("a second --skip-existing run leaves the account and its password untouched", async () => {
     const email = `create-staff-redeploy-${Date.now()}@example.test`;
@@ -206,7 +215,7 @@ describe.skipIf(!hasDatabase)("db:create-staff / db:reset-password staff fallbac
 
     const rows = await db.select({ id: staffUsers.id }).from(staffUsers).where(eq(staffUsers.email, email));
     expect(rows).toHaveLength(0);
-  }, 30_000);
+  }, SCRIPT_TIMEOUT);
 
   it("a whitespace-only STAFF_PASSWORD is treated as unset, not as a password", async () => {
     const email = `create-staff-spaces-${Date.now()}@example.test`;
@@ -224,7 +233,7 @@ describe.skipIf(!hasDatabase)("db:create-staff / db:reset-password staff fallbac
 
     const rows = await db.select({ id: staffUsers.id }).from(staffUsers).where(eq(staffUsers.email, email));
     expect(rows).toHaveLength(0);
-  }, 30_000);
+  }, SCRIPT_TIMEOUT);
 
   it("a blank STAFF_PASSWORD on a redeploy is fine: the existing account is left alone, not refused", async () => {
     const email = `create-staff-blankpass-${Date.now()}@example.test`;
@@ -271,7 +280,7 @@ describe.skipIf(!hasDatabase)("db:create-staff / db:reset-password staff fallbac
       .from(staffUsers)
       .where(eq(staffUsers.email, email));
     expect(await verifyPassword(row.passwordHash, passwordMatch![1])).toBe(true);
-  }, 30_000);
+  }, SCRIPT_TIMEOUT);
 
   it("--skip-existing still refuses an email that belongs to a customer", async () => {
     const result = await runScript("src/db/create-staff.ts", ["--skip-existing"], {
@@ -283,7 +292,7 @@ describe.skipIf(!hasDatabase)("db:create-staff / db:reset-password staff fallbac
 
     const rows = await db.select({ id: staffUsers.id }).from(staffUsers).where(eq(staffUsers.email, customerEmail));
     expect(rows).toHaveLength(0);
-  }, 30_000);
+  }, SCRIPT_TIMEOUT);
 
   it("db:reset-password on a staff email: new hash verifies, that staff's staff_sessions are deleted", async () => {
     const email = `create-staff-reset-${Date.now()}@example.test`;
@@ -315,5 +324,5 @@ describe.skipIf(!hasDatabase)("db:create-staff / db:reset-password staff fallbac
       .from(staffSessions)
       .where(eq(staffSessions.staffUserId, staff.id));
     expect(remainingSessions).toHaveLength(0);
-  }, 30_000);
+  }, SCRIPT_TIMEOUT);
 });

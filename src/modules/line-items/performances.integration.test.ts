@@ -435,8 +435,8 @@ describe.skipIf(!hasDatabase)("line item performances (integration)", async () =
     if (!asked.ok) throw new Error("unreachable");
     expect(asked.data.requiresConfirmation?.performanceTotalCents).toBe(17500000);
 
-    const confirmed = await deleteLineItemAction(lineItemId, true);
-    expect(confirmed.ok).toBe(true);
+    const confirmed = await deleteLineItemAction(lineItemId, asked.data.requiresConfirmation!);
+    expect(confirmed).toEqual({ ok: true, data: {} });
 
     // Cascade-deleted with the line item (FK onDelete: "cascade") â€” nothing orphaned.
     const remaining = await db

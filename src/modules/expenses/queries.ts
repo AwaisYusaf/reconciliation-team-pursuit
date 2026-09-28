@@ -142,13 +142,17 @@ async function documentsFor(orgId: string, expenseIds: string[]): Promise<Map<st
       status: expenseDocuments.status,
     })
     .from(expenseDocuments)
-    .where(eq(expenseDocuments.orgId, orgId))
+    // Only these expenses' files, found by `expense_documents_expense_idx` (Phase 0 B7). It used to
+    // load every document in the organisation on each list, detail and trash read, then throw
+    // most of them away here.
+    // ponytail: one bind parameter per id, and Postgres allows 65,535 per query. Only the trash
+    // (every month) is unbounded, so ~65,000 trashed expenses would fail here; chunk the ids if
+    // a trash ever gets near that.
+    .where(and(eq(expenseDocuments.orgId, orgId), inArray(expenseDocuments.expenseId, expenseIds)))
     .orderBy(asc(expenseDocuments.kind), asc(expenseDocuments.sortOrder));
 
   const byExpense = new Map<string, AttachedDocument[]>();
-  const wanted = new Set(expenseIds);
   for (const row of rows) {
-    if (!wanted.has(row.expenseId)) continue;
     const list = byExpense.get(row.expenseId) ?? [];
     list.push(row);
     byExpense.set(row.expenseId, list);

@@ -37,6 +37,24 @@ export function planLineItemDelete(input: {
   };
 }
 
+/**
+ * True when what the person confirmed is still exactly what the delete would remove (Phase 0
+ * B5). A recurring item or performance added between the dialog and the click would otherwise
+ * be deleted without ever having been shown, so a mismatch means "ask again", never "delete".
+ */
+export function sameCascade(
+  confirmed: { recurringNames: readonly string[]; performanceTotalCents: number },
+  now: { recurringNames: readonly string[]; performanceTotalCents: number },
+): boolean {
+  const sorted = (names: readonly string[]) => [...names].sort();
+  const [a, b] = [sorted(confirmed.recurringNames), sorted(now.recurringNames)];
+  return (
+    confirmed.performanceTotalCents === now.performanceTotalCents &&
+    a.length === b.length &&
+    a.every((name, index) => name === b[index])
+  );
+}
+
 /** Wording for the cascade confirmation, listing what will be removed alongside. */
 export function cascadeConfirmation(
   recurringNames: readonly string[],

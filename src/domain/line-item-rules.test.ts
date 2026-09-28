@@ -5,6 +5,7 @@ import {
   isDuplicateName,
   moveInOrder,
   planLineItemDelete,
+  sameCascade,
 } from "./line-item-rules";
 
 describe("planLineItemDelete (R9.3)", () => {
@@ -152,5 +153,28 @@ describe("moveInOrder", () => {
     const original = [...items];
     moveInOrder(items, 0, 1);
     expect(items).toEqual(original);
+  });
+});
+
+describe("sameCascade (Phase 0 B5)", () => {
+  const shown = { recurringNames: ["Rent", "Parking"], performanceTotalCents: 5_000 };
+
+  it("matches the same list in any order", () => {
+    expect(sameCascade(shown, { recurringNames: ["Parking", "Rent"], performanceTotalCents: 5_000 })).toBe(true);
+    expect(sameCascade({ recurringNames: [], performanceTotalCents: 0 }, { recurringNames: [], performanceTotalCents: 0 })).toBe(true);
+  });
+
+  it("does not match once a recurring item was added, removed or renamed since the dialog", () => {
+    expect(sameCascade(shown, { recurringNames: ["Rent", "Parking", "Phone"], performanceTotalCents: 5_000 })).toBe(false);
+    expect(sameCascade(shown, { recurringNames: ["Rent"], performanceTotalCents: 5_000 })).toBe(false);
+    expect(sameCascade(shown, { recurringNames: ["Rent", "Garage"], performanceTotalCents: 5_000 })).toBe(false);
+  });
+
+  it("does not match once the performance total changed", () => {
+    expect(sameCascade(shown, { recurringNames: ["Rent", "Parking"], performanceTotalCents: 7_500 })).toBe(false);
+  });
+
+  it("does not mistake a repeated name for a different list", () => {
+    expect(sameCascade({ recurringNames: ["Rent", "Rent"], performanceTotalCents: 0 }, { recurringNames: ["Rent"], performanceTotalCents: 0 })).toBe(false);
   });
 });

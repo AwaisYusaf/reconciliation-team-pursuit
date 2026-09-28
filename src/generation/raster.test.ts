@@ -7,8 +7,9 @@
  * on a machine without it; the application container always ships it.
  */
 import { execFileSync } from "node:child_process";
-import { readdir } from "node:fs/promises";
+import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
+import path from "node:path";
 
 import { PDFDocument, StandardFonts } from "pdf-lib";
 import sharp from "sharp";
@@ -91,16 +92,30 @@ describe.skipIf(!hasPoppler())("rasterizePdf", () => {
   });
 
   it("leaves no temp directory behind, even when the caller throws", async () => {
-    const before = (await readdir(tmpdir())).filter((name) => name.startsWith("ngo-raster-"));
+    // A temp root of its own (Phase 0 B9), as `docx-to-pdf.test.ts` does. Counting `ngo-raster-`
+    // in the shared temp folder also counted other test files' live directories, so it failed
+    // at random whenever the whole suite ran at once. `os.tmpdir()` reads these variables on each
+    // call, and each test file runs in its own process, so only this test is redirected.
+    const previous = { TMPDIR: process.env.TMPDIR, TEMP: process.env.TEMP, TMP: process.env.TMP };
+    const root = await mkdtemp(path.join(tmpdir(), "ngo-rastercheck-"));
+    process.env.TMPDIR = root;
+    process.env.TEMP = root;
+    process.env.TMP = root;
 
-    await expect(
-      rasterizePdf(await makePdf(2), () => {
-        throw new Error("caller exploded");
-      }),
-    ).rejects.toThrow("caller exploded");
+    try {
+      await expect(
+        rasterizePdf(await makePdf(2), () => {
+          throw new Error("caller exploded");
+        }),
+      ).rejects.toThrow("caller exploded");
 
-    const after = (await readdir(tmpdir())).filter((name) => name.startsWith("ngo-raster-"));
-    expect(after.length).toBe(before.length);
+      expect(await readdir(root)).toEqual([]);
+    } finally {
+      process.env.TMPDIR = previous.TMPDIR;
+      process.env.TEMP = previous.TEMP;
+      process.env.TMP = previous.TMP;
+      await rm(root, { recursive: true, force: true });
+    }
   });
 
   it("refuses a file that is not a PDF rather than producing a broken page", async () => {

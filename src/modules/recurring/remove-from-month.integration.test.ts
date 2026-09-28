@@ -31,6 +31,7 @@ const hasDatabase = Boolean(process.env.DATABASE_URL);
 describe.skipIf(!hasDatabase)("removeRecurringFromMonthAction (integration)", async () => {
   const { db } = await import("@/src/db");
   const {
+    expenseAuditEvents,
     expenseDocuments,
     expenses,
     lineItems,
@@ -259,6 +260,51 @@ describe.skipIf(!hasDatabase)("removeRecurringFromMonthAction (integration)", as
 
     const trashed = await loadTrashedExpenses(orgId, fundingSourceId);
     expect(trashed.map((entry) => entry.id)).toContain(createdExpense.id);
+  });
+
+  it("Phase 0 B2: adding and removing a recurring item each write the expense's history, naming who did it", async () => {
+    asOrg(orgId);
+    await saveRecurringItemAction({
+      name: "Audited One-Click Add",
+      amount: "42.00",
+      lineItemId,
+      defaultDescription: "",
+      defaultNarrative: "Monthly parking pass",
+      defaultPaymentSource: "Cash",
+      defaultTax: "",
+      defaultFees: "",
+    });
+    const [recurringItem] = await db
+      .select({ id: recurringItems.id })
+      .from(recurringItems)
+      .where(and(eq(recurringItems.orgId, orgId), eq(recurringItems.name, "Audited One-Click Add")));
+
+    const { addRecurringToMonthAction } = await import("./actions");
+    expect((await addRecurringToMonthAction(recurringItem.id, MONTH)).ok).toBe(true);
+    const [created] = await db
+      .select({ id: expenses.id, recurringItemId: expenses.recurringItemId, narrative: expenses.narrative })
+      .from(expenses)
+      .where(and(eq(expenses.orgId, orgId), eq(expenses.name, "Audited One-Click Add")));
+    // Still linked to its template, so Remove can find it, and still carries the narrative.
+    expect(created.recurringItemId).toBe(recurringItem.id);
+    expect(created.narrative).toBe("Monthly parking pass");
+
+    expect((await removeRecurringFromMonthAction(recurringItem.id, MONTH, false)).ok).toBe(true);
+
+    const history = await db
+      .select({
+        action: expenseAuditEvents.action,
+        actor: expenseAuditEvents.actorUserId,
+        before: expenseAuditEvents.beforeData,
+        after: expenseAuditEvents.afterData,
+      })
+      .from(expenseAuditEvents)
+      .where(eq(expenseAuditEvents.expenseId, created.id))
+      .orderBy(expenseAuditEvents.createdAt);
+    expect(history.map((event) => event.action)).toEqual(["created", "deleted"]);
+    expect(history.every((event) => event.actor === userId)).toBe(true);
+    expect(history[0].after).toMatchObject({ name: "Audited One-Click Add", lineItemName: "Parking" });
+    expect(history[1].before).toMatchObject({ name: "Audited One-Click Add", lineItemName: "Parking" });
   });
 
   it("review fix: Remove on the old template cannot reach an expense that was since moved to another source", async () => {

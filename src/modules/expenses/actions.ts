@@ -29,7 +29,14 @@ import { deleteStoredObjects } from "@/src/services/storage/documents";
 import { isUuid } from "@/src/lib/ids";
 import { isKnownPaymentSource } from "@/src/modules/settings/labels";
 
-import { insertExpenseWithAudit, learnVendor, snapshotOf, toRow } from "./expense-row";
+import {
+  EXPENSE_SNAPSHOT_COLUMNS,
+  insertDeletedAudit,
+  insertExpenseWithAudit,
+  learnVendor,
+  snapshotOf,
+  toRow,
+} from "./expense-row";
 import { validate } from "./validation";
 
 export type ExpenseInput = {
@@ -76,31 +83,6 @@ function pickSnapshot(row: ExpenseAuditSnapshot): ExpenseAuditSnapshot {
     noReceiptReason: row.noReceiptReason,
   };
 }
-
-/**
- * The audit snapshot's field set, minus `lineItemName` — one shared column list for the three
- * actions (delete/restore/permanent-delete) that read it straight off `expenses` rather than
- * building it from `toRow()`, so there's one place to update if a field is ever added instead
- * of three near-identical `.select()` calls drifting apart.
- */
-const EXPENSE_SNAPSHOT_COLUMNS = {
-  name: expenses.name,
-  fundingSourceId: expenses.fundingSourceId,
-  lineItemId: expenses.lineItemId,
-  paymentSource: expenses.paymentSource,
-  month: expenses.month,
-  date: expenses.date,
-  description: expenses.description,
-  subtotalCents: expenses.subtotalCents,
-  taxCents: expenses.taxCents,
-  feesCents: expenses.feesCents,
-  taxReimbursable: expenses.taxReimbursable,
-  feesReimbursable: expenses.feesReimbursable,
-  note: expenses.note,
-  narrative: expenses.narrative,
-  noReceipt: expenses.noReceipt,
-  noReceiptReason: expenses.noReceiptReason,
-} as const;
 
 /** Signals a row that existed at the read inside a transaction but was gone by the write — a
  *  concurrent delete raced this one. Caught at the call site and turned into the normal
@@ -493,25 +475,11 @@ export async function deleteExpenseAction(id: string): Promise<ActionResult> {
       const raceMessage = found ? "That expense just changed. Try again." : "That expense no longer exists.";
       return { ok: true as const, rows: trashed_, raceMessage };
     }
-    const [row] = trashed_;
-
-    // RETURNING cannot reach a joined table, so the line item's (and its source's) name — the
-    // fields the snapshot needs that aren't columns on `expenses` — cost one extra select. The
-    // FK is `onDelete: "restrict"` (schema.ts), so the row this points at can never be gone.
-    const [lineItem] = await tx
-      .select({ name: lineItems.name, fundingSourceName: fundingSources.name })
-      .from(lineItems)
-      .innerJoin(fundingSources, eq(fundingSources.id, lineItems.fundingSourceId))
-      .where(eq(lineItems.id, row.lineItemId))
-      .limit(1);
-
-    await tx.insert(expenseAuditEvents).values({
+    await insertDeletedAudit(tx, {
       orgId: current.orgId,
-      expenseId: id,
       actorUserId: current.userId,
-      action: "deleted",
-      beforeData: snapshotOf(row, lineItem?.name ?? "", lineItem?.fundingSourceName ?? ""),
-      afterData: null,
+      expenseId: id,
+      row: trashed_[0],
     });
 
     return { ok: true as const, rows: trashed_, raceMessage: undefined as string | undefined };

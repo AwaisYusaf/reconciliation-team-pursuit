@@ -11,6 +11,7 @@ import { and, eq, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
 import { db } from "@/src/db";
+import { isUniqueViolation } from "@/src/db/pg-errors";
 import { fundingSourceType, fundingSources, organizations } from "@/src/db/schema";
 import { isValidIsoDate } from "@/src/domain/dates";
 import { isDuplicateName } from "@/src/domain/line-item-rules";
@@ -49,18 +50,6 @@ function optionalMoney(value: string): number | null {
 }
 
 const DUPLICATE_NAME = "A funding source with that name already exists.";
-
-/**
- * True for Postgres unique_violation (23505), raw or wrapped by Drizzle (which keeps the pg
- * error as `cause`). The app-level duplicate check runs first; this turns the race it cannot
- * close — two saves of the same name at once, stopped by `funding_sources_org_name_uq` — into
- * the same friendly refusal instead of a 500.
- */
-function isUniqueViolation(error: unknown): boolean {
-  const code = (value: unknown) =>
-    typeof value === "object" && value !== null ? (value as { code?: unknown }).code : undefined;
-  return code(error) === "23505" || code((error as { cause?: unknown })?.cause) === "23505";
-}
 
 /** Shared validation for create and update — returns the parsed values or a failure. */
 async function validate(
