@@ -2,7 +2,7 @@
 #
 # Nightly database backup (D-07). Run from cron on the EC2 host:
 #
-#   15 3 * * * /home/ec2-user/ngo-expenses/backup.sh >> /home/ec2-user/backup.log 2>&1
+#   15 3 * * * /home/ec2-user/reconciliation-team-pursuit/backup.sh >> /home/ec2-user/backup.log 2>&1
 #
 # `pg_dump` runs inside the postgres container, so its version always matches the server it
 # is dumping — a mismatch is the usual reason a backup script stops working after an upgrade.

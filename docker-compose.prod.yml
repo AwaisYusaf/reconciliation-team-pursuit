@@ -1,12 +1,12 @@
-# Production stack for the reconciliation app, on the same EC2 box as the-pride-api.
+# Production stack for the reconciliation app (Stay Funded 360), on its own EC2 box.
 #
-# Deliberately does NOT define a reverse proxy. The Caddy container belonging to
-# the-pride-api already owns :80 and :443 and issues Let's Encrypt certificates; a second
-# proxy could not bind those ports and would fight the first. Instead this app joins that
-# Caddy's network, and one site block is added to its Caddyfile — so deploying, restarting
-# or rebuilding this stack never touches the other service.
+# Deliberately does NOT define a reverse proxy. nginx runs on the host, owns :80 and :443,
+# terminates TLS with certbot's certificates and forwards to the app on 127.0.0.1:3000, the
+# only port this stack publishes, and only on the loopback address. Until 2026-09 the app
+# shared a box with the-pride-api and sat behind that project's Caddy instead; see
+# docs/04-engineering/move-to-new-aws-account.md.
 #
-#   app      - the Next.js server, reached by Caddy at reconciliation-app:3000
+#   app      - the Next.js server, reached by nginx at 127.0.0.1:3000
 #   postgres - this app's own database, internal to this stack only
 #   migrate  - one-off schema migration, run by ./deploy.sh; never started by `up`
 
@@ -14,8 +14,6 @@ services:
   app:
     build: .
     image: reconciliation:latest
-    # The alias Caddy reverse-proxies to. Must not be `app`, which the-pride-api's own
-    # container already answers to on the shared network.
     container_name: reconciliation-app
     env_file: .env
     restart: unless-stopped
@@ -26,11 +24,12 @@ services:
       # Uploads and generated artifacts when the local storage driver is used. Named so a
       # rebuild cannot destroy it; with S3_BUCKET set it simply stays empty.
       - reconciliation-data:/data
-    expose:
-      - '3000' # internal only — Caddy is the public face
+    ports:
+      # Loopback only: nginx on this host is the public face, and nothing off the box can
+      # reach the app directly, whatever the security group allows.
+      - '127.0.0.1:3000:3000'
     networks:
       - internal
-      - proxy
 
   # Migrations run here rather than inside the app's start command: two app containers
   # starting at once would race the migrator, and a failed migration must stop the deploy
@@ -62,8 +61,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
     volumes:
       - reconciliation-pg-data:/var/lib/postgresql/data
-    # No host port published on purpose: nothing outside this stack needs to reach it, and
-    # binding one risks colliding with the-pride-api's dev compose, which claims 5433.
+    # No host port published on purpose: nothing outside this stack needs to reach it.
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U reconciliation -d reconciliation']
       interval: 5s
@@ -75,11 +73,6 @@ services:
 networks:
   internal:
     driver: bridge
-  proxy:
-    # The network the-pride-api's Caddy already runs on. `external` means compose attaches
-    # to it and never creates, modifies or removes it.
-    name: the-pride-api_default
-    external: true
 
 volumes:
   reconciliation-data:

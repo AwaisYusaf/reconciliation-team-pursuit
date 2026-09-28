@@ -43,6 +43,7 @@ Docs-first, AI-native project. **These files are the source of truth.** Code ser
 | `04-engineering/review-2026-08-17-responsive.md` | Mobile and tablet UI review — measurements, the shared scale, and results |
 | `04-engineering/review-2026-08-17-auth.md` | Authentication hardening review — memory-exhaustion DoS, phantom AUTH_SECRET, and the rest |
 | `04-engineering/deploy-ec2.md` | EC2 deployment — why this shape, operations, redeploys, rollback |
+| `04-engineering/move-to-new-aws-account.md` | Moving production from the shared the-pride-api box (old account, Caddy, `reconciliation.teampursuit.org`) to its own EC2 in the new account (nginx, `stayfunded360.com`): the one compose change, a practice copy, then a one-hour switch-over copying the database (`pg_dump`) and every S3 object, the Stripe webhook URL, and the old domain kept as a redirect. `deploy-ec2.md` and `ec2-first-deploy.md` describe the old shared box until they are rewritten |
 | `04-engineering/ec2-first-deploy.md` | First deployment, step by step: DNS, S3, IAM, swap, clone, Caddy, reboot test |
 | `04-engineering/review-2026-08-20-february.md` | The February test — cover sheet conformance against the client's approved document |
 | `04-engineering/scenarios.md` | The twelve end-to-end scenarios, written before being run, with results |

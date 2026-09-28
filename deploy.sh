@@ -1,12 +1,10 @@
 #!/usr/bin/env bash
 #
-# Deploy the reconciliation app on the EC2 box it shares with the-pride-api.
+# Deploy the reconciliation app (Stay Funded 360) on its EC2 box.
 #
-# This script touches ONLY this stack. It never edits ~/the-pride-api/Caddyfile, never
-# restarts that project's Caddy, and never creates or removes the shared Docker network —
-# `the-pride-api_default` is declared external, so compose only ever attaches to it.
-# The Caddy site block for stayfunded360.com is added once, during first-time
-# setup (docs/04-engineering/deploy-ec2.md); redeploys do not need it and must not touch it.
+# This script touches ONLY this stack. nginx on the host, which forwards stayfunded360.com to
+# 127.0.0.1:3000, is set up once during first-time setup
+# (docs/04-engineering/move-to-new-aws-account.md); redeploys do not need it and never touch it.
 #
 #   ./deploy.sh              pull, build, migrate, restart, verify
 #   ./deploy.sh --env-only   apply .env changes only (recreate the app, no rebuild)
@@ -102,8 +100,9 @@ preflight() {
   fi
   echo "==> Shared links will use ${app_url}"
 
-  # Two concurrent builds on a 3.7 GB box is the realistic way to OOM this instance, and
-  # the kernel picks the victim — which may be the-pride-api. One deploy at a time.
+  # Two concurrent builds on a 4 GB box is the realistic way to run it out of memory, and
+  # the kernel picks the victim, which may be the running app or its database. One deploy
+  # at a time.
   if command -v flock >/dev/null 2>&1; then
     exec 9>/tmp/reconciliation-deploy.lock
     if ! flock -n 9; then
@@ -117,19 +116,11 @@ preflight() {
     exit 1
   fi
 
-  # Declared external, so compose will not create it. If the-pride-api's stack has never
-  # been started on this box, attaching fails with a bare "network not found".
-  if ! docker network inspect the-pride-api_default >/dev/null 2>&1; then
-    echo "error: docker network 'the-pride-api_default' does not exist." >&2
-    echo "       Caddy lives on it. Start the-pride-api stack first; do not create it by hand." >&2
-    exit 1
-  fi
-
-  # `next build` on a 2 vCPU / 3.7 GB box while the other API keeps serving. Without swap
-  # the OOM killer gets to choose a victim, and it may not choose us.
+  # `next build` on a 2 vCPU / 4 GB box while the app keeps serving. Without swap the OOM
+  # killer gets to choose a victim, and it may choose the live app or Postgres.
   if [[ "$(awk '/SwapTotal/ {print $2}' /proc/meminfo 2>/dev/null || echo 1)" == "0" ]]; then
-    echo "warning: no swap configured. A build here can OOM-kill the-pride-api." >&2
-    echo "         See docs/04-engineering/deploy-ec2.md, prerequisite 2." >&2
+    echo "warning: no swap configured. A build here can run the box out of memory." >&2
+    echo "         See docs/04-engineering/move-to-new-aws-account.md, step A3." >&2
   fi
 }
 
