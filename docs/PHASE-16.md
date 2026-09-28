@@ -1135,6 +1135,95 @@ Five reviewers read the plan against the code. What changed because of them:
 
 ---
 
+## 14. PR #24 review fixes (2026-09-28, branch `review/pr-24-fixes`)
+
+PR #24 (`fix/complimentary-billing`, Usman) moved buying during complimentary access to "pay today,
+the free access ends once paid" (D-128), made `/r/plan` ask which source to keep, added Total paid
+to the staff Billing card, restyled Settings → Funding sources and the landing icons, and animated
+every dialog. Its review (2026-09-28) found no problem with D-128 itself. This section is the plan
+for every finding, built on a branch of its own off the PR.
+
+### 14.1 Fixes
+
+**A. Dialogs and modals** (`src/components/ui/overlay-shell.tsx`, `dialog.tsx`, `modal.tsx`, `app/globals.css`)
+
+| # | Finding | Fix | Passing criteria |
+|---|---|---|---|
+| A1 | A fading overlay still holds the scroll lock, the page's `inert` marks, the stacking entry and Escape for 160 ms, so an overlay opened in the same click records "locked" as the page's normal state: Packet, a month with a deleted expense, Share link, Continue, then close Share leaves the page unable to scroll, and Tab can leave the Share dialog | Every page-level effect runs while `open && !closing` ("active"), so it is released in the commit that starts the fade, before anything opened in the same click mounts (React runs every passive cleanup before any new effect in one commit) | 60 ms into a fade: `document.body.style.overflow` is back to what it was, and the page is not inert |
+| A2 | During the fade the confirm button stays enabled and focused, and only the mouse is blocked, so a second Enter reruns a `ConfirmButton` action (Delete permanently, Stop sharing, Remove document, Write again) | The fading overlay renders `inert` | 60 ms into a fade: every button in it is inside an `inert` element, and focus is not inside it |
+| A3 | Found in the review, older than the PR: focus comes back to the page body, not to the button that opened the overlay, because the focus-return cleanup ran while the page was still inert | One effect captures the focused element before marking the page inert, and on release removes `inert` first, then restores focus | After closing, `document.activeElement` is the trigger |
+| A4 | Under reduced motion the page ignored clicks and keys for 160 ms; the comment called the overlay click-through | After A1 and A2 the fading overlay is inert and the page is live again, so nothing is left to fix in code: the comment is corrected | Read |
+| A5 | Five popups are rendered only while open (`{x && <C/>}` around `<Modal open>`), so they appear with the fade but vanish on close: Share link, the expense History popup, expense details, Line Items' Manage, the avatar cropper | Expense details (stateless) and Manage (state in the parent) stay mounted with `<Modal open={x !== null}>{x && body}</Modal>`: the Modal already keeps its last content through the fade. Share, History and the cropper hold their own state, so their parents keep them mounted through the fade with `useOverlayPresence`, which gains a count of opens used as the component's `key` (a fresh component each time it opens). Lands after A1 | Each closes with the fade; each reopens empty |
+| A6 | The presence logic has no test; `.pop-in`'s comment still says it animates dialogs | The state change becomes a pure function (`nextPresence`) with unit tests; the comment is fixed. vitest has no DOM, so A1 to A3 and A5 are checked in Chrome (§8.5), once with the fix reverted | Tests fail when it is broken; the browser checks fail on the old code |
+
+**B. Billing** (`src/modules/billing/*`, `app/r/plan-billing-section.tsx`, `app/r/subscribe-button.tsx`, `app/r/plan/page.tsx`)
+
+| # | Finding | Fix | Passing criteria |
+|---|---|---|---|
+| B1 | A complimentary org whose paid plan is still running out (staff chose "cancel at the end of the paid period") is offered Subscribe, which Checkout refuses with "Use Switch plan", a button that doesn't exist while complimentary; Card and invoices is gone | `planBillingView` adds `paidPlan` to the complimentary view when the Stripe copy is live. The section says "Your paid {plan} plan ends on {date}. Your complimentary access continues." or, if it would renew (a grant made while Stripe couldn't be reached), "…renews on {date}." with **Cancel plan**, whose dialog says the complimentary access continues. Subscribe and "You can choose a plan now" are hidden; Card and invoices stays | Unit tests for the view |
+| B2 | The keep-one dialog archives the other sources before Checkout: backing out, or a refusal after archiving, leaves them archived with no plan, and an unpaid org can't reach Settings to see it | **Keep one source when the payment goes through** (D-129). A Reconciliation Checkout records the source to keep in the subscription's metadata (`keepFundingSource`): the admin's choice when several are active (a uuid of an active source of this org, refused otherwise, with its own message), the only active source otherwise; a Reconciliation + AI Checkout records nothing. Nothing is archived at Checkout. **Once only:** on the sync that first writes this subscription as paid (the previous copy not live, the new status `active`), when its price is Reconciliation and the org is not complimentary after that write, every other active source is archived in the same transaction. The metadata stays on the subscription for good and syncs run everywhere (the webhook, pages, the nightly reconcile, staff actions), so a standing rule would archive sources added later, for example while billing was switched off (§4.8 keeps an org's extra sources). The helper is a new `src/modules/funding-sources/archive.ts` that takes `tx`, scopes by org, clears a header selection pointing at an archived source, and revalidates nothing (the sync runs outside a request); `archiveFundingSourceAction` uses it too. A kept source no longer active: the first active one by the list order is kept, and a line is logged | Integration: Checkout records the right id, refuses a missing, foreign or archived one, and archives nothing; the first paid sync archives the rest and clears the header selection; a second sync archives nothing; nothing happens on Reconciliation + AI, before payment, with one source, or while a later staff grant keeps the org complimentary |
+| B3 | A complimentary Reconciliation + AI org with one source can open Reconciliation Checkout (open for 24 hours), add sources in another tab, then pay, and land on Reconciliation with several; the PR's docs say this gap is closed | Closed by B2: sources added while Checkout was open are archived when the payment goes through | Integration test of exactly that sequence |
+| B4 | The marker that ends the free access on payment is set only if the org was complimentary when Checkout opened: a grant made while an unpaid org's Checkout is open is never ended, and the org pays and stays complimentary | Every Checkout subscription carries `endComplimentary=on_payment`; the sync's existing check (only a grant made before the subscription is ended) keeps later staff grants | Integration |
+| B5 | Settings → Plan & billing disables Reconciliation for a complimentary admin with several sources, while `/r/plan` asks which to keep | The loader returns the active sources (`{id, name}[]`, not a count), `/r/plan` reuses it instead of its own query, and Settings uses the same dialog (`keepOneOf`); `disabledReason` and `billingSubscribeTooManySources` go | Loader test returns the list |
+| B6 | `staffTotalPaid` returns 0 when billing is off, so the card shows "Total paid $0.00" | Returns `null` (the figure is left out) | Integration |
+| B7 | `staffBilling` grew a fourth positional argument | `staffBilling(row, { lastPaid, totalPaidCents }, now)` | Existing tests |
+| B8 | `reconciliationStartsOf` is a one-caller wrapper and `UpcomingPlanOrg` a leftover name | Removed and renamed (`QueuedChangeRow`); `limit.ts` calls `reconciliationStartsOn` | Typecheck |
+| B9 | Stale comments describe the removed deferred charge | `limit.ts` (`lockedOrgEntitlement`), `sync.ts` (`endsComplimentaryAt`, `writeCopy`'s `paid`), `billing.ts` (`unchangedPhase`), `schema.ts` and `admin/actions.ts` (`complimentary_plan`), the note on `staffBillingFirstCharge`, and the deleted section header in `strings.ts` | Read |
+| B11 | `archiveFundingSourceAction` lets an unpaid admin archive, only for the `/r/plan` loop B2 removes | Back behind paid access; its allow-list entry goes; the no-free-use test flips to "refused" | Existing tests |
+| B12 | `writeCopy` takes six positional arguments and `startCheckoutAction` two strings | Both take one object (`startCheckoutAction({ plan, interval, keepFundingSourceId })`) | Typecheck |
+| B10 | Tests: five use fixed 2027 dates that the new past-date check refuses from 2 January 2027; removing an expired grant is untested (the `enabled &&` mutation survived); the sync ending a grant that has an end date is untested; "pins no free plan" never checks Checkout succeeded; the Detroit-date test sits where every zone agrees; `directory.test.ts` starts with a BOM; the sync test "a deferred plan (trialing, no marker)" describes the removed flow | Relative dates; the missing tests; the assertion; a late-evening case; BOM removed; the stale test deleted and the "(decided 2026-09-25)" label renamed; the Checkout test that expects no marker for a paying org flips (B4) | Each new guard mutation-tested |
+
+**C. Settings → Funding sources** (`app/r/settings/settings-sections.tsx`, `src/modules/funding-sources/actions.ts`)
+
+| # | Finding | Fix |
+|---|---|---|
+| C1 | "Name on documents" in the details view, "Document display name" in the form; the chip "Organization name" marks the organization's *document* name | "Document display name" everywhere; the chip reads "Same as the organization" |
+| C2 | A third pill style (`CHIP`) beside the shared `Badge`; the New funding source card kept the old corners | `Badge`; the add card uses the rows' classes |
+| C3 | The greyed Archive on the only active source explains itself only in a hover tooltip; the text is a copy of the server's refusal | Archive is not shown on the only active source; the refusal comes from `UI.fundingSourceKeepOneActive` |
+| C4 | "Not set yet: …. Use Edit to add them." reads as unfinished work for optional fields | "Not filled in: …" |
+
+**D. Landing** (`src/modules/landing/*`)
+
+| # | Finding | Fix |
+|---|---|---|
+| D1 | Phosphor's MIT notice is missing | `PHOSPHOR-LICENSE.txt` beside `landing-icons.tsx` (as `app/fonts/OFL.txt`), pointed to from its header |
+| D2 | The 44 px tile's class string is copied 11 times | An `IconTile` helper |
+| D3 | 7 older decorative SVGs have no `aria-hidden` | Added |
+| D4 | Problem-card titles and tags are in Title Case, against Words rule 6 | Awais's choice (§14.2) |
+
+**E. Docs**: m10's paragraph on `complimentaryStripeStep`; m09 (the paid-plan line, the keep-one dialog in
+both places); this file's P21 row, §4.3 table, §4.7 line, §4.8, D2 and the Phase 6 notes; D-129, which
+amends D-124 ("nothing is ever archived by a plan change") and D2; data-model's `complimentary_plan`;
+a TASKS item for the column; the guard-coverage allow-list reason; §8.5's browser checks for A.
+
+### 14.2 For Awais
+
+| # | Question | Recommendation |
+|---|---|---|
+| Q1 | Landing problem cards: back to sentence case, or keep Title Case and write the exception into the Words rules? | **Answered 2026-09-28: sentence case** |
+| Q2 | Keep one source when the payment goes through (B2), or archive at once and say so plainly in the dialog? | **Answered: when the payment goes through** |
+| Q3 | `complimentary_plan` is no longer written by anything. Drop it now, or a TASKS item to drop it before go-live? | **Answered: a TASKS item** |
+
+### 14.3 Order
+
+One commit each, in this order: the plan (this section); A; B; C; D; E. Then a review of the whole
+branch (agents), a browser pass, and fixes from the review.
+
+### 14.4 Plan review (2026-09-28)
+
+One reviewer read this plan against the code before anything was built. Changed because of it:
+B2's rule was a standing condition and would have archived sources on any later sync (the metadata
+stays on the subscription, and syncs run from the webhook, pages, the nightly reconcile and staff
+actions): it now runs once, on the sync that first sees the subscription paid. The keep id is
+validated at Checkout and scoped by org in the sync, and recorded on Reconciliation only; the
+helper is its own file with no revalidation; a kept source already archived is logged, not an
+ALERT. B1 gains Cancel plan for the renewing case. B5 passes the list, not a count. B11 (the unpaid
+archive exemption, now unused) and B12 (object arguments) were added. A4's reduced-motion code was
+cut, since A1 and A2 leave nothing for it to fix. A5 no longer needs a second hook. E gained D-124,
+§4.8 and the guard-coverage reason.
+
+---
+
 ## Appendix A: Product spec (verbatim)
 
 > Add stripe payments in reconciliation app with the following features:
