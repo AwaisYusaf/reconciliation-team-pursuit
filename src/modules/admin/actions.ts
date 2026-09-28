@@ -132,15 +132,15 @@ export async function changePlanAction(
     // Changing plan or status never touches suspension, complimentary access, or each other.
     // A save that changes nothing is refused rather than reported as saved: there is no event
     // action for "note only", so History would stay silent while the dialog said "updated".
-    // A pinned free plan (`complimentary_plan`) that differs from the chosen one is a change:
-    // it is what a complimentary org actually gets.
+    // A free plan left pinned in `complimentary_plan` (nothing sets it any more, D-128) that
+    // differs from the chosen one is a change: it is what a complimentary org actually gets.
     if (row.plan === plan && row.subscriptionStatus === status && (row.complimentaryPlan ?? plan) === plan) {
       return fail(UI.accountNothingChanged);
     }
 
     const before = snapshot(row);
-    // The plan staff choose is the plan the org gets: a free plan pinned at Checkout would
-    // otherwise keep overriding it (P27).
+    // The plan staff choose is the plan the org gets: a free plan left pinned from before D-128
+    // would otherwise keep overriding it (P27).
     await tx
       .update(organizations)
       .set({ plan, subscriptionStatus: status, complimentaryPlan: null })

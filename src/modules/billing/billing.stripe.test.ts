@@ -344,10 +344,10 @@ describe.concurrent("billing against the Stripe sandbox: Phase 3's billing actio
   it("S-1: checkout returns a Stripe URL, keeps only one open session, refuses a second subscription", async () => {
     const f = await fixture();
     const actor = actorOf(f);
-    const url1 = await billing.startCheckout(actor, "reconciliation", "month");
+    const url1 = await billing.startCheckout(actor, { plan: "reconciliation", interval: "month" });
     expect(url1).toMatch(/^https:\/\/checkout\.stripe\.com\//);
 
-    const url2 = await billing.startCheckout(actor, "reconciliation_ai", "year");
+    const url2 = await billing.startCheckout(actor, { plan: "reconciliation_ai", interval: "year" });
     expect(url2).not.toBe(url1);
     const open = await s.checkout.sessions.list({ customer: f.customerId, status: "open" });
     expect(open.data, "the older tab's checkout was expired").toHaveLength(1);
@@ -359,9 +359,9 @@ describe.concurrent("billing against the Stripe sandbox: Phase 3's billing actio
 
     // Same customer can't be sent to Checkout while it has a live subscription.
     await subscribe(f, "reconciliation", "month");
-    await rejects(billing.startCheckout(actor, "reconciliation", "year"), "already_subscribed");
+    await rejects(billing.startCheckout(actor, { plan: "reconciliation", interval: "year" }), "already_subscribed");
     expect((await org(f)).plan).toBe("reconciliation");
-    await rejects(billing.startCheckout(actor, "enterprise", "month"), "unknown_plan");
+    await rejects(billing.startCheckout(actor, { plan: "enterprise", interval: "month" }), "unknown_plan");
   });
 
   it("S-2: upgrade mid-month charged the exact quoted difference today, next bill is clean", async () => {
@@ -728,7 +728,7 @@ describe.concurrent("billing against the Stripe sandbox: Phase 3's billing actio
       items: [{ price: (await price("reconciliation", "month")).id }],
       payment_behavior: "default_incomplete",
     });
-    await rejects(billing.startCheckout(actorOf(f), "reconciliation", "month"), "payment_processing");
+    await rejects(billing.startCheckout(actorOf(f), { plan: "reconciliation", interval: "month" }), "payment_processing");
   });
 
   it("S-20: mixed downgrade AI monthly to Reconciliation yearly waits for the month, then charges the year now (phase_start)", async () => {
@@ -808,12 +808,12 @@ describe.concurrent("billing against the Stripe sandbox: Phase 3's billing actio
     expect((await access(f)).paid).toBe(false);
   });
 
-  it("S-27: downgrade or checkout to Reconciliation refused with two active funding sources (P24); the queued downgrade in the copy", async () => {
+  it("S-27: with two active funding sources, Checkout to Reconciliation needs the one to keep (D-129) and a downgrade is refused (P24); the queued downgrade in the copy", async () => {
     const f = await fixture(); // already has 1 funding source from createTestOrg
     const actor = actorOf(f);
     await addFundingSource(f.orgId); // now 2 active sources
 
-    await rejects(billing.startCheckout(actor, "reconciliation", "month"), "too_many_sources");
+    await rejects(billing.startCheckout(actor, { plan: "reconciliation", interval: "month" }), "keep_source");
     await subscribe(f, "reconciliation_ai", "month");
     await rejects(billing.quoteChange(actor, "reconciliation", "month"), "too_many_sources");
     await rejects(billing.applyChange(actor, "reconciliation", "month", 0), "too_many_sources");
@@ -954,7 +954,7 @@ describe.concurrent("billing against the Stripe sandbox: Phase 3's billing actio
   it("I-17: the Stripe customer's email follows the acting admin after a billing action", async () => {
     const f = await fixture();
     const first = actorOf(f, `first-${randomUUID()}@example.com`);
-    await billing.startCheckout(first, "reconciliation", "month");
+    await billing.startCheckout(first, { plan: "reconciliation", interval: "month" });
     expect((await s.customers.retrieve(f.customerId) as Stripe.Customer).email).toBe(first.email);
 
     await subscribe(f, "reconciliation", "month");

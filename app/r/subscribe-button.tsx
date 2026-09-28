@@ -9,7 +9,6 @@ import { cn } from "@/src/lib/cn";
 import { UI } from "@/src/domain/strings";
 import { startCheckoutAction } from "@/src/modules/billing/actions";
 import type { Interval, PlanId } from "@/src/modules/billing/rules";
-import { archiveFundingSourceAction } from "@/src/modules/funding-sources/actions";
 import {
   PLAN_BUTTON_LIGHT,
   PLAN_BUTTON_PRIMARY,
@@ -25,55 +24,38 @@ import {
  * button, since it sits inside the same card as on the landing page.
  *
  * `keepOneOf`: the org's active funding sources, when choosing this plan (Reconciliation) means
- * keeping only one (C8, D2). The question is asked only then, after the click, rather than a list
- * on the page before anyone has chosen a plan: which one to keep, then the others are archived
- * and Checkout opens. `disabledReason`: the plan can't be chosen here at all (Settings, where the
- * sources are archived in their own section); the button is disabled with the reason under it.
+ * keeping only one (C8). The question is asked only then, after the click, rather than a list on
+ * the page before anyone has chosen a plan: which one to keep, then Checkout opens. Nothing is
+ * archived here: the choice goes to Checkout, and the others are archived once the payment goes
+ * through (D-129), so backing out of Checkout changes nothing.
  */
 export function SubscribeButton({
   plan,
   interval,
   primary = false,
-  disabledReason,
   keepOneOf,
 }: {
   plan: PlanId;
   interval: Interval;
   primary?: boolean;
-  disabledReason?: string;
   keepOneOf?: ReadonlyArray<{ id: string; name: string }>;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [asking, setAsking] = useState(false);
   const [keepId, setKeepId] = useState<string | null>(null);
-  const reasonId = useId();
   const legendId = useId();
   const mustChoose = keepOneOf !== undefined && keepOneOf.length > 1;
 
-  function checkout() {
+  /** Opens Checkout; `keep` is the source chosen in the dialog, when there was one to choose. */
+  function checkout(keep: string | null = null) {
     startTransition(async () => {
-      const result = await startCheckoutAction(plan, interval);
-      if (reportResult(result)) window.location.assign(result.data.url);
-    });
-  }
-
-  /** Archive every source but the chosen one, then open Checkout. Stops at the first refusal:
-   *  the page then re-renders from the server, so it shows whatever was archived before it. */
-  function keepAndCheckout(keep: string) {
-    startTransition(async () => {
-      for (const source of keepOneOf ?? []) {
-        if (source.id === keep) continue;
-        if (!reportResult(await archiveFundingSourceAction(source.id))) {
-          setAsking(false);
-          router.refresh();
-          return;
-        }
-      }
-      const result = await startCheckoutAction(plan, interval);
+      const result = await startCheckoutAction({ plan, interval, keepFundingSourceId: keep });
       if (reportResult(result)) {
         window.location.assign(result.data.url);
       } else {
+        // Refused (the sources changed since the page loaded, say): close the question and show
+        // the sources as they are now, so the next click asks about the right ones.
         setAsking(false);
         router.refresh();
       }
@@ -84,24 +66,14 @@ export function SubscribeButton({
     <>
       <button
         type="button"
-        className={cn(
-          primary ? PLAN_BUTTON_PRIMARY : PLAN_BUTTON_LIGHT,
-          "min-h-11 disabled:opacity-60",
-          disabledReason ? "disabled:cursor-not-allowed" : "disabled:cursor-wait",
-        )}
+        className={cn(primary ? PLAN_BUTTON_PRIMARY : PLAN_BUTTON_LIGHT, "min-h-11 disabled:opacity-60 disabled:cursor-wait")}
         style={primary ? PLAN_BUTTON_PRIMARY_STYLE : undefined}
-        disabled={pending || disabledReason !== undefined}
-        aria-describedby={disabledReason ? reasonId : undefined}
+        disabled={pending}
         onClick={() => (mustChoose ? setAsking(true) : checkout())}
       >
         <span>{pending && !asking ? UI.billingOpeningCheckout : UI.billingSubscribe}</span>
         {primary && !pending && <PlanButtonArrow />}
       </button>
-      {disabledReason && (
-        <p id={reasonId} className="text-sm text-on-surface-variant leading-snug">
-          {disabledReason}
-        </p>
-      )}
 
       {mustChoose && (
         <Dialog
@@ -114,7 +86,7 @@ export function SubscribeButton({
           confirm={{
             label: pending ? UI.billingOpeningCheckout : UI.billingKeepAndContinue,
             disabled: pending || keepId === null,
-            onConfirm: () => keepId && keepAndCheckout(keepId),
+            onConfirm: () => keepId && checkout(keepId),
           }}
         >
           <p className="mb-4">{UI.billingKeepWhichBody}</p>

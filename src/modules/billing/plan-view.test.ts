@@ -112,17 +112,40 @@ describe("planBillingView", () => {
       plan: "reconciliation_ai",
       until: null,
       endingSoon: false,
+      paidPlan: null,
     });
   });
 
-  it("complimentary with a plan being paid for: still the complimentary view until the sync ends it (D-128)", () => {
-    // The payment went through; the sync ends the free access in the same write, so this state
-    // only lasts until then. No "upcoming plan" state exists any more.
+  it("complimentary with a paid plan still running (staff cancel it at the end of its period): shown beside the free access", () => {
     const view = planBillingView(
-      row({ complimentary: true, complimentaryUntil: "2026-10-10", complimentaryPlan: "reconciliation_ai", stripeStatus: "active" }),
+      row({
+        complimentary: true,
+        complimentaryUntil: "2026-12-31",
+        complimentaryPlan: "reconciliation_ai",
+        stripeStatus: "active",
+        cancelAtPeriodEnd: true,
+      }),
       on,
     );
-    expect(view).toEqual({ kind: "complimentaryAccess", plan: "reconciliation_ai", until: "2026-10-10", endingSoon: false });
+    expect(view).toEqual({
+      kind: "complimentaryAccess",
+      plan: "reconciliation_ai",
+      until: "2026-12-31",
+      endingSoon: false,
+      paidPlan: { plan: "reconciliation", periodEnd: "2026-10-25", cancelling: true },
+    });
+  });
+
+  it("a paid plan beside the free access that would renew (a grant made while Stripe couldn't be reached)", () => {
+    const view = planBillingView(row({ complimentary: true, stripeStatus: "past_due" }), on);
+    expect(view).toMatchObject({ kind: "complimentaryAccess", paidPlan: { plan: "reconciliation", periodEnd: "2026-10-25", cancelling: false } });
+  });
+
+  it.each([null, "canceled", "incomplete", "incomplete_expired"])("complimentary with a Stripe status %s: no paid plan beside it", (status) => {
+    expect(planBillingView(row({ complimentary: true, stripeStatus: status }), on)).toMatchObject({
+      kind: "complimentaryAccess",
+      paidPlan: null,
+    });
   });
 
   it(`complimentary ending: warned from ${COMP_WARNING_DAYS} days out, not 15`, () => {
@@ -147,6 +170,7 @@ describe("Plan & billing section renders each state", () => {
   it.each([
     ["none", ["UI.billingNoPlan", "<SubscribeButton", "UI.billingManagerNote"]],
     ["complimentary", ["UI.billingComplimentaryUntil", "UI.billingComplimentary(", "UI.billingCompBuyNow", "UI.billingQuestions"]],
+    ["complimentary beside a paid plan", ["UI.billingCompPaidEnds", "UI.billingCompPaidRenews", "UI.billingCancelBodyComp"]],
     ["subscribed", ["UI.billingRenews", "UI.billingCancelling", "UI.billingSwitchPlan", "UI.billingPortal", "UI.billingCancelPlan"]],
     ["plans", ["<PlanCards", "UI.billingPlansTitle", "UI.billingYourPlan"]],
     ["switch refused", ["UI.billingPaymentFailedRefused", "UI.billingCancelPending", "UI.billingPaymentPending", "UI.billingChangePending"]],

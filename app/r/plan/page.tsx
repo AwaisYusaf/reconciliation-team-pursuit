@@ -13,8 +13,6 @@ import { PRICES_CENTS } from "@/src/modules/billing/pricing";
 import { INTERVALS, isInterval, isPlanId, type Interval, type PlanId } from "@/src/modules/billing/rules";
 import { PLAN_CARD_IDS, PlanCards } from "@/src/modules/landing/plan-cards";
 
-import { listFundingSources } from "@/src/modules/funding-sources/queries";
-
 import { PlanBillingSection } from "../plan-billing-section";
 import { SubscribeButton } from "../subscribe-button";
 
@@ -78,12 +76,9 @@ export default async function PlanPage({
   const plansToShow = preselected ? [preselected] : PLAN_CARD_IDS;
   const managerNoticeNames = billing.adminNames; // "" for an admin
   // Reconciliation includes one active funding source (C8): with more, choosing it asks which
-  // one to keep and archives the rest before Checkout (D2). Asked only after that choice, never
-  // shown up front.
-  const activeSources = isAdmin
-    ? (await listFundingSources(session.orgId)).filter((source) => source.archivedAt === null)
-    : [];
-  const tooManySources = activeSources.length > 1;
+  // one to keep, and the rest are archived once the payment goes through (D-129). Asked only
+  // after that choice, never shown up front.
+  const { activeSources } = billing;
 
   return (
     <div className="max-w-4xl mx-auto">
@@ -146,11 +141,7 @@ export default async function PlanPage({
                   plan={plan}
                   interval={interval}
                   primary={plan === "reconciliation_ai"}
-                  keepOneOf={
-                    plan === "reconciliation" && tooManySources
-                      ? activeSources.map(({ id, name }) => ({ id, name }))
-                      : undefined
-                  }
+                  keepOneOf={plan === "reconciliation" && activeSources.length > 1 ? activeSources : undefined}
                 />
               )}
             />

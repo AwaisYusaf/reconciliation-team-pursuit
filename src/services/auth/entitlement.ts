@@ -8,14 +8,8 @@
  * must import no session, `public-isolation.test.ts`) imports this file.
  */
 import { orgBilling, organizations } from "@/src/db/schema";
-import { todayIso, type IsoDate } from "@/src/domain/dates";
-import {
-  orgEntitlement,
-  reconciliationStartsOn,
-  type Entitlement,
-  type EntitlementOrg,
-  type UpcomingPlanOrg,
-} from "@/src/modules/billing/entitlement";
+import { todayIso } from "@/src/domain/dates";
+import { orgEntitlement, type Entitlement, type EntitlementOrg } from "@/src/modules/billing/entitlement";
 import { billingEnabled } from "@/src/modules/billing/config";
 
 /** The org's own columns every entitlement decision needs, as a drizzle select map. */
@@ -43,11 +37,6 @@ export type EntitlementRow = EntitlementOrg & { subscriptionStatus: string };
 /** A row with no `stripeStatus` (a new org, before any Stripe customer) is one with none. */
 export function entitlementOf(row: Omit<EntitlementOrg, "stripeStatus"> & { stripeStatus?: string | null }): Entitlement {
   return orgEntitlement({ ...row, stripeStatus: row.stripeStatus ?? null }, todayIso(), billingEnabled());
-}
-
-/** `reconciliationStartsOn` for a row read with the `pending_*` copy. */
-export function reconciliationStartsOf(row: UpcomingPlanOrg): IsoDate | null {
-  return reconciliationStartsOn(row, new Date());
 }
 
 /**

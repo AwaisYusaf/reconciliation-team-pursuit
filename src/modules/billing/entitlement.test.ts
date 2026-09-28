@@ -276,6 +276,11 @@ describe("reconciliationStartsOn (P24): the day a queued downgrade to Reconcilia
     expect(reconciliationStartsOn(queued, now)).toBe("2027-02-01");
   });
 
+  it("late evening in Detroit is still that day there, though already the next day in UTC and in the test zone", () => {
+    // 10 pm on 1 February in Detroit (UTC-5) is 3 am on 2 February in UTC and 8 am in Karachi.
+    expect(reconciliationStartsOn({ ...queued, pendingAt: new Date("2027-02-02T03:00:00Z") }, now)).toBe("2027-02-01");
+  });
+
   it.each([
     ["a price move, not a downgrade", { pendingReason: "price_move" }],
     ["already started", { pendingAt: new Date("2026-12-01T00:00:00Z") }],

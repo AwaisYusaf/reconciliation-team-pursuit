@@ -132,8 +132,6 @@ export const ACTION_ALLOW: Record<string, string> = {
   "src/modules/settings/actions.ts#changePasswordAction": "§2.6: an unpaid admin can still change their password",
   "src/modules/users/actions.ts#listOrgUsersAction": "§4.7: list users",
   "src/modules/users/actions.ts#revokeUserAccessAction": "§4.7: remove a departed user",
-  "src/modules/funding-sources/actions.ts#archiveFundingSourceAction":
-    "D2: archive sources from the plan page before choosing Reconciliation",
   // The billing actions: paying is the way out (Track A, Phase 3). Named one by one, so a new
   // export in that file is not let through unchecked.
   "src/modules/billing/actions.ts#startCheckoutAction": "subscribe",

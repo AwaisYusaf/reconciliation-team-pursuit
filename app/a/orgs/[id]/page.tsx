@@ -133,7 +133,7 @@ export default async function OrgPage({
     loadOrgFeatureRequests(id),
   ]);
   const lastPaid = payments?.find((p) => p.status === "paid") ?? null;
-  const billing = staffBilling(account, lastPaid, new Date(), totalPaid);
+  const billing = staffBilling(account, { lastPaid, totalPaidCents: totalPaid });
   const footer = usersFooter({
     showAll: showAllUsers,
     shown: users.rows.length,

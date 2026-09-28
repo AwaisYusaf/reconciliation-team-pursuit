@@ -36,6 +36,7 @@ import {
   isLive,
   isPlanId,
   END_COMPLIMENTARY_KEY,
+  KEEP_FUNDING_SOURCE_KEY,
   pickCurrent,
   type Change,
   type Interval,
@@ -60,7 +61,8 @@ export type BillingErrorCode =
   | "quote_expired"
   | "portal_not_setup"
   | "complimentary"
-  | "too_many_sources";
+  | "too_many_sources"
+  | "keep_source";
 
 export class BillingError extends Error {
   readonly code: BillingErrorCode;
@@ -118,6 +120,15 @@ async function activeFundingSourceCount(orgId: string): Promise<number> {
     .from(fundingSources)
     .where(and(eq(fundingSources.orgId, orgId), isNull(fundingSources.archivedAt)));
   return row?.total ?? 0;
+}
+
+/** The ids of the org's active funding sources, for the one to keep on Reconciliation (D-129). */
+async function activeFundingSourceIds(orgId: string): Promise<string[]> {
+  const rows = await db
+    .select({ id: fundingSources.id })
+    .from(fundingSources)
+    .where(and(eq(fundingSources.orgId, orgId), isNull(fundingSources.archivedAt)));
+  return rows.map((row) => row.id);
 }
 
 function assertNotComplimentary(row: Pick<OrgRow, "complimentary" | "complimentaryUntil">): void {
@@ -242,8 +253,10 @@ async function changeableSubscription(customerId: string): Promise<{
   };
 }
 
-/** The current phase exactly as Stripe has it, trial included: a plan bought during free access
- *  has its first charge at `trial_end`, and a rewrite that left it out would charge it early. */
+/** The current phase exactly as Stripe has it, trial included. The app no longer starts trials
+ *  (D-128), but a subscription still in one (a plan bought during free access before that, or a
+ *  trial set in Stripe's dashboard) has its first charge at `trial_end`, and a rewrite that left
+ *  it out would charge it early. */
 function unchangedPhase(phase: Stripe.SubscriptionSchedule.Phase): Stripe.SubscriptionScheduleUpdateParams.Phase {
   return {
     items: phase.items.map((i) => ({ price: idOf(i.price), quantity: i.quantity ?? 1 })),
@@ -343,9 +356,20 @@ function checkoutBranding(origin: string): Pick<Stripe.Checkout.SessionCreatePar
   };
 }
 
-/** Returns the Stripe Checkout URL to send the admin to. Access is granted by the webhook /
- *  return sync, never here. */
-export function startCheckout(actor: Actor, plan: unknown, interval: unknown): Promise<string> {
+/**
+ * Returns the Stripe Checkout URL to send the admin to. Access is granted by the webhook /
+ * return sync, never here.
+ *
+ * `keepFundingSourceId`: on Reconciliation, which includes one active funding source (C8), the
+ * source the admin chose to keep. Needed only when several are active, and then it must be one
+ * of them; checked before any Stripe call. It is recorded on the subscription, and the others are
+ * archived by the sync once the payment goes through (D-129), so nothing changes when the admin
+ * backs out of Checkout or the payment fails.
+ */
+export function startCheckout(
+  actor: Actor,
+  { plan, interval, keepFundingSourceId = null }: { plan: unknown; interval: unknown; keepFundingSourceId?: unknown },
+): Promise<string> {
   return orgLock(actor.orgId, async () => {
     const row = await loadOrg(actor.orgId);
     if (!isPlanId(plan) || !isInterval(interval)) throw new BillingError("unknown_plan");
@@ -353,10 +377,19 @@ export function startCheckout(actor: Actor, plan: unknown, interval: unknown): P
     // access ends once that payment goes through (the sync, `endsComplimentaryAt`), however much
     // of it was left. The customer's admin chose to pay, so nothing waits for the free days.
     const endsComplimentary = isComplimentaryNow(row, todayIso());
-    // Reconciliation allows one active funding source (C8, P24) — refused before any Stripe call.
+    let keep: string | null = null;
     if (plan === "reconciliation") {
-      const n = await activeFundingSourceCount(actor.orgId);
-      if (n > 1) throw new BillingError("too_many_sources", n);
+      const active = await activeFundingSourceIds(actor.orgId);
+      if (active.length > 1) {
+        // Compared with the org's own active ids, so a foreign, archived or malformed id is
+        // refused without ever reaching a query.
+        if (typeof keepFundingSourceId !== "string" || !active.includes(keepFundingSourceId)) {
+          throw new BillingError("keep_source");
+        }
+        keep = keepFundingSourceId;
+      } else {
+        keep = active[0] ?? null;
+      }
     }
     const price = await findPrice(plan, interval);
     const customerId = await ensureCustomer(actor, row);
@@ -384,7 +417,14 @@ export function startCheckout(actor: Actor, plan: unknown, interval: unknown): P
       client_reference_id: actor.orgId,
       line_items: [{ price: price.id, quantity: 1 }],
       subscription_data: {
-        metadata: { orgId: actor.orgId, ...(endsComplimentary ? { [END_COMPLIMENTARY_KEY]: "on_payment" } : {}) },
+        metadata: {
+          orgId: actor.orgId,
+          // On every Checkout, not only a complimentary org's: a grant staff make while this
+          // Checkout is open ends when it is paid too (D-129). A grant made after the
+          // subscription is never ended by it (the sync).
+          [END_COMPLIMENTARY_KEY]: "on_payment",
+          ...(keep ? { [KEEP_FUNDING_SOURCE_KEY]: keep } : {}),
+        },
       },
       success_url: `${origin}${BILLING_RETURN_PATH}`,
       cancel_url: `${origin}${PLAN_CANCELLED_PATH}`,
@@ -752,11 +792,12 @@ const TOTAL_PAID_MAX_PAGES = 100;
 /**
  * Everything the org has paid, in cents: the sum of `amount_paid` over every paid invoice, read
  * page by page from Stripe when the org page opens (nothing is stored). Refunds are not taken
- * off; the page says so. `null` when Stripe couldn't be reached, `0` when billing is off or
- * Stripe has never seen the org. Every price is in US dollars (§4.9), so one sum is meaningful.
+ * off; the page says so. `null` when billing is off (nothing is read from Stripe then, so the
+ * figure is left out rather than shown as $0.00) or Stripe couldn't be reached; `0` when Stripe
+ * has never seen the org. Every price is in US dollars (§4.9), so one sum is meaningful.
  */
 export async function staffTotalPaid(orgId: string): Promise<number | null> {
-  if (!billingEnabled()) return 0;
+  if (!billingEnabled()) return null;
   const customerId = (await loadOrg(orgId)).stripeCustomerId;
   if (!customerId) return 0;
   try {

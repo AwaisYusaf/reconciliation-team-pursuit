@@ -860,13 +860,12 @@ export const UI = {
   billingEndingNow: "Ending…",
   billingSeePlans: "See plans",
   billingGoToSources: "Go to Funding sources",
-  billingSubscribeTooManySources: (count: number) =>
-    `Reconciliation includes one active funding source, and you have ${count}. Archive the ones you don't use, or choose Reconciliation + AI.`,
   billingKeepWhichTitle: "Which funding source do you want to keep?",
   billingKeepWhichBody:
-    "Reconciliation includes one active funding source. The others will be archived. Their records are kept, but you can only make them active again by switching to Reconciliation + AI.",
+    "Reconciliation includes one active funding source. Once your payment goes through, the others are archived. Their records are kept, but you can only make them active again by switching to Reconciliation + AI.",
   billingKeepWhichLegend: "Funding source to keep",
   billingKeepAndContinue: "Keep it and continue to payment",
+  billingKeepSourceRefused: "Your funding sources have changed. Reload the page and choose which one to keep.",
   billingChangedToast: "Your plan has changed.",
   billingScheduledToast: "Your plan change is scheduled.",
   billingCancelledToast: "Your plan is cancelled. You keep access until the end of the paid period.",
@@ -882,6 +881,12 @@ export const UI = {
     "You pay today, and your complimentary access ends once the payment goes through. Cancel anytime. You keep access until the end of the period you paid for.",
   billingCompBuyNow:
     "You can choose a plan now. You pay today, and your complimentary access ends once the payment goes through.",
+  billingCompPaidEnds: (plan: string, date: string) =>
+    `Your paid ${plan} plan ends on ${date}. Your complimentary access continues.`,
+  billingCompPaidRenews: (plan: string, date: string) =>
+    `Your paid ${plan} plan renews on ${date}. Your complimentary access continues.`,
+  billingCancelBodyComp: (date: string) =>
+    `Your paid plan ends on ${date} and won't renew, so nothing more is charged. Your complimentary access continues.`,
   billingComplimentaryTag: "Complimentary",
   // Staff dashboard (§4.6)
   historyActorStripe: "Stripe",
@@ -925,10 +930,14 @@ export const UI = {
   staffCompCancelNow: "Cancel the paid plan now",
   staffCompCancelAtEnd: "Cancel the paid plan at the end of the paid period",
   staffCompCancelRequired: "This organization pays for a plan. Choose whether to cancel it now or at the end of the paid period.",
+
+  // PHASE-16 Track C (landing, funding-source limit)
   fundingSourceLimitReached:
     "Reconciliation includes one active funding source. To add more, try Plus.",
   fundingSourceLimitManager:
     "Reconciliation includes one active funding source. Ask your admin about upgrading.",
+  /** Archiving the only active funding source (Settings hides Archive on it; the server refuses). */
+  fundingSourceKeepOneActive: "Keep at least one active funding source.",
   fundingSourceLimitQueued: (date: string) =>
     `Your plan switches to Reconciliation on ${date}, which includes one active funding source. To add another, cancel that switch in Plan & billing.`,
 

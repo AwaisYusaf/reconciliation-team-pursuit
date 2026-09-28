@@ -35,9 +35,11 @@ const hasDatabase = Boolean(process.env.DATABASE_URL);
 describe.skipIf(!hasDatabase)("billing sync (integration, Phase 16)", async () => {
   const { eq } = await import("drizzle-orm");
   const { db } = await import("@/src/db");
-  const { organizations, orgAccountEvents } = await import("@/src/db/schema");
+  const { organizations, orgAccountEvents, fundingSources } = await import("@/src/db/schema");
+  const { ORIGINAL_RULES } = await import("@/src/modules/expenses/reimbursement");
   const { createTestOrg, orgWithBilling, setBillingCopy } = await import("@/src/db/test-org");
   const { entitlementOf } = await import("@/src/services/auth/entitlement");
+  const { todayIso } = await import("@/src/domain/dates");
   const { syncOrgBilling, refreshOrgBilling, clearRefreshThrottle, flagDispute } = await import("./sync");
   const { stripeKeyIsLive } = await import("./config");
 
@@ -119,17 +121,17 @@ describe.skipIf(!hasDatabase)("billing sync (integration, Phase 16)", async () =
     for (const id of orgIds) await db.delete(organizations).where(eq(organizations.id, id));
   });
 
-  describe("a plan bought during complimentary access, charged today (decided 2026-09-25)", () => {
+  describe("a plan bought during complimentary access, charged today (D-128)", () => {
     const marked = (status: string, created: number) =>
       ({ ...fakeSub({ status, created, plan: "reconciliation" }), metadata: { endComplimentary: "on_payment" } }) as Stripe.Subscription;
 
-    async function compOrgWithCustomer(grantAt: Date | null) {
+    async function compOrgWithCustomer(grantAt: Date | null, until: string | null = null) {
       const orgId = await freshOrg({ complimentary: false });
       const customerId = uniqueCustomerId();
       await withCustomer(orgId, customerId);
       await db
         .update(organizations)
-        .set({ complimentary: true, complimentaryUntil: null, complimentaryPlan: "reconciliation_ai" })
+        .set({ complimentary: true, complimentaryUntil: until, complimentaryPlan: "reconciliation_ai" })
         .where(eq(organizations.id, orgId));
       if (grantAt) {
         const snap = { plan: "reconciliation" as const, status: "active" as const, complimentary: true, complimentaryUntil: null, suspended: false };
@@ -151,6 +153,17 @@ describe.skipIf(!hasDatabase)("billing sync (integration, Phase 16)", async () =
       const removed = (await eventsFor(orgId)).filter((e) => e.action === "complimentary_removed");
       expect(removed).toHaveLength(1);
       expect(removed[0]).toMatchObject({ viaStripe: true, actorStaffId: null });
+    });
+
+    it("a grant with an end date still ahead ends the same way", async () => {
+      const created = Math.floor(Date.now() / 1000);
+      const until = todayIso(new Date(Date.now() + 60 * 86_400_000));
+      const { orgId, customerId } = await compOrgWithCustomer(new Date((created - 86_400) * 1000), until);
+      subscriptionsOfMock.mockResolvedValue([marked("active", created)]);
+      await syncOrgBilling(customerId);
+      const row = await orgRow(orgId);
+      expect(row.complimentary).toBe(false);
+      expect(row.complimentaryUntil).toBeNull();
     });
 
     it("a grant with no History row (older data) also ends", async () => {
@@ -177,21 +190,144 @@ describe.skipIf(!hasDatabase)("billing sync (integration, Phase 16)", async () =
       expect((await orgRow(orgId)).complimentary).toBe(true);
     });
 
-    it("a deferred plan (trialing, no marker) leaves the free access and its plan alone", async () => {
-      const { orgId, customerId } = await compOrgWithCustomer(null);
-      subscriptionsOfMock.mockResolvedValue([fakeSub({ status: "trialing", plan: "reconciliation" })]);
-      await syncOrgBilling(customerId);
-      const row = await orgRow(orgId);
-      expect(row.complimentary).toBe(true);
-      expect(row.complimentaryPlan).toBe("reconciliation_ai");
-    });
-
     it("syncing twice ends it once: one History row", async () => {
       const { orgId, customerId } = await compOrgWithCustomer(null);
       subscriptionsOfMock.mockResolvedValue([marked("active", Math.floor(Date.now() / 1000))]);
       await syncOrgBilling(customerId);
       await syncOrgBilling(customerId);
       expect((await eventsFor(orgId)).filter((e) => e.action === "complimentary_removed")).toHaveLength(1);
+    });
+  });
+
+  describe("D-129: once Reconciliation is paid, the source chosen at Checkout is kept and the others archived", () => {
+    const paidSub = (opts: { status?: string; plan?: string; keep?: string | null; created?: number }) =>
+      ({
+        ...fakeSub({ status: opts.status ?? "active", plan: opts.plan ?? "reconciliation", created: opts.created }),
+        metadata: { endComplimentary: "on_payment", ...(opts.keep ? { keepFundingSource: opts.keep } : {}) },
+      }) as Stripe.Subscription;
+
+    /** An org with a Stripe customer and `extra` more active sources than the one it starts with. */
+    async function orgWithSources(extra: number) {
+      const orgId = await freshOrg({ complimentary: false });
+      const customerId = uniqueCustomerId();
+      await withCustomer(orgId, customerId);
+      for (let i = 0; i < extra; i++) await addSource(orgId);
+      return { orgId, customerId, ids: await sourceIds(orgId) };
+    }
+
+    async function addSource(orgId: string) {
+      counter += 1;
+      const [row] = await db
+        .insert(fundingSources)
+        .values({ orgId, name: `Sync Source ${counter}`, type: "grant", sortOrder: counter, ...ORIGINAL_RULES })
+        .returning({ id: fundingSources.id });
+      return row.id;
+    }
+
+    /** Every source of the org in the picker's order, with whether it is archived. */
+    async function sourceIds(orgId: string) {
+      const { listFundingSources } = await import("@/src/modules/funding-sources/queries");
+      return (await listFundingSources(orgId)).map((source) => source.id);
+    }
+    async function activeIds(orgId: string) {
+      const { listFundingSources } = await import("@/src/modules/funding-sources/queries");
+      return (await listFundingSources(orgId)).filter((source) => source.archivedAt === null).map((source) => source.id);
+    }
+    async function headerSelection(orgId: string) {
+      const [row] = await db
+        .select({ id: organizations.activeFundingSourceId })
+        .from(organizations)
+        .where(eq(organizations.id, orgId));
+      return row.id;
+    }
+
+    it("the first paid sync keeps the chosen source, archives the others and clears a header selection on one of them; a later sync archives nothing", async () => {
+      const { orgId, customerId, ids } = await orgWithSources(2);
+      const [, kept, third] = ids;
+      await db.update(organizations).set({ activeFundingSourceId: third }).where(eq(organizations.id, orgId));
+      // Another org's sources are never touched.
+      const bystander = await orgWithSources(1);
+
+      subscriptionsOfMock.mockResolvedValue([paidSub({ keep: kept })]);
+      await syncOrgBilling(customerId);
+      expect(await activeIds(orgId)).toEqual([kept]);
+      expect(await headerSelection(orgId)).toBeNull();
+      expect(await activeIds(bystander.orgId)).toEqual(bystander.ids);
+
+      // A source added afterwards (billing switched off meanwhile, say) is not this Checkout's.
+      const later = await addSource(orgId);
+      await syncOrgBilling(customerId);
+      expect(await activeIds(orgId)).toEqual([kept, later]);
+    });
+
+    it("a header selection on the kept source stays", async () => {
+      const { orgId, customerId, ids } = await orgWithSources(1);
+      await db.update(organizations).set({ activeFundingSourceId: ids[1] }).where(eq(organizations.id, orgId));
+      subscriptionsOfMock.mockResolvedValue([paidSub({ keep: ids[1] })]);
+      await syncOrgBilling(customerId);
+      expect(await activeIds(orgId)).toEqual([ids[1]]);
+      expect(await headerSelection(orgId)).toBe(ids[1]);
+    });
+
+    it("sources added while Checkout was open are archived once it is paid (B3: free Reconciliation + AI buying Reconciliation)", async () => {
+      const { orgId, customerId, ids } = await orgWithSources(0);
+      await db
+        .update(organizations)
+        .set({ complimentary: true, complimentaryPlan: "reconciliation_ai" })
+        .where(eq(organizations.id, orgId));
+      // Checkout opened with one source (recorded as the one to keep); two more added in another tab.
+      await addSource(orgId);
+      await addSource(orgId);
+      subscriptionsOfMock.mockResolvedValue([paidSub({ keep: ids[0], created: Math.floor(Date.now() / 1000) })]);
+      await syncOrgBilling(customerId);
+      const row = await orgRow(orgId);
+      expect(row.complimentary).toBe(false);
+      expect(await activeIds(orgId)).toEqual([ids[0]]);
+    });
+
+    it("a kept source archived meanwhile: the first active one is kept instead, and a line is logged", async () => {
+      const { orgId, customerId, ids } = await orgWithSources(2);
+      await db.update(fundingSources).set({ archivedAt: new Date() }).where(eq(fundingSources.id, ids[1]));
+      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+      subscriptionsOfMock.mockResolvedValue([paidSub({ keep: ids[1] })]);
+      await syncOrgBilling(customerId);
+      expect(await activeIds(orgId)).toEqual([ids[0]]);
+      expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("no longer active"));
+      expect(errorSpy).not.toHaveBeenCalledWith(expect.stringContaining("ALERT"));
+    });
+
+    it.each([
+      ["Reconciliation + AI", { plan: "reconciliation_ai" }],
+      ["not paid yet (incomplete)", { status: "incomplete" }],
+      ["a trial, live but not charged yet", { status: "trialing" }],
+      ["no source recorded (a subscription this build didn't open)", { keep: null }],
+    ])("nothing is archived: %s", async (_case, opts) => {
+      const { orgId, customerId, ids } = await orgWithSources(1);
+      subscriptionsOfMock.mockResolvedValue([paidSub({ keep: ids[0], ...opts })]);
+      await syncOrgBilling(customerId);
+      expect(await activeIds(orgId)).toEqual(ids);
+    });
+
+    it("nothing is archived when the stored copy was already live (a renewal, a recovered payment)", async () => {
+      const { orgId, customerId, ids } = await orgWithSources(1);
+      await setBillingCopy(orgId, { stripeStatus: "past_due" });
+      subscriptionsOfMock.mockResolvedValue([paidSub({ keep: ids[0] })]);
+      await syncOrgBilling(customerId);
+      expect(await activeIds(orgId)).toEqual(ids);
+    });
+
+    it("nothing is archived while a staff grant made after the subscription keeps the org on its free plan", async () => {
+      const { orgId, customerId, ids } = await orgWithSources(1);
+      await db
+        .update(organizations)
+        .set({ complimentary: true, complimentaryPlan: "reconciliation_ai" })
+        .where(eq(organizations.id, orgId));
+      const snap = { plan: "reconciliation" as const, status: "active" as const, complimentary: true, complimentaryUntil: null, suspended: false };
+      await db.insert(orgAccountEvents).values({ orgId, action: "complimentary_granted", before: snap, after: snap, createdAt: new Date() });
+      subscriptionsOfMock.mockResolvedValue([paidSub({ keep: ids[0], created: Math.floor(Date.now() / 1000) - 7 * 86_400 })]);
+      await syncOrgBilling(customerId);
+      expect((await orgRow(orgId)).complimentary).toBe(true);
+      expect(await activeIds(orgId)).toEqual(ids);
     });
   });
 

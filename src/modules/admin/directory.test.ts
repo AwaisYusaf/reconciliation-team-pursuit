@@ -1,4 +1,4 @@
-﻿import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import {
   describeAccountEvent,
@@ -52,13 +52,13 @@ describe("staffBilling: the org page's Billing card (Phase 16 §4.6)", () => {
   };
 
   it("nothing when Stripe has never seen the org", () => {
-    expect(staffBilling(none, null, NOW)).toBeNull();
+    expect(staffBilling(none, {}, NOW)).toBeNull();
   });
 
   const PAID = { amountCents: 49_700, at: new Date("2026-09-25T16:00:00Z") };
 
   it("paid: a green Paid pill with the last payment, then interval, renewal and last payment as facts", () => {
-    expect(staffBilling(paying, PAID, NOW)).toEqual({
+    expect(staffBilling(paying, { lastPaid: PAID }, NOW)).toEqual({
       headline: { tone: "good", label: "Paid", detail: expect.stringMatching(/^Last payment \$497\.00 on /) },
       facts: [
         { label: "Billed", value: "monthly" },
@@ -71,43 +71,43 @@ describe("staffBilling: the org page's Billing card (Phase 16 §4.6)", () => {
   });
 
   it("Total paid follows Last payment, with a note that refunds aren't taken off; $0.00 shows, unknown doesn't", () => {
-    const facts = staffBilling(paying, PAID, NOW, 69_699)?.facts ?? [];
+    const facts = staffBilling(paying, { lastPaid: PAID, totalPaidCents: 69_699 }, NOW)?.facts ?? [];
     expect(facts.map((f) => f.label)).toEqual(["Billed", "Renews on", "Last payment", "Total paid"]);
     expect(facts[3]).toEqual({ label: "Total paid", value: "$696.99", caption: "Every paid invoice, before any refunds." });
 
-    expect(staffBilling(paying, null, NOW, 0)?.facts.at(-1)).toMatchObject({ label: "Total paid", value: "$0.00" });
+    expect(staffBilling(paying, { totalPaidCents: 0 }, NOW)?.facts.at(-1)).toMatchObject({ label: "Total paid", value: "$0.00" });
     // Stripe couldn't be reached: no figure rather than a wrong $0.00.
-    expect(staffBilling(paying, null, NOW, null)?.facts.map((f) => f.label)).not.toContain("Total paid");
+    expect(staffBilling(paying, { totalPaidCents: null }, NOW)?.facts.map((f) => f.label)).not.toContain("Total paid");
   });
 
   it("active but no paid invoice read (Stripe unreachable): still Paid, no invented amount", () => {
-    const b = staffBilling(paying, null, NOW);
+    const b = staffBilling(paying, {}, NOW);
     expect(b?.headline).toEqual({ tone: "good", label: "Paid", detail: null });
     expect(b?.facts.map((f) => f.label)).not.toContain("Last payment");
   });
 
   it.each(["past_due", "unpaid"])("%s: a red Payment failed pill, with the retry line", (status) => {
-    expect(staffBilling({ ...paying, stripeStatus: status }, PAID, NOW)?.headline).toEqual({
+    expect(staffBilling({ ...paying, stripeStatus: status }, { lastPaid: PAID }, NOW)?.headline).toEqual({
       tone: "bad",
       label: "Payment failed",
       detail: "Last payment failed. Stripe is retrying the card.",
     });
   });
 
-  it("trialing (bought during complimentary access): Not charged yet, with the first payment date", () => {
-    const b = staffBilling({ ...paying, stripeStatus: "trialing" }, null, NOW);
+  it("trialing (a trial set in Stripe's dashboard; the app starts none): Not charged yet, with the first payment date", () => {
+    const b = staffBilling({ ...paying, stripeStatus: "trialing" }, {}, NOW);
     expect(b?.headline).toMatchObject({ tone: "neutral", label: "Not charged yet", detail: expect.stringMatching(/^Card saved\. The first payment is on /) });
     expect(b?.facts.map((f) => f.label)).toContain("First payment on");
   });
 
   it("cancelling: Paid, cancelling, with when access ends; the fact says Ends on", () => {
-    const b = staffBilling({ ...paying, cancelAtPeriodEnd: true }, PAID, NOW);
+    const b = staffBilling({ ...paying, cancelAtPeriodEnd: true }, { lastPaid: PAID }, NOW);
     expect(b?.headline).toMatchObject({ tone: "warn", label: "Paid, cancelling", detail: expect.stringMatching(/^Won't renew\. Access ends on /) });
     expect(b?.facts.map((f) => f.label)).toContain("Ends on");
   });
 
   it.each(["canceled", "incomplete_expired"])("%s: Cancelled, and no renewal date", (status) => {
-    const b = staffBilling({ ...paying, stripeStatus: status }, PAID, NOW);
+    const b = staffBilling({ ...paying, stripeStatus: status }, { lastPaid: PAID }, NOW);
     expect(b?.headline).toMatchObject({ tone: "neutral", label: "Cancelled" });
     const labels = b?.facts.map((f) => f.label);
     expect(labels).not.toContain("Renews on");
@@ -115,24 +115,24 @@ describe("staffBilling: the org page's Billing card (Phase 16 §4.6)", () => {
   });
 
   it("incomplete: Payment not finished", () => {
-    expect(staffBilling({ ...paying, stripeStatus: "incomplete" }, null, NOW)?.headline).toMatchObject({ tone: "warn", label: "Payment not finished" });
+    expect(staffBilling({ ...paying, stripeStatus: "incomplete" }, {}, NOW)?.headline).toMatchObject({ tone: "warn", label: "Payment not finished" });
   });
 
   it("an unknown Stripe status is shown as is, never as Paid", () => {
-    expect(staffBilling({ ...paying, stripeStatus: "some_future_status" }, null, NOW)?.headline).toMatchObject({
+    expect(staffBilling({ ...paying, stripeStatus: "some_future_status" }, {}, NOW)?.headline).toMatchObject({
       tone: "neutral",
       label: "some_future_status",
     });
   });
 
   it("a customer with no subscription yet: No Stripe subscription", () => {
-    expect(staffBilling({ ...none, stripeCustomerId: "cus_1", livemode: false }, null, NOW)?.headline.label).toBe(
+    expect(staffBilling({ ...none, stripeCustomerId: "cus_1", livemode: false }, {}, NOW)?.headline.label).toBe(
       "No Stripe subscription.",
     );
   });
 
   it("a live-mode customer links without /test/", () => {
-    expect(staffBilling({ ...paying, livemode: true }, null, NOW)?.customerUrl).toBe(
+    expect(staffBilling({ ...paying, livemode: true }, {}, NOW)?.customerUrl).toBe(
       "https://dashboard.stripe.com/customers/cus_123",
     );
   });
@@ -141,13 +141,13 @@ describe("staffBilling: the org page's Billing card (Phase 16 §4.6)", () => {
     const at = new Date("2026-10-25T16:00:00Z");
     const down = staffBilling(
       { ...paying, pendingPlan: "reconciliation", pendingInterval: "year", pendingAt: at, pendingReason: "downgrade" },
-      null,
+      {},
       NOW,
     );
     expect(down?.facts.at(-1)?.value).toMatch(/^Reconciliation, billed yearly, on /);
     const move = staffBilling(
       { ...paying, pendingPlan: "reconciliation", pendingInterval: "month", pendingAt: at, pendingReason: "price_move" },
-      null,
+      {},
       NOW,
     );
     expect(move?.facts.at(-1)?.value).toMatch(/^Price change on /);
@@ -161,7 +161,7 @@ describe("staffBilling: the org page's Billing card (Phase 16 §4.6)", () => {
         collectionPaused: true,
         disputedAt: new Date("2026-09-20T16:00:00Z"),
       },
-      null,
+      {},
       NOW,
     );
     expect(b?.warnings).toEqual([
@@ -172,11 +172,11 @@ describe("staffBilling: the org page's Billing card (Phase 16 §4.6)", () => {
   });
 
   it("an expired upgrade is not a warning", () => {
-    expect(staffBilling({ ...paying, upgradeExpiresAt: new Date(NOW.getTime() - 1) }, null, NOW)?.warnings).toEqual([]);
+    expect(staffBilling({ ...paying, upgradeExpiresAt: new Date(NOW.getTime() - 1) }, {}, NOW)?.warnings).toEqual([]);
   });
 
   it("the customer id is encoded into the link", () => {
-    expect(staffBilling({ ...paying, stripeCustomerId: "cus_a/../b" }, null, NOW)?.customerUrl).toBe(
+    expect(staffBilling({ ...paying, stripeCustomerId: "cus_a/../b" }, {}, NOW)?.customerUrl).toBe(
       "https://dashboard.stripe.com/test/customers/cus_a%2F..%2Fb",
     );
   });

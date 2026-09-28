@@ -118,12 +118,20 @@ export function changeBlockedReason(sub: {
   return null;
 }
 
-// ── Buying a plan while complimentary (D-128, 2026-09-28) ────────────────────
+// ── Subscription metadata set at Checkout (D-128, D-129) ─────────────────────
 
 /**
- * Subscription metadata: end complimentary access once this subscription's payment succeeds.
- * Buying a plan always ends complimentary access (D-128): the customer's admin decided to pay,
- * so they pay today and the free access stops once that payment goes through, however much of
- * it was left. There is no deferred first charge.
+ * End complimentary access once this subscription's payment succeeds. Buying a plan always ends
+ * complimentary access (D-128): the customer's admin decided to pay, so they pay today and the
+ * free access stops once that payment goes through, however much of it was left. Set on every
+ * Checkout (D-129), so a grant made while a Checkout was open is covered too; the sync ends only
+ * a grant made before the subscription, never a later one.
  */
 export const END_COMPLIMENTARY_KEY = "endComplimentary";
+
+/**
+ * The funding source to keep on Reconciliation, which includes one (C8, D-129). Recorded at a
+ * Reconciliation Checkout; the sync that first sees the subscription paid archives the org's
+ * other active sources.
+ */
+export const KEEP_FUNDING_SOURCE_KEY = "keepFundingSource";

@@ -58,7 +58,8 @@ export function activeFundingSourceLimit(ent: Entitlement): number | null {
   return fundingSourceLimit(ent.plan);
 }
 
-export type UpcomingPlanOrg = {
+/** The `pending_*` columns of the Stripe copy that `reconciliationStartsOn` reads. */
+export type QueuedChangeRow = {
   pendingPlan: PlanId | null;
   pendingReason: string | null;
   pendingAt: Date | null;
@@ -70,7 +71,7 @@ export type UpcomingPlanOrg = {
  * can't arrive on Reconciliation with several active sources. A plan bought during complimentary
  * access is not a case here: it starts the day it is paid for (D-128).
  */
-export function reconciliationStartsOn(org: UpcomingPlanOrg, now: Date): IsoDate | null {
+export function reconciliationStartsOn(org: QueuedChangeRow, now: Date): IsoDate | null {
   if (
     org.pendingPlan === "reconciliation" &&
     org.pendingReason === "downgrade" &&

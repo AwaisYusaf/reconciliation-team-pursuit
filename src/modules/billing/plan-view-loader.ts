@@ -5,23 +5,26 @@ import "server-only";
  * own organization. Re-syncs from Stripe first when our copy looks overdue (the stale safety net,
  * P13), so opening the section repairs a lost webhook; a Stripe failure just shows the last copy.
  */
-import { and, count, eq, isNull } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 
 import { db } from "@/src/db";
 import { billingCopyOn } from "@/src/db/billing-copy";
-import { fundingSources, orgBilling, organizations, users } from "@/src/db/schema";
+import { orgBilling, organizations, users } from "@/src/db/schema";
 import { userDisplay } from "@/src/domain/user-display";
 import { billingEnabled } from "@/src/modules/billing/config";
 import { planBillingView, type PlanBillingView } from "@/src/modules/billing/plan-view";
 import { refreshOrgBilling } from "@/src/modules/billing/sync";
+import { listFundingSources } from "@/src/modules/funding-sources/queries";
 
 export type PlanBillingData = {
   view: PlanBillingView;
   isAdmin: boolean;
   /** "Name, Name" of the org's active admins, for a manager's notices. */
   adminNames: string;
-  /** Active funding sources: Reconciliation allows one (C8), so the switch cards need it. */
-  activeSources: number;
+  /** The org's active funding sources in the picker's order, for an admin only (`[]` for a
+   *  manager). Reconciliation includes one (C8): buying it with several asks which to keep
+   *  (D-129), and a switch to it is refused. */
+  activeSources: { id: string; name: string }[];
 };
 
 /** The org's active admins, as they're shown to a manager ("Your admin (…) can …"). */
@@ -63,17 +66,18 @@ export async function loadPlanBilling(session: { orgId: string; role: string }):
   await refreshOrgBilling(session.orgId, "stale"); // throttled, never throws
 
   const row = await loadBillingRow(session.orgId);
-  const [sources] = await db
-    .select({ total: count() })
-    .from(fundingSources)
-    .where(and(eq(fundingSources.orgId, session.orgId), isNull(fundingSources.archivedAt)));
-
   const isAdmin = session.role === "admin";
+  const activeSources = isAdmin
+    ? (await listFundingSources(session.orgId))
+        .filter((source) => source.archivedAt === null)
+        .map(({ id, name }) => ({ id, name }))
+    : [];
+
   return {
     view: row ? planBillingView(row, { now: new Date() }) : { kind: "none" },
     isAdmin,
     adminNames: isAdmin ? "" : await activeAdminNames(session.orgId),
-    activeSources: sources?.total ?? 0,
+    activeSources,
   };
 }
 
