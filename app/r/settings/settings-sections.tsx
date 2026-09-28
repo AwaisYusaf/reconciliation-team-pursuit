@@ -8,6 +8,7 @@ import { useState, useTransition } from "react";
 import { Button, buttonClassName } from "@/src/components/ui/button";
 import { Helper, Input, Label, MoneyInput } from "@/src/components/ui/field";
 import { Select } from "@/src/components/ui/select";
+import { StatTile } from "@/src/components/ui/stat-tile";
 import { Switch } from "@/src/components/ui/switch";
 import { Card, CARD_PADDING, DangerPanel, SectionTitle } from "@/src/components/ui/surfaces";
 import { reportResult } from "@/src/components/ui/toast";
@@ -483,72 +484,75 @@ function FundingSourceDetails({
       ? `${date(source.contractStart) ?? "Not set"} to ${date(source.contractEnd) ?? "Not set"}`
       : null;
 
-  // The two figures people come here for, then when the money runs — read at a glance.
-  const tiles: Array<[string, string | null, boolean]> = [
-    ["Contract value", money(source.contractValue), true],
-    ["Advances received", money(source.advancesReceived), true],
-    ["Contract period", period, false],
+  const details: Array<[string, string]> = [
+    ["Project name", source.projectName],
+    ["Contract number", source.contractNumber],
+    ["Base PO number", source.basePoNumber],
+    ["Performance PO number", source.performancePoNumber],
+    ["Fiduciary", source.fiduciaryName],
   ];
-
-  const details: Array<[string, string | null]> = [
-    ["Project name", source.projectName || null],
-    ["Contract number", source.contractNumber || null],
-    ["Base PO number", source.basePoNumber || null],
-    ["Performance PO number", source.performancePoNumber || null],
-    ["Fiduciary", source.fiduciaryName || null],
-  ];
+  // Only what has been filled in gets a field; the rest are named once underneath, rather than a
+  // grid of "Not set" that makes an empty source look like a form nobody finished.
+  const filled = details.filter(([, value]) => value.trim() !== "");
+  const missing = details.filter(([, value]) => value.trim() === "").map(([label]) => label);
 
   return (
     <div
       id={`funding-source-details-${source.id}`}
-      className="basis-full mt-1 rounded-[3px] bg-section p-4 flex flex-col gap-4"
+      className="basis-full mt-1 pt-4 border-t border-line flex flex-col gap-5"
     >
+      {/* The two figures people come here for, then when the money runs, read at a glance. The
+          contract value is the one figure the row exists to show, so it takes the accent tile. */}
       <div className="grid gap-3 sm:grid-cols-3">
-        {tiles.map(([label, value, figure]) => (
-          <div key={label} className="rounded-[3px] border border-line bg-surface px-4 py-3">
-            <div className="text-[13px] text-sub">{label}</div>
-            <div
-              className={cn(
-                "mt-1 tabular-nums",
-                value === null
-                  ? "text-[15px] text-sub"
-                  : figure
-                    ? "text-xl font-semibold text-ink"
-                    : "text-base font-medium text-ink",
-              )}
-            >
-              {value ?? "Not set"}
-            </div>
-          </div>
-        ))}
+        <StatTile label="Contract value" value={money(source.contractValue)} tone="accent" />
+        <StatTile label="Advances received" value={money(source.advancesReceived)} />
+        <StatTile
+          label="Contract period"
+          value={period ?? <span className="text-sub font-medium">Not set</span>}
+          size="sm"
+        />
       </div>
 
-      <dl className="grid gap-x-6 gap-y-3 sm:grid-cols-2 lg:grid-cols-3">
-        {details.map(([label, value]) => (
-          <div key={label}>
-            <dt className="text-[13px] text-sub">{label}</dt>
-            <dd className={cn("text-[15px]", value === null ? "text-sub" : "text-ink font-medium")}>
-              {value ?? "Not set"}
-            </dd>
-          </div>
+      <dl className="grid gap-x-6 gap-y-4 sm:grid-cols-2 lg:grid-cols-3">
+        {filled.map(([label, value]) => (
+          <DetailField key={label} label={label}>
+            {value}
+          </DetailField>
         ))}
-        <div>
-          {/* What prints on this source's documents: its own name if set, else the org's (R6.1). */}
-          <dt className="text-[13px] text-sub">Document display name</dt>
-          <dd className="text-[15px] text-ink font-medium">
+        {/* What prints on this source's documents: its own name if set, else the org's (R6.1). */}
+        <DetailField label="Name on documents">
+          <span className="inline-flex flex-wrap items-center gap-2">
             {source.docName || orgDocName}
-            {!source.docName && (
-              <span className="ml-1.5 font-normal text-sub">(organization&apos;s)</span>
-            )}
-          </dd>
-        </div>
+            {!source.docName && <span className={CHIP}>Organization name</span>}
+          </span>
+        </DetailField>
+        <DetailField label="Reimbursement">
+          <span className="flex flex-wrap gap-2">
+            <RuleBadge reimbursed={source.taxReimbursable} label="sales tax" />
+            <RuleBadge reimbursed={source.feesReimbursable} label="fees" />
+          </span>
+        </DetailField>
       </dl>
 
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="text-[13px] text-sub mr-1">This funder</span>
-        <RuleBadge reimbursed={source.taxReimbursable} label="sales tax" />
-        <RuleBadge reimbursed={source.feesReimbursable} label="fees" />
-      </div>
+      {missing.length > 0 && (
+        <p className="text-[13px] text-sub">
+          Not set yet: {missing.join(", ")}. Use Edit to add {missing.length === 1 ? "it" : "them"}.
+        </p>
+      )}
+    </div>
+  );
+}
+
+/** A small neutral chip: a funding source's type, "Archived", the org-name marker. */
+const CHIP = "inline-flex items-center rounded-full bg-section px-2.5 py-0.5 text-[12px] font-semibold text-sub";
+
+/** A labelled value in the details grid. The label is `StatTile`'s: the same small uppercase word
+ *  that names a figure, so the tiles above and the fields below read as one card. */
+function DetailField({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="min-w-0">
+      <dt className="text-[11px] uppercase tracking-[0.06em] font-bold text-sub">{label}</dt>
+      <dd className="mt-1 text-[15px] text-ink font-medium break-words">{children}</dd>
     </div>
   );
 }
@@ -563,7 +567,9 @@ function RuleBadge({ reimbursed, label }: { reimbursed: boolean; label: string }
         reimbursed ? "bg-success-bg text-success" : "bg-surface text-sub border border-line",
       )}
     >
-      <span aria-hidden="true">{reimbursed ? "✓" : "✕"}</span>
+      <svg aria-hidden="true" viewBox="0 0 16 16" className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        {reimbursed ? <path d="M3.5 8.5l3 3 6-7" /> : <path d="M4.5 4.5l7 7m0-7l-7 7" />}
+      </svg>
       {reimbursed ? `Reimburses ${label}` : `Does not reimburse ${label}`}
     </span>
   );
@@ -667,7 +673,7 @@ function FundingSourcesSection({
         {visibleSources.map((source) => (
           <div
             key={source.id}
-            className="flex flex-wrap items-center gap-3.5 justify-between border border-line rounded-[3px] px-4 py-3 bg-surface"
+            className="flex flex-wrap items-center gap-3.5 justify-between border border-line rounded-[10px] px-4 py-3 sm:px-5 bg-surface"
           >
             <div className="flex items-center gap-2.5 flex-1 min-w-[220px]">
               <button
@@ -675,24 +681,26 @@ function FundingSourcesSection({
                 aria-expanded={expandedIds.has(source.id)}
                 aria-controls={`funding-source-details-${source.id}`}
                 onClick={() => toggleExpanded(source.id)}
-                className="inline-flex items-center gap-1.5 text-base text-ink font-medium hover:text-accent rounded-[3px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+                className="inline-flex items-center gap-2 min-h-11 text-base text-ink font-semibold hover:text-accent rounded-[3px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
               >
-                <span
+                <svg
                   aria-hidden="true"
-                  className={`text-sub text-[13px] transition-transform ${expandedIds.has(source.id) ? "rotate-90" : ""}`}
+                  viewBox="0 0 16 16"
+                  className={cn("w-4 h-4 text-sub transition-transform", expandedIds.has(source.id) && "rotate-90")}
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
                 >
-                  ▶
-                </span>
+                  <path d="M6 3.5l4.5 4.5L6 12.5" />
+                </svg>
                 {source.name}
               </button>
-              <span className="text-[13px] text-sub uppercase tracking-[0.04em]">
+              <span className={CHIP}>
                 {FUNDING_SOURCE_TYPES.find(([value]) => value === source.type)?.[1] ?? source.type}
               </span>
-              {source.archived && (
-                <span className="text-[13px] text-sub bg-section px-2 py-0.5 rounded-full">
-                  Archived
-                </span>
-              )}
+              {source.archived && <span className={cn(CHIP, "bg-surface border border-dashed border-line")}>Archived</span>}
             </div>
             <div className="flex items-center gap-3.5">
               <Button
@@ -717,6 +725,8 @@ function FundingSourcesSection({
                 <Button
                   variant="quiet"
                   disabled={pending || activeCount <= 1}
+                  // A disabled button says why (usability rule 4): the last active source stays.
+                  title={activeCount <= 1 ? "Keep at least one active funding source." : undefined}
                   onClick={() =>
                     run(() => archiveFundingSourceAction(source.id), "Funding source archived.")
                   }
