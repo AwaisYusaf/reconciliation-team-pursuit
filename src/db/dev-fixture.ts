@@ -388,10 +388,8 @@ async function main() {
     }));
     await db.insert(schema.vendorDefaults).values(vendorRows).onConflictDoNothing();
 
-    await db
-      .update(schema.organizations)
-      .set({ activeMonth: MONTH })
-      .where(eq(schema.organizations.id, org.id));
+    // The month is per person (Phase 18): every user of the fixture org lands on it.
+    await db.update(schema.users).set({ activeMonth: MONTH }).where(eq(schema.users.orgId, org.id));
 
     console.log(`Inserted ${values.length} expenses for ${MONTH} and set it as the active month.`);
     console.log("Note: none carry documents yet, so the documentation gate blocks downloads.");

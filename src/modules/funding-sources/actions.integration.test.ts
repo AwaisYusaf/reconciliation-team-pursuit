@@ -27,7 +27,7 @@ const hasDatabase = Boolean(process.env.DATABASE_URL);
 
 describe.skipIf(!hasDatabase)("funding source management actions (integration)", async () => {
   const { db } = await import("@/src/db");
-  const { fundingSources, organizations } = await import("@/src/db/schema");
+  const { fundingSources, organizations, users } = await import("@/src/db/schema");
   const { createTestOrg, setBillingCopy } = await import("@/src/db/test-org");
   const { actionSession } = await import("@/src/lib/action-session");
   const {
@@ -139,7 +139,7 @@ describe.skipIf(!hasDatabase)("funding source management actions (integration)",
     if (!result.ok) expect(result.error).toContain("at least one active");
   });
 
-  it("archiving the organisation's active selection clears it, and unarchiving restores availability", async () => {
+  it("archiving a source clears it for each person who had it selected, no one else, and unarchiving restores availability", async () => {
     const a = await org("Archive Clears Selection Org");
     const [second] = await db
       .insert(fundingSources)
@@ -153,20 +153,27 @@ describe.skipIf(!hasDatabase)("funding source management actions (integration)",
       })
       .returning({ id: fundingSources.id });
 
-    await db
-      .update(organizations)
-      .set({ activeFundingSourceId: second.id })
-      .where(eq(organizations.id, a.orgId));
+    // Per person since Phase 18 (T4): one person on the source being archived, one on another.
+    const person = (tag: string, activeFundingSourceId: string) => ({
+      orgId: a.orgId,
+      email: `archive-${tag}-${Date.now()}@example.test`,
+      passwordHash: "unused",
+      role: "manager" as const,
+      activeFundingSourceId,
+    });
+    const [onArchived, onOther] = await db
+      .insert(users)
+      .values([person("on-archived", second.id), person("on-other", a.fundingSourceId)])
+      .returning({ id: users.id });
 
     asSession(a.orgId);
     const result = await archiveFundingSourceAction(second.id);
     expect(result.ok).toBe(true);
 
-    const [updatedOrg] = await db
-      .select({ activeFundingSourceId: organizations.activeFundingSourceId })
-      .from(organizations)
-      .where(eq(organizations.id, a.orgId));
-    expect(updatedOrg.activeFundingSourceId).toBeNull();
+    const selection = async (id: string) =>
+      (await db.select({ s: users.activeFundingSourceId }).from(users).where(eq(users.id, id)))[0].s;
+    expect(await selection(onArchived.id)).toBeNull();
+    expect(await selection(onOther.id)).toBe(a.fundingSourceId);
 
     const archived = await findFundingSource(a.orgId, second.id);
     expect(archived?.archivedAt).not.toBeNull();

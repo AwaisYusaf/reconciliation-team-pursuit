@@ -431,20 +431,24 @@ export async function completeOnboardingAction(
 
 /* ------------------------------------------------------------- shell state */
 
+/** The signed-in person's row, and only theirs: the header's month and source, and the welcome
+ *  banner's dismissal, are per person (Phase 18, D-131). */
+function ownRow(session: { userId: string; orgId: string }) {
+  return and(eq(users.id, session.userId), eq(users.orgId, session.orgId));
+}
+
+/** Persist the header's month for the signed-in person (R2.3, per person since Phase 18). */
 export async function setActiveMonthAction(month: string): Promise<ActionResult> {
   const session = await actionSession();
   if ("expired" in session) return session.expired;
   if (!isValidMonthKey(month)) return fail("That is not a valid month.");
 
-  await db
-    .update(organizations)
-    .set({ activeMonth: month })
-    .where(eq(organizations.id, session.orgId));
+  await db.update(users).set({ activeMonth: month }).where(ownRow(session));
 
   return ok();
 }
 
-/** Persist the header's funding source selection (R2.3). `null` means "All". */
+/** Persist the header's funding source for the signed-in person (R2.3). `null` means "All". */
 export async function setActiveFundingSourceAction(id: string | null): Promise<ActionResult> {
   const session = await actionSession();
   if ("expired" in session) return session.expired;
@@ -454,21 +458,16 @@ export async function setActiveFundingSourceAction(id: string | null): Promise<A
     if ("denied" in owned) return owned.denied;
   }
 
-  await db
-    .update(organizations)
-    .set({ activeFundingSourceId: id })
-    .where(eq(organizations.id, session.orgId));
+  await db.update(users).set({ activeFundingSourceId: id }).where(ownRow(session));
 
   return ok();
 }
 
+/** Hide the dashboard's welcome banner for the signed-in person only (m00, per person since Phase 18). */
 export async function dismissWelcomeAction(): Promise<ActionResult> {
   const session = await actionSession();
   if ("expired" in session) return session.expired;
-  await db
-    .update(organizations)
-    .set({ welcomeDismissedAt: new Date() })
-    .where(eq(organizations.id, session.orgId));
+  await db.update(users).set({ welcomeDismissedAt: new Date() }).where(ownRow(session));
   return ok();
 }
 

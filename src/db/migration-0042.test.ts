@@ -108,10 +108,5 @@ describe("migration 0042: feature requests", () => {
     );
   });
 
-  it("is the newest entry in the migration journal", () => {
-    const journal = JSON.parse(readFileSync(path.join(drizzleDir, "meta", "_journal.json"), "utf8")) as {
-      entries: Array<{ idx: number; tag: string }>;
-    };
-    expect(journal.entries.at(-1)).toMatchObject({ idx: 42, tag: "0042_feature_requests" });
-  });
+  // "Is the newest entry in the journal" moved to migration-0043.test.ts when 0043 was added.
 });

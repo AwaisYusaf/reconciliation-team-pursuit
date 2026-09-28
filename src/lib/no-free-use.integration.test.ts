@@ -287,10 +287,11 @@ describe.skipIf(!hasDatabase)("no free use at every entry point (I-9, I-16)", as
 
     it("setActiveMonthAction (auth/shell module) refuses and writes nothing", async () => {
       await startSession(adminId);
-      const before = await db.select({ m: organizations.activeMonth }).from(organizations).where(eq(organizations.id, orgId));
+      // The month is the person's own since Phase 18, so that is the row that must not change.
+      const before = await db.select({ m: users.activeMonth }).from(users).where(eq(users.id, adminId));
       const result = await setActiveMonthAction("2026-06");
       expect(result).toEqual({ ok: false, error: UI.billingPlanRequired });
-      const after = await db.select({ m: organizations.activeMonth }).from(organizations).where(eq(organizations.id, orgId));
+      const after = await db.select({ m: users.activeMonth }).from(users).where(eq(users.id, adminId));
       expect(after[0].m).toBe(before[0].m);
       await endSession();
     });
@@ -435,6 +436,8 @@ describe.skipIf(!hasDatabase)("no free use at every entry point (I-9, I-16)", as
       await startSession(adminId);
       const result = await setActiveMonthAction("2026-07");
       expect(result).toEqual({ ok: true });
+      const [row] = await db.select({ m: users.activeMonth }).from(users).where(eq(users.id, adminId));
+      expect(row.m).toBe("2026-07");
       await endSession();
     });
 

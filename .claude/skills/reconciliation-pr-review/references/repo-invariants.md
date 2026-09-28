@@ -58,10 +58,15 @@ Rules come from `docs/01-domain/domain-rules.md` (R-numbers), `docs/04-engineeri
 - **Funding sources (D-93)**: every grant-scoped table carries `funding_source_id` with composite FKs to
   `funding_sources(id, org_id)` and `expenses(line_item_id, funding_source_id) → line_items(id, funding_source_id)`.
   Check every new query is scoped by source where the data is per source, "All" (null) branches are
-  handled, archived sources refuse new writes but keep history reachable, and the org-wide header
-  selection (`organizations.active_funding_source_id`, shared by all users of the org) is re-validated.
+  handled, archived sources refuse new writes but keep history reachable, and the header selection
+  (`users.active_funding_source_id`, each person's own since Phase 18) is re-validated.
   Links that record a relationship (e.g. `expenses.recurring_item_id`) must be cleared or re-scoped when
   an expense moves source.
+- **Per-person state lives on the person (D-131)**: anything one person picks or dismisses for
+  themselves (month, funding source, tours, banners) is stored on `users` or a per-user table, never
+  on `organizations`. A column on `organizations` that one person's click changes for everyone is
+  the Phase 18 bug; `src/lib/per-person-state.test.ts` blocks the month, source and welcome banner
+  going back to the organization.
 - `"use server"` files may export only async functions; helpers/constants live elsewhere.
 
 ## E. Migrations and deploy

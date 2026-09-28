@@ -394,8 +394,9 @@ export const UI = {
   invoiceFileType: "Upload the invoice as a PDF or a photo.",
   /** The one button at the end of the check screen. It writes both kinds at once: the charges
    *  marked as expenses become real expenses, the rest become drafts. */
-  /** The org-wide active month changed while these charges were being reviewed. Names the
-   *  month they would otherwise have landed in, since that is the surprising part. */
+  /** The person's active month changed (in another tab or on another device) while these charges
+   *  were being reviewed. Names the month they would otherwise have landed in, since that is the
+   *  surprising part. */
   invoiceMonthChanged: (month: string) =>
     `The month changed to ${month} while you were checking these charges. Nothing was saved. Read the invoice again to add them to ${month}.`,
   /** Files queued on a charge that the save could not attach. The charges themselves are

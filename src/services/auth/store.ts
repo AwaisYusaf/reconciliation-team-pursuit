@@ -13,6 +13,7 @@ import { db } from "@/src/db";
 import { billingCopyOn } from "@/src/db/billing-copy";
 import { orgBilling, organizations, sessions, staffSessions, staffUsers, users } from "@/src/db/schema";
 import type { OrgPlan, UserRole } from "@/src/db/schema";
+import { currentMonthKey } from "@/src/domain/dates";
 import { ENTITLEMENT_COLUMNS, entitlementOf } from "@/src/services/auth/entitlement";
 import type { Entitlement } from "@/src/modules/billing/entitlement";
 
@@ -47,8 +48,9 @@ export type SessionContext = {
    *  for the AI plan on every page, and a second query per request for one enum is waste. */
   plan: OrgPlan;
   docName: string;
+  /** The signed-in person's month (R2.3, per person since Phase 18). */
   activeMonth: string;
-  /** Header's current funding source selection (R2.3); null means "All" (Phase 6, D-93). */
+  /** The signed-in person's funding source selection (R2.3, Phase 18); null means "All" (D-93). */
   activeFundingSourceId: string | null;
   onboarded: boolean;
   welcomeDismissed: boolean;
@@ -120,10 +122,10 @@ export async function resolveSession(
       orgId: organizations.id,
       orgName: organizations.name,
       docName: organizations.docName,
-      activeMonth: organizations.activeMonth,
-      activeFundingSourceId: organizations.activeFundingSourceId,
+      activeMonth: users.activeMonth,
+      activeFundingSourceId: users.activeFundingSourceId,
       onboardedAt: organizations.onboardedAt,
-      welcomeDismissedAt: organizations.welcomeDismissedAt,
+      welcomeDismissedAt: users.welcomeDismissedAt,
       ...ENTITLEMENT_COLUMNS,
     })
     .from(sessions)
@@ -170,7 +172,8 @@ export async function resolveSession(
       orgName: row.orgName,
       plan: row.plan,
       docName: row.docName,
-      activeMonth: row.activeMonth,
+      // Null until the person first picks a month (a new account, Phase 18 Q3).
+      activeMonth: row.activeMonth ?? currentMonthKey(now),
       activeFundingSourceId: row.activeFundingSourceId,
       onboarded: row.onboardedAt !== null,
       welcomeDismissed: row.welcomeDismissedAt !== null,

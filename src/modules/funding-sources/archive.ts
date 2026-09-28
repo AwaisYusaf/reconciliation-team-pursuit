@@ -9,14 +9,15 @@ import "server-only";
  */
 import { and, eq, inArray, isNull } from "drizzle-orm";
 
-import { fundingSources, organizations } from "@/src/db/schema";
+import { fundingSources, users } from "@/src/db/schema";
 import type { Transaction } from "@/src/db/org-lock";
 import { listFundingSources } from "@/src/modules/funding-sources/queries";
 
 /**
- * Archives these sources of the org, and clears the header's funding-source selection if it
- * pointed at one of them (it would otherwise name a source the picker no longer lists). Every
- * statement is scoped by `orgId`, so an id from another org changes nothing.
+ * Archives these sources of the org, and clears the header's funding-source selection of every
+ * person in the org whose selection pointed at one of them (it would otherwise name a source the
+ * picker no longer lists; per person since Phase 18). Every statement is scoped by `orgId`, so an
+ * id from another org changes nothing.
  */
 export async function archiveFundingSources(tx: Transaction, orgId: string, ids: readonly string[]): Promise<void> {
   if (ids.length === 0) return;
@@ -25,9 +26,9 @@ export async function archiveFundingSources(tx: Transaction, orgId: string, ids:
     .set({ archivedAt: new Date() })
     .where(and(eq(fundingSources.orgId, orgId), inArray(fundingSources.id, [...ids]), isNull(fundingSources.archivedAt)));
   await tx
-    .update(organizations)
+    .update(users)
     .set({ activeFundingSourceId: null })
-    .where(and(eq(organizations.id, orgId), inArray(organizations.activeFundingSourceId, [...ids])));
+    .where(and(eq(users.orgId, orgId), inArray(users.activeFundingSourceId, [...ids])));
 }
 
 /**

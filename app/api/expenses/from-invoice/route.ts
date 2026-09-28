@@ -133,12 +133,12 @@ export async function POST(request: NextRequest) {
 
   const fundingSourceId = String(form.get("fundingSourceId") ?? "");
 
-  // The month is the organisation's own, never a value the client chose — but the screen posts
-  // the month it RENDERED for, and the two must still agree. `organizations.active_month` is
-  // shared by everyone in the org, so a colleague switching it while these charges were being
-  // reviewed used to send the whole invoice into a month this person never saw, spending that
-  // month's reference numbers on it. Refused rather than silently redirected: the charges are
-  // all still on screen, and re-reading the month is the only honest way to continue.
+  // The month is the person's own (`users.active_month`, Phase 18), never a value the client
+  // chose — but the screen posts the month it RENDERED for, and the two must still agree. The
+  // same person switching month in another tab or on another device while these charges were
+  // being reviewed would otherwise send the whole invoice into a month this screen never showed,
+  // spending that month's reference numbers on it. Refused rather than silently redirected: the
+  // charges are all still on screen, and re-reading the month is the only honest way to continue.
   const month = session.activeMonth;
   const postedMonth = String(form.get("month") ?? "");
   if (postedMonth && postedMonth !== month) {

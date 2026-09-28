@@ -14,10 +14,10 @@ Postgres, single database, org-scoped rows (single-tenant-per-org from day one; 
 | id | uuid PK | |
 | name | text | Legal/display name — "Team Pursuit Global" |
 | doc_name | text | Name printed on documents — "Team Pursuit". Non-empty; defaults to `name` |
-| active_month | char(7) | Last selected month (per-org UI persistence, R2.3). Initialized to the current month in America/Detroit at signup |
-| active_funding_source_id | uuid FK null | Last selected funding source (per-org UI persistence, same model as `active_month`, D-93 2.5). `NULL` = "All". Plain single-column FK (not composite — `SET NULL` on a composite key would null `organizations.id` too); app code re-validates it belongs to the org whenever it is read |
+| active_month | char(7) | Unused since Phase 18 (D-131): the selection moved to `users.active_month`. Still written at signup (NOT NULL) and kept so a code-only rollback finds a month; dropped in a later clean-up |
+| active_funding_source_id | uuid FK null | Unused since Phase 18 (D-131), now `users.active_funding_source_id`; kept for rollback like `active_month`, dropped later |
 | onboarded_at | timestamptz null | Null → login redirects into onboarding (m00) |
-| welcome_dismissed_at | timestamptz null | First-run banner dismissal |
+| welcome_dismissed_at | timestamptz null | Unused since Phase 18 (D-131), now `users.welcome_dismissed_at`; kept for rollback, dropped later |
 | plan | org_plan enum | `reconciliation` \| `reconciliation_ai`. Hand-set until Stripe is connected (Phase 9, D-98) |
 | subscription_status | subscription_status enum | `trial` \| `active` \| `past_due` \| `cancelled` |
 | complimentary | boolean | Free access, independent of `subscription_status` |
@@ -47,6 +47,9 @@ Multi-user per org (D-85). Org creation provisions one `admin`; admins create `m
 | role | user_role enum | `admin` \| `manager`. No column default — a forgotten role is a type error, not a silent admin (D-85) |
 | last_sign_in_at | timestamptz null | Written from ship date on (Phase 9); null on every account that predates it |
 | deactivated_at | timestamptz null | Set when an admin revokes a manager's access, null while the account is active (migration `0038`, D-120). Revoking deletes the person's sessions in the same transaction, and `resolveSession` filters on this column too, so no cookie made before or after keeps working. Sign-in refuses a revoked account only after the password is checked, so the form never reveals whether an address still has access. Reinstating clears it; the account keeps its own history rather than returning as a new person |
+| active_month | char(7) null | This person's selected month (R2.3, migration `0043`, D-131). Null until they first pick one, read as the current month in America/Detroit (`resolveSession`) |
+| active_funding_source_id | uuid FK null | This person's selected funding source (R2.3, R14.2); `NULL` = "All". `ON DELETE SET NULL`; plain single-column FK, re-validated against the org on read (`loadSourceContext`). Archiving a source clears it for everyone in the org who had it |
+| welcome_dismissed_at | timestamptz null | When this person dismissed the dashboard's welcome banner (m00, migration `0043`, D-131). Per person, so one person dismissing it never hides it for a colleague |
 
 ### sessions (custom auth — D-06, architecture §Auth)
 | Field | Type | Notes |

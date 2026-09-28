@@ -35,7 +35,7 @@ const hasDatabase = Boolean(process.env.DATABASE_URL);
 describe.skipIf(!hasDatabase)("billing sync (integration, Phase 16)", async () => {
   const { eq } = await import("drizzle-orm");
   const { db } = await import("@/src/db");
-  const { organizations, orgAccountEvents, fundingSources } = await import("@/src/db/schema");
+  const { organizations, orgAccountEvents, fundingSources, users } = await import("@/src/db/schema");
   const { ORIGINAL_RULES } = await import("@/src/modules/expenses/reimbursement");
   const { createTestOrg, orgWithBilling, setBillingCopy } = await import("@/src/db/test-org");
   const { entitlementOf } = await import("@/src/services/auth/entitlement");
@@ -233,25 +233,37 @@ describe.skipIf(!hasDatabase)("billing sync (integration, Phase 16)", async () =
       const { listFundingSources } = await import("@/src/modules/funding-sources/queries");
       return (await listFundingSources(orgId)).filter((source) => source.archivedAt === null).map((source) => source.id);
     }
-    async function headerSelection(orgId: string) {
+    /** A person in the org whose header selection is `sourceId` (per person since Phase 18). */
+    async function personOn(orgId: string, sourceId: string) {
+      counter += 1;
       const [row] = await db
-        .select({ id: organizations.activeFundingSourceId })
-        .from(organizations)
-        .where(eq(organizations.id, orgId));
+        .insert(users)
+        .values({
+          orgId,
+          email: `sync-person-${counter}-${Date.now()}@example.test`,
+          passwordHash: "unused",
+          role: "manager",
+          activeFundingSourceId: sourceId,
+        })
+        .returning({ id: users.id });
+      return row.id;
+    }
+    async function headerSelection(userId: string) {
+      const [row] = await db.select({ id: users.activeFundingSourceId }).from(users).where(eq(users.id, userId));
       return row.id;
     }
 
     it("the first paid sync keeps the chosen source, archives the others and clears a header selection on one of them; a later sync archives nothing", async () => {
       const { orgId, customerId, ids } = await orgWithSources(2);
       const [, kept, third] = ids;
-      await db.update(organizations).set({ activeFundingSourceId: third }).where(eq(organizations.id, orgId));
+      const person = await personOn(orgId, third);
       // Another org's sources are never touched.
       const bystander = await orgWithSources(1);
 
       subscriptionsOfMock.mockResolvedValue([paidSub({ keep: kept })]);
       await syncOrgBilling(customerId);
       expect(await activeIds(orgId)).toEqual([kept]);
-      expect(await headerSelection(orgId)).toBeNull();
+      expect(await headerSelection(person)).toBeNull();
       expect(await activeIds(bystander.orgId)).toEqual(bystander.ids);
 
       // A source added afterwards (billing switched off meanwhile, say) is not this Checkout's.
@@ -263,20 +275,20 @@ describe.skipIf(!hasDatabase)("billing sync (integration, Phase 16)", async () =
     it("the archive helper changes nothing outside the org it is given, even when handed another org's ids", async () => {
       const a = await orgWithSources(1);
       const b = await orgWithSources(1);
-      await db.update(organizations).set({ activeFundingSourceId: b.ids[0] }).where(eq(organizations.id, b.orgId));
+      const person = await personOn(b.orgId, b.ids[0]);
       const { archiveFundingSources } = await import("@/src/modules/funding-sources/archive");
       await db.transaction((tx) => archiveFundingSources(tx, a.orgId, b.ids));
       expect(await activeIds(b.orgId)).toEqual(b.ids);
-      expect(await headerSelection(b.orgId)).toBe(b.ids[0]);
+      expect(await headerSelection(person)).toBe(b.ids[0]);
     });
 
     it("a header selection on the kept source stays", async () => {
       const { orgId, customerId, ids } = await orgWithSources(1);
-      await db.update(organizations).set({ activeFundingSourceId: ids[1] }).where(eq(organizations.id, orgId));
+      const person = await personOn(orgId, ids[1]);
       subscriptionsOfMock.mockResolvedValue([paidSub({ keep: ids[1] })]);
       await syncOrgBilling(customerId);
       expect(await activeIds(orgId)).toEqual([ids[1]]);
-      expect(await headerSelection(orgId)).toBe(ids[1]);
+      expect(await headerSelection(person)).toBe(ids[1]);
     });
 
     it("sources added while Checkout was open are archived once it is paid (B3: free Reconciliation + AI buying Reconciliation)", async () => {

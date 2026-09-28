@@ -307,6 +307,7 @@ The branch was reviewed against the ticket before merge. What it found, and what
 - **The month comes from org-wide shared state.** `session.activeMonth` can be changed by another
   user while someone is reviewing, and the check screen has no month field, so Done would write
   into a month the reviewer never saw. Needs the screen to post the month it was rendered for and
-  refuse a mismatch.
+  refuse a mismatch. *Update (Phase 18, D-131): the month is now each person's own, so a colleague
+  can no longer move it; only the same person switching in another tab or device still can.*
 - **No rollback SQL for `0032`/`0033`**, unlike `rollback-0023-funding-sources.sql`.
 - **Match quality against real vendor invoices is still unmeasured**, as §8 already says.

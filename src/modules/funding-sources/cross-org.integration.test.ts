@@ -219,10 +219,11 @@ describe.skipIf(!hasDatabase)("cross-organisation funding source sweep (P7.2)", 
     const result = await setActiveFundingSourceAction(sourceA);
     expect(result.ok).toBe(false);
 
+    // The selection is the person's own since Phase 18, so that is the row that must not change.
     const [row] = await db
-      .select({ activeFundingSourceId: organizations.activeFundingSourceId })
-      .from(organizations)
-      .where(eq(organizations.id, orgB));
+      .select({ activeFundingSourceId: users.activeFundingSourceId })
+      .from(users)
+      .where(eq(users.id, userB));
     expect(row.activeFundingSourceId).toBeNull();
   });
 

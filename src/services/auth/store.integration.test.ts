@@ -42,6 +42,8 @@ describe.skipIf(!hasDatabase)("session store (integration)", async () => {
         email: `integration-${Date.now()}@example.test`,
         passwordHash: "unused-for-these-tests",
         role: "admin",
+        // Deliberately not the org's "2026-02": the session must carry the person's own month.
+        activeMonth: "2026-05",
       })
       .returning({ id: users.id });
     userId = user.id;
@@ -59,9 +61,30 @@ describe.skipIf(!hasDatabase)("session store (integration)", async () => {
     expect(resolved!.context.userId).toBe(userId);
     expect(resolved!.context.orgId).toBe(orgId);
     expect(resolved!.context.orgName).toBe("Integration Org");
-    expect(resolved!.context.activeMonth).toBe("2026-02");
+    // The person's month, not the organization's (Phase 18, T7).
+    expect(resolved!.context.activeMonth).toBe("2026-05");
     expect(resolved!.context.onboarded).toBe(false);
     expect(resolved!.renewed).toBe(false);
+
+    await deleteSession(token);
+  });
+
+  it("gives a person who has never picked a month the current month and All (Phase 18, T3)", async () => {
+    const [fresh] = await db
+      .insert(users)
+      .values({
+        orgId,
+        email: `integration-fresh-${Date.now()}@example.test`,
+        passwordHash: "unused-for-these-tests",
+        role: "manager",
+      })
+      .returning({ id: users.id });
+    const token = await createSession(fresh.id);
+    const now = new Date("2026-07-15T12:00:00Z");
+    const resolved = await resolveSession(token, now);
+
+    expect(resolved!.context.activeMonth).toBe("2026-07");
+    expect(resolved!.context.activeFundingSourceId).toBeNull();
 
     await deleteSession(token);
   });

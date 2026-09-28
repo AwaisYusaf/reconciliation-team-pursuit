@@ -138,13 +138,17 @@ export const organizations = pgTable("organizations", {
   name: text().notNull(),
   /** Name printed on documents — "Team Pursuit". Non-empty; defaults to `name`. */
   docName: text("doc_name").notNull(),
-  /** Last selected month (per-org UI persistence, R2.3). */
+  /**
+   * Unused since Phase 18, which moved the selection to `users.active_month` (R2.3). Still
+   * written at org creation (NOT NULL) and kept so a code-only rollback finds a month; dropped
+   * in a later clean-up migration.
+   */
   activeMonth: char("active_month", { length: 7 }).notNull(),
   /**
-   * Last selected funding source (per-org UI persistence, R2.3, same model as `active_month`).
-   * `NULL` means "All". Not a composite FK: `SET NULL` on a composite key would null
-   * `organizations.id` too, so this stays a plain single-column FK; app code re-validates it
-   * belongs to the org whenever it is read (Phase 2). The explicit `AnyPgColumn` return type on
+   * Unused since Phase 18 (now `users.active_funding_source_id`); kept for rollback like
+   * `active_month`. Was the org's last selected funding source; `NULL` means "All". Not a
+   * composite FK: `SET NULL` on a composite key would null `organizations.id` too, so this stays
+   * a plain single-column FK. The explicit `AnyPgColumn` return type on
    * the reference callback (instead of letting it infer `fundingSources.id`'s type) is required
    * here because `funding_sources` in turn references `organizations` — without it the two
    * tables' types depend on each other and TS can't resolve either.
@@ -155,7 +159,7 @@ export const organizations = pgTable("organizations", {
   ),
   /** Null → login redirects into onboarding (m00). */
   onboardedAt: timestamp("onboarded_at", { withTimezone: true }),
-  /** First-run banner dismissal (m00). */
+  /** Unused since Phase 18 (now `users.welcome_dismissed_at`); kept for rollback, dropped later. */
   welcomeDismissedAt: timestamp("welcome_dismissed_at", { withTimezone: true }),
   /** Hand-set until Stripe is connected (Phase 9); once billing is on, only a live
    *  subscription's sync writes this (P16, P27). */
@@ -236,6 +240,23 @@ export const users = pgTable(
     deactivatedAt: timestamp("deactivated_at", { withTimezone: true }),
     /** Written from ship date on (Phase 9); null on every account that predates it. */
     lastSignInAt: timestamp("last_sign_in_at", { withTimezone: true }),
+    /**
+     * This person's last selected month (R2.3, Phase 18). Per person, so one manager switching
+     * month never moves another's screens or where their next expense lands. Null until they
+     * first pick one, which reads as the current month (`resolveSession`).
+     */
+    activeMonth: char("active_month", { length: 7 }),
+    /**
+     * This person's last selected funding source (R2.3, Phase 18). `NULL` means "All". A plain
+     * single-column FK for the same reason as `organizations.active_funding_source_id`; app code
+     * re-validates it belongs to the org whenever it is read (`loadSourceContext`).
+     */
+    activeFundingSourceId: uuid("active_funding_source_id").references(
+      (): AnyPgColumn => fundingSources.id,
+      { onDelete: "set null" },
+    ),
+    /** When this person dismissed the dashboard's welcome banner (m00, per person since Phase 18). */
+    welcomeDismissedAt: timestamp("welcome_dismissed_at", { withTimezone: true }),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },

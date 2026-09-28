@@ -78,7 +78,8 @@ export type SourceContext = {
 };
 
 /**
- * The header's current selection, resolved from what is stored against the org (Phase 6, R2.3).
+ * The header's current selection, resolved from what is stored against the signed-in person
+ * (Phase 6, R2.3; per person since Phase 18).
  *
  * Wrapped in React's `cache` (not Next's `use cache`, which persists across requests and would
  * leak one org's source list into another's) so every page and action in one request shares a
