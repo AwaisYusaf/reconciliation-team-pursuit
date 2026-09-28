@@ -18,6 +18,7 @@ import {
 import { Input, Label } from "@/src/components/ui/field";
 import { Menu, MenuItem, MenuLink } from "@/src/components/ui/menu";
 import { Modal } from "@/src/components/ui/modal";
+import { useOverlayPresence } from "@/src/components/ui/overlay-shell";
 import { Select } from "@/src/components/ui/select";
 import { Card, DangerPanel, EmptyState } from "@/src/components/ui/surfaces";
 import { TableCard, Td, Th } from "@/src/components/ui/table";
@@ -139,13 +140,15 @@ const ALL_FUNDING_SOURCES = "All funding sources";
  * effect.
  */
 function HistoryModal({
+  open,
   row,
   history,
   pending,
   error,
   onClose,
 }: {
-  row: ExpenseRow | null;
+  open: boolean;
+  row: ExpenseRow;
   history: { events: OrgAuditEvent[]; truncated: boolean } | null;
   pending: boolean;
   error: string | null;
@@ -153,10 +156,8 @@ function HistoryModal({
 }) {
   const [diffEvent, setDiffEvent] = useState<OrgAuditEvent | null>(null);
 
-  if (!row) return null;
-
   return (
-    <Modal open title={`${row.reference} · ${row.name}`} onClose={onClose} size="lg">
+    <Modal open={open} title={`${row.reference} · ${row.name}`} onClose={onClose} size="lg">
       {diffEvent ? (
         <div>
           <AuditDiffContent key={diffEvent.id} event={diffEvent} />
@@ -290,6 +291,8 @@ export function ExpensesTable({
   // Its own transition, not the delete/`pending` one: loading a history must not disable
   // every row's Delete button while it runs.
   const [historyPending, startHistory] = useTransition();
+  // Keeps the History popup mounted, on the row it showed, while it fades out.
+  const historyShown = useOverlayPresence(viewingHistory !== null, viewingHistory);
   const { open, viewer } = useDocumentViewer();
 
   /** Opens this row's history modal and starts fetching what's behind it — so landing on it
@@ -763,17 +766,20 @@ export function ExpensesTable({
 
       {viewer}
 
-      {/* Keyed on the row id so switching rows without an intervening close remounts fresh —
-          otherwise the previous row's diff-view step would carry over as stale state. Only
-          ever opened for an admin (the row menu never offers "History" otherwise). */}
-      <HistoryModal
-        key={viewingHistory?.id ?? "none"}
-        row={viewingHistory}
-        history={history}
-        pending={historyPending}
-        error={historyError}
-        onClose={() => setViewingHistory(null)}
-      />
+      {/* Keyed on the row and the opening, so every opening starts fresh rather than on the
+          previous one's diff view. Only ever opened for an admin (the row menu never offers
+          "History" otherwise). */}
+      {historyShown.mounted && historyShown.shown && (
+        <HistoryModal
+          key={`${historyShown.shown.id}:${historyShown.key}`}
+          open={viewingHistory !== null}
+          row={historyShown.shown}
+          history={history}
+          pending={historyPending}
+          error={historyError}
+          onClose={() => setViewingHistory(null)}
+        />
+      )}
     </div>
   );
 }

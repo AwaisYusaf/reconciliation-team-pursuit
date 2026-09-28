@@ -3,6 +3,7 @@ import Link from "next/link";
 
 import { APP_NAME } from "@/src/domain/strings";
 
+import { IconTile } from "./landing-icons";
 import { type Faq, FaqList, LandingNav, type NavLink, Reveal } from "./landing-islands";
 import { DEMO_REQUEST_HREF, getStartedHref } from "./plan-links";
 import { planPrice, PLANS } from "./plans";
@@ -164,7 +165,7 @@ export function LandingPage({ signupOpen }: { signupOpen: boolean }) {
 >
             <span>Get Started</span>
             <span className="glass-btn-arrow">
-              <svg className="w-3.5 h-3.5 -rotate-90" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6" strokeLinecap="round" strokeLinejoin="round" strokeWidth="3"></path></svg>
+              <svg aria-hidden="true" className="w-3.5 h-3.5 -rotate-90" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6" strokeLinecap="round" strokeLinejoin="round" strokeWidth="3"></path></svg>
             </span>
           </a>
 <a className="glass-btn glass-btn-light inline-flex items-center min-h-11 px-5 py-2.5 rounded-full text-sm font-semibold" href="#pricing">
@@ -328,9 +329,6 @@ export function LandingPage({ signupOpen }: { signupOpen: boolean }) {
 <div className="glass-tile bg-lp-surface-container-lowest/60 backdrop-blur-xl rounded-3xl p-8 border-2 border-primary/45 shadow-warm-card flex flex-col justify-between ring-1 ring-inset ring-white/30">
 <div>
 <div className="flex items-center justify-between mb-4">
-<div className="w-10 h-10 rounded-xl bg-terracotta-100/75 backdrop-blur-md text-terracotta-700 ring-1 ring-inset ring-white/40 border-2 border-primary/15 flex items-center justify-center font-semibold">
-<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
-</div>
 <span className="text-xs font-semibold font-mono text-tertiary bg-tertiary-container/60 px-2.5 py-1 rounded-full">Due at reconciliation</span>
 </div>
 <h3 className="text-xl font-semibold text-on-surface font-lp-serif mb-2">A missing receipt</h3>
@@ -339,12 +337,12 @@ export function LandingPage({ signupOpen }: { signupOpen: boolean }) {
             </p>
 </div>
 <div className="glass-tile w-full bg-lp-surface-container/60 backdrop-blur-lg rounded-2xl p-4 flex flex-col gap-2.5 border-2 border-primary/18 ring-1 ring-inset ring-white/25">
-<div className="flex items-center justify-between text-xs p-2.5 rounded-lg bg-lp-surface-container-lowest/70 backdrop-blur-md border border-tertiary/20 text-tertiary shadow-xs">
-<span className="flex items-center gap-1.5 font-medium truncate">
-<svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
+<div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1.5 text-xs p-2.5 rounded-lg bg-lp-surface-container-lowest/70 backdrop-blur-md border border-tertiary/20 text-tertiary shadow-xs">
+<span className="flex items-center gap-1.5 font-medium min-w-0">
+<svg aria-hidden="true" className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
                 Staples Office Pack
               </span>
-<span className="font-semibold text-xs bg-tertiary-container text-tertiary px-2 py-0.5 rounded">Missing Proof of Pay</span>
+<span className="font-semibold text-xs bg-tertiary-container text-tertiary px-2 py-0.5 rounded whitespace-nowrap shrink-0">Missing proof of payment</span>
 </div>
 <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-0.5 text-xs p-2.5 rounded-lg bg-lp-surface-container-lowest/70 backdrop-blur-md border border-outline-variant/50 text-on-surface-variant">
 <span className="">Youth Workshop Refreshments</span>
@@ -356,9 +354,6 @@ export function LandingPage({ signupOpen }: { signupOpen: boolean }) {
 <div className="glass-tile bg-lp-surface-container-lowest/60 backdrop-blur-xl rounded-3xl p-8 border-2 border-primary/45 shadow-warm-card flex flex-col justify-between ring-1 ring-inset ring-white/30">
 <div>
 <div className="flex items-center justify-between mb-4">
-<div className="w-10 h-10 rounded-xl bg-amber-100/75 backdrop-blur-md text-amber-800 ring-1 ring-inset ring-white/40 border-2 border-primary/15 flex items-center justify-center font-semibold">
-<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
-</div>
 <span className="text-xs font-semibold font-mono text-amber-800 bg-amber-100 px-2.5 py-1 rounded-full">Due at close</span>
 </div>
 <h3 className="text-xl font-semibold text-on-surface font-lp-serif mb-2">An undocumented expense</h3>
@@ -381,9 +376,6 @@ export function LandingPage({ signupOpen }: { signupOpen: boolean }) {
 <div className="glass-tile bg-lp-surface-container-lowest/60 backdrop-blur-xl rounded-3xl p-8 border-2 border-primary/45 shadow-warm-card flex flex-col justify-between ring-1 ring-inset ring-white/30">
 <div>
 <div className="flex items-center justify-between mb-4">
-<div className="w-10 h-10 rounded-xl bg-brand-100/75 backdrop-blur-md text-brand-800 ring-1 ring-inset ring-white/40 border-2 border-primary/15 flex items-center justify-center font-semibold">
-<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
-</div>
 <span className="text-xs font-semibold font-mono text-tertiary bg-tertiary-container/60 px-2.5 py-1 rounded-full">Due at reporting</span>
 </div>
 <h3 className="text-xl font-semibold text-on-surface font-lp-serif mb-2">An uncaptured activity</h3>
@@ -624,7 +616,7 @@ export function LandingPage({ signupOpen }: { signupOpen: boolean }) {
 <div className="flex items-center justify-between py-3 gap-4">
 <dt className="text-xs text-on-surface-variant flex-shrink-0">Documentation</dt>
 <dd className="font-semibold text-secondary text-right flex items-center gap-1.5 justify-end">
-<svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
+<svg aria-hidden="true" className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
 Receipt + Bank Proof
             </dd>
 </div>
@@ -679,7 +671,7 @@ Receipt + Bank Proof
 <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
 <div className="lg:col-span-5 space-y-4">
 <div className="w-12 h-12 rounded-2xl bg-primary/75 backdrop-blur-md text-white flex items-center justify-center shadow-lg shadow-primary/30 ring-1 ring-inset ring-white/40 border-2 border-primary/15">
-<svg className="w-6 h-6 text-primary-fixed" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
+<svg aria-hidden="true" className="w-6 h-6 text-primary-fixed" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
 </div>
 <h3 className="text-2xl sm:text-3xl font-semibold text-on-surface font-lp-serif">One connected system</h3>
 <p className="text-on-surface-variant leading-relaxed text-xs sm:text-sm">
@@ -687,11 +679,11 @@ Receipt + Bank Proof
             </p>
 <div className="pt-2 space-y-2 text-xs">
 <div className="flex items-center gap-2 text-on-surface font-medium">
-<svg className="w-4 h-4 text-secondary flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path clipRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" fillRule="evenodd"></path></svg>
+<svg aria-hidden="true" className="w-4 h-4 text-secondary flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path clipRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" fillRule="evenodd"></path></svg>
                 Accounting software. Spreadsheets. Emails. Receipts. Shared folders. Staff members. Program records.
               </div>
 <div className="flex items-center gap-2 text-on-surface font-medium">
-<svg className="w-4 h-4 text-secondary flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path clipRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" fillRule="evenodd"></path></svg>
+<svg aria-hidden="true" className="w-4 h-4 text-secondary flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path clipRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" fillRule="evenodd"></path></svg>
                 Every one of them a place a detail can go missing
               </div>
 </div>
@@ -734,9 +726,7 @@ Receipt + Bank Proof
 
 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
 <div className="glass-tile bg-lp-surface-container-lowest/60 backdrop-blur-xl rounded-3xl p-6 border-2 border-primary/45 shadow-warm-card hover:shadow-warm-card-hover ring-1 ring-inset ring-white/30">
-<div className="w-10 h-10 rounded-xl bg-primary-fixed/75 backdrop-blur-md text-primary flex items-center justify-center mb-4 ring-1 ring-inset ring-white/30 border border-primary/12">
-<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
-</div>
+<IconTile name="calendarCheck" tone="primary" className="mb-4" />
 <h4 className="text-lg font-semibold text-on-surface font-lp-serif mb-1">Not when the report is due</h4>
 <p className="text-xs text-on-surface-variant mb-4 leading-relaxed">
               Funding requirements get handled while the work is happening, not in the few days before a deadline lands.
@@ -747,9 +737,7 @@ Receipt + Bank Proof
 </div>
 </div>
 <div className="glass-tile bg-lp-surface-container-lowest/60 backdrop-blur-xl rounded-3xl p-6 border-2 border-primary/45 shadow-warm-card hover:shadow-warm-card-hover ring-1 ring-inset ring-white/30">
-<div className="w-10 h-10 rounded-xl bg-secondary-container/75 backdrop-blur-md text-secondary flex items-center justify-center mb-4 ring-1 ring-inset ring-white/30 border border-primary/12">
-<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M3 10h18M3 14h18m-9-4v8m-7 4h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
-</div>
+<IconTile name="scales" tone="secondary" className="mb-4" />
 <h4 className="text-lg font-semibold text-on-surface font-lp-serif mb-1">Not when reconciliation starts</h4>
 <p className="text-xs text-on-surface-variant mb-4 leading-relaxed">
               Expenses arrive already documented, categorized, and connected to a funding source, so reconciliation confirms what is already there.
@@ -760,9 +748,7 @@ Receipt + Bank Proof
 </div>
 </div>
 <div className="glass-tile bg-lp-surface-container-lowest/60 backdrop-blur-xl rounded-3xl p-6 border-2 border-primary/45 shadow-warm-card hover:shadow-warm-card-hover ring-1 ring-inset ring-white/30">
-<div className="w-10 h-10 rounded-xl bg-brand-100/75 backdrop-blur-md text-brand-800 flex items-center justify-center mb-4 ring-1 ring-inset ring-white/30 border border-primary/12">
-<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
-</div>
+<IconTile name="sealCheck" tone="brand" className="mb-4" />
 <h4 className="text-lg font-semibold text-on-surface font-lp-serif mb-1">Not when the auditor arrives</h4>
 <p className="text-xs text-on-surface-variant mb-4 leading-relaxed">
               Records stay ready throughout the funding period, so a monitoring request or an audit isn&apos;t a scramble through old folders.
@@ -867,28 +853,28 @@ Receipt + Bank Proof
 </div>
 <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
 <div className="glass-tile bg-lp-surface-container-lowest/60 backdrop-blur-xl p-6 rounded-2xl border-2 border-primary/45 shadow-warm-card ring-1 ring-inset ring-white/30">
-<div className="w-9 h-9 rounded-xl bg-brand-100/75 backdrop-blur-md text-primary ring-1 ring-inset ring-white/40 border-2 border-primary/15 flex items-center justify-center font-semibold text-sm mb-3">Ø</div>
+<IconTile name="chartLineUp" tone="brandPrimary" className="mb-3" />
 <h3 className="text-base font-semibold text-on-surface font-lp-serif mb-2">Track</h3>
 <p className="text-xs text-on-surface-variant leading-relaxed">
               Monitor budgets, expenses, funding sources, spending categories, and remaining balances.
           </p>
 </div>
 <div className="glass-tile bg-lp-surface-container-lowest/60 backdrop-blur-xl p-6 rounded-2xl border-2 border-primary/45 shadow-warm-card ring-1 ring-inset ring-white/30">
-<div className="w-9 h-9 rounded-xl bg-secondary-container/75 backdrop-blur-md text-secondary ring-1 ring-inset ring-white/40 border-2 border-primary/15 flex items-center justify-center font-semibold text-sm mb-3">√</div>
+<IconTile name="receipt" tone="secondary" className="mb-3" />
 <h3 className="text-base font-semibold text-on-surface font-lp-serif mb-2">Document</h3>
 <p className="text-xs text-on-surface-variant leading-relaxed">
               Connect receipts, invoices, approvals, supporting records, and program activity to the expenses they support.
           </p>
 </div>
 <div className="glass-tile bg-lp-surface-container-lowest/60 backdrop-blur-xl p-6 rounded-2xl border-2 border-primary/45 shadow-warm-card ring-1 ring-inset ring-white/30">
-<div className="w-9 h-9 rounded-xl bg-primary-fixed/75 backdrop-blur-md text-primary ring-1 ring-inset ring-white/40 border-2 border-primary/15 flex items-center justify-center font-semibold text-sm mb-3">∞</div>
+<IconTile name="shieldCheck" tone="primary" className="mb-3" />
 <h3 className="text-base font-semibold text-on-surface font-lp-serif mb-2">Comply</h3>
 <p className="text-xs text-on-surface-variant leading-relaxed">
               Stay aligned with funding requirements while preparing for reconciliation, reporting, monitoring, and audit.
           </p>
 </div>
 <div className="glass-tile bg-lp-surface-container-lowest/60 backdrop-blur-xl p-6 rounded-2xl border-2 border-primary/45 shadow-warm-card ring-1 ring-inset ring-white/30">
-<div className="w-9 h-9 rounded-xl bg-terracotta-100/75 backdrop-blur-md text-terracotta-700 ring-1 ring-inset ring-white/40 border-2 border-primary/15 flex items-center justify-center font-semibold text-sm mb-3">§</div>
+<IconTile name="stack" tone="terracotta" className="mb-3" />
 <h3 className="text-base font-semibold text-on-surface font-lp-serif mb-2">Multiple grants</h3>
 <p className="text-xs text-on-surface-variant leading-relaxed">
               Each can maintain its own budget, guidelines, expenses, documentation, and requirements while leadership maintains visibility across the organization.
@@ -943,28 +929,28 @@ Receipt + Bank Proof
 </div>
 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
 <div className="glass-tile bg-lp-surface-container-lowest/60 backdrop-blur-xl p-6 rounded-2xl border-2 border-primary/45 shadow-warm-card ring-1 ring-inset ring-white/30">
-<div className="w-10 h-10 rounded-xl bg-primary-fixed/75 backdrop-blur-md text-primary ring-1 ring-inset ring-white/40 border-2 border-primary/15 flex items-center justify-center font-semibold text-sm mb-4">01</div>
+<IconTile name="bookOpenText" tone="primary" className="mb-4" />
 <h3 className="text-base font-semibold text-on-surface font-lp-serif mb-2">Stay bookkeeping ready</h3>
 <p className="text-xs text-on-surface-variant leading-relaxed">
               Records stay organized and connected as expenses happen, so the books are easier to keep.
           </p>
 </div>
 <div className="glass-tile bg-lp-surface-container-lowest/60 backdrop-blur-xl p-6 rounded-2xl border-2 border-primary/45 shadow-warm-card ring-1 ring-inset ring-white/30">
-<div className="w-10 h-10 rounded-xl bg-secondary-container/75 backdrop-blur-md text-secondary ring-1 ring-inset ring-white/40 border-2 border-primary/15 flex items-center justify-center font-semibold text-sm mb-4">02</div>
+<IconTile name="listChecks" tone="secondary" className="mb-4" />
 <h3 className="text-base font-semibold text-on-surface font-lp-serif mb-2">Stay reconciliation ready</h3>
 <p className="text-xs text-on-surface-variant leading-relaxed">
               Expenses arrive documented and categorized, so reconciliation confirms what is already there.
           </p>
 </div>
 <div className="glass-tile bg-lp-surface-container-lowest/60 backdrop-blur-xl p-6 rounded-2xl border-2 border-primary/45 shadow-warm-card ring-1 ring-inset ring-white/30">
-<div className="w-10 h-10 rounded-xl bg-brand-100/75 backdrop-blur-md text-brand-800 ring-1 ring-inset ring-white/40 border-2 border-primary/15 flex items-center justify-center font-semibold text-sm mb-4">03</div>
+<IconTile name="presentationChart" tone="brand" className="mb-4" />
 <h3 className="text-base font-semibold text-on-surface font-lp-serif mb-2">Stay reporting ready</h3>
 <p className="text-xs text-on-surface-variant leading-relaxed">
               The numbers and the narrative stay connected, so reports don&apos;t start from memory.
           </p>
 </div>
 <div className="glass-tile bg-lp-surface-container-lowest/60 backdrop-blur-xl p-6 rounded-2xl border-2 border-primary/45 shadow-warm-card ring-1 ring-inset ring-white/30">
-<div className="w-10 h-10 rounded-xl bg-terracotta-100/75 backdrop-blur-md text-terracotta-700 ring-1 ring-inset ring-white/40 border-2 border-primary/15 flex items-center justify-center font-semibold text-sm mb-4">04</div>
+<IconTile name="clipboardText" tone="terracotta" className="mb-4" />
 <h3 className="text-base font-semibold text-on-surface font-lp-serif mb-2">Stay audit ready</h3>
 <p className="text-xs text-on-surface-variant leading-relaxed">
               Documentation, approvals, and funding requirements stay in place, so a monitoring request isn&apos;t a scramble.
@@ -1047,7 +1033,7 @@ Receipt + Bank Proof
 <a className="glass-btn glass-btn-primary inline-flex items-center gap-2 px-8 py-3.5 rounded-full text-sm font-semibold" href={DEMO_REQUEST_HREF}>
           <span>Book a demo</span>
           <span className="glass-btn-arrow">
-              <svg className="w-3.5 h-3.5 -rotate-90" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6" strokeLinecap="round" strokeLinejoin="round" strokeWidth="3"></path></svg>
+              <svg aria-hidden="true" className="w-3.5 h-3.5 -rotate-90" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6" strokeLinecap="round" strokeLinejoin="round" strokeWidth="3"></path></svg>
             </span>
         </a>
 </div>

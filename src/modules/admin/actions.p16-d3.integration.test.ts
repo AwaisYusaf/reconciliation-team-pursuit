@@ -45,6 +45,7 @@ describe.skipIf(!hasDatabase)("P16 (staff-managed while live) and D3 (collection
   const { requireStaff } = await import("@/src/lib/action-session");
   const { changePlanAction, setComplimentaryAction, suspendOrgAction, reinstateOrgAction } = await import("./actions");
   const { entitlementOf } = await import("@/src/services/auth/entitlement");
+  const { todayIso } = await import("@/src/domain/dates");
 
   const requireStaffMock = vi.mocked(requireStaff);
 
@@ -224,7 +225,7 @@ describe.skipIf(!hasDatabase)("P16 (staff-managed while live) and D3 (collection
       if (!billingOn) vi.stubEnv("BILLING_ENABLED", "false");
       const orgId = await freshOrg({ complimentary: alreadyComp });
       await setStripeStatus(orgId, status);
-      const result = await setComplimentaryAction(orgId, true, "2027-01-31", "");
+      const result = await setComplimentaryAction(orgId, true, todayIso(new Date(Date.now() + 120 * 86_400_000)), "");
       expect(result.ok).toBe(true);
       expect(staffCancelMock).not.toHaveBeenCalled();
     });
@@ -235,6 +236,36 @@ describe.skipIf(!hasDatabase)("P16 (staff-managed while live) and D3 (collection
       const result = await setComplimentaryAction(orgId, false, "", "");
       expect(result.ok).toBe(true);
       expect(staffCancelMock).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("an end date must be today or later", () => {
+    const iso = (days: number) => todayIso(new Date(Date.now() + days * 86_400_000));
+
+    it.each([false, true])("yesterday is refused (org already complimentary: %s), nothing written, Stripe untouched", async (alreadyComp) => {
+      const orgId = await freshOrg({ complimentary: alreadyComp });
+      await setStripeStatus(orgId, "active");
+      const result = await setComplimentaryAction(orgId, true, iso(-1), "", "now");
+      expect(result).toEqual(fail(UI.complimentaryUntilPast));
+      expect(staffCancelMock).not.toHaveBeenCalled();
+      expect(await eventsFor(orgId)).toHaveLength(0);
+    });
+
+    it("today is allowed (the grant still covers today)", async () => {
+      const orgId = await freshOrg({ complimentary: false });
+      expect((await setComplimentaryAction(orgId, true, iso(0), "")).ok).toBe(true);
+    });
+
+    it("removing a grant that has already ended is never refused for its past date", async () => {
+      const orgId = await freshOrg({ complimentary: true });
+      await db.update(organizations).set({ complimentaryUntil: iso(-3) }).where(eq(organizations.id, orgId));
+      // The dialog sends the grant's own end date along with the switch turned off.
+      expect(await setComplimentaryAction(orgId, false, iso(-3), "")).toEqual({ ok: true, data: undefined });
+      const [row] = await db
+        .select({ complimentary: organizations.complimentary })
+        .from(organizations)
+        .where(eq(organizations.id, orgId));
+      expect(row.complimentary).toBe(false);
     });
   });
 

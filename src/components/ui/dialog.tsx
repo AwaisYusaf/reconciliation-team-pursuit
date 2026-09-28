@@ -4,7 +4,7 @@ import type { ReactNode, Ref } from "react";
 import { useId, useRef } from "react";
 
 import { Button } from "@/src/components/ui/button";
-import { OverlayShell } from "@/src/components/ui/overlay-shell";
+import { OverlayShell, useOverlayPresence } from "@/src/components/ui/overlay-shell";
 
 /**
  * A blocking confirm/cancel modal: a destructive action (delete, remove) the user must
@@ -114,6 +114,7 @@ function DialogOverlay({
   size = "sm",
   dismissDisabled,
   tone,
+  closing,
 }: {
   title: string;
   children: ReactNode;
@@ -123,6 +124,7 @@ function DialogOverlay({
   size?: keyof typeof PANEL_WIDTH;
   dismissDisabled?: boolean;
   tone?: DialogTone;
+  closing: boolean;
 }) {
   // Always the dismiss button (Cancel/OK), never the destructive confirm — a stray Enter
   // must not fire the confirm action the instant the dialog opens.
@@ -134,7 +136,7 @@ function DialogOverlay({
   };
 
   return (
-    <OverlayShell open onDismiss={dismiss} initialFocusRef={dismissRef}>
+    <OverlayShell open onDismiss={dismiss} initialFocusRef={dismissRef} closing={closing}>
       <div className={`w-full ${PANEL_WIDTH[size]} max-h-[calc(100dvh-2rem)] overflow-y-auto`}>
         <DialogPanel
           title={title}
@@ -175,20 +177,23 @@ export function Dialog({
   dismissDisabled?: boolean;
   tone?: DialogTone;
 }) {
-  // `OverlayShell` (inside `DialogOverlay`) owns the portal and the open/SSR gating.
-  if (!open) return null;
+  // `OverlayShell` (inside `DialogOverlay`) owns the portal and the SSR gating; this keeps the
+  // dialog on screen, showing what it last showed, while it fades out.
+  const { mounted, closing, shown } = useOverlayPresence(open, { title, children, confirm, dismissLabel, size, dismissDisabled, tone });
+  if (!mounted) return null;
 
   return (
     <DialogOverlay
-      title={title}
-      confirm={confirm}
-      dismissLabel={dismissLabel}
+      title={shown.title}
+      confirm={shown.confirm}
+      dismissLabel={shown.dismissLabel}
       onDismiss={onDismiss}
-      size={size}
-      dismissDisabled={dismissDisabled}
-      tone={tone}
+      size={shown.size}
+      dismissDisabled={shown.dismissDisabled}
+      tone={shown.tone}
+      closing={closing}
     >
-      {children}
+      {shown.children}
     </DialogOverlay>
   );
 }

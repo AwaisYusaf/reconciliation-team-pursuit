@@ -7,7 +7,7 @@
  * Suspension is handled earlier, in `resolveSession`, and is not part of this function (§4.2).
  */
 import { complimentaryState, isComplimentaryNow } from "@/src/domain/complimentary";
-import type { IsoDate } from "@/src/domain/dates";
+import { todayIso, type IsoDate } from "@/src/domain/dates";
 import { fundingSourceLimit, KNOWN_STRIPE_STATUSES, PAID_STATUSES, type PlanId } from "@/src/modules/billing/rules";
 
 export type Entitlement =
@@ -56,4 +56,29 @@ export function orgEntitlement(org: EntitlementOrg, today: IsoDate, enabled: boo
 export function activeFundingSourceLimit(ent: Entitlement): number | null {
   if (ent.reason === "billing_off") return null;
   return fundingSourceLimit(ent.plan);
+}
+
+/** The `pending_*` columns of the Stripe copy that `reconciliationStartsOn` reads. */
+export type QueuedChangeRow = {
+  pendingPlan: PlanId | null;
+  pendingReason: string | null;
+  pendingAt: Date | null;
+};
+
+/**
+ * The day a downgrade to Reconciliation queued in the Stripe copy (`pending_*`) starts, or
+ * `null` (P24). Adding or unarchiving a funding source is refused while it waits, so the org
+ * can't arrive on Reconciliation with several active sources. A plan bought during complimentary
+ * access is not a case here: it starts the day it is paid for (D-128).
+ */
+export function reconciliationStartsOn(org: QueuedChangeRow, now: Date): IsoDate | null {
+  if (
+    org.pendingPlan === "reconciliation" &&
+    org.pendingReason === "downgrade" &&
+    org.pendingAt !== null &&
+    org.pendingAt > now
+  ) {
+    return todayIso(org.pendingAt);
+  }
+  return null;
 }

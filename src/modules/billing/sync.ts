@@ -26,7 +26,7 @@ import {
   type OrgPlan,
   type SubscriptionStatus,
 } from "@/src/db/schema";
-import { complimentaryState } from "@/src/domain/complimentary";
+import { complimentaryState, isComplimentaryNow } from "@/src/domain/complimentary";
 import { todayIso } from "@/src/domain/dates";
 import { billingEnabled } from "@/src/modules/billing/config";
 import {
@@ -34,11 +34,13 @@ import {
   isLive,
   isPlanId,
   END_COMPLIMENTARY_KEY,
+  KEEP_FUNDING_SOURCE_KEY,
   KNOWN_STRIPE_STATUSES,
   pickCurrent,
   type Interval,
 } from "@/src/modules/billing/rules";
 import { futurePhase, idOf, isMissing, stripe, subscriptionsOf } from "@/src/modules/billing/stripe";
+import { keepOneFundingSource } from "@/src/modules/funding-sources/archive";
 
 /** Every column the sync writes: the `org_billing` copy, plus `plan` and `subscriptionStatus` on
  *  `organizations`, which are absent when it must not write them (P27). */
@@ -220,14 +222,14 @@ export async function syncOrgBilling(customerId: string): Promise<SyncOutcome> {
   const sub = currentSubscription(customerId, subs);
   const [pending, awaiting] = sub ? await Promise.all([pendingChange(sub), awaitingPayment(sub)]) : [NO_PENDING, NOT_AWAITING];
 
-  await writeCopy(
-    org.id,
+  await writeCopy({
+    orgId: org.id,
     customerId,
     readStartedAt,
-    (previousStatus) => copyOf(sub, pending, awaiting, previousStatus),
-    endsComplimentaryAt(sub),
-    sub?.status === "active",
-  );
+    build: (previousStatus) => copyOf(sub, pending, awaiting, previousStatus),
+    endComplimentarySince: endsComplimentaryAt(sub),
+    keepFundingSourceId: keptFundingSource(sub),
+  });
   return "synced";
 }
 
@@ -248,14 +250,20 @@ function snapshot(row: {
 }
 
 /**
- * A complimentary org that bought a plan with no deferred start pays today, and its free access
- * ends once that payment has gone through (decided 2026-09-25). Marked on the subscription at
- * Checkout; returns when that subscription was created, or null when it isn't one of those or
- * isn't paid yet. Pure, for U-7's style of test.
+ * Buying a plan ends complimentary access once the payment has gone through (D-128). Every
+ * Checkout marks its subscription (D-129); returns when that subscription was created, or null
+ * when it isn't marked or isn't paid yet. Only a grant made before that moment is ended, so a
+ * grant staff make later is kept. Pure, for U-7's style of test.
  */
 export function endsComplimentaryAt(sub: Stripe.Subscription | undefined): Date | null {
   if (!sub || sub.status !== "active" || sub.metadata?.[END_COMPLIMENTARY_KEY] !== "on_payment") return null;
   return new Date(sub.created * 1000);
+}
+
+/** The funding source a Reconciliation Checkout recorded to keep (D-129), or null. */
+export function keptFundingSource(sub: Stripe.Subscription | undefined): string | null {
+  const id = sub?.metadata?.[KEEP_FUNDING_SOURCE_KEY];
+  return typeof id === "string" && id !== "" ? id : null;
 }
 
 /**
@@ -263,19 +271,24 @@ export function endsComplimentaryAt(sub: Stripe.Subscription | undefined): Date 
  * "Stripe" when the plan or status actually changed (P15, I-6). No Stripe call happens inside the
  * transaction (P12). Writes nothing when the customer was replaced meanwhile, or when the stored
  * copy came from a Stripe read that started after this one's (`readStartedAt`).
- * `endComplimentarySince`: see `endsComplimentaryAt`; only a grant made before that subscription
- * is ended, so a later staff grant is never undone by it.
  */
-async function writeCopy(
-  orgId: string,
-  customerId: string,
-  readStartedAt: Date,
-  build: (previousStatus: string | null) => BillingCopy,
-  endComplimentarySince: Date | null = null,
-  /** The subscription is active, so paid: a complimentary grant that has already run out is
-   *  cleared (the deferred path's first charge), so staff no longer see a stale Complimentary. */
-  paid = false,
-): Promise<void> {
+async function writeCopy({
+  orgId,
+  customerId,
+  readStartedAt,
+  build,
+  endComplimentarySince,
+  keepFundingSourceId,
+}: {
+  orgId: string;
+  customerId: string;
+  readStartedAt: Date;
+  build: (previousStatus: string | null) => BillingCopy;
+  /** See `endsComplimentaryAt`: only a grant made before this subscription is ended. */
+  endComplimentarySince: Date | null;
+  /** See `keptFundingSource`. */
+  keepFundingSourceId: string | null;
+}): Promise<void> {
   await db.transaction(async (tx) => {
     const row = await lockOrg(tx, orgId, {
       plan: organizations.plan,
@@ -299,6 +312,10 @@ async function writeCopy(
     if (billing.syncedAt !== null && billing.syncedAt > readStartedAt) return;
 
     const { plan, subscriptionStatus, ...copy } = build(billing.stripeStatus);
+    // The one write that sees this subscription paid for the first time: nothing live was stored
+    // before it. Later syncs (renewals, the nightly reconcile, a recovered payment) start from a
+    // live copy, so what happens on this write happens once.
+    const firstPaid = copy.stripeStatus === "active" && !isLive(billing.stripeStatus);
     await tx
       .update(orgBilling)
       .set({ ...copy, syncedAt: readStartedAt })
@@ -323,8 +340,10 @@ async function writeCopy(
       });
     }
 
+    // Active means paid: a grant that has already run out is cleared too, so staff no longer
+    // see a stale Complimentary.
     const grantRanOut = row.complimentary && complimentaryState(row, todayIso()) === "ended";
-    let endGrant = paid && grantRanOut;
+    let endGrant = copy.stripeStatus === "active" && grantRanOut;
     if (!endGrant && endComplimentarySince && row.complimentary) {
       const [lastGrant] = await tx
         .select({ at: orgAccountEvents.createdAt })
@@ -352,6 +371,17 @@ async function writeCopy(
         after: { ...after, complimentary: false, complimentaryUntil: null },
         viaStripe: true,
       });
+    }
+
+    // Reconciliation includes one active funding source (C8): once it is paid for, the source
+    // chosen at Checkout is kept and the others archived (D-129), in this transaction, so the
+    // plan and the sources change together. Not while a grant still gives the org its free plan
+    // (one staff made after this subscription): the free plan decides then. Only on the first
+    // paid write: the choice stays on the subscription for good, and a source added later (say
+    // while billing was switched off, which never limits) is not this Checkout's to archive.
+    const stillComplimentary = !endGrant && isComplimentaryNow(row, todayIso());
+    if (firstPaid && plan === "reconciliation" && keepFundingSourceId && !stillComplimentary) {
+      await keepOneFundingSource(tx, orgId, keepFundingSourceId);
     }
   });
 }

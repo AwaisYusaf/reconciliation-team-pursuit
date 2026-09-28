@@ -72,6 +72,9 @@ export function PlanBillingSection({ data }: { data: PlanBillingData }) {
   // The section shows the org's own plan; the full cards open on request. With no plan there is
   // nothing else to show, so they start open.
   const [showPlans, setShowPlans] = useState(view.kind === "none");
+  // A paid plan still running beside complimentary access (B1): it can be cancelled and paid in
+  // Card and invoices, but no other plan can be bought until it ends.
+  const paidBeside = view.kind === "complimentaryAccess" ? view.paidPlan : null;
 
   /** Runs a billing action; on success toasts and re-renders from the server. */
   function act(work: () => Promise<ActionResult<unknown>>, success: string, after?: () => void) {
@@ -154,24 +157,24 @@ export function PlanBillingSection({ data }: { data: PlanBillingData }) {
   function planActions(plan: PlanId) {
     if (plan === currentPlan) return <CurrentPlanMarker label={UI.billingYourPlan} />;
     if (!isAdmin) return null;
-    // Complimentary: buy now, unless a plan was already bought during the free access.
-    if (view.kind === "none" || (view.kind === "complimentaryAccess" && !view.upcoming)) {
+    // Complimentary: buy at any time; paying ends the complimentary access (D-128). Not while a
+    // paid plan still runs beside it, which Checkout would refuse as a second plan.
+    if (view.kind === "none" || (view.kind === "complimentaryAccess" && !paidBeside)) {
       return (
         <SubscribeButton
           plan={plan}
           interval={chooseInterval}
           primary={plan === "reconciliation_ai"}
-          // Reconciliation includes one active funding source (C8); the server refuses too.
-          disabledReason={
-            plan === "reconciliation" && activeSources > 1 ? UI.billingSubscribeTooManySources(activeSources) : undefined
-          }
+          // Reconciliation includes one active funding source (C8): with several, which one to
+          // keep is asked after the click, as on the plan page (D-129).
+          keepOneOf={plan === "reconciliation" && activeSources.length > 1 ? activeSources : undefined}
         />
       );
     }
     if (view.kind !== "subscribed" || switchBlocked) return null;
 
     // Reconciliation includes one active funding source (C8, P24); the server refuses too.
-    const tooManySources = plan === "reconciliation" && view.plan !== "reconciliation" && activeSources > 1;
+    const tooManySources = plan === "reconciliation" && view.plan !== "reconciliation" && activeSources.length > 1;
     const primary = plan === "reconciliation_ai";
     return (
       <>
@@ -188,7 +191,7 @@ export function PlanBillingSection({ data }: { data: PlanBillingData }) {
         </button>
         {tooManySources && (
           <p id={`too-many-${plan}`} className="text-xs text-on-surface-variant leading-relaxed">
-            {UI.billingDowngradeTooManySources(activeSources)}{" "}
+            {UI.billingDowngradeTooManySources(activeSources.length)}{" "}
             <Link href="/r/settings?section=fundingSources" className="text-accent underline">
               {UI.billingGoToSources}
             </Link>
@@ -246,14 +249,13 @@ export function PlanBillingSection({ data }: { data: PlanBillingData }) {
                     ? UI.billingBilledYearly
                     : UI.billingBilledMonthly}
             </p>
-            {view.kind === "complimentaryAccess" && view.upcoming && (
-              <p className="text-sm text-on-surface mt-2">
-                {view.upcoming.cancelling
-                  ? UI.billingCompUpcomingCancelled
-                  : UI.billingCompUpcoming(
-                      PLAN_LABELS[view.upcoming.plan],
-                      view.upcoming.interval ? intervalAdverb(view.upcoming.interval) : "",
-                      dayOf(view.upcoming.startsOn),
+            {paidBeside && (paidBeside.paymentFailed || paidBeside.periodEnd) && (
+              <p className="text-sm text-on-surface-variant mt-1">
+                {paidBeside.paymentFailed || !paidBeside.periodEnd
+                  ? UI.billingCompPaidFailed(PLAN_LABELS[paidBeside.plan])
+                  : (paidBeside.cancelling ? UI.billingCompPaidEnds : UI.billingCompPaidRenews)(
+                      PLAN_LABELS[paidBeside.plan],
+                      formatDateUS(paidBeside.periodEnd),
                     )}
               </p>
             )}
@@ -286,7 +288,8 @@ export function PlanBillingSection({ data }: { data: PlanBillingData }) {
                 {portalButton}
               </>
             )}
-            {!(view.kind === "subscribed" && isAdmin && (view.paymentFailed || view.cancelling)) && (
+            {/* No See plans beside a paid plan still running: none can be bought until it ends. */}
+            {!(view.kind === "subscribed" && isAdmin && (view.paymentFailed || view.cancelling)) && !(isAdmin && paidBeside) && (
               <button
                 type="button"
                 className={view.kind === "subscribed" && isAdmin ? PRIMARY : LIGHT}
@@ -298,27 +301,18 @@ export function PlanBillingSection({ data }: { data: PlanBillingData }) {
                 {showPlans ? UI.billingHidePlans : view.kind === "subscribed" && isAdmin ? UI.billingChangePlan : UI.billingSeePlans}
               </button>
             )}
-            {isAdmin &&
-              ((view.kind === "subscribed" && !view.paymentFailed && !view.cancelling) ||
-                (view.kind === "complimentaryAccess" && view.upcoming)) &&
-              portalButton}
-            {view.kind === "complimentaryAccess" && view.upcoming?.cancelling && isAdmin && (
-              <button
-                type="button"
-                className={LIGHT}
-                disabled={pending}
-                onClick={() => act(() => resumePlanAction(), UI.billingResumedToast)}
-              >
-                {UI.billingKeepPlan}
-              </button>
-            )}
-            {isAdmin &&
-              ((view.kind === "subscribed" && !view.paymentFailed && !view.cancelling) ||
-                (view.kind === "complimentaryAccess" && view.upcoming && !view.upcoming.cancelling)) && (
+            {isAdmin && view.kind === "subscribed" && !view.paymentFailed && !view.cancelling && portalButton}
+            {isAdmin && view.kind === "subscribed" && !view.paymentFailed && !view.cancelling && (
                 <button type="button" className={QUIET} disabled={pending} onClick={() => setConfirm("cancel")}>
                   {UI.billingCancelPlan}
                 </button>
               )}
+            {isAdmin && paidBeside && portalButton}
+            {isAdmin && paidBeside && !paidBeside.cancelling && !paidBeside.paymentFailed && (
+              <button type="button" className={QUIET} disabled={pending} onClick={() => setConfirm("cancel")}>
+                {UI.billingCancelPlan}
+              </button>
+            )}
           </div>
         )}
       </div>
@@ -431,10 +425,8 @@ export function PlanBillingSection({ data }: { data: PlanBillingData }) {
               ))}
             </div>
           </div>
-          {view.kind === "complimentaryAccess" && !view.upcoming && isAdmin && (
-            <p className="text-[15px] text-sub mb-4">
-              {view.buy.kind === "defer" ? UI.billingCompBuyDeferred(dayOf(view.buy.firstChargeOn)) : UI.billingCompBuyNow}
-            </p>
+          {view.kind === "complimentaryAccess" && isAdmin && !paidBeside && (
+            <p className="text-[15px] text-sub mb-4">{UI.billingCompBuyNow}</p>
           )}
           {isAdmin && switchBlocked && <p className="text-[15px] text-sub mb-4">{switchBlocked}</p>}
           {!isAdmin && <Helper className="mb-4">{UI.billingManagerNote}</Helper>}
@@ -444,10 +436,10 @@ export function PlanBillingSection({ data }: { data: PlanBillingData }) {
 
       {view.kind === "complimentaryAccess" && <Helper className="mt-6">{UI.billingQuestions}</Helper>}
 
-      {(view.kind === "subscribed" || view.kind === "complimentaryAccess") && (
+      {(view.kind === "subscribed" || paidBeside) && (
         <Dialog
           open={confirm === "cancel"}
-          title={UI.billingCancelTitle}
+          title={paidBeside ? UI.billingCancelPaidTitle : UI.billingCancelTitle}
           dismissLabel={UI.billingKeepPlan}
           dismissDisabled={pending}
           onDismiss={() => setConfirm(null)}
@@ -457,14 +449,14 @@ export function PlanBillingSection({ data }: { data: PlanBillingData }) {
             onConfirm: () =>
               act(
                 () => cancelPlanAction(),
-                view.kind === "subscribed" ? UI.billingCancelledToast : UI.billingCompUpcomingCancelled,
+                paidBeside ? UI.billingCancelledCompToast : UI.billingCancelledToast,
                 () => setConfirm(null),
               ),
           }}
         >
-          {/* Cancelling a plan bought during free access only stops it starting: the free access
-              itself is untouched, so the "you lose access" warning would be wrong there. */}
-          {view.kind === "subscribed" ? UI.billingCancelBody(dayOf(view.periodEnd)) : UI.billingCancelUpcomingBody}
+          {view.kind === "subscribed"
+            ? UI.billingCancelBody(dayOf(view.periodEnd))
+            : UI.billingCancelBodyComp(dayOf(paidBeside?.periodEnd ?? null))}
         </Dialog>
       )}
     </Card>

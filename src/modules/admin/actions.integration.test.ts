@@ -33,6 +33,11 @@ describe.skipIf(!hasDatabase)("admin account actions (integration, Phase 9 part 
   const { FORBIDDEN } = await import("@/src/lib/action-session");
   const { SESSION_EXPIRED } = await import("@/src/lib/action-result");
   const { requireStaff } = await import("@/src/lib/action-session");
+  const { todayIso } = await import("@/src/domain/dates");
+  /** An end date `days` ahead, so the "today or later" check never turns these tests red. */
+  const daysAhead = (days: number) => todayIso(new Date(Date.now() + days * 86_400_000));
+  const SOON = daysAhead(90);
+  const LATER = daysAhead(270);
 
   const {
     changePlanAction,
@@ -310,10 +315,10 @@ describe.skipIf(!hasDatabase)("admin account actions (integration, Phase 9 part 
     expect(await eventsFor(orgId)).toHaveLength(0);
 
     // Turn it on for real, then set it on again with the same end date.
-    expect((await setComplimentaryAction(orgId, true, "2027-01-01", "grant it")).ok).toBe(true);
+    expect((await setComplimentaryAction(orgId, true, SOON, "grant it")).ok).toBe(true);
     expect(await eventsFor(orgId)).toHaveLength(1);
 
-    expect(await setComplimentaryAction(orgId, true, "2027-01-01", "just a note")).toEqual(
+    expect(await setComplimentaryAction(orgId, true, SOON, "just a note")).toEqual(
       fail(UI.accountNothingChanged),
     );
     expect(await eventsFor(orgId)).toHaveLength(1); // unchanged — still just the grant
@@ -323,7 +328,7 @@ describe.skipIf(!hasDatabase)("admin account actions (integration, Phase 9 part 
     expect(row.plan).toBe("reconciliation");
     expect(row.subscriptionStatus).toBe("trial");
     expect(row.complimentary).toBe(true);
-    expect(row.complimentaryUntil).toBe("2027-01-01");
+    expect(row.complimentaryUntil).toBe(SOON);
   });
 
   it("changing the end date writes complimentary_changed; turning it off writes complimentary_removed and clears the date", async () => {
@@ -331,13 +336,13 @@ describe.skipIf(!hasDatabase)("admin account actions (integration, Phase 9 part 
     // complimentary: false — the first setComplimentaryAction call below must be the grant.
     const orgId = await freshOrg({ complimentary: false });
 
-    expect((await setComplimentaryAction(orgId, true, "2027-01-01", "pilot")).ok).toBe(true);
-    expect((await setComplimentaryAction(orgId, true, "2027-06-30", "extended")).ok).toBe(true);
+    expect((await setComplimentaryAction(orgId, true, SOON, "pilot")).ok).toBe(true);
+    expect((await setComplimentaryAction(orgId, true, LATER, "extended")).ok).toBe(true);
 
     let events = await eventsFor(orgId);
     const changed = events.find((e) => e.action === "complimentary_changed")!;
-    expect(changed.before.complimentaryUntil).toBe("2027-01-01");
-    expect(changed.after.complimentaryUntil).toBe("2027-06-30");
+    expect(changed.before.complimentaryUntil).toBe(SOON);
+    expect(changed.after.complimentaryUntil).toBe(LATER);
     expect(changed.before.complimentary).toBe(true);
     expect(changed.after.complimentary).toBe(true);
     expect(changed.note).toBe("extended");

@@ -10,7 +10,8 @@
  *
  * These use the any-plan session (allow-list, Phase 4 §4.7): an org with no paid plan must
  * still be able to subscribe, so the billing check is skipped here and the admin check below is
- * this file's own. `guard-coverage.test.ts` allow-lists this whole file for exactly that reason.
+ * this file's own. `guard-coverage.test.ts` allow-lists each of these actions by name for exactly
+ * that reason, so a new one here is not let through unchecked.
  */
 import Stripe from "stripe";
 
@@ -36,6 +37,7 @@ const ERROR_MESSAGE: Record<billing.BillingErrorCode, (e: billing.BillingError) 
   portal_not_setup: () => UI.billingPortalNotSetUp,
   complimentary: () => UI.billingComplimentaryRefused,
   too_many_sources: (e) => UI.billingDowngradeTooManySources(e.count ?? 0),
+  keep_source: () => UI.billingKeepSourceRefused,
 };
 
 type Guarded = { actor: billing.Actor };
@@ -67,10 +69,18 @@ async function run<T>(fn: () => Promise<T>): Promise<ActionResult<T>> {
   }
 }
 
-export async function startCheckoutAction(plan: string, interval: string): Promise<ActionResult<{ url: string }>> {
+/** `keepFundingSourceId`: which active source to keep on Reconciliation (D-129); checked
+ *  against the org's own active sources in `startCheckout`, never trusted as given. */
+export async function startCheckoutAction(input: {
+  plan: string;
+  interval: string;
+  keepFundingSourceId?: string | null;
+}): Promise<ActionResult<{ url: string }>> {
   const g = await guard();
   if ("result" in g) return g.result;
-  return run(async () => ({ url: await billing.startCheckout(g.actor, plan, interval) }));
+  // Named field by field, so nothing else a client sends reaches the core.
+  const { plan, interval, keepFundingSourceId = null } = input ?? {};
+  return run(async () => ({ url: await billing.startCheckout(g.actor, { plan, interval, keepFundingSourceId }) }));
 }
 
 export async function quoteChangeAction(plan: string, interval: string): Promise<ActionResult<billing.ChangeQuote>> {

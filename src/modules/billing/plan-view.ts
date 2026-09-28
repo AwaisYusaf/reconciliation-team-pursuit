@@ -7,7 +7,7 @@
 import type { IsoDate } from "@/src/domain/dates";
 import { todayIso } from "@/src/domain/dates";
 import { isComplimentaryNow } from "@/src/domain/complimentary";
-import { complimentaryStart, isInterval, isPlanId, type Interval, type PlanId } from "@/src/modules/billing/rules";
+import { isInterval, isPlanId, type Interval, type PlanId } from "@/src/modules/billing/rules";
 
 /** Admins are warned this many days before complimentary access ends (D4). */
 export const COMP_WARNING_DAYS = 14;
@@ -29,6 +29,15 @@ export type PlanBillingRow = {
   upgradeExpiresAt: Date | null;
 };
 
+export type PaidPlanView = {
+  plan: PlanId;
+  /** The day it ends when cancelling, else the day it renews. */
+  periodEnd: IsoDate | null;
+  cancelling: boolean;
+  /** Its last payment failed: Stripe refuses a cancel then (`payment_failed`), so none is offered. */
+  paymentFailed: boolean;
+};
+
 export type PendingChangeView = {
   kind: "downgrade" | "price_move";
   plan: PlanId;
@@ -43,10 +52,12 @@ export type PlanBillingView =
       plan: PlanId;
       until: IsoDate | null;
       endingSoon: boolean;
-      /** Buying now: the first charge waits for the free access to run out, or is today. */
-      buy: { kind: "defer"; firstChargeOn: IsoDate } | { kind: "now" };
-      /** A plan already bought during the free access, starting when it runs out. */
-      upcoming: { plan: PlanId; interval: Interval | null; startsOn: IsoDate | null; cancelling: boolean } | null;
+      /** A paid plan still running beside the free access, or null. Staff granting access to a
+       *  paying org choose to cancel it now or at the end of the paid period (§4.6), so this is
+       *  usually one that is ending; it renews only if the grant was made while Stripe couldn't
+       *  be reached. The admin can still cancel it and open Card and invoices; buying another
+       *  plan is refused while it runs. */
+      paidPlan: PaidPlanView | null;
     }
   | {
       kind: "subscribed";
@@ -77,28 +88,28 @@ function isoDaysBetween(from: IsoDate, to: IsoDate): number {
 
 export function planBillingView(row: PlanBillingRow, ctx: { now: Date }): PlanBillingView {
   const today = todayIso(ctx.now);
+  const live = row.stripeStatus !== null && SUBSCRIBED.has(row.stripeStatus);
+  const periodEnd = row.currentPeriodEnd ? todayIso(row.currentPeriodEnd) : null;
   if (isComplimentaryNow(row, today)) {
     const until = row.complimentaryUntil;
-    const start = complimentaryStart(until, ctx.now);
-    const bought = row.stripeStatus === "trialing" || row.stripeStatus === "active";
     return {
       kind: "complimentaryAccess",
       plan: row.complimentaryPlan ?? row.plan,
       until,
       endingSoon: until !== null && isoDaysBetween(today, until) <= COMP_WARNING_DAYS,
-      buy: start.kind === "defer" ? { kind: "defer", firstChargeOn: todayIso(start.firstChargeAt) } : { kind: "now" },
-      upcoming: bought
+      // `plan` is what the live subscription pays for: the sync writes it (P27).
+      paidPlan: live
         ? {
             plan: row.plan,
-            interval: isInterval(row.billingInterval) ? row.billingInterval : null,
-            startsOn: row.currentPeriodEnd ? todayIso(row.currentPeriodEnd) : null,
+            periodEnd,
             cancelling: row.cancelAtPeriodEnd,
+            paymentFailed: row.stripeStatus !== "active" && row.stripeStatus !== "trialing",
           }
         : null,
     };
   }
 
-  if (!row.stripeStatus || !SUBSCRIBED.has(row.stripeStatus)) return { kind: "none" };
+  if (!live) return { kind: "none" };
 
   const onHold = row.stripeStatus === "unpaid" || row.stripeStatus === "paused";
   const paymentFailed = row.stripeStatus === "past_due" || onHold;
@@ -116,7 +127,7 @@ export function planBillingView(row: PlanBillingRow, ctx: { now: Date }): PlanBi
     kind: "subscribed",
     plan: row.plan,
     interval: isInterval(row.billingInterval) ? row.billingInterval : null,
-    periodEnd: row.currentPeriodEnd ? todayIso(row.currentPeriodEnd) : null,
+    periodEnd,
     cancelling: row.cancelAtPeriodEnd,
     paymentFailed,
     onHold,

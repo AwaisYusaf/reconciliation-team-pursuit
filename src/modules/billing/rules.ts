@@ -6,7 +6,6 @@
  */
 import type { AiUsageFeature, OrgPlan } from "@/src/db/schema";
 import { orgPlan } from "@/src/db/schema";
-import { todayIso } from "@/src/domain/dates";
 
 export const INTERVALS = ["month", "year"] as const;
 export type Interval = (typeof INTERVALS)[number];
@@ -119,43 +118,20 @@ export function changeBlockedReason(sub: {
   return null;
 }
 
-// ── Buying a plan while complimentary (decided 2026-09-25) ────────────────────
-
-/** Stripe refuses a deferred first charge (`trial_end`) less than two days out; an hour of
- *  margin covers the time between creating Checkout and the admin paying. */
-export const MIN_DEFERRED_START_MS = 49 * 3600 * 1000;
+// ── Subscription metadata set at Checkout (D-128, D-129) ─────────────────────
 
 /**
- * The first instant of the day after `until`, in the org's timezone: when complimentary access
- * has run out (`complimentaryState` counts `until` itself as still free). Detroit is always
- * UTC-4 or UTC-5, so one of those two hours is local midnight.
+ * End complimentary access once this subscription's payment succeeds. Buying a plan always ends
+ * complimentary access (D-128): the customer's admin decided to pay, so they pay today and the
+ * free access stops once that payment goes through, however much of it was left. Set on every
+ * Checkout (D-129), so a grant made while a Checkout was open is covered too; the sync ends only
+ * a grant made before the subscription, never a later one.
  */
-export function dayAfterStart(until: string): Date {
-  const [y, m, d] = until.split("-").map(Number);
-  const next = todayIso(new Date(Date.UTC(y, m - 1, d + 1, 12)));
-  for (const hour of [4, 5]) {
-    const t = Date.UTC(y, m - 1, d + 1, hour);
-    if (todayIso(new Date(t)) === next && todayIso(new Date(t - 3600_000)) !== next) return new Date(t);
-  }
-  throw new Error(`no local midnight found after ${until}`);
-}
-
-/**
- * How Checkout charges an org that is complimentary now. `defer`: nothing today, the first
- * charge the moment complimentary access runs out (Stripe `trial_end`). `now`: charged today,
- * and complimentary access ends once that payment succeeds, because it has no end date or ends
- * too soon for Stripe to defer to.
- */
-export type ComplimentaryStart = { kind: "defer"; firstChargeAt: Date } | { kind: "now" };
-
-export function complimentaryStart(
-  until: string | null,
-  now: Date,
-): ComplimentaryStart {
-  if (until === null) return { kind: "now" };
-  const at = dayAfterStart(until);
-  return at.getTime() - now.getTime() >= MIN_DEFERRED_START_MS ? { kind: "defer", firstChargeAt: at } : { kind: "now" };
-}
-
-/** Subscription metadata: end complimentary access once this subscription's payment succeeds. */
 export const END_COMPLIMENTARY_KEY = "endComplimentary";
+
+/**
+ * The funding source to keep on Reconciliation, which includes one (C8, D-129). Recorded at a
+ * Reconciliation Checkout; the sync that first sees the subscription paid archives the org's
+ * other active sources.
+ */
+export const KEEP_FUNDING_SOURCE_KEY = "keepFundingSource";

@@ -256,7 +256,8 @@ body {
 }
 
 /**
- * Overlays: modals, dialogs, dropdown panels.
+ * Dropdown panels: menus and Selects. Dialogs and modals carry the class too, but the overlay
+ * rules below replace it for them.
  *
  * Faster than the page, and scaling from 0.985 rather than something more obvious. A menu is
  * a response to a click that just happened, so it has to feel immediate; the scale is there to
@@ -264,6 +265,62 @@ body {
  */
 .pop-in {
   animation: pop-in 0.14s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/**
+ * Dialogs and modals (`OverlayShell`): the dim fades in, and the panel rises a few pixels as it
+ * scales up, a little slower than a menu, since a dialog stops the work and should read as
+ * arriving. Closing reverses it faster (`OVERLAY_EXIT_MS`, 160ms): leaving should never make
+ * anyone wait. Only the panel itself (backdrop > width wrapper > `.pop-in`), never a menu or a
+ * Select opened inside it, which keep their own quick `pop-in`.
+ */
+@keyframes overlay-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes overlay-fade-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+@keyframes overlay-panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes overlay-panel-out {
+  from {
+    opacity: 1;
+    transform: none;
+  }
+  to {
+    opacity: 0;
+    transform: translateY(4px) scale(0.98);
+  }
+}
+
+.overlay-backdrop {
+  animation: overlay-fade-in 0.2s ease-out both;
+}
+
+.overlay-backdrop > * > .pop-in {
+  animation: overlay-panel-in 0.22s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.overlay-backdrop[data-closing] {
+  animation: overlay-fade-out 0.16s ease-in both;
+  pointer-events: none;
+}
+
+.overlay-backdrop[data-closing] > * > .pop-in {
+  animation: overlay-panel-out 0.16s ease-in both;
 }
 
 /** The dashboard's spend bars, growing from the axis they are measured from. */
@@ -282,7 +339,9 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .rise-in,
   .pop-in,
-  .grow-up {
+  .grow-up,
+  .overlay-backdrop,
+  .overlay-backdrop > * > .pop-in {
     animation-duration: 0.001ms !important;
   }
 }

@@ -174,10 +174,11 @@ export const organizations = pgTable("organizations", {
    *  `src/modules/ai/access.ts#canReadAmounts` — this column alone does not decide
    *  whether the feature is available. */
   readAmountsEnabled: boolean("read_amounts_enabled").notNull().default(true),
-  /** The plan a complimentary grant gives (Phase 16, P27); `null` means today's `plan`. Pinned
-   *  by Checkout during free access so a bought plan's sync never takes the free plan away;
-   *  cleared whenever staff change the plan or end the grant. The Stripe copy itself lives in
-   *  `org_billing` (D-125). */
+  /** The plan a complimentary grant gives (Phase 16, P27); `null` means today's `plan`. Nothing
+   *  writes it any more: Checkout pinned it while a plan bought during free access waited for its
+   *  first charge, and that deferred charge is gone (D-128). Still read, and cleared whenever
+   *  staff change the plan or end the grant, so a value left from then keeps working; dropped
+   *  before go-live (TASKS). The Stripe copy itself lives in `org_billing` (D-125). */
   complimentaryPlan: orgPlan("complimentary_plan"),
   createdAt: createdAt(),
   updatedAt: updatedAt(),

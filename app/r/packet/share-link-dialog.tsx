@@ -9,7 +9,8 @@
  * a big packet takes a minute or two to build (P12). The dialog holds itself open while that runs:
  * closing it wouldn't stop the build, only hide the link it produces.
  *
- * Mounted only while open (`packet-download-buttons.tsx`), so every opening starts fresh.
+ * Mounted while open and while it fades out, and keyed on the opening (`packet-download-buttons.tsx`),
+ * so every opening starts fresh.
  */
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
@@ -31,6 +32,7 @@ const CHOICES: Array<{ kind: SharedFileKind; hint: string }> = [
 ];
 
 export function ShareLinkDialog({
+  open,
   onClose,
   month,
   monthLabel,
@@ -41,6 +43,7 @@ export function ShareLinkDialog({
   updatingIds,
   onUpdate,
 }: {
+  open: boolean;
   onClose: () => void;
   month: string;
   monthLabel: string;
@@ -100,7 +103,7 @@ export function ShareLinkDialog({
   }
 
   return (
-    <Modal open title={UI.shareDialogTitle(monthLabel)} onClose={onClose} dismissDisabled={busy}>
+    <Modal open={open} title={UI.shareDialogTitle(monthLabel)} onClose={onClose} dismissDisabled={busy}>
       {created ? (
         <div ref={resultRef} className="text-[15px] text-ink" role="status">
           <div className="font-bold">{kindLabel(created.kind)}</div>

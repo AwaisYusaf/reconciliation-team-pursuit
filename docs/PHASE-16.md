@@ -97,10 +97,10 @@ off is the rollback.
 | P18 | **All copy in `UI`** (§10); "Plus" only on pills and tours, plan names in billing text; no dashes | Words rules, D-113 |
 | P19 | **Settings sections addressable by URL** (`?section=plan`), known ids only; the tour's "starts on Organization" line is updated | Deep links from the pill and banners |
 | P20 | **Prices are constants in cents; Stripe is made to match.** `billing:setup` creates a new Stripe Price when a constant changes, with `metadata.plan`, and moves the lookup key (`transfer_lookup_key`) | One place to change a price |
-| P21 | **Existing subscribers and price changes: both are possible, chosen before go-live (O4).** `billing:move-subscribers` moves them at their next renewal via a schedule phase tagged `metadata.reason=price_move` (shown as "New price from {date}", kept when a queued change is cancelled, applied to queued downgrades too); subscriptions with a pending upgrade or a pending cancel are skipped and listed; always a dry run first. Every schedule rewrite repeats the current phase exactly, trial included (a plan bought during free access is charged at `trial_end`, never earlier), and a rewritten downgrade keeps `billing_cycle_anchor: phase_start`; one org's failure is listed as `error: …` with an ALERT and the run carries on, then exits 1 (PR #23 review; to confirm in the sandbox) | Designed with the schedule and pending-update interactions the billing review found |
+| P21 | **Existing subscribers and price changes: both are possible, chosen before go-live (O4).** `billing:move-subscribers` moves them at their next renewal via a schedule phase tagged `metadata.reason=price_move` (shown as "New price from {date}", kept when a queued change is cancelled, applied to queued downgrades too); subscriptions with a pending upgrade or a pending cancel are skipped and listed; always a dry run first. Every schedule rewrite repeats the current phase exactly, trial included (the app starts no trials since D-128, but one bought during free access before that, or set in Stripe's dashboard, is charged at `trial_end`, never earlier), and a rewritten downgrade keeps `billing_cycle_anchor: phase_start`; one org's failure is listed as `error: …` with an ALERT and the run carries on, then exits 1 (PR #23 review; to confirm in the sandbox) | Designed with the schedule and pending-update interactions the billing review found |
 | P22 | **No free use is enforced at every entry point, guarded by default** (§4.7): pages call `pageSession()`, actions use `actionSession()`/`requireAdmin()` which refuse unpaid orgs, route handlers call `routeSession()`, shared links check in `loadPublicShare`. A short allow-list uses `*AnyPlan` variants. A static test enumerates every page, action and route | A layout alone still sends page data to the browser (Next 16 docs, `authentication.md:1352`); the planned single guard missed every page and 13 of 19 routes (security, feasibility reviews) |
 | P23 | **Funding-source limit**: `activeFundingSourceLimit(entitlement)` (1 on Reconciliation), checked in create and unarchive under the org lock; unarchiving an already active source doesn't count itself | Only two paths activate a source (verified) |
-| P24 | **A downgrade, or a Checkout, to Reconciliation is refused while more than one source is active**; while a downgrade to Reconciliation is queued, adding or unarchiving is refused. Checked against Stripe's live schedule, not our copy | Closes the lapsed-org loophole (§2.6 D2) and the queued-downgrade race |
+| P24 | **A downgrade to Reconciliation is refused while more than one source is active; a Checkout to it asks which one to keep, and the others are archived once it is paid (D-129)**; while a downgrade to Reconciliation is queued, adding or unarchiving is refused. Checked against Stripe's live schedule, not our copy | Closes the lapsed-org loophole (§2.6 D2) and the queued-downgrade race |
 | P25 | **`BILLING_ENABLED` switch**, like `SIGNUP_ENABLED`, default false. Off: everyone is paid on their current plan (today's behaviour), no limit, billing actions refuse, the webhook answers 503 (Stripe retries), Settings has no Plan & billing section and the Plus pill is not a link, the app starts without Stripe keys. On: the startup check requires the keys and an https `APP_URL` | Phases 1 to 7 reach production before go-live; the old rollback ("remove the key") would have stopped the app booting (all reviews) |
 | P26 | **Pinned Stripe SDK version and API version**; the webhook endpoint set to the same API version; the sandbox suite re-run on any SDK update | The proofs depend on SDK 22 / API 2026-08-26 (billing review) |
 | P27 | **The sync writes `plan` and status only from a live subscription**; a complimentary grant carries its own `complimentary_plan`. Staff changing the plan, or ending the grant, clears `complimentary_plan`, so a pin left by an unfinished Checkout never overrides what staff chose (PR #23 review) | Otherwise a dead old subscription would overwrite a staff grant of Reconciliation + AI (billing review) |
@@ -139,10 +139,10 @@ off is the rollback.
 | # | Decision | Recommendation |
 |---|---|---|
 | D1 | **Which Stripe account.** The account in use is named "Authentic Business"; going live on it means its bank, its name on receipts, and account-wide settings (retry rules, emails, payment methods) shared with anything else on it | **Decided 2026-09-25: "use the same env"**, the existing account, for development (its sandbox) and live. Consequence accepted: §11 step 0 confirms the payout bank, receipt name and statement descriptor are right for Team Pursuit before switching billing on, and account-wide settings are changed only after checking nothing else on the account depends on them |
-| D2 | **A lapsed Reconciliation + AI org with three funding sources re-subscribes to Reconciliation** | **Decided 2026-09-25:** Reconciliation is refused at Checkout while more than one source is active, and the admin can archive sources from the plan page (archiving is on the paywall's allow-list); they can also choose Reconciliation + AI |
+| D2 | **A lapsed Reconciliation + AI org with three funding sources re-subscribes to Reconciliation** | **Decided 2026-09-25:** Reconciliation is refused at Checkout while more than one source is active, and the admin can archive sources from the plan page (archiving is on the paywall's allow-list); they can also choose Reconciliation + AI. **Amended 2026-09-28 (D-129):** choosing Reconciliation asks which source to keep; Checkout records it, and the others are archived by the sync once the payment goes through. Nothing is archived before then, and archiving is no longer on the allow-list |
 | D3 | **Staff suspend an org that is paying**: Stripe keeps charging an org that can't sign in | **Decided 2026-09-25:** suspending pauses collection (Stripe `pause_collection`, bills voided) and reinstating resumes it; the interaction with a queued change is settled by a sandbox test (S-30) |
 | D4 | **Usability changes that go beyond the ticket** | **Decided 2026-09-25:** warn admins 14 days before complimentary access ends (yes); the funding-source limit is a disabled button with the reason under it, worded "To add more, try Plus." (the user's wording, a deliberate exception to P18); Plan & billing is a Settings section ("in settings"; placed near the end, Organization stays the default); the landing plan buttons keep **Get started** and each pricing card gets a **Book a demo** button, the "Early access" button goes |
-| D5 | **A complimentary org wants to buy a plan before its free access ends** | **Decided 2026-09-25 (while testing):** allowed. With an end date 2 or more days away (Stripe's minimum for `trial_end`, plus an hour), Checkout saves the card and defers the first charge to local midnight after the last free day; otherwise it charges today and the sync ends the free access once paid (subscription metadata `endComplimentary`, only for a grant older than the subscription, so a later staff grant is never undone). The free plan is pinned in `complimentary_plan` before Checkout, so buying Reconciliation during free Reconciliation + AI keeps the AI features until the free access ends. Switching plan and End plan now stay refused while complimentary; cancel, keep and Card and invoices are allowed for the bought plan |
+| D5 | **A complimentary org wants to buy a plan before its free access ends** | **Decided 2026-09-25 (while testing):** allowed. With an end date 2 or more days away (Stripe's minimum for `trial_end`, plus an hour), Checkout saves the card and defers the first charge to local midnight after the last free day; otherwise it charges today and the sync ends the free access once paid (subscription metadata `endComplimentary`, only for a grant older than the subscription, so a later staff grant is never undone). The free plan is pinned in `complimentary_plan` before Checkout, so buying Reconciliation during free Reconciliation + AI keeps the AI features until the free access ends. Switching plan and End plan now stay refused while complimentary; cancel, keep and Card and invoices are allowed for the bought plan. **Replaced by D-128 (2026-09-28):** buying always pays today and ends the free access once paid, whatever was left of it; no deferred first charge, no pinned free plan, and Keep my plan is refused while complimentary |
 
 Adopted without asking (reviewers' recommendations, reversible): an unpaid admin can still change
 their password and remove a departed user; a card dispute changes no access but logs `ALERT` and
@@ -205,7 +205,7 @@ Every billing action is **admin only**, checked inside the action, and decides f
 
 | Entry | What it does | Refuses with |
 |---|---|---|
-| `startCheckoutAction(plan, interval)` | Refuses if complimentary now, a live or processing subscription exists, or (Reconciliation) more than one active source; expires other open Checkouts; returns Stripe's URL | `billingNotAdmin`, `billingComplimentaryRefused`, `billingAlreadySubscribed`, `billingPaymentProcessing`, `billingUnknownPlan`, `billingDowngradeTooManySources` |
+| `startCheckoutAction({ plan, interval, keepFundingSourceId })` | Refuses if a live or processing subscription exists, or (Reconciliation, more than one active source) the source to keep isn't one of them; records it and `endComplimentary` on the subscription (D-128, D-129); expires other open Checkouts; returns Stripe's URL | `billingNotAdmin`, `billingAlreadySubscribed`, `billingPaymentProcessing`, `billingUnknownPlan`, `billingKeepSourceRefused` |
 | `quoteChangeAction(plan, interval)` | Changes nothing; Stripe's figures for the dialog | `billingNoPlan`, `billingPaymentFailedRefused`, `billingCancelPending`, `billingPaymentPending`, `billingChangePending`, `billingSamePlan`, `billingDowngradeTooManySources` |
 | `applyChangeAction(plan, interval, prorationDate)` | Upgrade now (P4) or queue a downgrade (P5) | as quote, plus `billingQuoteExpired` |
 | `cancelPendingChangeAction()` | Drops a queued downgrade (keeps a price move, P21) | `billingNoPlan` |
@@ -243,8 +243,9 @@ is off it says "Plan and billing will be available here soon." and nothing else.
 
 | State | Shows | Admin actions |
 |---|---|---|
-| Complimentary | `billingComplimentary` or `billingComplimentaryUntil`, `billingQuestions` | none |
+| Complimentary | `billingComplimentary` or `billingComplimentaryUntil`, `billingQuestions` | **See plans** (Subscribe on each card, D-128) |
 | Complimentary ending within 14 days | + banner `billingCompEnding` | **See plans** |
+| Complimentary, a paid plan still running beside it (§14 B1) | + `billingCompPaidEnds`, `billingCompPaidRenews` or `billingCompPaidFailed`; no `billingCompEnding` banner | **Card and invoices**, and **Cancel plan** (`billingCancelPaidTitle`, `billingCancelBodyComp`, toast `billingCancelledCompToast`) when it would renew and its payment hasn't failed; no See plans and no Subscribe until it ends |
 | Payment going through (just back from Checkout, or processing) | `billingProcessing` | none |
 | Left Checkout without paying | `billingCheckoutAbandoned` above the chooser | the chooser |
 | Active | Plan name (Plus pill on Reconciliation + AI), `billingBilledMonthly/Yearly`, `billingRenews` | **Switch plan**, **Card and invoices** (+ `billingPortalHelp`), **Cancel plan** (quiet) |
@@ -257,7 +258,9 @@ is off it says "Plan and billing will be available here soon." and nothing else.
 
 **Switch plan** shows the same two plan cards as the chooser, the current one marked "Your plan";
 picking a card opens the dialog. A Reconciliation card that would break the one-source limit is
-disabled with `billingDowngradeTooManySources` and a **Go to Funding sources** link.
+disabled with `billingDowngradeTooManySources` and a **Go to Funding sources** link. With no plan,
+or during complimentary access, the cards carry Subscribe instead, and Reconciliation with several
+active sources asks which to keep, as on `/r/plan` (D-129).
 
 **Switch dialog** (`Dialog`, tone neutral, sm), title `billingSwitchTitle`, label and value pairs
 (not a table, so it fits 375px): Current plan, New plan, Changes (Right away / {date}), Charged
@@ -313,7 +316,7 @@ Guarded by default, so a new page, action or route is protected unless someone o
   `subscription_status` in sharing use it too.
 - **Allow-list** (`actionSessionAnyPlan()`, `requireAdminAnyPlan()`, `routeSessionAnyPlan()`, only
   callable from listed entries): sign in, sign up, sign out, change password, the billing actions,
-  archive funding source (D2, admin only while unpaid), list and revoke users, `/api/me/avatar`
+  list and revoke users, `/api/me/avatar`
   GET (seeing the photo; changing it is paid), `/r/billing/return`, the webhook. Each is listed by
   exact `file#name` in `guard-coverage.test.ts` (no wildcard or folder entries), and each must still
   check who is asking unless it rightly can't (sign in, sign up, sign out, the webhook, public
@@ -325,7 +328,8 @@ Guarded by default, so a new page, action or route is protected unless someone o
 - **The page** shows the header with the profile menu (Sign out), "Choose a plan for {org}", the
   headline for its reason (`billingChooseNew`, `billingEnded`, `billingCompEnded`), one
   Monthly/Yearly toggle, stacked cards at 375px; managers see `billingUnpaidManager` naming the
-  admins; when D2 applies, the active funding sources with Archive buttons.
+  admins; when D2 applies, choosing Reconciliation asks which active funding source to keep, and
+  the others are archived once the payment goes through (D-129).
 
 ### 4.8 One funding source on Reconciliation (C8, P23, P24)
 
@@ -333,7 +337,9 @@ Guarded by default, so a new page, action or route is protected unless someone o
 (`fundingSourceLimitReached` + See plans for admins, `fundingSourceLimitManager` for managers,
 `fundingSourceLimitQueued` while a downgrade is queued); the actions refuse the same on the server,
 under the org lock. An org that somehow has two sources on Reconciliation keeps them and can't add a
-third; `/a` shows a warning.
+third; `/a` shows a warning. The one exception: buying Reconciliation with several active sources
+keeps the one chosen at Checkout and archives the others, on the sync that first sees that
+subscription paid, once (D-129).
 
 ### 4.9 Prices and the landing page (C7, C10, P20, P21)
 
@@ -370,7 +376,7 @@ guard) has been mutation-checked.
 - **AC-A5** One open Checkout per org; none while a subscription is live. (S-1)
 - **AC-A6** None while a payment is processing. (S-19)
 - **AC-A7** A manager can't start Checkout, by button or by calling the action. (I-2)
-- **AC-A8** Reconciliation Checkout is refused with more than one active source, and the admin can archive sources from the plan page. (I-15, B-19)
+- **AC-A8** Choosing Reconciliation with more than one active source asks which to keep; Checkout records it and archives nothing, and the others are archived once the payment goes through (D-129). (I-15, B-19)
 
 **B. Upgrades**
 - **AC-B1** Every switch shows the dialog first; opening it changes nothing. (S-2, B-3)
@@ -721,7 +727,8 @@ B-13 to B-16, B-20 done.
   `changePasswordAction`, `listOrgUsersAction`, `revokeUserAccessAction`,
   `archiveFundingSourceAction`, `src/modules/billing/actions.ts#*`; routes `/api/me/avatar`,
   `app/r/billing/`, `app/api/stripe/`, `app/s/` (via `loadPublicShare`). Staff `/a` uses
-  `requireStaff`.
+  `requireStaff`. (Later: the billing actions are named one by one, and
+  `archiveFundingSourceAction` left the list in the PR #24 fixes, D-129.)
 - **Deviations:** the unpaid refusal from `actionSession` reuses the `expired` key (about 70 callers
   already stop on it) rather than `denied`; `requireAdmin` returns `denied` as specified.
   `archiveFundingSourceAction` is on the list but still calls the guarded `actionSession()`
@@ -744,8 +751,8 @@ B-13 to B-16, B-20 done.
 - **Not verified:** B-13 to B-16 and B-20 in a browser; the real Checkout path (Track A).
 - **Merged onto Phase 3 and reviewed (2026-09-25):** the billing actions used the guarded
   `actionSession()`, so an unpaid admin's Subscribe would have been refused and nobody could pay;
-  they now use `actionSessionAnyPlan()` (the file is allow-listed; each action still checks admin
-  itself). `/r/plan`'s Subscribe is wired to `startCheckoutAction` (`subscribe-button.tsx`, label
+  they now use `actionSessionAnyPlan()` (each action is allow-listed by name; each still checks
+  admin itself). `/r/plan`'s Subscribe is wired to `startCheckoutAction` (`subscribe-button.tsx`, label
   "Opening the payment page…" while it works). `src/modules/ai/access.ts` had its own copy of the
   entitlement columns and helper, which `access-columns.test.ts` (U-20) caught; it now reuses
   `ENTITLEMENT_COLUMNS` and `entitlementOf`. Checks after the merge: typecheck clean; 447 of 447
@@ -818,7 +825,7 @@ checklist clear.
   `trial_end` under 48 hours (hence the 49-hour minimum).
 
 ### Phase 6: one funding source on Reconciliation
-- §4.8, the Checkout refusal and archive-from-plan-page (D2).
+- §4.8, the Checkout refusal and archive-from-plan-page (D2; replaced by D-129's keep-one-on-payment).
 
 **Passes when:** I-13 to I-15, S-27 pass; B-17, B-19 done; mutation-checked.
 
@@ -840,12 +847,23 @@ checklist clear.
   one is queued. `applyChange` re-syncs the copy right after it schedules the downgrade, so no
   Stripe call is made on every source added. The Add button isn't disabled ahead of time for it:
   the refusal shows when the admin saves.
-- **Also built in the review:** D2. With more than one active source, the Reconciliation card on
-  `/r/plan` (and in Plan & billing) is disabled with the reason under it, Checkout refuses the same,
-  and `/r/plan` lists the admin's active sources with Archive (`archiveFundingSourceAction` uses the
-  any-plan session: an unpaid org's admin may archive, a manager may not).
-- **Not built (remaining for Phase 6):** S-27, and the `/a` warning for an org over the limit. A complimentary Reconciliation + AI org that buys Reconciliation with a
-  deferred first charge can still add sources during its free access (a known gap).
+- **Also built in the review:** D2. With more than one active source, Checkout to Reconciliation
+  refuses (`billingSubscribeTooManySources`). In Plan & billing the card is disabled with that
+  reason under it, since Funding sources is one section away. **Changed 2026-09-28:** on
+  `/r/plan` nothing is listed up front; choosing Reconciliation asks "Which funding source do you
+  want to keep?", archives the others (`archiveFundingSourceAction`, any-plan session: an unpaid
+  org's admin may archive, a manager may not), then opens Checkout. The dialog says plainly that
+  the archived sources come back only by switching to Reconciliation + AI, which is true on
+  Reconciliation: unarchiving is refused at the limit, and the last active source can't be
+  archived, so the kept source can't be swapped either (a product question for later).
+  **Changed again in the PR #24 review (§14 B2, D-129):** nothing is archived before Checkout. The
+  chosen source is recorded on the subscription (`keepFundingSource`), and the sync that first sees
+  it paid archives the others. Settings asks the same question, `billingSubscribeTooManySources`
+  is gone, and archiving needs a paid plan again.
+- **After the merge (2026-09-28):** `reconciliationStartsOn` (`src/modules/billing/entitlement.ts`)
+  is the one answer to "when does this org move onto Reconciliation" (a queued downgrade). A plan
+  bought during complimentary access is not a case: it starts the day it is paid for (D-128).
+- **Not built (remaining for Phase 6):** S-27, and the `/a` warning for an org over the limit.
 - **Tests:** 12 unit (`limit.test.ts`) and 15 integration (I-13: admin and manager refusals, no
   row written, unarchive refused and left archived, an org already over the limit, 5 concurrent
   creates and 5 concurrent unarchives each leaving exactly one active, repeated;
@@ -945,7 +963,7 @@ checklist clear.
 - **I-12** Sign-up unpaid can't onboard; after payment it can; no loop.
 - **I-13** Funding sources on Reconciliation: create and unarchive refused, concurrent attempts allow one; Reconciliation + AI unlimited.
 - **I-14** Downgrade refused with two sources; queued downgrade blocks adding; nothing archived.
-- **I-15** Reconciliation Checkout refused with more than one source; archive from the plan page works while unpaid.
+- **I-15** Reconciliation Checkout with more than one source refuses a missing, foreign or archived choice, records a valid one and archives nothing; the first paid sync archives the rest, once (D-129). Archiving is refused while unpaid.
 - **I-16** Billing off: every existing behaviour, webhook 503.
 - **I-17** Customer email follows the current admin.
 
@@ -980,7 +998,8 @@ billing-off branch (I-16).
 - **B-13** Unpaid admin and manager; Sign out. **B-14** Download and shared link refused.
 - **B-15** Pay; bookmarks work again. **B-16** Sign-up from a landing button to the app.
 - **B-17** Funding-source limit disabled with reason. **B-18** Landing, sign-up closed and open.
-- **B-19** Archive from the plan page, then Reconciliation Checkout. **B-20** Complimentary ending banner.
+- **B-19** Reconciliation with two sources: choose one, back out of Checkout (nothing archived), then pay (the other archived). **B-20** Complimentary ending banner.
+- **B-21** (§14 A) 60 ms into a dialog's fade: `document.body.style.overflow` is what it was, the page is not inert, every button in the dialog is inside an `inert` element and focus is not in it; after closing, focus is on the button that opened it. Packet → a month with a deleted expense → Share link → Continue, then close Share: the page scrolls and Tab stays in the dialog while it is open. Share link, History, expense details, Manage and the photo cropper each fade out, and each reopens empty. Run once with the §14 A fix reverted to see each check fail.
 
 **Not verified by this plan:** Edge and Safari; bank debits; coupons, tax, currencies; more than one app process.
 
@@ -1063,6 +1082,14 @@ From the usability review, wording to confirm with the client; canonical rows go
 | billingPortalNotSetUp | Card and invoices aren't available yet. Email {support}. |
 | billingStripeError | The payment service didn't respond. Check your plan below before trying again. |
 | billingPlanRequired | Your organization's plan has ended, so this wasn't saved. Reload the page to see your options. |
+| billingKeepWhichTitle / billingKeepWhichBody | Which funding source do you want to keep? / Reconciliation includes one active funding source. Once your payment goes through, the others are archived. Their records are kept, but you can only make them active again by switching to Reconciliation + AI. |
+| billingKeepAndContinue / billingKeepSourceRefused | Keep it and continue to payment / Your funding sources changed since this page opened. Choose again which one to keep. |
+| billingCompPaidEnds | Your paid {plan} plan ends on {date}. Your complimentary access continues. |
+| billingCompPaidRenews | You also pay for {plan}. It renews on {date} and is charged unless you cancel it. Your complimentary access continues either way. |
+| billingCompPaidFailed | The last payment for your paid {plan} plan didn't go through. Your complimentary access continues. |
+| billingCancelPaidTitle / billingCancelBodyComp | Cancel your paid plan? / Your paid plan ends on {date} and won't renew, so nothing more is charged. Your complimentary access continues. |
+| billingCancelledCompToast | Your paid plan won't renew. Your complimentary access continues. |
+| fundingSourceKeepOneActive | Keep at least one active funding source. |
 | billingDowngradeTooManySources | Reconciliation includes one active funding source, and you have {n}. Archive the ones you don't use in Funding sources, then switch. |
 | fundingSourceLimitReached | Reconciliation includes one active funding source. To add more, try Plus. |
 | fundingSourceLimitManager | Reconciliation includes one active funding source. Ask your admin about upgrading. |
@@ -1125,6 +1152,143 @@ Five reviewers read the plan against the code. What changed because of them:
 | Feasibility | Redirect loop for new sign-ups; test orgs would hit the paywall (25 to 35 files); scripts and cron in Docker; landing is a client component; Stripe tests must not skip silently | P28, §4.7, §8.3, §11, §4.9 |
 | Usability | "Cancel" on a cancel dialog; no dialog for ending now; no warning before complimentary ends; new sign-ups told their plan "has ended"; four missing states; disabled buttons must say why; managers need the admins' names | §4.3 to §4.8, §10, D4 |
 | Billing | Shared Stripe account; phases before go-live; complimentary vs Stripe fighting over `plan`; suspended orgs still charged; price moves vs schedules; new prices missing metadata; retries-exhausted and disputes; SDK version | D1, D3, P21, P25, P26, P27, S-26 to S-30 |
+
+---
+
+## 14. PR #24 review fixes (2026-09-28, branch `review/pr-24-fixes`)
+
+PR #24 (`fix/complimentary-billing`, Usman) moved buying during complimentary access to "pay today,
+the free access ends once paid" (D-128), made `/r/plan` ask which source to keep, added Total paid
+to the staff Billing card, restyled Settings → Funding sources and the landing icons, and animated
+every dialog. Its review (2026-09-28) found no problem with D-128 itself. This section is the plan
+for every finding, built on a branch of its own off the PR.
+
+### 14.1 Fixes
+
+**A. Dialogs and modals** (`src/components/ui/overlay-shell.tsx`, `dialog.tsx`, `modal.tsx`, `app/globals.css`)
+
+| # | Finding | Fix | Passing criteria |
+|---|---|---|---|
+| A1 | A fading overlay still holds the scroll lock, the page's `inert` marks, the stacking entry and Escape for 160 ms, so an overlay opened in the same click records "locked" as the page's normal state: Packet, a month with a deleted expense, Share link, Continue, then close Share leaves the page unable to scroll, and Tab can leave the Share dialog | Every page-level effect runs while `open && !closing` ("active"), so it is released in the commit that starts the fade, before anything opened in the same click mounts (React runs every passive cleanup before any new effect in one commit) | 60 ms into a fade: `document.body.style.overflow` is back to what it was, and the page is not inert |
+| A2 | During the fade the confirm button stays enabled and focused, and only the mouse is blocked, so a second Enter reruns a `ConfirmButton` action (Delete permanently, Stop sharing, Remove document, Write again) | The fading overlay renders `inert` | 60 ms into a fade: every button in it is inside an `inert` element, and focus is not inside it |
+| A3 | Found in the review, older than the PR: focus comes back to the page body, not to the button that opened the overlay, because the focus-return cleanup ran while the page was still inert | One effect captures the focused element before marking the page inert, and on release removes `inert` first, then restores focus | After closing, `document.activeElement` is the trigger |
+| A4 | Under reduced motion the page ignored clicks and keys for 160 ms; the comment called the overlay click-through | After A1 and A2 the fading overlay is inert and the page is live again, so nothing is left to fix in code: the comment is corrected | Read |
+| A5 | Five popups are rendered only while open (`{x && <C/>}` around `<Modal open>`), so they appear with the fade but vanish on close: Share link, the expense History popup, expense details, Line Items' Manage, the avatar cropper | Expense details (stateless) and Manage (state in the parent) stay mounted with `<Modal open={x !== null}>{x && body}</Modal>`: the Modal already keeps its last content through the fade. Share, History and the cropper hold their own state, so their parents keep them mounted through the fade with `useOverlayPresence`, which gains a count of opens used as the component's `key` (a fresh component each time it opens). Lands after A1 | Each closes with the fade; each reopens empty |
+| A6 | The presence logic has no test; `.pop-in`'s comment still says it animates dialogs | The state change becomes a pure function (`nextPresence`) with unit tests; the comment is fixed. vitest has no DOM, so A1 to A3 and A5 are checked in Chrome (§8.5), once with the fix reverted | Tests fail when it is broken; the browser checks fail on the old code |
+
+**B. Billing** (`src/modules/billing/*`, `app/r/plan-billing-section.tsx`, `app/r/subscribe-button.tsx`, `app/r/plan/page.tsx`)
+
+| # | Finding | Fix | Passing criteria |
+|---|---|---|---|
+| B1 | A complimentary org whose paid plan is still running out (staff chose "cancel at the end of the paid period") is offered Subscribe, which Checkout refuses with "Use Switch plan", a button that doesn't exist while complimentary; Card and invoices is gone | `planBillingView` adds `paidPlan` to the complimentary view when the Stripe copy is live. The section says "Your paid {plan} plan ends on {date}. Your complimentary access continues." or, if it would renew (a grant made while Stripe couldn't be reached), "…renews on {date}." with **Cancel plan**, whose dialog says the complimentary access continues. Subscribe and "You can choose a plan now" are hidden; Card and invoices stays | Unit tests for the view |
+| B2 | The keep-one dialog archives the other sources before Checkout: backing out, or a refusal after archiving, leaves them archived with no plan, and an unpaid org can't reach Settings to see it | **Keep one source when the payment goes through** (D-129). A Reconciliation Checkout records the source to keep in the subscription's metadata (`keepFundingSource`): the admin's choice when several are active (a uuid of an active source of this org, refused otherwise, with its own message), the only active source otherwise; a Reconciliation + AI Checkout records nothing. Nothing is archived at Checkout. **Once only:** on the sync that first writes this subscription as paid (the previous copy not live, the new status `active`), when its price is Reconciliation and the org is not complimentary after that write, every other active source is archived in the same transaction. The metadata stays on the subscription for good and syncs run everywhere (the webhook, pages, the nightly reconcile, staff actions), so a standing rule would archive sources added later, for example while billing was switched off (§4.8 keeps an org's extra sources). The helper is a new `src/modules/funding-sources/archive.ts` that takes `tx`, scopes by org, clears a header selection pointing at an archived source, and revalidates nothing (the sync runs outside a request); `archiveFundingSourceAction` uses it too. A kept source no longer active: the first active one by the list order is kept, and a line is logged | Integration: Checkout records the right id, refuses a missing, foreign or archived one, and archives nothing; the first paid sync archives the rest and clears the header selection; a second sync archives nothing; nothing happens on Reconciliation + AI, before payment, with one source, or while a later staff grant keeps the org complimentary |
+| B3 | A complimentary Reconciliation + AI org with one source can open Reconciliation Checkout (open for 24 hours), add sources in another tab, then pay, and land on Reconciliation with several; the PR's docs say this gap is closed | Closed by B2: sources added while Checkout was open are archived when the payment goes through | Integration test of exactly that sequence |
+| B4 | The marker that ends the free access on payment is set only if the org was complimentary when Checkout opened: a grant made while an unpaid org's Checkout is open is never ended, and the org pays and stays complimentary | Every Checkout subscription carries `endComplimentary=on_payment`; the sync's existing check (only a grant made before the subscription is ended) keeps later staff grants | Integration |
+| B5 | Settings → Plan & billing disables Reconciliation for a complimentary admin with several sources, while `/r/plan` asks which to keep | The loader returns the active sources (`{id, name}[]`, not a count), `/r/plan` reuses it instead of its own query, and Settings uses the same dialog (`keepOneOf`); `disabledReason` and `billingSubscribeTooManySources` go | Loader test returns the list |
+| B6 | `staffTotalPaid` returns 0 when billing is off, so the card shows "Total paid $0.00" | Returns `null` (the figure is left out) | Integration |
+| B7 | `staffBilling` grew a fourth positional argument | `staffBilling(row, { lastPaid, totalPaidCents }, now)` | Existing tests |
+| B8 | `reconciliationStartsOf` is a one-caller wrapper and `UpcomingPlanOrg` a leftover name | Removed and renamed (`QueuedChangeRow`); `limit.ts` calls `reconciliationStartsOn` | Typecheck |
+| B9 | Stale comments describe the removed deferred charge | `limit.ts` (`lockedOrgEntitlement`), `sync.ts` (`endsComplimentaryAt`, `writeCopy`'s `paid`), `billing.ts` (`unchangedPhase`), `schema.ts` and `admin/actions.ts` (`complimentary_plan`), the note on `staffBillingFirstCharge`, and the deleted section header in `strings.ts` | Read |
+| B11 | `archiveFundingSourceAction` lets an unpaid admin archive, only for the `/r/plan` loop B2 removes | Back behind paid access; its allow-list entry goes; the no-free-use test flips to "refused" | Existing tests |
+| B12 | `writeCopy` takes six positional arguments and `startCheckoutAction` two strings | Both take one object (`startCheckoutAction({ plan, interval, keepFundingSourceId })`) | Typecheck |
+| B10 | Tests: five use fixed 2027 dates that the new past-date check refuses from 2 January 2027; removing an expired grant is untested (the `enabled &&` mutation survived); the sync ending a grant that has an end date is untested; "pins no free plan" never checks Checkout succeeded; the Detroit-date test sits where every zone agrees; `directory.test.ts` starts with a BOM; the sync test "a deferred plan (trialing, no marker)" describes the removed flow | Relative dates; the missing tests; the assertion; a late-evening case; BOM removed; the stale test deleted and the "(decided 2026-09-25)" label renamed; the Checkout test that expects no marker for a paying org flips (B4) | Each new guard mutation-tested |
+
+**C. Settings → Funding sources** (`app/r/settings/settings-sections.tsx`, `src/modules/funding-sources/actions.ts`)
+
+| # | Finding | Fix |
+|---|---|---|
+| C1 | "Name on documents" in the details view, "Document display name" in the form; the chip "Organization name" marks the organization's *document* name | "Document display name" everywhere; the chip reads "Same as the organization" |
+| C2 | A third pill style (`CHIP`) beside the shared `Badge`; the New funding source card kept the old corners | `Badge`; the add card uses the rows' classes |
+| C3 | The greyed Archive on the only active source explains itself only in a hover tooltip; the text is a copy of the server's refusal | Archive is not shown on the only active source; the refusal comes from `UI.fundingSourceKeepOneActive` |
+| C4 | "Not set yet: …. Use Edit to add them." reads as unfinished work for optional fields | "Not filled in: …" |
+
+**D. Landing** (`src/modules/landing/*`)
+
+| # | Finding | Fix |
+|---|---|---|
+| D1 | Phosphor's MIT notice is missing | `PHOSPHOR-LICENSE.txt` beside `landing-icons.tsx` (as `app/fonts/OFL.txt`), pointed to from its header |
+| D2 | The 44 px tile's class string is copied 11 times | An `IconTile` helper |
+| D3 | 7 older decorative SVGs have no `aria-hidden` | Added |
+| D4 | Problem-card titles and tags are in Title Case, against Words rule 6 | Awais's choice (§14.2) |
+
+**E. Docs**: m10's paragraph on `complimentaryStripeStep`; m09 (the paid-plan line, the keep-one dialog in
+both places); this file's P21 row, §4.3 table, §4.7 line, §4.8, D2 and the Phase 6 notes; D-129, which
+amends D-124 ("nothing is ever archived by a plan change") and D2; data-model's `complimentary_plan`;
+a TASKS item for the column; the guard-coverage allow-list reason; §8.5's browser checks for A.
+
+### 14.2 For Awais
+
+| # | Question | Recommendation |
+|---|---|---|
+| Q1 | Landing problem cards: back to sentence case, or keep Title Case and write the exception into the Words rules? | **Answered 2026-09-28: sentence case** |
+| Q2 | Keep one source when the payment goes through (B2), or archive at once and say so plainly in the dialog? | **Answered: when the payment goes through** |
+| Q3 | `complimentary_plan` is no longer written by anything. Drop it now, or a TASKS item to drop it before go-live? | **Answered: a TASKS item** |
+
+### 14.3 Order
+
+One commit each, in this order: the plan (this section); A; B; C; D; E. Then a review of the whole
+branch (agents), a browser pass, and fixes from the review.
+
+### 14.4 Plan review (2026-09-28)
+
+One reviewer read this plan against the code before anything was built. Changed because of it:
+B2's rule was a standing condition and would have archived sources on any later sync (the metadata
+stays on the subscription, and syncs run from the webhook, pages, the nightly reconcile and staff
+actions): it now runs once, on the sync that first sees the subscription paid. The keep id is
+validated at Checkout and scoped by org in the sync, and recorded on Reconciliation only; the
+helper is its own file with no revalidation; a kept source already archived is logged, not an
+ALERT. B1 gains Cancel plan for the renewing case. B5 passes the list, not a count. B11 (the unpaid
+archive exemption, now unused) and B12 (object arguments) were added. A4's reduced-motion code was
+cut, since A1 and A2 leave nothing for it to fix. A5 no longer needs a second hook. E gained D-124,
+§4.8 and the guard-coverage reason.
+
+### 14.5 As built (2026-09-28)
+
+One commit per part, as planned. Where the build went further than the table:
+- **A:** the three stateful popups are kept mounted by their parent with `useOverlayPresence`
+  and keyed on `${id}:${opens}` (History) or the opening count, as planned. `nextPresence` has six
+  unit tests; each of its three rules was broken on purpose and a test failed.
+- **B2:** a subscription with no `keepFundingSource` (not opened by this build) archives nothing,
+  rather than guessing which source to keep. Checkout refuses a missing or wrong choice with
+  `billingKeepSourceRefused`; the button then refreshes the page so the question is asked about
+  the sources as they are. The archive helper is two functions: `archiveFundingSources` (scoped by
+  org, clears the header selection) used by the Settings action and the sync, and
+  `keepOneFundingSource` (the fallback and the log line).
+- **Mutation checks (B):** removing each of the sync's four conditions (live before, `active`,
+  Reconciliation, not complimentary), the fallback, the header clear, Checkout's membership check,
+  the recorded single source, the marker on every Checkout, `null` Total paid while billing is off,
+  `enabled &&` on the past-date check and the paid-only archive each failed a test. The `active`
+  condition was first missed (the plan check also stops `incomplete`), so a trial case was added.
+- **C:** "Archived" is a neutral `Badge`, like the type, and an archived row sits on the section
+  tint so it reads as set aside; the add card's title matches the rows.
+
+**Review of the branch (three agents, 2026-09-28) and what changed:**
+- **Overlays:** one Escape could close a nested confirm and the popup under it, since a closing
+  overlay now leaves the stack at once; Escape already handled (`defaultPrevented`) is ignored. A
+  nested dialog's cleanup no longer strips `inert` from a parent fading in the same commit. A menu
+  item focuses ⋮ before the menu closes, so a dialog it opens returns focus there, not to `<body>`
+  (checked with real clicks). Still open, and older than this branch: a ConfirmButton that
+  disables its own trigger while it works can't get focus back.
+- **Billing:** the keep-source dialog forgot a choice the refresh removed (it could loop on the
+  refusal). A paid plan beside complimentary access carries `paymentFailed` (no Cancel then,
+  since Stripe refuses it); the dialog title, toast and renewal line say the free access
+  continues; See plans and the ending-soon banner are hidden, since nothing can be bought. The
+  action passes the three fields by name. The sync logs each automatic archive.
+- **Tests:** a direct test that the archive helper touches nothing outside its org (both scopes
+  mutation-checked), and the section's paid-plan conditions checked in its source (each
+  mutation-checked).
+- **Docs:** P24, the Checkout action row, §4.3, §4.7's allow-list, AC-A8, I-15, §10, m09, m10 and a
+  pointer from D-124 to D-129.
+- **Accepted limits:** "first paid" is read from the stored copy, not a subscription id, so a copy
+  left live by a lost cancel webhook would skip the archive for the next subscription (the
+  stale-copy net usually repairs the copy first). A grant made in the seconds a 3-D Secure
+  Checkout's subscription is `incomplete` counts as after the subscription and is kept.
+- **Browser (Chrome, the user's session):** Manage, expense details, History and Settings' Cancel
+  plan dialog pass the §8.5 B-21 checks; the same checks on the pre-fix code fail (scroll still
+  locked and the page inert during the fade, the confirm button still enabled with focus in the
+  dialog, focus on `<body>` after closing, details vanishing at once). History reopened mid-fade
+  starts on its list. Not run in a browser: the Share-after-deleted-items sequence (needs a month
+  with a deleted expense), the cropper, and Checkout itself (integration tests cover B2).
 
 ---
 

@@ -268,6 +268,7 @@ export const UI = {
   accountNoteTooLong: (max: number) => `Keep the note under ${max} characters.`,
   /** `setComplimentaryAction` refusal — `until` is neither empty nor a valid ISO date. */
   complimentaryUntilInvalid: "Enter a valid end date.",
+  complimentaryUntilPast: "Choose an end date of today or later.",
   /** Suspend dialog (Phase 9 §7, verbatim). */
   suspendDialogTitle: (orgName: string) => `Suspend ${orgName}?`,
   suspendDialogText:
@@ -859,13 +860,12 @@ export const UI = {
   billingEndingNow: "Ending…",
   billingSeePlans: "See plans",
   billingGoToSources: "Go to Funding sources",
-  billingSubscribeTooManySources: (count: number) =>
-    `Reconciliation includes one active funding source, and you have ${count}. Archive the ones you don't use, or choose Reconciliation + AI.`,
-  billingSourcesTitle: "Your funding sources",
-  billingSourcesHelp:
-    "Reconciliation includes one active funding source. Archiving keeps a source's records, and you can bring it back later from Settings.",
-  billingArchiveSource: "Archive",
-  billingSourceArchivedToast: "Funding source archived.",
+  billingKeepWhichTitle: "Which funding source do you want to keep?",
+  billingKeepWhichBody:
+    "Reconciliation includes one active funding source. Once your payment goes through, the others are archived. Their records are kept, but you can only make them active again by switching to Reconciliation + AI.",
+  billingKeepWhichLegend: "Funding source to keep",
+  billingKeepAndContinue: "Keep it and continue to payment",
+  billingKeepSourceRefused: "Your funding sources changed since this page opened. Choose again which one to keep.",
   billingChangedToast: "Your plan has changed.",
   billingScheduledToast: "Your plan change is scheduled.",
   billingCancelledToast: "Your plan is cancelled. You keep access until the end of the paid period.",
@@ -877,19 +877,20 @@ export const UI = {
   billingChangePlan: "Change plan",
   billingHidePlans: "Hide plans",
   billingCheckoutNote: "Cancel anytime. You keep access until the end of the period you paid for.",
-  billingCheckoutDeferred: (date: string) =>
-    `Nothing is charged today. Your complimentary access continues, and your first payment is on ${date}. Cancel anytime before then and nothing is charged.`,
   billingCheckoutEndsComp:
     "You pay today, and your complimentary access ends once the payment goes through. Cancel anytime. You keep access until the end of the period you paid for.",
-  billingCompBuyDeferred: (date: string) =>
-    `You can choose a plan now. Nothing is charged until your complimentary access ends: your first payment is on ${date}.`,
   billingCompBuyNow:
     "You can choose a plan now. You pay today, and your complimentary access ends once the payment goes through.",
-  billingCompUpcoming: (plan: string, interval: string, date: string) =>
-    `Your ${plan} plan, billed ${interval}, starts on ${date}. Nothing is charged before then.`,
-  billingCompUpcomingCancelled: "You cancelled the plan you chose, so it won't start and nothing will be charged.",
-  billingCancelUpcomingBody:
-    "The plan you chose won't start, and nothing will be charged. Your complimentary access continues as before.",
+  billingCompPaidEnds: (plan: string, date: string) =>
+    `Your paid ${plan} plan ends on ${date}. Your complimentary access continues.`,
+  billingCompPaidRenews: (plan: string, date: string) =>
+    `You also pay for ${plan}. It renews on ${date} and is charged unless you cancel it. Your complimentary access continues either way.`,
+  billingCompPaidFailed: (plan: string) =>
+    `The last payment for your paid ${plan} plan didn't go through. Your complimentary access continues.`,
+  billingCancelPaidTitle: "Cancel your paid plan?",
+  billingCancelBodyComp: (date: string) =>
+    `Your paid plan ends on ${date} and won't renew, so nothing more is charged. Your complimentary access continues.`,
+  billingCancelledCompToast: "Your paid plan won't renew. Your complimentary access continues.",
   billingComplimentaryTag: "Complimentary",
   // Staff dashboard (§4.6)
   historyActorStripe: "Stripe",
@@ -915,6 +916,8 @@ export const UI = {
   staffBillingHeadUnfinished: "Payment not finished",
   staffBillingLastPaid: (amount: string, date: string) => `Last payment ${amount} on ${date}.`,
   staffBillingLastPaidLabel: "Last payment",
+  staffBillingTotalPaidLabel: "Total paid",
+  staffBillingTotalPaidNote: "Every paid invoice, before any refunds.",
   staffBillingFirstCharge: (date: string) => `Card saved. The first payment is on ${date}.`,
   staffBillingFirstChargeLabel: "First payment on",
   staffBillingAccessEnds: (date: string) => `Won't renew. Access ends on ${date}.`,
@@ -937,6 +940,8 @@ export const UI = {
     "Reconciliation includes one active funding source. To add more, try Plus.",
   fundingSourceLimitManager:
     "Reconciliation includes one active funding source. Ask your admin about upgrading.",
+  /** Archiving the only active funding source (Settings hides Archive on it; the server refuses). */
+  fundingSourceKeepOneActive: "Keep at least one active funding source.",
   fundingSourceLimitQueued: (date: string) =>
     `Your plan switches to Reconciliation on ${date}, which includes one active funding source. To add another, cancel that switch in Plan & billing.`,
 

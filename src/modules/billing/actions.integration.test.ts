@@ -96,7 +96,6 @@ describe.skipIf(!hasDatabase)("billing actions (integration, Phase 16)", async (
   const { BILLING_RETURN_PATH, PLAN_CANCELLED_PATH, SETTINGS_PLAN_PATH, clearPortalConfigCache, planPriceMoves } =
     await import("./billing");
   const { PORTAL_TAG } = await import("./pricing");
-  const { dayAfterStart } = await import("./rules");
 
   if (stripeKeyIsLive()) throw new Error("refuse to run this suite against a live-looking Stripe key");
 
@@ -178,7 +177,7 @@ describe.skipIf(!hasDatabase)("billing actions (integration, Phase 16)", async (
   /** All eight actions, called with harmless arguments, returning their `ActionResult`s. */
   async function callAll() {
     return [
-      await startCheckoutAction("reconciliation", "month"),
+      await startCheckoutAction({ plan: "reconciliation", interval: "month" }),
       await quoteChangeAction("reconciliation", "month"),
       await applyChangeAction("reconciliation", "month", 1_650_000_000),
       await cancelPendingChangeAction(),
@@ -262,21 +261,22 @@ describe.skipIf(!hasDatabase)("billing actions (integration, Phase 16)", async (
   /* --------------------------------------------------------------------- I-1 */
 
   describe("I-1: complimentary org", () => {
-    it("switching (quote, apply, cancel a queued change) and End plan now refuse billingComplimentaryRefused before any Stripe call", async () => {
+    it("switching (quote, apply, cancel a queued change), End plan now and Keep my plan refuse billingComplimentaryRefused before any Stripe call", async () => {
       const orgId = await freshOrg({ complimentary: true });
       asAdmin(orgId);
       expect(await quoteChangeAction("reconciliation", "month")).toEqual(fail(UI.billingComplimentaryRefused));
       expect(await applyChangeAction("reconciliation", "month", 1_650_000_000)).toEqual(fail(UI.billingComplimentaryRefused));
       expect(await cancelPendingChangeAction()).toEqual(fail(UI.billingComplimentaryRefused));
       expect(await endPlanNowAction()).toEqual(fail(UI.billingComplimentaryRefused));
+      // Undoing a cancel made when the free access was granted would charge for free access (D-128).
+      expect(await resumePlanAction()).toEqual(fail(UI.billingComplimentaryRefused));
       noStripeCallsMade();
     });
 
-    it("cancel, keep and Card and invoices get past the complimentary check (for a plan bought during it); with no customer they answer billingNoPlan, still with no Stripe call", async () => {
+    it("cancel and Card and invoices get past the complimentary check (neither charges); with no customer they answer billingNoPlan, still with no Stripe call", async () => {
       const orgId = await freshOrg({ complimentary: true });
       asAdmin(orgId);
       expect(await cancelPlanAction()).toEqual(fail(UI.billingNoPlan));
-      expect(await resumePlanAction()).toEqual(fail(UI.billingNoPlan));
       expect(await billingPortalAction()).toEqual(fail(UI.billingNoPlan));
       noStripeCallsMade();
     });
@@ -293,60 +293,39 @@ describe.skipIf(!hasDatabase)("billing actions (integration, Phase 16)", async (
     const isoIn = (days: number) => todayIso(new Date(Date.now() + days * 86_400_000));
     const sessionArgs = () => checkoutSessionsCreateMock.mock.calls.at(-1)![0];
 
-    it("Checkout with no end date: charged today, the subscription is marked to end the free access once paid", async () => {
-      await compOrg(null);
-      const result = await startCheckoutAction("reconciliation", "month");
+    // D-128: buying a plan ends complimentary access, whatever was left of it. Always charged
+    // today, marked so the sync ends the free access once the payment goes through.
+    it.each([
+      ["no end date", null],
+      ["an end date tomorrow", isoIn(1)],
+      ["an end date two months away", isoIn(60)],
+    ])("Checkout during complimentary access with %s: charged today, ends the free access once paid", async (_case, until) => {
+      await compOrg(until);
+      const result = await startCheckoutAction({ plan: "reconciliation", interval: "year" });
       expect(result.ok).toBe(true);
       const args = sessionArgs();
       expect(args.subscription_data.metadata.endComplimentary).toBe("on_payment");
-      expect(args.subscription_data.trial_end).toBeUndefined();
+      expect(args.subscription_data).not.toHaveProperty("trial_end");
       expect(args.custom_text.submit.message).toBe(UI.billingCheckoutEndsComp);
     });
 
-    it("Checkout with an end date 2+ days away: nothing today, first charge at the start of the next day, no end marker", async () => {
-      const until = isoIn(10);
-      await compOrg(until);
-      const result = await startCheckoutAction("reconciliation", "year");
-      expect(result.ok).toBe(true);
-      const args = sessionArgs();
-      expect(args.subscription_data.trial_end).toBe(Math.floor(dayAfterStart(until).getTime() / 1000));
-      expect(args.subscription_data.metadata.endComplimentary).toBeUndefined();
-    });
-
-    it("Checkout with an end date tomorrow (too soon for Stripe to defer): charged today with the end marker", async () => {
-      await compOrg(isoIn(1));
-      await startCheckoutAction("reconciliation", "month");
-      const args = sessionArgs();
-      expect(args.subscription_data.trial_end).toBeUndefined();
-      expect(args.subscription_data.metadata.endComplimentary).toBe("on_payment");
-    });
-
-    it("pins the free plan before Checkout, so buying Reconciliation during free Reconciliation + AI keeps the AI features until the free access ends", async () => {
-      const orgId = await compOrg(null);
-      await startCheckoutAction("reconciliation", "month");
+    it("pins no free plan: the plan paid for takes over once the payment goes through", async () => {
+      const orgId = await compOrg(isoIn(60));
+      expect((await startCheckoutAction({ plan: "reconciliation", interval: "month" })).ok).toBe(true);
+      expect(checkoutSessionsCreateMock).toHaveBeenCalledTimes(1);
       const [row] = await db
         .select({ complimentaryPlan: organizations.complimentaryPlan })
         .from(organizations)
         .where(eq(organizations.id, orgId));
-      expect(row.complimentaryPlan).toBe("reconciliation_ai");
+      expect(row.complimentaryPlan).toBeNull();
     });
 
-    it("an already pinned free plan is left as it is", async () => {
-      const orgId = await compOrg(null, "reconciliation");
-      await startCheckoutAction("reconciliation", "month");
-      const [row] = await db
-        .select({ complimentaryPlan: organizations.complimentaryPlan })
-        .from(organizations)
-        .where(eq(organizations.id, orgId));
-      expect(row.complimentaryPlan).toBe("reconciliation");
-    });
-
-    it("a paying org's Checkout is unchanged: no deferral, no end marker, the usual note", async () => {
+    it("a paying org's Checkout carries the end marker too (a grant made while it is open ends once paid, D-129), with the usual note", async () => {
       const orgId = await freshOrg({ complimentary: false });
       asAdmin(orgId);
-      await startCheckoutAction("reconciliation", "month");
+      await startCheckoutAction({ plan: "reconciliation_ai", interval: "month" });
       const args = sessionArgs();
-      expect(args.subscription_data).toEqual({ metadata: { orgId } });
+      expect(args.subscription_data).toEqual({ metadata: { orgId, endComplimentary: "on_payment" } });
       expect(args.custom_text.submit.message).toBe(UI.billingCheckoutNote);
       expect(args.adaptive_pricing).toEqual({ enabled: false });
     });
@@ -440,8 +419,8 @@ describe.skipIf(!hasDatabase)("billing actions (integration, Phase 16)", async (
 
   /* ---------------------------------------------------------------------U-10 */
 
-  describe("U-10: no action accepts an id from the client", () => {
-    it("every exported action's parameter list is only plan/interval/prorationDate (source-reading check)", async () => {
+  describe("U-10: no action accepts a Stripe or org id from the client", () => {
+    it("every exported action's parameters are only plan/interval/prorationDate, plus the funding source to keep at Checkout (source-reading check)", async () => {
       const fs = await import("node:fs");
       const path = await import("node:path");
       const source = fs.readFileSync(path.join(process.cwd(), "src/modules/billing/actions.ts"), "utf8");
@@ -450,13 +429,16 @@ describe.skipIf(!hasDatabase)("billing actions (integration, Phase 16)", async (
 
       const allowedParamNames = new Set(["plan", "interval", "prorationDate"]);
       for (const [, name, params] of signatures) {
-        const names = params
-          .split(",")
+        // One object parameter (`input: { plan: string; ... }`) is read field by field.
+        const object = /^\s*\w+:\s*\{([^}]*)\}\s*$/.exec(params);
+        const names = (object ? object[1].split(/[;,]/) : params.split(","))
           .map((p) => p.trim())
           .filter(Boolean)
-          .map((p) => p.split(":")[0].trim());
+          .map((p) => p.split(":")[0].replace("?", "").trim());
+        // Checked against the org's own active sources in `startCheckout` (the P24 tests below).
+        const allowed = name === "startCheckoutAction" ? new Set([...allowedParamNames, "keepFundingSourceId"]) : allowedParamNames;
         for (const n of names) {
-          expect(allowedParamNames.has(n), `${name} takes an unexpected parameter "${n}"`).toBe(true);
+          expect(allowed.has(n), `${name} takes an unexpected parameter "${n}"`).toBe(true);
         }
         // Grep the whole signature text for id-shaped names directly, as a second net.
         expect(/\b(customerId|subscriptionId|invoiceId|orgId|scheduleId)\b/i.test(params)).toBe(false);
@@ -484,13 +466,13 @@ describe.skipIf(!hasDatabase)("billing actions (integration, Phase 16)", async (
     ])("startCheckoutAction rejects a Stripe response with %s", async (_label, url) => {
       await readyOrgWithNoSub();
       checkoutSessionsCreateMock.mockResolvedValue({ id: "cs_1", url });
-      await expect(startCheckoutAction("reconciliation", "month")).rejects.toThrow();
+      await expect(startCheckoutAction({ plan: "reconciliation", interval: "month" })).rejects.toThrow();
     });
 
     it("accepts checkout.stripe.com and sends the fixed success/cancel paths on siteOrigin()", async () => {
       await readyOrgWithNoSub();
       checkoutSessionsCreateMock.mockResolvedValue({ id: "cs_1", url: "https://checkout.stripe.com/pay/cs_1" });
-      const result = await startCheckoutAction("reconciliation", "month");
+      const result = await startCheckoutAction({ plan: "reconciliation", interval: "month" });
       expect(result).toEqual({ ok: true, data: { url: "https://checkout.stripe.com/pay/cs_1" } });
       const call = checkoutSessionsCreateMock.mock.calls[0][0];
       expect(call.success_url).toBe(`http://localhost:3000${BILLING_RETURN_PATH}`);
@@ -516,41 +498,72 @@ describe.skipIf(!hasDatabase)("billing actions (integration, Phase 16)", async (
 
   /* ---------------------------------------------------------------------- P24 */
 
-  describe("P24: funding-source count on a Checkout to Reconciliation", () => {
-    it("two active sources: refused before any Stripe call", async () => {
+  describe("P24, D-129: the funding source to keep on a Checkout to Reconciliation", () => {
+    async function activeIds(orgId: string) {
+      const rows = await db
+        .select({ id: fundingSources.id })
+        .from(fundingSources)
+        .where(and(eq(fundingSources.orgId, orgId), isNull(fundingSources.archivedAt)));
+      return rows.map((row) => row.id);
+    }
+    const keptAtCheckout = () => sessionArgsOf().subscription_data.metadata.keepFundingSource;
+
+    it("two active sources and one chosen: Checkout records it, and nothing is archived yet", async () => {
       const orgId = await freshOrg({ complimentary: false });
       await addFundingSource(orgId); // + the one createTestOrg already made = 2 active
-      expect(await activeCount(orgId)).toBe(2);
+      const [, second] = await activeIds(orgId);
       asAdmin(orgId);
 
-      const result = await startCheckoutAction("reconciliation", "month");
-      expect(result).toEqual(fail(UI.billingDowngradeTooManySources(2)));
+      const result = await startCheckoutAction({ plan: "reconciliation", interval: "month", keepFundingSourceId: second });
+      expect(result.ok).toBe(true);
+      expect(keptAtCheckout()).toBe(second);
+      expect(await activeCount(orgId)).toBe(2);
+    });
+
+    it("two active sources and none chosen, or one that isn't an active source of this org: refused before any Stripe call", async () => {
+      const orgId = await freshOrg({ complimentary: false });
+      await addFundingSource(orgId);
+      await addFundingSource(orgId, { archived: true });
+      const archived = (
+        await db
+          .select({ id: fundingSources.id, archivedAt: fundingSources.archivedAt })
+          .from(fundingSources)
+          .where(eq(fundingSources.orgId, orgId))
+      ).find((row) => row.archivedAt !== null)!;
+      const other = await freshOrg({ complimentary: false });
+      const [foreign] = await activeIds(other);
+      asAdmin(orgId);
+
+      for (const keepFundingSourceId of [undefined, null, archived.id, foreign, "not-a-uuid", ""]) {
+        const result = await startCheckoutAction({ plan: "reconciliation", interval: "month", keepFundingSourceId });
+        expect(result, String(keepFundingSourceId)).toEqual(fail(UI.billingKeepSourceRefused));
+      }
       expect(pricesListMock).not.toHaveBeenCalled();
       expect(customersCreateMock).not.toHaveBeenCalled();
       expect(checkoutSessionsCreateMock).not.toHaveBeenCalled();
+      expect(await activeCount(orgId)).toBe(2);
     });
 
-    it("one active + one archived: allowed through to Stripe", async () => {
+    it("one active + one archived: nothing to choose, and the only active source is recorded", async () => {
       const orgId = await freshOrg({ complimentary: false });
       await addFundingSource(orgId, { archived: true }); // + the one active from createTestOrg = 1 active
-      expect(await activeCount(orgId)).toBe(1);
+      const [only] = await activeIds(orgId);
       asAdmin(orgId);
 
-      const result = await startCheckoutAction("reconciliation", "month");
+      const result = await startCheckoutAction({ plan: "reconciliation", interval: "month" });
       expect(result.ok).toBe(true);
-      expect(pricesListMock).toHaveBeenCalled();
-      expect(checkoutSessionsCreateMock).toHaveBeenCalled();
+      expect(keptAtCheckout()).toBe(only);
     });
 
-    it("Reconciliation + AI is never limited: two active sources still reach Stripe", async () => {
+    it("Reconciliation + AI is never limited: two active sources reach Stripe, and nothing is recorded to keep", async () => {
       const orgId = await freshOrg({ complimentary: false });
       await addFundingSource(orgId);
       expect(await activeCount(orgId)).toBe(2);
       asAdmin(orgId);
 
-      const result = await startCheckoutAction("reconciliation_ai", "month");
+      const result = await startCheckoutAction({ plan: "reconciliation_ai", interval: "month" });
       expect(result.ok).toBe(true);
-      expect(checkoutSessionsCreateMock).toHaveBeenCalled();
+      expect(sessionArgsOf().subscription_data.metadata).not.toHaveProperty("keepFundingSource");
     });
   });
 
@@ -567,28 +580,28 @@ describe.skipIf(!hasDatabase)("billing actions (integration, Phase 16)", async (
 
     it("unknown_plan: a plan/interval Stripe has no such value for", async () => {
       await orgWithCustomer();
-      const result = await startCheckoutAction("not-a-real-plan", "month");
+      const result = await startCheckoutAction({ plan: "not-a-real-plan", interval: "month" });
       expect(result).toEqual(fail(UI.billingUnknownPlan));
     });
 
     it("price_missing: a valid plan/interval whose active price is missing → same billingUnknownPlan text", async () => {
       await orgWithCustomer();
       pricesListMock.mockResolvedValue({ data: [] });
-      const result = await startCheckoutAction("reconciliation", "month");
+      const result = await startCheckoutAction({ plan: "reconciliation", interval: "month" });
       expect(result).toEqual(fail(UI.billingUnknownPlan));
     });
 
     it("already_subscribed: a live subscription already exists", async () => {
       await orgWithCustomer();
       subscriptionsOfMock.mockResolvedValue([{ id: "sub_1", status: "active", created: 1 }]);
-      const result = await startCheckoutAction("reconciliation", "month");
+      const result = await startCheckoutAction({ plan: "reconciliation", interval: "month" });
       expect(result).toEqual(fail(UI.billingAlreadySubscribed));
     });
 
     it("payment_processing: an incomplete (still paying) subscription exists", async () => {
       await orgWithCustomer();
       subscriptionsOfMock.mockResolvedValue([{ id: "sub_1", status: "incomplete", created: 1 }]);
-      const result = await startCheckoutAction("reconciliation", "month");
+      const result = await startCheckoutAction({ plan: "reconciliation", interval: "month" });
       expect(result).toEqual(fail(UI.billingPaymentProcessing));
     });
 
@@ -712,7 +725,7 @@ describe.skipIf(!hasDatabase)("billing actions (integration, Phase 16)", async (
       const newCustomer = uniqueCustomerId();
       customersCreateMock.mockResolvedValue({ id: newCustomer });
 
-      expect(await startCheckoutAction("reconciliation", "month")).toMatchObject({ ok: true });
+      expect(await startCheckoutAction({ plan: "reconciliation", interval: "month" })).toMatchObject({ ok: true });
       expect(customersCreateMock).toHaveBeenCalledTimes(1);
       expect(await orgWithBilling(orgId)).toMatchObject({
         stripeCustomerId: newCustomer,
@@ -727,7 +740,7 @@ describe.skipIf(!hasDatabase)("billing actions (integration, Phase 16)", async (
       const existing = uniqueCustomerId();
       await setBillingCopy(orgId, { stripeCustomerId: existing, livemode: false });
 
-      expect(await startCheckoutAction("reconciliation", "month")).toMatchObject({ ok: true });
+      expect(await startCheckoutAction({ plan: "reconciliation", interval: "month" })).toMatchObject({ ok: true });
       expect(customersCreateMock).not.toHaveBeenCalled();
       expect((await orgWithBilling(orgId)).stripeCustomerId).toBe(existing);
     });
@@ -743,7 +756,7 @@ describe.skipIf(!hasDatabase)("billing actions (integration, Phase 16)", async (
       const replacement = uniqueCustomerId();
       customersCreateMock.mockResolvedValue({ id: replacement });
 
-      expect(await startCheckoutAction("reconciliation", "month")).toMatchObject({ ok: true });
+      expect(await startCheckoutAction({ plan: "reconciliation", interval: "month" })).toMatchObject({ ok: true });
       expect(customersRetrieveMock).toHaveBeenCalledWith(deleted);
       expect(await orgWithBilling(orgId)).toMatchObject({ stripeCustomerId: replacement, stripeStatus: null });
       expect(sessionArgsOf().customer).toBe(replacement);
@@ -760,7 +773,7 @@ describe.skipIf(!hasDatabase)("billing actions (integration, Phase 16)", async (
       );
       const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
-      expect(await startCheckoutAction("reconciliation", "month")).toEqual(fail(UI.billingStripeError));
+      expect(await startCheckoutAction({ plan: "reconciliation", interval: "month" })).toEqual(fail(UI.billingStripeError));
       expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("ALERT"));
       expect(customersCreateMock).not.toHaveBeenCalled();
       expect(await orgWithBilling(orgId)).toMatchObject({ stripeCustomerId: unknown, stripeStatus: "active" });
@@ -883,6 +896,48 @@ describe.skipIf(!hasDatabase)("billing actions (integration, Phase 16)", async (
       ]);
       expect(await endPlanNowAction()).toEqual(fail(UI.billingNoPlan));
       expect(subscriptionsCancelMock).not.toHaveBeenCalled();
+    });
+  });
+  /* ------------------------------------------------------------ staffTotalPaid */
+
+  describe("staffTotalPaid: every paid invoice, across pages", () => {
+    it("adds amount_paid over every page, asking only for paid invoices", async () => {
+      const { staffTotalPaid } = await import("./billing");
+      const orgId = await freshOrg({ complimentary: false });
+      const customerId = uniqueCustomerId();
+      await withCustomer(orgId, customerId);
+      invoicesListMock
+        .mockResolvedValueOnce({ data: [{ id: "in_1", amount_paid: 19_999 }, { id: "in_2", amount_paid: 29_700 }], has_more: true })
+        .mockResolvedValueOnce({ data: [{ id: "in_3", amount_paid: 20_000 }], has_more: false });
+
+      expect(await staffTotalPaid(orgId)).toBe(69_699);
+      expect(invoicesListMock).toHaveBeenCalledTimes(2);
+      expect(invoicesListMock.mock.calls[0][0]).toEqual({ customer: customerId, status: "paid", limit: 100 });
+      expect(invoicesListMock.mock.calls[1][0]).toEqual({ customer: customerId, status: "paid", limit: 100, starting_after: "in_2" });
+    });
+
+    it("billing off: null, so the card leaves the figure out, and Stripe is never asked", async () => {
+      const { staffTotalPaid } = await import("./billing");
+      const orgId = await freshOrg({ complimentary: false });
+      await withCustomer(orgId, uniqueCustomerId());
+      vi.stubEnv("BILLING_ENABLED", "false");
+      expect(await staffTotalPaid(orgId)).toBeNull();
+      expect(invoicesListMock).not.toHaveBeenCalled();
+    });
+
+    it("no Stripe customer: 0, and Stripe is never asked", async () => {
+      const { staffTotalPaid } = await import("./billing");
+      const orgId = await freshOrg({ complimentary: false });
+      expect(await staffTotalPaid(orgId)).toBe(0);
+      expect(invoicesListMock).not.toHaveBeenCalled();
+    });
+
+    it("Stripe failing: null, so the page leaves the figure out instead of showing $0.00", async () => {
+      const { staffTotalPaid } = await import("./billing");
+      const orgId = await freshOrg({ complimentary: false });
+      await withCustomer(orgId, uniqueCustomerId());
+      invoicesListMock.mockRejectedValueOnce(new Error("Stripe is down"));
+      expect(await staffTotalPaid(orgId)).toBeNull();
     });
   });
 });

@@ -25,7 +25,7 @@ import {
   type SubscriptionStatus,
 } from "@/src/db/schema";
 import { lockOrg, type Executor } from "@/src/db/org-lock";
-import { isValidIsoDate } from "@/src/domain/dates";
+import { isValidIsoDate, todayIso } from "@/src/domain/dates";
 import { ACCOUNT_NOTE_MAX_LENGTH, UI } from "@/src/domain/strings";
 import { fail, ok, type ActionResult } from "@/src/lib/action-result";
 import { requireStaff } from "@/src/lib/action-session";
@@ -132,15 +132,15 @@ export async function changePlanAction(
     // Changing plan or status never touches suspension, complimentary access, or each other.
     // A save that changes nothing is refused rather than reported as saved: there is no event
     // action for "note only", so History would stay silent while the dialog said "updated".
-    // A pinned free plan (`complimentary_plan`) that differs from the chosen one is a change:
-    // it is what a complimentary org actually gets.
+    // A free plan left pinned in `complimentary_plan` (nothing sets it any more, D-128) that
+    // differs from the chosen one is a change: it is what a complimentary org actually gets.
     if (row.plan === plan && row.subscriptionStatus === status && (row.complimentaryPlan ?? plan) === plan) {
       return fail(UI.accountNothingChanged);
     }
 
     const before = snapshot(row);
-    // The plan staff choose is the plan the org gets: a free plan pinned at Checkout would
-    // otherwise keep overriding it (P27).
+    // The plan staff choose is the plan the org gets: a free plan left pinned from before D-128
+    // would otherwise keep overriding it (P27).
     await tx
       .update(organizations)
       .set({ plan, subscriptionStatus: status, complimentaryPlan: null })
@@ -176,13 +176,18 @@ export async function setComplimentaryAction(
     return fail(UI.complimentaryUntilInvalid);
   }
   const untilValue = trimmedUntil === "" ? null : trimmedUntil;
+  // A date already past would grant access that has already ended: the org is locked out at
+  // once, and a paying org would also have its plan cancelled in the same step.
+  if (enabled && untilValue !== null && untilValue < todayIso()) return fail(UI.complimentaryUntilPast);
 
   const parsedNote = parseNote(note);
   if ("refusal" in parsedNote) return parsedNote.refusal;
 
   // Granting free access to a paying org ends the paid plan in the same step (§4.6), so it is
   // never billed for access it now gets free. Stripe first and outside the row lock: the sync
-  // this triggers writes the same row, and a Stripe failure then leaves nothing half done.
+  // this triggers writes the same row, and a Stripe failure then leaves nothing half done. No
+  // other change to complimentary access touches Stripe: a plan bought during it is paid for at
+  // once and ends it (D-128), so no subscription is ever waiting on a complimentary date.
   if (enabled && billingEnabled() && isUuid(orgId)) {
     // Whether it pays is Stripe's answer, not our copy's, which can be a webhook behind (a
     // Checkout finished a moment ago): re-sync first. Never throws; if Stripe can't be reached

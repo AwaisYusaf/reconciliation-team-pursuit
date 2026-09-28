@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { KNOWN_STRIPE_STATUSES, type PlanId } from "./rules";
-import { activeFundingSourceLimit, orgEntitlement, type EntitlementOrg } from "./entitlement";
+import { activeFundingSourceLimit, orgEntitlement, reconciliationStartsOn, type EntitlementOrg } from "./entitlement";
 
 const base: EntitlementOrg = {
   plan: "reconciliation",
@@ -265,5 +265,28 @@ describe("activeFundingSourceLimit", () => {
         expect(limit, `${reason}/${plan}`).toBe(plan === "reconciliation" ? 1 : null);
       }
     }
+  });
+});
+
+describe("reconciliationStartsOn (P24): the day a queued downgrade to Reconciliation starts", () => {
+  const now = new Date("2027-01-01T17:00:00Z");
+  const queued = { pendingPlan: "reconciliation" as const, pendingReason: "downgrade", pendingAt: new Date("2027-02-01T05:00:00Z") };
+
+  it("its start day, in Detroit", () => {
+    expect(reconciliationStartsOn(queued, now)).toBe("2027-02-01");
+  });
+
+  it("late evening in Detroit is still that day there, though already the next day in UTC and in the test zone", () => {
+    // 10 pm on 1 February in Detroit (UTC-5) is 3 am on 2 February in UTC and 8 am in Karachi.
+    expect(reconciliationStartsOn({ ...queued, pendingAt: new Date("2027-02-02T03:00:00Z") }, now)).toBe("2027-02-01");
+  });
+
+  it.each([
+    ["a price move, not a downgrade", { pendingReason: "price_move" }],
+    ["already started", { pendingAt: new Date("2026-12-01T00:00:00Z") }],
+    ["queued to Reconciliation + AI", { pendingPlan: "reconciliation_ai" as const }],
+    ["nothing queued", { pendingPlan: null, pendingReason: null, pendingAt: null }],
+  ])("not when %s", (_case, change) => {
+    expect(reconciliationStartsOn({ ...queued, ...change }, now)).toBeNull();
   });
 });

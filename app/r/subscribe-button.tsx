@@ -1,7 +1,9 @@
 "use client";
 
-import { useId, useTransition } from "react";
+import { useRouter } from "next/navigation";
+import { useId, useState, useTransition } from "react";
 
+import { Dialog } from "@/src/components/ui/dialog";
 import { reportResult } from "@/src/components/ui/toast";
 import { cn } from "@/src/lib/cn";
 import { UI } from "@/src/domain/strings";
@@ -19,50 +21,105 @@ import {
  * checks everything on the server (admin, one open Checkout, funding-source limit) and returns
  * only a URL it has already verified is Stripe's; a refusal shows as the usual error toast.
  * While it works the label says so, per the no-spinner rule. Styled like the pricing card's own
- * button, since it sits inside the same card as on the landing page. `disabledReason`: the plan
- * can't be chosen right now (Reconciliation with more than one active source); the button is
- * disabled and the reason sits under it, rather than an error after the click.
+ * button, since it sits inside the same card as on the landing page.
+ *
+ * `keepOneOf`: the org's active funding sources, when choosing this plan (Reconciliation) means
+ * keeping only one (C8). The question is asked only then, after the click, rather than a list on
+ * the page before anyone has chosen a plan: which one to keep, then Checkout opens. Nothing is
+ * archived here: the choice goes to Checkout, and the others are archived once the payment goes
+ * through (D-129), so backing out of Checkout changes nothing.
  */
 export function SubscribeButton({
   plan,
   interval,
   primary = false,
-  disabledReason,
+  keepOneOf,
 }: {
   plan: PlanId;
   interval: Interval;
   primary?: boolean;
-  disabledReason?: string;
+  keepOneOf?: ReadonlyArray<{ id: string; name: string }>;
 }) {
+  const router = useRouter();
   const [pending, startTransition] = useTransition();
-  const reasonId = useId();
+  const [asking, setAsking] = useState(false);
+  const [keepId, setKeepId] = useState<string | null>(null);
+  const legendId = useId();
+  const mustChoose = keepOneOf !== undefined && keepOneOf.length > 1;
+  // A choice counts only while that source is still offered: after a refresh the list can have
+  // changed under it, and a stale id would only be refused again.
+  const chosen = keepId !== null && keepOneOf?.some((source) => source.id === keepId) ? keepId : null;
+
+  /** Opens Checkout; `keep` is the source chosen in the dialog, when there was one to choose. */
+  function checkout(keep: string | null = null) {
+    startTransition(async () => {
+      const result = await startCheckoutAction({ plan, interval, keepFundingSourceId: keep });
+      if (reportResult(result)) {
+        window.location.assign(result.data.url);
+      } else {
+        // Refused (the sources changed since the page loaded, say): close the question and show
+        // the sources as they are now, so the next click asks about the right ones.
+        setAsking(false);
+        setKeepId(null);
+        router.refresh();
+      }
+    });
+  }
 
   return (
     <>
       <button
         type="button"
-        className={cn(
-          primary ? PLAN_BUTTON_PRIMARY : PLAN_BUTTON_LIGHT,
-          "min-h-11 disabled:opacity-60",
-          disabledReason ? "disabled:cursor-not-allowed" : "disabled:cursor-wait",
-        )}
+        className={cn(primary ? PLAN_BUTTON_PRIMARY : PLAN_BUTTON_LIGHT, "min-h-11 disabled:opacity-60 disabled:cursor-wait")}
         style={primary ? PLAN_BUTTON_PRIMARY_STYLE : undefined}
-        disabled={pending || disabledReason !== undefined}
-        aria-describedby={disabledReason ? reasonId : undefined}
-        onClick={() =>
-          startTransition(async () => {
-            const result = await startCheckoutAction(plan, interval);
-            if (reportResult(result)) window.location.assign(result.data.url);
-          })
-        }
+        disabled={pending}
+        onClick={() => (mustChoose ? setAsking(true) : checkout())}
       >
-        <span>{pending ? UI.billingOpeningCheckout : UI.billingSubscribe}</span>
+        <span>{pending && !asking ? UI.billingOpeningCheckout : UI.billingSubscribe}</span>
         {primary && !pending && <PlanButtonArrow />}
       </button>
-      {disabledReason && (
-        <p id={reasonId} className="text-sm text-on-surface-variant leading-snug">
-          {disabledReason}
-        </p>
+
+      {mustChoose && (
+        <Dialog
+          open={asking}
+          tone="neutral"
+          title={UI.billingKeepWhichTitle}
+          dismissLabel={UI.billingGoBack}
+          dismissDisabled={pending}
+          onDismiss={() => setAsking(false)}
+          confirm={{
+            label: pending ? UI.billingOpeningCheckout : UI.billingKeepAndContinue,
+            disabled: pending || chosen === null,
+            onConfirm: () => chosen && checkout(chosen),
+          }}
+        >
+          <p className="mb-4">{UI.billingKeepWhichBody}</p>
+          <fieldset aria-labelledby={legendId} className="flex flex-col gap-2">
+            <legend id={legendId} className="sr-only">
+              {UI.billingKeepWhichLegend}
+            </legend>
+            {keepOneOf!.map((source) => (
+              <label
+                key={source.id}
+                className={cn(
+                  "flex items-center gap-3 min-h-11 px-3.5 py-2 rounded-[10px] border cursor-pointer text-ink",
+                  chosen === source.id ? "border-accent bg-section" : "border-line bg-surface hover:bg-section",
+                )}
+              >
+                <input
+                  type="radio"
+                  name={`keep-${plan}-${interval}`}
+                  value={source.id}
+                  checked={chosen === source.id}
+                  disabled={pending}
+                  onChange={() => setKeepId(source.id)}
+                  className="w-4 h-4 accent-[var(--color-accent)]"
+                />
+                <span className="font-medium">{source.name}</span>
+              </label>
+            ))}
+          </fieldset>
+        </Dialog>
       )}
     </>
   );

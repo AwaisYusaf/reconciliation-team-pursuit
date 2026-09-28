@@ -16,7 +16,7 @@ import {
   usersFooter,
   type StaffBillingTone,
 } from "@/src/modules/admin/directory";
-import { staffPayments } from "@/src/modules/billing/billing";
+import { staffPayments, staffTotalPaid } from "@/src/modules/billing/billing";
 import { billingEnabled } from "@/src/modules/billing/config";
 import { isLive } from "@/src/modules/billing/rules";
 import { requireStaffPage } from "@/src/modules/admin/guard";
@@ -123,16 +123,17 @@ export default async function OrgPage({
   const rawBack = typeof query.back === "string" ? query.back : "";
   const backHref = rawBack.startsWith("?") ? `/a${rawBack}` : "/a";
 
-  const [users, usage, aiUsage, history, payments, featureRequests] = await Promise.all([
+  const [users, usage, aiUsage, history, payments, totalPaid, featureRequests] = await Promise.all([
     loadOrgUsers(id, showAllUsers),
     loadOrgUsage(id),
     loadOrgAiUsage(id),
     loadOrgHistory(id),
     staffPayments(id),
+    staffTotalPaid(id),
     loadOrgFeatureRequests(id),
   ]);
   const lastPaid = payments?.find((p) => p.status === "paid") ?? null;
-  const billing = staffBilling(account, lastPaid);
+  const billing = staffBilling(account, { lastPaid, totalPaidCents: totalPaid });
   const footer = usersFooter({
     showAll: showAllUsers,
     shown: users.rows.length,
@@ -379,7 +380,7 @@ export default async function OrgPage({
           {billing.facts.length > 0 && (
             <dl className={cn(FIGURE_GRID, "mb-5")}>
               {billing.facts.map((fact) => (
-                <UsageTile key={fact.label} label={fact.label}>
+                <UsageTile key={fact.label} label={fact.label} caption={fact.caption}>
                   <Sentence>{fact.value}</Sentence>
                 </UsageTile>
               ))}

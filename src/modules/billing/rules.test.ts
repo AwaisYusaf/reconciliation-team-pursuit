@@ -5,9 +5,6 @@ import { describe, expect, it } from "vitest";
 
 import {
   changeBlockedReason,
-  complimentaryStart,
-  dayAfterStart,
-  MIN_DEFERRED_START_MS,
   classifyChange,
   fundingSourceLimit,
   INTERVALS,
@@ -163,53 +160,5 @@ describe("changeBlockedReason", () => {
     for (const s of ["canceled", "incomplete", "paused", null]) {
       expect(changeBlockedReason({ status: s, cancel_at_period_end: 0 }), String(s)).toBe("no_plan");
     }
-  });
-});
-
-// ── Buying a plan while complimentary (decided 2026-09-25) ────────────────────
-
-describe("dayAfterStart: local midnight after the last free day, in Detroit", () => {
-  it("summer (UTC-4) and winter (UTC-5)", () => {
-    expect(dayAfterStart("2026-09-26").toISOString()).toBe("2026-09-27T04:00:00.000Z");
-    expect(dayAfterStart("2026-12-31").toISOString()).toBe("2027-01-01T05:00:00.000Z");
-  });
-
-  it("across both clock changes: the new day starts at the right offset", () => {
-    // Clocks go back 2026-11-01 02:00: that day still starts on daylight time.
-    expect(dayAfterStart("2026-10-31").toISOString()).toBe("2026-11-01T04:00:00.000Z");
-    expect(dayAfterStart("2026-11-01").toISOString()).toBe("2026-11-02T05:00:00.000Z");
-    // Clocks go forward 2026-03-08 02:00: that day still starts on standard time.
-    expect(dayAfterStart("2026-03-07").toISOString()).toBe("2026-03-08T05:00:00.000Z");
-    expect(dayAfterStart("2026-03-08").toISOString()).toBe("2026-03-09T04:00:00.000Z");
-  });
-
-  it("month and year ends roll over", () => {
-    expect(dayAfterStart("2026-02-28").toISOString()).toBe("2026-03-01T05:00:00.000Z");
-    expect(dayAfterStart("2028-02-28").toISOString()).toBe("2028-02-29T05:00:00.000Z");
-  });
-});
-
-describe("complimentaryStart", () => {
-  const until = "2026-10-10"; // free access runs out at 2026-10-11T04:00Z
-  const runsOut = dayAfterStart(until).getTime();
-
-  it("no end date: charged now", () => {
-    expect(complimentaryStart(null, new Date("2026-09-25T12:00:00Z"))).toEqual({ kind: "now" });
-  });
-
-  it("far enough away: deferred to the moment the free access runs out", () => {
-    expect(complimentaryStart(until, new Date("2026-09-25T12:00:00Z"))).toEqual({
-      kind: "defer",
-      firstChargeAt: new Date(runsOut),
-    });
-  });
-
-  it("exactly the minimum away defers; one millisecond less charges now (Stripe needs 2 days)", () => {
-    expect(complimentaryStart(until, new Date(runsOut - MIN_DEFERRED_START_MS)).kind).toBe("defer");
-    expect(complimentaryStart(until, new Date(runsOut - MIN_DEFERRED_START_MS + 1)).kind).toBe("now");
-  });
-
-  it("the minimum covers Stripe's own 2-day rule with margin", () => {
-    expect(MIN_DEFERRED_START_MS).toBeGreaterThan(48 * 3600 * 1000);
   });
 });

@@ -26,10 +26,12 @@ const VIEW_PX = 260;
 export type CropResult = { blob: Blob; type: string };
 
 export function AvatarCropper({
+  open,
   file,
   onCancel,
   onDone,
 }: {
+  open: boolean;
   file: File;
   onCancel: () => void;
   onDone: (result: CropResult) => void;
@@ -143,7 +145,7 @@ export function AvatarCropper({
   }
 
   return (
-    <Modal open title="Position your photo" onClose={onCancel} size="md" dismissDisabled={working}>
+    <Modal open={open} title="Position your photo" onClose={onCancel} size="md" dismissDisabled={working}>
       <div className="flex flex-col items-center gap-4">
         {error ? (
           <p className="text-[15px] text-danger m-0">{error}</p>
