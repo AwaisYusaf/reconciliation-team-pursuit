@@ -328,23 +328,20 @@ export function LandingPage({ signupOpen }: { signupOpen: boolean }) {
 <div className="glass-tile bg-lp-surface-container-lowest/60 backdrop-blur-xl rounded-3xl p-8 border-2 border-primary/45 shadow-warm-card flex flex-col justify-between ring-1 ring-inset ring-white/30">
 <div>
 <div className="flex items-center justify-between mb-4">
-<div className="w-10 h-10 rounded-xl bg-terracotta-100/75 backdrop-blur-md text-terracotta-700 ring-1 ring-inset ring-white/40 border-2 border-primary/15 flex items-center justify-center font-semibold">
-<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
+<span className="text-xs font-semibold font-mono text-tertiary bg-tertiary-container/60 px-2.5 py-1 rounded-full">Due at Reconciliation</span>
 </div>
-<span className="text-xs font-semibold font-mono text-tertiary bg-tertiary-container/60 px-2.5 py-1 rounded-full">Due at reconciliation</span>
-</div>
-<h3 className="text-xl font-semibold text-on-surface font-lp-serif mb-2">A missing receipt</h3>
+<h3 className="text-xl font-semibold text-on-surface font-lp-serif mb-2">A Missing Receipt</h3>
 <p className="text-xs sm:text-sm text-on-surface-variant mb-6 leading-relaxed">
               A missing receipt seems small until reconciliation is due.
             </p>
 </div>
 <div className="glass-tile w-full bg-lp-surface-container/60 backdrop-blur-lg rounded-2xl p-4 flex flex-col gap-2.5 border-2 border-primary/18 ring-1 ring-inset ring-white/25">
-<div className="flex items-center justify-between text-xs p-2.5 rounded-lg bg-lp-surface-container-lowest/70 backdrop-blur-md border border-tertiary/20 text-tertiary shadow-xs">
-<span className="flex items-center gap-1.5 font-medium truncate">
+<div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1.5 text-xs p-2.5 rounded-lg bg-lp-surface-container-lowest/70 backdrop-blur-md border border-tertiary/20 text-tertiary shadow-xs">
+<span className="flex items-center gap-1.5 font-medium min-w-0">
 <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
                 Staples Office Pack
               </span>
-<span className="font-semibold text-xs bg-tertiary-container text-tertiary px-2 py-0.5 rounded">Missing Proof of Pay</span>
+<span className="font-semibold text-xs bg-tertiary-container text-tertiary px-2 py-0.5 rounded whitespace-nowrap shrink-0">Missing Proof of Pay</span>
 </div>
 <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-0.5 text-xs p-2.5 rounded-lg bg-lp-surface-container-lowest/70 backdrop-blur-md border border-outline-variant/50 text-on-surface-variant">
 <span className="">Youth Workshop Refreshments</span>
@@ -356,12 +353,9 @@ export function LandingPage({ signupOpen }: { signupOpen: boolean }) {
 <div className="glass-tile bg-lp-surface-container-lowest/60 backdrop-blur-xl rounded-3xl p-8 border-2 border-primary/45 shadow-warm-card flex flex-col justify-between ring-1 ring-inset ring-white/30">
 <div>
 <div className="flex items-center justify-between mb-4">
-<div className="w-10 h-10 rounded-xl bg-amber-100/75 backdrop-blur-md text-amber-800 ring-1 ring-inset ring-white/40 border-2 border-primary/15 flex items-center justify-center font-semibold">
-<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
+<span className="text-xs font-semibold font-mono text-amber-800 bg-amber-100 px-2.5 py-1 rounded-full">Due at Close</span>
 </div>
-<span className="text-xs font-semibold font-mono text-amber-800 bg-amber-100 px-2.5 py-1 rounded-full">Due at close</span>
-</div>
-<h3 className="text-xl font-semibold text-on-surface font-lp-serif mb-2">An undocumented expense</h3>
+<h3 className="text-xl font-semibold text-on-surface font-lp-serif mb-2">An Undocumented Expense</h3>
 <p className="text-xs sm:text-sm text-on-surface-variant mb-6 leading-relaxed">
               An undocumented expense becomes a problem when the books need to close.
             </p>
@@ -381,12 +375,9 @@ export function LandingPage({ signupOpen }: { signupOpen: boolean }) {
 <div className="glass-tile bg-lp-surface-container-lowest/60 backdrop-blur-xl rounded-3xl p-8 border-2 border-primary/45 shadow-warm-card flex flex-col justify-between ring-1 ring-inset ring-white/30">
 <div>
 <div className="flex items-center justify-between mb-4">
-<div className="w-10 h-10 rounded-xl bg-brand-100/75 backdrop-blur-md text-brand-800 ring-1 ring-inset ring-white/40 border-2 border-primary/15 flex items-center justify-center font-semibold">
-<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"></path></svg>
+<span className="text-xs font-semibold font-mono text-tertiary bg-tertiary-container/60 px-2.5 py-1 rounded-full">Due at Reporting</span>
 </div>
-<span className="text-xs font-semibold font-mono text-tertiary bg-tertiary-container/60 px-2.5 py-1 rounded-full">Due at reporting</span>
-</div>
-<h3 className="text-xl font-semibold text-on-surface font-lp-serif mb-2">An uncaptured activity</h3>
+<h3 className="text-xl font-semibold text-on-surface font-lp-serif mb-2">An Uncaptured Activity</h3>
 <p className="text-xs sm:text-sm text-on-surface-variant mb-6 leading-relaxed">
               A program activity that wasn&apos;t captured becomes a scramble when it&apos;s time to write the monthly narrative.
             </p>
