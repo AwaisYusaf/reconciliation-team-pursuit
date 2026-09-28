@@ -1,10 +1,13 @@
 /**
- * The landing page's icons: Phosphor's duotone set (https://phosphoricons.com, MIT licence,
+ * The landing page's icons: Phosphor's duotone set (https://phosphoricons.com,
  * @phosphor-icons/core 2.1.1), inlined as path data so the page ships no icon package and no
- * client JavaScript. Duotone suits the warm palette: a 20% tint of the tile's colour behind a
- * solid outline. To add one, copy its `assets/duotone/<name>-duotone.svg` paths here; the
- * `opacity="0.2"` path becomes `tint: true`.
+ * client JavaScript. MIT licence: its notice is `PHOSPHOR-LICENSE.txt` beside this file, and
+ * goes wherever these paths go. Duotone suits the warm palette: a 20% tint of the tile's colour
+ * behind a solid outline. To add one, copy its `assets/duotone/<name>-duotone.svg` paths here;
+ * the `opacity="0.2"` path becomes `tint: true`.
  */
+import { cn } from "@/src/lib/cn";
+
 const ICONS = {
   calendarCheck: [
     { d: "M216,48V88H40V48a8,8,0,0,1,8-8H208A8,8,0,0,1,216,48Z", tint: true },
@@ -62,5 +65,38 @@ export function LandingIcon({ name, className = "w-6 h-6" }: { name: LandingIcon
         <path key={i} d={path.d} opacity={path.tint ? 0.2 : undefined} />
       ))}
     </svg>
+  );
+}
+
+/** The tile's tint and icon colour, from the landing palette. */
+const TILE_TONES = {
+  primary: "bg-primary-fixed/75 text-primary",
+  secondary: "bg-secondary-container/75 text-secondary",
+  brand: "bg-brand-100/75 text-brand-800",
+  brandPrimary: "bg-brand-100/75 text-primary",
+  terracotta: "bg-terracotta-100/75 text-terracotta-700",
+} as const;
+
+/** An icon on its 44px frosted tile, the one size every landing card uses. `className` is for
+ *  spacing only. */
+export function IconTile({
+  name,
+  tone,
+  className,
+}: {
+  name: LandingIconName;
+  tone: keyof typeof TILE_TONES;
+  className?: string;
+}) {
+  return (
+    <div
+      className={cn(
+        "w-11 h-11 rounded-2xl backdrop-blur-md ring-1 ring-inset ring-white/40 border border-primary/15 flex items-center justify-center",
+        TILE_TONES[tone],
+        className,
+      )}
+    >
+      <LandingIcon name={name} />
+    </div>
   );
 }
