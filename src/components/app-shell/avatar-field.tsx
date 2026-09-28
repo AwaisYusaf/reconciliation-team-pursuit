@@ -7,6 +7,7 @@ import { Button } from "@/src/components/ui/button";
 import { ConfirmButton } from "@/src/components/ui/confirm-button";
 import { toast } from "@/src/components/ui/toast";
 import { AvatarCropper } from "@/src/components/app-shell/avatar-cropper";
+import { useOverlayPresence } from "@/src/components/ui/overlay-shell";
 import { initialsFor } from "@/src/domain/user-display";
 
 /**
@@ -35,6 +36,9 @@ export function AvatarField({
   const [busy, setBusy] = useState(false);
   /** The file chosen but not yet cropped. Its presence is what opens the cropper. */
   const [picked, setPicked] = useState<File | null>(null);
+  // Keeps the cropper mounted, on the same file, while it fades out; keyed on the opening so
+  // the next file starts from a fresh crop.
+  const cropper = useOverlayPresence(picked !== null, picked);
 
   async function upload(blob: Blob, type: string) {
     setBusy(true);
@@ -86,9 +90,11 @@ export function AvatarField({
 
   return (
     <div>
-      {picked && (
+      {cropper.mounted && cropper.shown && (
         <AvatarCropper
-          file={picked}
+          key={cropper.key}
+          open={picked !== null}
+          file={cropper.shown}
           onCancel={() => {
             setPicked(null);
             // Cleared so choosing the same file again still fires a change event.

@@ -281,251 +281,256 @@ export function LineItemsManager({
           often than they're just read from the table (D-92). */}
       {(() => {
         const row = rows.find((r) => r.id === managingId);
-        if (!row) return null;
+        // Always rendered, open while a row is being managed, so the Modal can keep showing the
+        // last row while it fades out (the draft and performances live in this component).
         return (
-          <Modal open title={`Manage ${row.name}`} onClose={closeManage} size="lg">
-            {/* Small uppercase labels, not full SectionTitle headings — matching the compact
-                heading style Settings' own label lists use (settings-sections.tsx) rather
-                than a full card per section, which just made this popup tall for no reason. */}
-            <div className="text-[13px] uppercase tracking-[0.06em] text-sub font-bold mb-2">
-              Line item
-            </div>
-            <div className="grid gap-3 sm:grid-cols-3">
-              <div>
-                <Label htmlFor="manage-name">Line item name</Label>
-                <Input
-                  id="manage-name"
-                  value={draft.name}
-                  onChange={(event) => setDraft({ ...draft, name: event.target.value })}
-                />
+          <Modal open={row !== undefined} title={row ? `Manage ${row.name}` : ""} onClose={closeManage} size="lg">
+            {row && (
+              <>
+              {/* Small uppercase labels, not full SectionTitle headings — matching the compact
+                  heading style Settings' own label lists use (settings-sections.tsx) rather
+                  than a full card per section, which just made this popup tall for no reason. */}
+              <div className="text-[13px] uppercase tracking-[0.06em] text-sub font-bold mb-2">
+                Line item
               </div>
-              <div>
-                <Label htmlFor="manage-scheduled">
-                  Scheduled value <span className="font-normal text-sub">(base only)</span>
-                </Label>
-                <MoneyInput
-                  id="manage-scheduled"
-                  value={draft.scheduledValue}
-                  onChange={(event) => setDraft({ ...draft, scheduledValue: event.target.value })}
-                />
+              <div className="grid gap-3 sm:grid-cols-3">
+                <div>
+                  <Label htmlFor="manage-name">Line item name</Label>
+                  <Input
+                    id="manage-name"
+                    value={draft.name}
+                    onChange={(event) => setDraft({ ...draft, name: event.target.value })}
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="manage-scheduled">
+                    Scheduled value <span className="font-normal text-sub">(base only)</span>
+                  </Label>
+                  <MoneyInput
+                    id="manage-scheduled"
+                    value={draft.scheduledValue}
+                    onChange={(event) => setDraft({ ...draft, scheduledValue: event.target.value })}
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="manage-opening">Opening previously billed</Label>
+                  <MoneyInput
+                    id="manage-opening"
+                    value={draft.openingBilled}
+                    onChange={(event) => setDraft({ ...draft, openingBilled: event.target.value })}
+                  />
+                </div>
               </div>
-              <div>
-                <Label htmlFor="manage-opening">Opening previously billed</Label>
-                <MoneyInput
-                  id="manage-opening"
-                  value={draft.openingBilled}
-                  onChange={(event) => setDraft({ ...draft, openingBilled: event.target.value })}
-                />
-              </div>
-            </div>
 
-            <div className="text-[13px] uppercase tracking-[0.06em] text-sub font-bold mt-5 mb-2">
-              Performances
-            </div>
-            <TableCard minWidth={560} data-tour="line-items-performances">
-              <thead>
-                <tr>
-                  <Th>Name</Th>
-                  <Th>Date</Th>
-                  <Th align="right">Amount</Th>
-                  <Th align="right" className="w-[160px]" />
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <Td colSpan={2} className={cn("text-sub", DENSE_CELL)}>
-                    Base value
-                  </Td>
-                  <Td align="right" numeric className={DENSE_CELL}>
-                    {formatMoney(row.scheduledValueCents)}
-                  </Td>
-                  <Td className={DENSE_CELL} />
-                </tr>
-                {row.performances.map((performance, index) => {
-                  const label = performance.name ?? `Performance ${index + 1}`;
-                  const edit =
-                    editingPerformance?.id === performance.id ? editingPerformance : null;
-                  const saveOnEnter = (event: KeyboardEvent<HTMLInputElement>) => {
-                    // The Save button is disabled while pending; Enter has to respect that too.
-                    if (event.key === "Enter" && !pending) saveEditedPerformance();
-                  };
-                  return (
-                    <tr key={performance.id}>
-                      <Td className={DENSE_CELL}>
-                        {edit ? (
-                          <Input
-                            aria-label="Performance name"
-                            autoFocus
-                            value={edit.name}
-                            placeholder="Performance name"
-                            onChange={(event) =>
-                              setEditingPerformance({ ...edit, name: event.target.value })
-                            }
-                            onKeyDown={saveOnEnter}
-                            className={DENSE_CONTROL}
-                          />
-                        ) : (
-                          label
-                        )}
-                      </Td>
-                      <Td className={cn("text-sub", DENSE_CELL)}>
-                        {edit ? (
-                          <Input
-                            aria-label="Performance date"
-                            type="date"
-                            value={edit.date}
-                            onChange={(event) =>
-                              setEditingPerformance({ ...edit, date: event.target.value })
-                            }
-                            onKeyDown={saveOnEnter}
-                            className={DENSE_CONTROL}
-                          />
-                        ) : performance.date ? (
-                          formatDateUS(performance.date)
-                        ) : (
-                          "-"
-                        )}
-                      </Td>
-                      <Td align="right" numeric className={DENSE_CELL}>
-                        {edit && !performance.amountLocked ? (
-                          <MoneyInput
-                            aria-label="Performance amount"
-                            value={edit.amount}
-                            onChange={(event) =>
-                              setEditingPerformance({ ...edit, amount: event.target.value })
-                            }
-                            onKeyDown={saveOnEnter}
-                            className={DENSE_CONTROL}
-                          />
-                        ) : (
-                          <>
-                            {formatMoney(performance.amountCents)}
-                            {edit && (
-                              <div className="text-[13px] text-sub">
-                                Part of the contract value. To change it, delete it and add it again.
-                              </div>
-                            )}
-                          </>
-                        )}
-                      </Td>
-                      <Td align="right" className={cn("whitespace-nowrap", DENSE_CELL)}>
-                        {edit ? (
-                          <>
-                            <Button
-                              className={DENSE_BUTTON}
-                              disabled={pending}
-                              onClick={saveEditedPerformance}
-                            >
-                              Save
-                            </Button>
-                            <Button
-                              variant="quiet"
-                              className={DENSE_BUTTON}
-                              disabled={pending}
-                              onClick={() => setEditingPerformance(null)}
-                            >
-                              Cancel
-                            </Button>
-                          </>
-                        ) : (
-                          <>
-                            <Button
-                              variant="quiet"
-                              className={DENSE_BUTTON}
-                              disabled={pending}
-                              onClick={() => startEditPerformance(performance)}
-                            >
-                              Edit
-                            </Button>
-                            <ConfirmButton
-                              variant="quiet"
-                              className={DENSE_BUTTON}
-                              disabled={pending}
-                              title={`Delete ${label}?`}
-                              body={`${formatMoney(performance.amountCents)} will be removed from ${row.name}'s scheduled value. This can't be undone.`}
-                              confirmLabel="Delete performance"
-                              onConfirm={() => removePerformance(performance.id)}
-                            >
-                              Delete
-                            </ConfirmButton>
-                          </>
-                        )}
-                      </Td>
-                    </tr>
-                  );
-                })}
-                <tr>
-                  <Td colSpan={2} className={cn("font-bold border-t-2 border-ink", DENSE_CELL)}>
-                    Total
-                  </Td>
-                  <Td
-                    align="right"
-                    numeric
-                    className={cn("font-bold border-t-2 border-ink", DENSE_CELL)}
-                  >
-                    {formatMoney(row.totalScheduledValueCents)}
-                  </Td>
-                  <Td className={cn("border-t-2 border-ink", DENSE_CELL)} />
-                </tr>
-              </tbody>
-            </TableCard>
+              <div className="text-[13px] uppercase tracking-[0.06em] text-sub font-bold mt-5 mb-2">
+                Performances
+              </div>
+              <TableCard minWidth={560} data-tour="line-items-performances">
+                <thead>
+                  <tr>
+                    <Th>Name</Th>
+                    <Th>Date</Th>
+                    <Th align="right">Amount</Th>
+                    <Th align="right" className="w-[160px]" />
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <Td colSpan={2} className={cn("text-sub", DENSE_CELL)}>
+                      Base value
+                    </Td>
+                    <Td align="right" numeric className={DENSE_CELL}>
+                      {formatMoney(row.scheduledValueCents)}
+                    </Td>
+                    <Td className={DENSE_CELL} />
+                  </tr>
+                  {row.performances.map((performance, index) => {
+                    const label = performance.name ?? `Performance ${index + 1}`;
+                    const edit =
+                      editingPerformance?.id === performance.id ? editingPerformance : null;
+                    const saveOnEnter = (event: KeyboardEvent<HTMLInputElement>) => {
+                      // The Save button is disabled while pending; Enter has to respect that too.
+                      if (event.key === "Enter" && !pending) saveEditedPerformance();
+                    };
+                    return (
+                      <tr key={performance.id}>
+                        <Td className={DENSE_CELL}>
+                          {edit ? (
+                            <Input
+                              aria-label="Performance name"
+                              autoFocus
+                              value={edit.name}
+                              placeholder="Performance name"
+                              onChange={(event) =>
+                                setEditingPerformance({ ...edit, name: event.target.value })
+                              }
+                              onKeyDown={saveOnEnter}
+                              className={DENSE_CONTROL}
+                            />
+                          ) : (
+                            label
+                          )}
+                        </Td>
+                        <Td className={cn("text-sub", DENSE_CELL)}>
+                          {edit ? (
+                            <Input
+                              aria-label="Performance date"
+                              type="date"
+                              value={edit.date}
+                              onChange={(event) =>
+                                setEditingPerformance({ ...edit, date: event.target.value })
+                              }
+                              onKeyDown={saveOnEnter}
+                              className={DENSE_CONTROL}
+                            />
+                          ) : performance.date ? (
+                            formatDateUS(performance.date)
+                          ) : (
+                            "-"
+                          )}
+                        </Td>
+                        <Td align="right" numeric className={DENSE_CELL}>
+                          {edit && !performance.amountLocked ? (
+                            <MoneyInput
+                              aria-label="Performance amount"
+                              value={edit.amount}
+                              onChange={(event) =>
+                                setEditingPerformance({ ...edit, amount: event.target.value })
+                              }
+                              onKeyDown={saveOnEnter}
+                              className={DENSE_CONTROL}
+                            />
+                          ) : (
+                            <>
+                              {formatMoney(performance.amountCents)}
+                              {edit && (
+                                <div className="text-[13px] text-sub">
+                                  Part of the contract value. To change it, delete it and add it again.
+                                </div>
+                              )}
+                            </>
+                          )}
+                        </Td>
+                        <Td align="right" className={cn("whitespace-nowrap", DENSE_CELL)}>
+                          {edit ? (
+                            <>
+                              <Button
+                                className={DENSE_BUTTON}
+                                disabled={pending}
+                                onClick={saveEditedPerformance}
+                              >
+                                Save
+                              </Button>
+                              <Button
+                                variant="quiet"
+                                className={DENSE_BUTTON}
+                                disabled={pending}
+                                onClick={() => setEditingPerformance(null)}
+                              >
+                                Cancel
+                              </Button>
+                            </>
+                          ) : (
+                            <>
+                              <Button
+                                variant="quiet"
+                                className={DENSE_BUTTON}
+                                disabled={pending}
+                                onClick={() => startEditPerformance(performance)}
+                              >
+                                Edit
+                              </Button>
+                              <ConfirmButton
+                                variant="quiet"
+                                className={DENSE_BUTTON}
+                                disabled={pending}
+                                title={`Delete ${label}?`}
+                                body={`${formatMoney(performance.amountCents)} will be removed from ${row.name}'s scheduled value. This can't be undone.`}
+                                confirmLabel="Delete performance"
+                                onConfirm={() => removePerformance(performance.id)}
+                              >
+                                Delete
+                              </ConfirmButton>
+                            </>
+                          )}
+                        </Td>
+                      </tr>
+                    );
+                  })}
+                  <tr>
+                    <Td colSpan={2} className={cn("font-bold border-t-2 border-ink", DENSE_CELL)}>
+                      Total
+                    </Td>
+                    <Td
+                      align="right"
+                      numeric
+                      className={cn("font-bold border-t-2 border-ink", DENSE_CELL)}
+                    >
+                      {formatMoney(row.totalScheduledValueCents)}
+                    </Td>
+                    <Td className={cn("border-t-2 border-ink", DENSE_CELL)} />
+                  </tr>
+                </tbody>
+              </TableCard>
 
-            <div className="flex flex-wrap items-end gap-2.5 mt-3">
-              <div className="flex-1 min-w-[160px]">
-                <Input
-                  aria-label="New performance name"
-                  value={newPerformance.name}
-                  placeholder="Performance name"
-                  onChange={(event) =>
-                    setNewPerformance({ ...newPerformance, name: event.target.value })
-                  }
-                />
+              <div className="flex flex-wrap items-end gap-2.5 mt-3">
+                <div className="flex-1 min-w-[160px]">
+                  <Input
+                    aria-label="New performance name"
+                    value={newPerformance.name}
+                    placeholder="Performance name"
+                    onChange={(event) =>
+                      setNewPerformance({ ...newPerformance, name: event.target.value })
+                    }
+                  />
+                </div>
+                <div className="w-[165px]">
+                  <Input
+                    aria-label="New performance date"
+                    type="date"
+                    value={newPerformance.date}
+                    onChange={(event) =>
+                      setNewPerformance({ ...newPerformance, date: event.target.value })
+                    }
+                  />
+                </div>
+                <div className="w-[110px]">
+                  <MoneyInput
+                    aria-label="New performance amount"
+                    value={newPerformance.amount}
+                    placeholder="0.00"
+                    onChange={(event) =>
+                      setNewPerformance({ ...newPerformance, amount: event.target.value })
+                    }
+                  />
+                </div>
+                <Button
+                  className="min-h-9 px-3.5 text-[15px]"
+                  disabled={pending}
+                  onClick={() => addPerformance(row.id)}
+                >
+                  Add
+                </Button>
               </div>
-              <div className="w-[165px]">
-                <Input
-                  aria-label="New performance date"
-                  type="date"
-                  value={newPerformance.date}
-                  onChange={(event) =>
-                    setNewPerformance({ ...newPerformance, date: event.target.value })
-                  }
-                />
-              </div>
-              <div className="w-[110px]">
-                <MoneyInput
-                  aria-label="New performance amount"
-                  value={newPerformance.amount}
-                  placeholder="0.00"
-                  onChange={(event) =>
-                    setNewPerformance({ ...newPerformance, amount: event.target.value })
-                  }
-                />
-              </div>
-              <Button
-                className="min-h-9 px-3.5 text-[15px]"
-                disabled={pending}
-                onClick={() => addPerformance(row.id)}
-              >
-                Add
-              </Button>
-            </div>
 
-            <div className="flex justify-end mt-5 pt-4 border-t border-line">
-              <Button
-                variant="secondary"
-                className="min-h-9 px-3.5 text-[15px]"
-                disabled={pending}
-                onClick={() =>
-                  run(
-                    () => saveLineItemAction({ id: row.id, fundingSourceId, ...draft }),
-                    undefined,
-                    "Line item saved.",
-                  )
-                }
-              >
-                Save line item
-              </Button>
-            </div>
+              <div className="flex justify-end mt-5 pt-4 border-t border-line">
+                <Button
+                  variant="secondary"
+                  className="min-h-9 px-3.5 text-[15px]"
+                  disabled={pending}
+                  onClick={() =>
+                    run(
+                      () => saveLineItemAction({ id: row.id, fundingSourceId, ...draft }),
+                      undefined,
+                      "Line item saved.",
+                    )
+                  }
+                >
+                  Save line item
+                </Button>
+              </div>
+              </>
+            )}
           </Modal>
         );
       })()}

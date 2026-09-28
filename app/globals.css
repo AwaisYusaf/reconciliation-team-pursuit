@@ -256,7 +256,8 @@ body {
 }
 
 /**
- * Overlays: modals, dialogs, dropdown panels.
+ * Dropdown panels: menus and Selects. Dialogs and modals carry the class too, but the overlay
+ * rules below replace it for them.
  *
  * Faster than the page, and scaling from 0.985 rather than something more obvious. A menu is
  * a response to a click that just happened, so it has to feel immediate; the scale is there to

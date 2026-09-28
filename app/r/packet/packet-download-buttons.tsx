@@ -17,6 +17,7 @@ import { useState, useTransition } from "react";
 import { ButtonLabel, buttonClassName } from "@/src/components/ui/button";
 import { Dialog } from "@/src/components/ui/dialog";
 import { useDownload } from "@/src/components/ui/download-button";
+import { useOverlayPresence } from "@/src/components/ui/overlay-shell";
 import { reportResult } from "@/src/components/ui/toast";
 import { monthLabel } from "@/src/domain/dates";
 import { formatMoney } from "@/src/domain/format";
@@ -61,8 +62,10 @@ export function PacketDownloadButtons({
   const label = monthLabel(month);
   const [restoring, startRestoring] = useTransition();
   const [pending, setPending] = useState<Continuation | null>(null);
-  // Mounted only while open, so every opening starts from a fresh form.
   const [shareDialog, setShareDialog] = useState<{ confirmedDeletions: boolean } | null>(null);
+  // Mounted while open and while it fades out, and keyed on the opening, so every opening
+  // starts from a fresh form.
+  const share = useOverlayPresence(shareDialog !== null, shareDialog);
   // One entry per row whose file is building, so two Updates never share one busy state.
   const [updatingIds, setUpdatingIds] = useState<ReadonlySet<string>>(new Set());
   // Sharing and updating are refused for a cancelled plan (C4), as for a blocked month.
@@ -177,13 +180,15 @@ export function PacketDownloadButtons({
         onUpdate={(link) => gated((confirmed) => void updateSharedFile(link, confirmed))}
       />
 
-      {shareDialog && (
+      {share.mounted && share.shown && (
         <ShareLinkDialog
+          key={share.key}
+          open={shareDialog !== null}
           onClose={() => setShareDialog(null)}
           month={month}
           monthLabel={label}
           fundingSourceId={fundingSourceId}
-          confirmedDeletions={shareDialog.confirmedDeletions}
+          confirmedDeletions={share.shown.confirmedDeletions}
           links={sharedLinks}
           updateBlocked={shareBlocked}
           updatingIds={updatingIds}
