@@ -1,6 +1,6 @@
 # Phase 17: Feature requests
 
-**Status (2026-09-27): built, reviewed and browser-checked on both sides (§11); merged to `main`.** The plan was
+**Status (2026-09-28): done.** Built, reviewed, browser-checked on both sides (§11), tested and merged to `main` (`8496e40`). Not yet deployed: production needs migration `0042_feature_requests`. The plan was
 written from the code and reviewed against it under seven lenses (tenancy, database, simplicity,
 usability, edge cases, Next 16, tests). §10 lists what the review changed. Awais answered the four
 product questions it raised (§2.1). The ticket is Appendix A, word for word.
