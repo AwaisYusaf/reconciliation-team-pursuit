@@ -4,7 +4,8 @@ Functionality asks "does it work?". This half asks "will the next ten features s
 product is expected to grow (staff dashboard, Stripe plans, AI features, more organisations), so
 each PR is also judged on whether it keeps the repo easy to extend and the schema sound.
 
-Everything below was read from the code (2026-09-16, main at 91a6b0f + PR #17). **Re-check a
+Everything below was read from the code (2026-09-16, main at 91a6b0f + PR #17; `src/db` rows
+re-checked 2026-09-29 at c280eaf). **Re-check a
 convention in code before citing it** — when code and this file disagree, the code wins and this
 file gets updated.
 
@@ -31,7 +32,9 @@ personal taste is not.
 | `src/components/ui/` | Shared primitives (Button, Select, Modal/Dialog, ConfirmButton, TableCard, Field) | Feature-specific components |
 | `src/components/<area>/` | Components shared across routes (`app-shell/`, `audit/`) | One-route components |
 | `src/db/schema.ts` | The whole schema, one file, sections by table | Queries |
-| `src/db/*.ts` scripts | Operator scripts run with `npm run db:*` | App imports |
+| `src/db/*.ts` helpers | DB helpers the app imports: `index.ts` (the pool), `org-lock.ts`, `pg-errors.ts`, `billing-copy.ts`, `months.ts`, `queries.ts` | Feature rules |
+| `src/db/*.ts` scripts | Operator scripts run with `npm run db:*` (`seed`, `dev-fixture`, `create-staff`, `reset-password`, `backup-*`, `preflight-*`) | App imports |
+| `src/db/test-org.ts`, `**/*.test-helper.ts` | Test-only helpers, imported inside `describe` with `await import()`; the `.test-helper.ts` suffix keeps them out of vitest's include | App imports |
 | `drizzle/` | Generated migrations + meta (hand-edited only for ordering/backfill) | — |
 | `docs/` | Source of truth; `PHASE-N.md` plans; `tickets/` drafts | — |
 

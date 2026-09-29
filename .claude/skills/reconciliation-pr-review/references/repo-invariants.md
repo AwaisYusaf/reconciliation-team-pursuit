@@ -46,8 +46,19 @@ Rules come from `docs/01-domain/domain-rules.md` (R-numbers), `docs/04-engineeri
 - **Pool deadlock**: any helper called inside `db.transaction()` must take and use `tx`
   (`Executor`/`Reader` params). A second pool checkout inside a transaction deadlocks under
   concurrency (pool max 10). Tests calling the helper directly with `tx` do not prove the call site passes it.
-- **Audit trail** (`expense_audit_events`): mutation + event in one transaction; recurring add/remove
-  write no events (known gap); history is only viewable per live expense.
+- **Audit trail** (`expense_audit_events`): mutation + event in one transaction, through the shared
+  writers in `src/modules/expenses/expense-row.ts`: `insertExpenseWithAudit` (every create, recurring
+  "Add to month" included) and `insertTrashAudit` (trash and restore, recurring "Remove" included, since
+  PR #25). Flag any new path that writes `expenses` directly. History is only viewable per live
+  expense. Every event names its actor, so under D-120 a manager with any history can only be
+  revoked, not deleted.
+- **Postgres error codes** come from `src/db/pg-errors.ts` (`isUniqueViolation`,
+  `isForeignKeyViolation`, `isCheckViolation`, `isDeadlock`, `isMissingLineItem`). Flag an inline
+  `code === "23505"` check, and an app-level "already exists" check with no catch behind it: two saves
+  at once both pass the check, and the unique index's refusal becomes a 500.
+- **A lock moves a race, it doesn't always close it**: locking the parent row makes the *other*
+  writer wait, then fail on its foreign key once the parent is gone. Check both sides handle it
+  (PR #25: the line item delete was fixed, the expense save racing it was not at first).
 
 ## D. Tenancy, roles, funding sources
 - **Every server action and route handler is a public endpoint.** First line: `actionSession()` /
@@ -93,6 +104,13 @@ Rules come from `docs/01-domain/domain-rules.md` (R-numbers), `docs/04-engineeri
 - Fixed-UUID fixtures need pre-cleanup or a crashed run poisons every later run.
 - `describe.skipIf(!hasPdftotext())` blocks silently skip on machines without poppler — the developer's
   "green" may not include them.
+- **Race tests** use `holdOpen` (`src/db/hold-open.test-helper.ts`), which commits only once the
+  action is actually blocked (`pg_blocking_pids`), and must assert `blocked`. A fixed sleep lets the
+  pre-fix code pass on a slow machine (PR #25). A test that only proves "it waited" also passes on old
+  code that waits for a different reason; mutation-test it.
+- **Environment in tests**: `vi.stubEnv` / `vi.unstubAllEnvs()`, never `process.env.X = previous`.
+  Assigning back an unset variable writes the string `"undefined"` (PR #25, `raster.test.ts`: green on
+  a Mac, where `TMPDIR` is always set, red on Linux).
 
 ## H. AI features (Phase 10/11, PR #18)
 - Gate: `src/modules/ai/access.ts` is the single answer (plan + switch + env). Every route/action
