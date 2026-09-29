@@ -11,6 +11,22 @@ import { IDLE } from "@/src/lib/action-result";
 import { signUpAction } from "@/src/modules/auth/actions";
 import type { Interval, PlanId } from "@/src/modules/billing/rules";
 
+/** Show/Hide for one password field. The hidden words name the field for screen readers,
+ *  since the page has two of these (#1). */
+function ShowToggle({ shown, onToggle, field }: { shown: boolean; onToggle: () => void; field: string }) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-pressed={shown}
+      className="text-[13px] font-bold text-accent hover:text-accent-dark shrink-0"
+    >
+      {shown ? "Hide" : "Show"}
+      <span className="sr-only"> {field}</span>
+    </button>
+  );
+}
+
 export function SignupForm({
   plan,
   interval,
@@ -22,11 +38,11 @@ export function SignupForm({
   const [state, setState] = useState(IDLE);
   const [pending, startTransition] = useTransition();
   const [showPassword, setShowPassword] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
 
   const fieldErrors = state.ok ? {} : (state.fieldErrors ?? {});
   // The panel is for failures that aren't attached to a single field.
   const panelError = state.ok || Object.keys(fieldErrors).length > 0 ? null : state.error;
-  const passwordType = showPassword ? "text" : "password";
 
   // A plain onSubmit (rather than a `<form action>`) so a failed submission never triggers
   // React's automatic form reset — that reset fires whenever the action resolves, including
@@ -90,28 +106,25 @@ export function SignupForm({
       <div className="grid sm:grid-cols-2 gap-x-4 gap-y-4 mb-5">
         <div>
           {/*
-            The Show toggle moved from beside the field to the end of its label row. As a
-            44px-tall button next to the input it took a third of the field's width, and it is
-            what stopped the two password fields from sharing a row.
+            The Show toggle sits at the end of its label row. As a 44px-tall button next to the
+            input it took a third of the field's width, and it is what stopped the two password
+            fields from sharing a row.
 
-            It still governs both fields — they read one `passwordType` — so it is labelled for
-            that rather than for the field it sits over.
+            Each field has its own toggle and its own flag (#1): showing one never reveals the
+            other.
           */}
           <div className="flex items-baseline justify-between gap-2">
             <Label htmlFor="password">Password</Label>
-            <button
-              type="button"
-              onClick={() => setShowPassword((value) => !value)}
-              aria-pressed={showPassword}
-              className="text-[13px] font-bold text-accent hover:text-accent-dark shrink-0"
-            >
-              {showPassword ? "Hide" : "Show"}
-            </button>
+            <ShowToggle
+              shown={showPassword}
+              onToggle={() => setShowPassword((value) => !value)}
+              field="password"
+            />
           </div>
           <Input
             id="password"
             name="password"
-            type={passwordType}
+            type={showPassword ? "text" : "password"}
             autoComplete="new-password"
             className={AUTH_FIELD}
             required
@@ -124,11 +137,18 @@ export function SignupForm({
         </div>
 
         <div>
-          <Label htmlFor="confirmPassword">Confirm password</Label>
+          <div className="flex items-baseline justify-between gap-2">
+            <Label htmlFor="confirmPassword">Confirm password</Label>
+            <ShowToggle
+              shown={showConfirm}
+              onToggle={() => setShowConfirm((value) => !value)}
+              field="confirm password"
+            />
+          </div>
           <Input
             id="confirmPassword"
             name="confirmPassword"
-            type={passwordType}
+            type={showConfirm ? "text" : "password"}
             autoComplete="new-password"
             className={AUTH_FIELD}
             required
