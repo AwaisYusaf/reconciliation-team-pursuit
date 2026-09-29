@@ -9,6 +9,7 @@ import { eq, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import { db } from "@/src/db";
+import { isCheckViolation } from "@/src/db/pg-errors";
 import { featureRequestReplies, featureRequests } from "@/src/db/schema";
 import {
   canShowToAll,
@@ -25,12 +26,6 @@ const editSchema = z.object({ requestId: z.string(), title: z.string(), details:
 const statusSchema = z.object({ requestId: z.string(), status: z.string() });
 const shownSchema = z.object({ requestId: z.string(), shown: z.boolean() });
 const replySchema = z.object({ requestId: z.string(), body: z.string() });
-
-/** 23514, on the error or on drizzle's wrapper around it, as `users/actions.ts` reads 23503. */
-function isCheckViolation(error: unknown): boolean {
-  const code = (value: unknown) => (value as { code?: unknown } | null)?.code;
-  return code(error) === "23514" || code((error as { cause?: unknown } | null)?.cause) === "23514";
-}
 
 async function currentRequest(requestId: string) {
   if (!isUuid(requestId)) return null;

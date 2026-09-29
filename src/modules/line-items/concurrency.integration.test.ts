@@ -86,10 +86,11 @@ describe.skipIf(!hasDatabase)("line item actions under concurrency (integration,
 
       // Someone else adds "Parking" and is still saving it when this person clicks Delete: the
       // delete must wait for it and then count it, not delete it unseen.
-      const { result: confirmed } = await holdOpen(
+      const { result: confirmed, blocked } = await holdOpen(
         (tx) => tx.insert(recurringItems).values({ orgId, lineItemId: id, name: "Parking", amountCents: 1_000, sortOrder: 1 }),
         () => deleteLineItemAction(id, shown),
       );
+      expect(blocked).toBe(true); // it waited for the recurring item's save, then counted it
       expect(confirmed).toEqual({
         ok: true,
         data: { requiresConfirmation: { recurringNames: expect.arrayContaining(["Rent", "Parking"]), performanceTotalCents: 0 } },
@@ -108,20 +109,25 @@ describe.skipIf(!hasDatabase)("line item actions under concurrency (integration,
       expect(await db.select().from(recurringItems).where(eq(recurringItems.lineItemId, id))).toEqual([]);
     });
 
-    it("treats a bare `true` from a page loaded before this change as unconfirmed: asks, never deletes or throws", async () => {
+    it("refuses a bare `true` from a page loaded before this change: never deletes, never says it did", async () => {
       const id = await lineItem(`B5 legacy ${Date.now()}`);
-      const result = await deleteLineItemAction(id, true as never);
-      expect(result.ok && result.data.requiresConfirmation).toBeTruthy();
+      // An ok answer here made the old page show "Line item deleted." (PR #25 review).
+      expect(await deleteLineItemAction(id, true as never)).toEqual({ ok: false, error: UI.lineItemDeleteReload });
+      expect(await deleteLineItemAction(id, { recurringNames: "Rent" } as never)).toEqual({
+        ok: false,
+        error: UI.lineItemDeleteReload,
+      });
       expect(await exists(id)).toBe(true);
     });
   });
 
   it("B6: a line item name another save is still taking is refused with the friendly message", async () => {
     const name = `B6 line ${Date.now()}`;
-    const { result } = await holdOpen(
+    const { result, blocked } = await holdOpen(
       (tx) => tx.insert(lineItems).values({ orgId, fundingSourceId, name, scheduledValueCents: 1, sortOrder: 99 }),
       () => saveLineItemAction({ fundingSourceId, name, scheduledValue: "100.00", openingBilled: "" }),
     );
+    expect(blocked).toBe(true);
     expect(result).toEqual({ ok: false, error: UI.lineItemDuplicate });
   });
 
@@ -146,6 +152,21 @@ describe.skipIf(!hasDatabase)("line item actions under concurrency (integration,
       expect(await reorderLineItemsAction([b, b, c], fundingSourceId)).toEqual({ ok: false, error: STALE });
       expect(await reorderLineItemsAction([c, b, a, crypto.randomUUID()], fundingSourceId)).toEqual({ ok: false, error: STALE });
       expect(await order()).toEqual([a, b, c]);
+    });
+
+    it("refuses a full-length list with another source's line item swapped in (PR #25)", async () => {
+      const [a, b, c] = await freshSource();
+      const other = await createTestOrg({ name: `B8 other ${Date.now()}` });
+      const [foreign] = await db
+        .insert(lineItems)
+        .values({ orgId: other.orgId, fundingSourceId: other.fundingSourceId, name: "Foreign", scheduledValueCents: 1, sortOrder: 0 })
+        .returning({ id: lineItems.id });
+      try {
+        expect(await reorderLineItemsAction([c, b, foreign.id], fundingSourceId)).toEqual({ ok: false, error: STALE });
+        expect(await order()).toEqual([a, b, c]);
+      } finally {
+        await db.delete(organizations).where(eq(organizations.id, other.orgId));
+      }
     });
 
     it("does not wait for an expense or draft being saved on one of the line items", async () => {

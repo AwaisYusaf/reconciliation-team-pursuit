@@ -7,6 +7,7 @@ import { and, asc, count, eq, isNull, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
 import { db } from "@/src/db";
+import { LINE_ITEM_GONE, unlessLineItemGone } from "@/src/db/pg-errors";
 import {
   expenseDocuments,
   expenses,
@@ -25,7 +26,7 @@ import { actionSession } from "@/src/lib/action-session";
 import { isUuid } from "@/src/lib/ids";
 import {
   EXPENSE_SNAPSHOT_COLUMNS,
-  insertDeletedAudit,
+  insertTrashAudit,
   insertExpenseWithAudit,
 } from "@/src/modules/expenses/expense-row";
 import { rulesForFundingSource } from "@/src/modules/expenses/reimbursement";
@@ -80,25 +81,26 @@ export async function saveRecurringItemAction(input: {
     defaultFeesCents: parseMoneyToCents(input.defaultFees),
   };
 
-  if (input.id) {
-    // As above: a non-UUID must fail as "not found", not as an unhandled database error.
-    if (!isUuid(input.id)) return fail("That recurring item no longer exists.");
-    const updated = await db
-      .update(recurringItems)
-      .set(values)
-      .where(and(eq(recurringItems.id, input.id), eq(recurringItems.orgId, current.orgId)))
-      .returning({ id: recurringItems.id });
-    if (updated.length === 0) return fail("That recurring item no longer exists.");
-  } else {
+  // As above: a non-UUID must fail as "not found", not as an unhandled database error.
+  if (input.id && !isUuid(input.id)) return fail("That recurring item no longer exists.");
+  const saved = await unlessLineItemGone(async () => {
+    if (input.id) {
+      const updated = await db
+        .update(recurringItems)
+        .set(values)
+        .where(and(eq(recurringItems.id, input.id), eq(recurringItems.orgId, current.orgId)))
+        .returning({ id: recurringItems.id });
+      return updated.length > 0;
+    }
     const [{ next }] = await db
       .select({ next: sql<number>`coalesce(max(${recurringItems.sortOrder}), -1) + 1` })
       .from(recurringItems)
       .where(eq(recurringItems.orgId, current.orgId));
-
-    await db
-      .insert(recurringItems)
-      .values({ orgId: current.orgId, ...values, sortOrder: Number(next) });
-  }
+    await db.insert(recurringItems).values({ orgId: current.orgId, ...values, sortOrder: Number(next) });
+    return true;
+  });
+  if (saved === LINE_ITEM_GONE) return fail(UI.lineItemGone);
+  if (!saved) return fail("That recurring item no longer exists.");
 
   revalidatePath("/", "layout");
   return ok();
@@ -200,7 +202,7 @@ export async function addRecurringToMonthAction(
   // Through the one shared insert, so a one-click add gets what every other create path gets in
   // the same transaction: the month's next reference (R2.6), the sort order, and the `created`
   // audit event naming who added it. It used to insert directly and wrote no history at all.
-  const result = await db.transaction(async (tx) => {
+  const result = await unlessLineItemGone(() => db.transaction(async (tx) => {
     // First thing inside the transaction, before any write and before the reference is claimed
     // (R10.7, D-96).
     const locked = await monthLocked(tx, current.orgId, [
@@ -237,7 +239,8 @@ export async function addRecurringToMonthAction(
       },
     });
     return { ok: true as const };
-  });
+  }));
+  if (result === LINE_ITEM_GONE) return fail(UI.lineItemGone);
   if (!result.ok) return fail(UI.monthLocked(monthLabel(result.locked.month)));
 
   revalidatePath("/", "layout");
@@ -349,7 +352,8 @@ export async function removeRecurringFromMonthAction(
       .returning(EXPENSE_SNAPSHOT_COLUMNS);
     // The same `deleted` history entry the Delete button writes; this path used to write none.
     if (trashed[0]) {
-      await insertDeletedAudit(tx, {
+      await insertTrashAudit(tx, {
+        action: "deleted",
         orgId: current.orgId,
         actorUserId: current.userId,
         expenseId: targetExpenseId,

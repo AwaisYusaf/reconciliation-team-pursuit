@@ -147,11 +147,16 @@ export const UI = {
   expenseMissingNarrative: "Enter a narrative for this expense.",
   recurringMissingFields: "Enter a name, an amount, and a line item.",
   lineItemDuplicate: "A line item with that name already exists.",
+  /** A save refused because its line item was deleted while it was being saved (someone else
+   *  deleted it). Nothing was saved; what was typed is still on screen. */
+  lineItemGone: "That line item was just deleted. Choose another line item and save again.",
   /** The line item delete dialog, shown again because what it would remove changed after it
    *  opened (someone added or removed a recurring item or performance). Phase 0 B5. */
   lineItemDeleteChanged: "This changed since you opened it. Check what will be removed, then delete again.",
   /** A reorder refused because the list changed since the page loaded (a line item added or
    *  deleted); the page refreshes itself, so this names what to do next. Phase 0 B8. */
+  /** A delete sent by a page loaded before the confirmation became the list itself (PR #25). */
+  lineItemDeleteReload: "This page is out of date. Reload it, then delete the line item again.",
   lineItemOrderStale: "The list changed since you opened it. Try again on the updated list.",
   signupsClosed: "Sign-ups are closed.",
   /** m02 — saved, but the documentation gate will still hold this record. */

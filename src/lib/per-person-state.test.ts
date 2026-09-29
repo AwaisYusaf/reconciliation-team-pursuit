@@ -14,6 +14,10 @@ import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
+/** Reads every source file; under the full suite's parallel load that takes longer than the
+ *  5 s default, which failed it at random. */
+const SCAN_TIMEOUT = 30_000;
+
 const repoRoot = fileURLToPath(new URL("../../", import.meta.url));
 
 function sourceFiles(relDir: string): string[] {
@@ -59,5 +63,5 @@ describe("per-person header selection (PHASE-18, D-131)", () => {
       orgSelectionUses(readFileSync(path.join(repoRoot, file), "utf8")).map((hit) => `${file}: ${hit}`),
     );
     expect(offenders).toEqual([]);
-  });
+  }, SCAN_TIMEOUT);
 });

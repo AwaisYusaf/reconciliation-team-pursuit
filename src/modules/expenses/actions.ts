@@ -7,6 +7,7 @@ import { and, eq, isNotNull, isNull, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
 import { db } from "@/src/db";
+import { LINE_ITEM_GONE, unlessLineItemGone } from "@/src/db/pg-errors";
 import {
   expenseAuditEvents,
   expenseDocuments,
@@ -31,7 +32,7 @@ import { isKnownPaymentSource } from "@/src/modules/settings/labels";
 
 import {
   EXPENSE_SNAPSHOT_COLUMNS,
-  insertDeletedAudit,
+  insertTrashAudit,
   insertExpenseWithAudit,
   learnVendor,
   snapshotOf,
@@ -155,7 +156,7 @@ export async function createExpenseAction(
   // The insert and its audit event must land together: if the second write failed after the
   // first committed, the expense would exist with no record of who created it, defeating the
   // audit trail's whole purpose.
-  const created = await db.transaction(async (tx) => {
+  const created = await unlessLineItemGone(() => db.transaction(async (tx) => {
     // First thing inside the transaction, before any write (R10.7, D-96) — the month must
     // still be checked here even though a page can't reach this month at all once locked,
     // because the block has to hold for a page that was already open before the lock landed.
@@ -176,7 +177,8 @@ export async function createExpenseAction(
     });
 
     return { ok: true as const, row: row_ };
-  });
+  }));
+  if (created === LINE_ITEM_GONE) return fail(UI.lineItemGone);
   if (!created.ok) return fail(UI.monthLocked(monthLabel(created.locked.month)));
 
   await learnVendor(current.orgId, row);
@@ -301,7 +303,7 @@ export async function updateExpenseAction(input: ExpenseInput): Promise<ActionRe
   // The update and its audit event must land together — see the same reasoning in
   // createExpenseAction. A failure between them would otherwise leave an edit applied with no
   // record of what it changed from.
-  const updated = await db.transaction(async (tx) => {
+  const updated = await unlessLineItemGone(() => db.transaction(async (tx) => {
     // First thing inside the transaction, before any write, and before claimReferenceSeq below
     // (R10.7, D-96) — checks both the expense's current month and its target month, so a
     // refused move can never spend the target month's reference number (plan §3.4).
@@ -392,7 +394,8 @@ export async function updateExpenseAction(input: ExpenseInput): Promise<ActionRe
         : [];
 
     return { ok: true as const, rows: updated_, removedDocs, raceMessage: undefined as string | undefined };
-  });
+  }));
+  if (updated === LINE_ITEM_GONE) return fail(UI.lineItemGone);
   if (!updated.ok) return fail(UI.monthLocked(monthLabel(updated.locked.month)));
   if (updated.rows.length === 0) return fail(updated.raceMessage ?? "That expense no longer exists.");
 
@@ -475,7 +478,8 @@ export async function deleteExpenseAction(id: string): Promise<ActionResult> {
       const raceMessage = found ? "That expense just changed. Try again." : "That expense no longer exists.";
       return { ok: true as const, rows: trashed_, raceMessage };
     }
-    await insertDeletedAudit(tx, {
+    await insertTrashAudit(tx, {
+      action: "deleted",
       orgId: current.orgId,
       actorUserId: current.userId,
       expenseId: id,
@@ -535,24 +539,12 @@ export async function restoreExpenseAction(id: string): Promise<ActionResult> {
       const raceMessage = found ? "That expense just changed. Try again." : "That expense no longer exists.";
       return { ok: true as const, rows: restored_, raceMessage };
     }
-    const [row] = restored_;
-
-    // RETURNING cannot reach a joined table, so the line item's (and its source's) name costs
-    // one extra select, the same cost as `deleteExpenseAction`.
-    const [lineItem] = await tx
-      .select({ name: lineItems.name, fundingSourceName: fundingSources.name })
-      .from(lineItems)
-      .innerJoin(fundingSources, eq(fundingSources.id, lineItems.fundingSourceId))
-      .where(eq(lineItems.id, row.lineItemId))
-      .limit(1);
-
-    await tx.insert(expenseAuditEvents).values({
-      orgId: current.orgId,
-      expenseId: id,
-      actorUserId: current.userId,
+    await insertTrashAudit(tx, {
       action: "restored",
-      beforeData: null,
-      afterData: snapshotOf(row, lineItem?.name ?? "", lineItem?.fundingSourceName ?? ""),
+      orgId: current.orgId,
+      actorUserId: current.userId,
+      expenseId: id,
+      row: restored_[0],
     });
 
     return { ok: true as const, rows: restored_, raceMessage: undefined as string | undefined };

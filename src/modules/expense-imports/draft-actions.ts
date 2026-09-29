@@ -12,6 +12,7 @@ import { and, eq, inArray } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
 import { db } from "@/src/db";
+import { LINE_ITEM_GONE, unlessLineItemGone } from "@/src/db/pg-errors";
 import {
   expenseDocuments,
   expenseDraftDocuments,
@@ -73,7 +74,7 @@ export async function approveDraftAction(id: string): Promise<ActionResult<{ id:
   if ("expired" in current) return current.expired;
   if (!isUuid(id)) return fail(UI.draftGone);
 
-  const result = await db.transaction(async (tx) => {
+  const result = await unlessLineItemGone(() => db.transaction(async (tx) => {
     const [found] = await tx
       .select({ fundingSourceId: expenseDrafts.fundingSourceId, month: expenseDrafts.month })
       .from(expenseDrafts)
@@ -215,8 +216,9 @@ export async function approveDraftAction(id: string): Promise<ActionResult<{ id:
       importId: draft.importId,
       row,
     };
-  });
+  }));
 
+  if (result === LINE_ITEM_GONE) return fail(UI.lineItemGone);
   if (!result.ok) return fail(approvalFailureMessage(result.failure));
 
   // After commit, its own transaction (`ingestExpenseDocument` opens one) — cannot be inside
@@ -505,30 +507,35 @@ export async function undoDiscardAction(draft: DiscardedDraft): Promise<ActionRe
     return fail("Choose a payment source.");
   }
 
-  await db
-    .insert(expenseDrafts)
-    .values({
-      id: draft.id,
-      importId: draft.importId,
-      orgId: current.orgId,
-      // Restoring is a save: the person who pressed Undo is who this draft came back from.
-      createdByUserId: current.userId,
-      updatedByUserId: current.userId,
-      fundingSourceId: draft.fundingSourceId,
-      month: draft.month,
-      date: draft.date,
-      name: draft.name,
-      description: draft.description,
-      lineItemId: draft.lineItemId,
-      paymentSource: draft.paymentSource,
-      subtotalCents: draft.subtotalCents,
-      taxCents: draft.taxCents,
-      feesCents: draft.feesCents,
-      note: draft.note,
-      narrative: draft.narrative,
-      sortOrder: draft.sortOrder,
-    })
-    .onConflictDoNothing();
+  // The line item checked above can be deleted before this insert lands (R9.3's lock makes the
+  // insert wait, then fail); answered with the message every other save gives, not an error page.
+  const restored = await unlessLineItemGone(() =>
+    db
+      .insert(expenseDrafts)
+      .values({
+        id: draft.id,
+        importId: draft.importId,
+        orgId: current.orgId,
+        // Restoring is a save: the person who pressed Undo is who this draft came back from.
+        createdByUserId: current.userId,
+        updatedByUserId: current.userId,
+        fundingSourceId: draft.fundingSourceId,
+        month: draft.month,
+        date: draft.date,
+        name: draft.name,
+        description: draft.description,
+        lineItemId: draft.lineItemId,
+        paymentSource: draft.paymentSource,
+        subtotalCents: draft.subtotalCents,
+        taxCents: draft.taxCents,
+        feesCents: draft.feesCents,
+        note: draft.note,
+        narrative: draft.narrative,
+        sortOrder: draft.sortOrder,
+      })
+      .onConflictDoNothing(),
+  );
+  if (restored === LINE_ITEM_GONE) return fail(UI.lineItemGone);
 
   revalidatePath("/", "layout");
   return ok();
@@ -547,6 +554,7 @@ export async function updateDraftAction(input: ExpenseInput): Promise<ActionResu
   const current = await actionSession();
   if ("expired" in current) return current.expired;
   if (!input.id || !isUuid(input.id)) return fail(UI.draftGone);
+  const draftId = input.id;
 
   const invalid = validate(input, { draft: true });
   if (invalid) return fail(invalid);
@@ -585,23 +593,26 @@ export async function updateDraftAction(input: ExpenseInput): Promise<ActionResu
     return fail("Choose a payment source.");
   }
 
-  const updated = await db
-    .update(expenseDrafts)
-    .set({
-      name: input.name.trim(),
-      lineItemId: input.lineItemId || null,
-      paymentSource: input.paymentSource,
-      date: input.date,
-      description: input.description.trim(),
-      subtotalCents: parseMoneyToCentsOrZero(input.subtotal),
-      taxCents: parseMoneyToCentsOrZero(input.tax),
-      feesCents: parseMoneyToCentsOrZero(input.fees),
-      note: input.note.trim() || null,
-      narrative: input.narrative.trim() || null,
-      updatedByUserId: current.userId,
-    })
-    .where(and(eq(expenseDrafts.id, input.id), eq(expenseDrafts.orgId, current.orgId)))
-    .returning({ id: expenseDrafts.id });
+  const updated = await unlessLineItemGone(() =>
+    db
+      .update(expenseDrafts)
+      .set({
+        name: input.name.trim(),
+        lineItemId: input.lineItemId || null,
+        paymentSource: input.paymentSource,
+        date: input.date,
+        description: input.description.trim(),
+        subtotalCents: parseMoneyToCentsOrZero(input.subtotal),
+        taxCents: parseMoneyToCentsOrZero(input.tax),
+        feesCents: parseMoneyToCentsOrZero(input.fees),
+        note: input.note.trim() || null,
+        narrative: input.narrative.trim() || null,
+        updatedByUserId: current.userId,
+      })
+      .where(and(eq(expenseDrafts.id, draftId), eq(expenseDrafts.orgId, current.orgId)))
+      .returning({ id: expenseDrafts.id }),
+  );
+  if (updated === LINE_ITEM_GONE) return fail(UI.lineItemGone);
   if (updated.length === 0) return fail(UI.draftGone);
 
   revalidatePath("/", "layout");

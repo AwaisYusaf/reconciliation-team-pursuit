@@ -10,7 +10,7 @@ import { and, asc, count, eq, or, sql, sum } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
 import { db } from "@/src/db";
-import { isDeadlock, isUniqueViolation } from "@/src/db/pg-errors";
+import { isDeadlock, isUniqueViolation, LINE_ITEM_GONE, unlessLineItemGone } from "@/src/db/pg-errors";
 import { expenseDrafts, expenses, lineItemPerformances, lineItems, recurringItems } from "@/src/db/schema";
 import { isValidIsoDate } from "@/src/domain/dates";
 import { isDuplicateName, planLineItemDelete, sameCascade } from "@/src/domain/line-item-rules";
@@ -114,6 +114,18 @@ export type LineItemDeleteConfirmation = {
   performanceTotalCents: number;
 };
 
+/** A delete confirmation as the dialog sends it: checked, since it arrives from the client. */
+function isCascade(value: unknown): value is LineItemDeleteConfirmation {
+  const candidate = value as Partial<LineItemDeleteConfirmation> | null;
+  return (
+    typeof value === "object" &&
+    candidate !== null &&
+    Array.isArray(candidate.recurringNames) &&
+    candidate.recurringNames.every((name) => typeof name === "string") &&
+    Number.isSafeInteger(candidate.performanceTotalCents)
+  );
+}
+
 /**
  * Delete a line item (R9.3).
  *
@@ -129,12 +141,20 @@ export async function deleteLineItemAction(
   const current = await actionSession();
   if ("expired" in current) return current.expired;
   if (!isUuid(id)) return fail("That line item no longer exists.");
+  // Anything but "not yet" (false) or a well-formed list is refused before anything is read. A
+  // page loaded before the list replaced a bare `true` still sends `true`; answering that with
+  // ok made it say "Line item deleted." when nothing was (PR #25 review).
+  if (confirmed !== false && confirmed !== undefined && !isCascade(confirmed)) {
+    return fail(UI.lineItemDeleteReload);
+  }
 
   // One transaction with the line item's row locked (Phase 0 B5). Adding an expense, recurring
   // item or performance on it must lock the same row for its foreign key, so none can land
   // between the counts below and the delete: the counts are what gets deleted. They used to run
   // outside any transaction, so an expense saved in between reached the database's `restrict`
-  // as an unhandled error, and a recurring item added in between was deleted unseen.
+  // as an unhandled error here, and a recurring item added in between was deleted unseen. A save
+  // that arrives while this holds the lock waits, then finds the line item gone; every such save
+  // path answers that with `UI.lineItemGone` (`unlessLineItemGone`), not an error page.
   type DeleteResult = ActionResult<{ requiresConfirmation?: LineItemDeleteConfirmation }>;
   let result: DeleteResult;
   try {
@@ -186,17 +206,7 @@ export async function deleteLineItemAction(
       };
       // Always ask, even when nothing cascades: the client shows exactly one dialog either way,
       // and an empty line item is still a record someone typed.
-      // Anything but a well-formed list (a page from before this change still sends `true`) asks
-      // again rather than deleting or throwing.
-      const shown =
-        typeof confirmed === "object" &&
-        confirmed !== null &&
-        Array.isArray(confirmed.recurringNames) &&
-        confirmed.recurringNames.every((name) => typeof name === "string") &&
-        Number.isSafeInteger(confirmed.performanceTotalCents)
-          ? confirmed
-          : null;
-      if (!shown || !sameCascade(shown, cascade)) return ok({ requiresConfirmation: cascade });
+      if (!confirmed || !sameCascade(confirmed, cascade)) return ok({ requiresConfirmation: cascade });
 
       // Performances cascade with the line item (FK `onDelete: "cascade"`) — nothing further to
       // clean up here, unlike documents/storage, since a performance is just a number, not a
@@ -312,17 +322,21 @@ export async function addLineItemPerformanceAction(input: {
     .from(lineItemPerformances)
     .where(eq(lineItemPerformances.lineItemId, input.lineItemId));
 
-  await db.insert(lineItemPerformances).values({
-    orgId: current.orgId,
-    lineItemId: input.lineItemId,
-    name,
-    date: input.date,
-    amountCents,
-    sortOrder: Number(maxSort) + 1,
-    // Real new money the org's contract value hasn't caught up to yet (D-82) — unlike the
-    // default `false` every pre-existing row (the migrated Performance Grant included) means.
-    countsTowardContractTotal: true,
-  });
+  // Deleted by someone else after the check above: the insert waits on the delete, then fails.
+  const added = await unlessLineItemGone(() =>
+    db.insert(lineItemPerformances).values({
+      orgId: current.orgId,
+      lineItemId: input.lineItemId,
+      name,
+      date: input.date,
+      amountCents,
+      sortOrder: Number(maxSort) + 1,
+      // Real new money the org's contract value hasn't caught up to yet (D-82) — unlike the
+      // default `false` every pre-existing row (the migrated Performance Grant included) means.
+      countsTowardContractTotal: true,
+    }),
+  );
+  if (added === LINE_ITEM_GONE) return fail("That line item no longer exists.");
 
   revalidateAll();
   return ok();

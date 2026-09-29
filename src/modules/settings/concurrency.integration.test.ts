@@ -141,7 +141,7 @@ describe.skipIf(!hasDatabase)("settings actions under concurrency (integration, 
 
     // Someone else is mid-way through turning off `a` (org row locked, not yet committed) when
     // this person turns off `b`. It must wait for them, then see only one left.
-    const { result } = await holdOpen(
+    const { result, blocked } = await holdOpen(
       async (tx) => {
         await lockOrg(tx, orgId, { id: organizations.id });
         await tx.update(paymentSources).set({ active: false }).where(eq(paymentSources.id, a.id));
@@ -149,6 +149,7 @@ describe.skipIf(!hasDatabase)("settings actions under concurrency (integration, 
       () => setLabelActiveAction({ kind: "paymentSource", id: b.id, active: false }),
     );
 
+    expect(blocked).toBe(true); // it waited for the other deactivation, so it saw its result
     expect(result).toEqual({ ok: false, error: "Keep at least one payment source active." });
     const active = await db
       .select({ id: paymentSources.id })
@@ -157,13 +158,35 @@ describe.skipIf(!hasDatabase)("settings actions under concurrency (integration, 
     expect(active).toEqual([{ id: b.id }]);
   });
 
+  it("refuses a switch value that is not true or false, and a list kind that does not exist (PR #25)", async () => {
+    await db.delete(paymentSources).where(eq(paymentSources.orgId, orgId));
+    const [only] = await db
+      .insert(paymentSources)
+      .values({ orgId, label: "Only one", sortOrder: 0 })
+      .returning({ id: paymentSources.id });
+
+    // `"false"` used to skip the last-one check and still be stored as false.
+    const asString = await setLabelActiveAction({ kind: "paymentSource", id: only.id, active: "false" as never });
+    expect(asString).toEqual({ ok: false, error: "That is not a valid value." });
+    const bogusKind = await setLabelActiveAction({ kind: "vendor" as never, id: only.id, active: false });
+    expect(bogusKind).toEqual({ ok: false, error: "That is not a valid value." });
+    expect(await saveLabelAction({ kind: "vendor" as never, label: "X" })).toEqual({
+      ok: false,
+      error: "That is not a valid value.",
+    });
+
+    const [row] = await db.select({ active: paymentSources.active }).from(paymentSources).where(eq(paymentSources.id, only.id));
+    expect(row.active).toBe(true);
+  });
+
   describe("B6: the same name saved while another save of it is still in flight", () => {
     it("labels: refused with the friendly message, not an unhandled error", async () => {
       const label = `B6 label ${Date.now()}`;
-      const { result } = await holdOpen(
+      const { result, blocked } = await holdOpen(
         (tx) => tx.insert(supportingDocTypes).values({ orgId, label, sortOrder: 99 }),
         () => saveLabelAction({ kind: "supportingDocType", label }),
       );
+      expect(blocked).toBe(true); // reached the unique index, not the friendly check
       expect(result).toEqual({ ok: false, error: "That document type already exists." });
     });
 
@@ -171,10 +194,11 @@ describe.skipIf(!hasDatabase)("settings actions under concurrency (integration, 
       const stamp = Date.now();
       const [first, second] = [await vendor(`B6 a ${stamp}`), await vendor(`B6 b ${stamp}`)];
       const target = `B6 same ${stamp}`;
-      const { result } = await holdOpen(
+      const { result, blocked } = await holdOpen(
         (tx) => tx.update(vendorDefaults).set({ name: target }).where(eq(vendorDefaults.id, first)),
         () => saveVendorAction(vendorInput(second, { name: target })),
       );
+      expect(blocked).toBe(true);
       expect(result).toEqual({ ok: false, error: "A vendor with that name already exists." });
     });
   });

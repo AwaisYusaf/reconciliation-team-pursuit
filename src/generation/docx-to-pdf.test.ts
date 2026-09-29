@@ -7,7 +7,7 @@
  */
 import { tmpdir } from "node:os";
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import type { MonthKey } from "@/src/domain/dates";
 
@@ -105,20 +105,20 @@ describe.skipIf(!available)("convertDocxToPdf", () => {
     //
     // `os.tmpdir()` reads these variables each call, and vitest gives each test file its own
     // process, so this redirects only this test's conversion (and the soffice child it spawns).
-    const previous = { TMPDIR: process.env.TMPDIR, TEMP: process.env.TEMP, TMP: process.env.TMP };
     const root = await makeTemp(path.join(tmpdir(), "ngo-tempcheck-"));
-    process.env.TMPDIR = root;
-    process.env.TEMP = root;
-    process.env.TMP = root;
+    // `vi.stubEnv`, never a plain assignment: writing `undefined` back to `process.env` stores the
+    // string "undefined", so on Linux (no TMPDIR set) the next temp folder landed in a relative
+    // directory named "undefined" and the tests after this one failed (PR #25 review).
+    vi.stubEnv("TMPDIR", root);
+    vi.stubEnv("TEMP", root);
+    vi.stubEnv("TMP", root);
 
     try {
       await convertDocxToPdf(await coverSheet());
       const leaked = (await readDir(root)).filter((name) => name.startsWith("ngo-soffice-"));
       expect(leaked).toEqual([]);
     } finally {
-      process.env.TMPDIR = previous.TMPDIR;
-      process.env.TEMP = previous.TEMP;
-      process.env.TMP = previous.TMP;
+      vi.unstubAllEnvs();
       await remove(root, { recursive: true, force: true });
     }
   }, 200_000);

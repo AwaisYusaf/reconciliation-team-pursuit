@@ -13,7 +13,7 @@ import path from "node:path";
 
 import { PDFDocument, StandardFonts } from "pdf-lib";
 import sharp from "sharp";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { normalizeImage, pdfPageCount, rasterizePdf, RASTER_LADDER } from "./raster";
 
@@ -96,11 +96,13 @@ describe.skipIf(!hasPoppler())("rasterizePdf", () => {
     // in the shared temp folder also counted other test files' live directories, so it failed
     // at random whenever the whole suite ran at once. `os.tmpdir()` reads these variables on each
     // call, and each test file runs in its own process, so only this test is redirected.
-    const previous = { TMPDIR: process.env.TMPDIR, TEMP: process.env.TEMP, TMP: process.env.TMP };
     const root = await mkdtemp(path.join(tmpdir(), "ngo-rastercheck-"));
-    process.env.TMPDIR = root;
-    process.env.TEMP = root;
-    process.env.TMP = root;
+    // `vi.stubEnv`, never a plain assignment: writing `undefined` back to `process.env` stores the
+    // string "undefined", so on Linux (no TMPDIR set) the next temp folder landed in a relative
+    // directory named "undefined" and the tests after this one failed (PR #25 review).
+    vi.stubEnv("TMPDIR", root);
+    vi.stubEnv("TEMP", root);
+    vi.stubEnv("TMP", root);
 
     try {
       await expect(
@@ -111,9 +113,7 @@ describe.skipIf(!hasPoppler())("rasterizePdf", () => {
 
       expect(await readdir(root)).toEqual([]);
     } finally {
-      process.env.TMPDIR = previous.TMPDIR;
-      process.env.TEMP = previous.TEMP;
-      process.env.TMP = previous.TMP;
+      vi.unstubAllEnvs();
       await rm(root, { recursive: true, force: true });
     }
   });

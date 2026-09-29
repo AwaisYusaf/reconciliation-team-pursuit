@@ -11,6 +11,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 import { db } from "@/src/db";
+import { isForeignKeyViolation } from "@/src/db/pg-errors";
 import { expenseAuditEvents, sessions, users, type UserRole } from "@/src/db/schema";
 import { nameSchema } from "@/src/domain/name";
 import { fail, ok, type ActionResult } from "@/src/lib/action-result";
@@ -244,13 +245,6 @@ const NO_SUCH_USER = "That user no longer exists.";
 const NOT_A_MANAGER = "Only a manager's access can be changed here.";
 const HAS_HISTORY =
   "This account has a history of changes, so it can't be deleted. Revoke its access instead, which keeps that history readable.";
-
-/** Postgres `foreign_key_violation`. The driver surfaces the SQLSTATE as `code`. */
-/** Postgres foreign_key_violation (23503), raw or wrapped by Drizzle, which keeps the pg error as `cause`. */
-function isForeignKeyViolation(error: unknown): boolean {
-  const code = (e: unknown) => (typeof e === "object" && e !== null && "code" in e ? e.code : undefined);
-  return code(error) === "23503" || code((error as { cause?: unknown } | null)?.cause) === "23503";
-}
 
 async function requireManagerTarget(userId: string, admin: () => Promise<AdminSession> = requireAdmin) {
   const current = await admin();

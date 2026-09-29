@@ -12,7 +12,7 @@ import { revalidatePath } from "next/cache";
 
 import { db } from "@/src/db";
 import { lockOrg } from "@/src/db/org-lock";
-import { isForeignKeyViolation, isUniqueViolation } from "@/src/db/pg-errors";
+import { isMissingLineItem, isUniqueViolation } from "@/src/db/pg-errors";
 import {
   lineItems,
   organizations,
@@ -22,6 +22,7 @@ import {
   vendorDefaults,
 } from "@/src/db/schema";
 import { parseMoneyToCents } from "@/src/domain/money";
+import { UI } from "@/src/domain/strings";
 import { fail, ok, type ActionResult } from "@/src/lib/action-result";
 import { actionSession, actionSessionAnyPlan, requireAdmin } from "@/src/lib/action-session";
 import { consume, reset as resetLimit } from "@/src/services/rate-limit";
@@ -62,6 +63,11 @@ function table(kind: ListKind) {
   return kind === "paymentSource" ? paymentSources : supportingDocTypes;
 }
 
+/** Anything else used to fall through to the document types without complaint. */
+function isListKind(kind: unknown): kind is ListKind {
+  return kind === "paymentSource" || kind === "supportingDocType";
+}
+
 /**
  * Add or rename a label.
  *
@@ -75,6 +81,7 @@ export async function saveLabelAction(input: {
 }): Promise<ActionResult> {
   const current = await actionSession();
   if ("expired" in current) return current.expired;
+  if (!isListKind(input.kind) || typeof input.label !== "string") return fail("That is not a valid value.");
 
   const label = input.label.trim();
   if (!label) return fail("Enter a name.");
@@ -134,6 +141,10 @@ export async function setLabelActiveAction(input: {
   const current = await actionSession();
   if ("expired" in current) return current.expired;
   if (!isUuid(input.id)) return fail("That entry no longer exists.");
+  // An action's arguments arrive from the client unchecked. `active: "false"` (a string) used to
+  // skip the lock and the count below (`!"false"` is false) while Postgres still stored false,
+  // so the last payment source could be switched off after all (PR #25 review).
+  if (!isListKind(input.kind) || typeof input.active !== "boolean") return fail("That is not a valid value.");
 
   const target = table(input.kind);
 
@@ -235,7 +246,7 @@ export async function saveVendorAction(input: {
     // Two renames to the same name at once both pass the check above (Phase 0 B6).
     if (isUniqueViolation(error)) return fail(VENDOR_EXISTS);
     // The line item checked above was deleted before this update landed.
-    if (isForeignKeyViolation(error)) return fail("Choose a line item.");
+    if (isMissingLineItem(error)) return fail(UI.lineItemGone);
     throw error;
   }
   if (updated.length === 0) return fail("That vendor no longer exists.");

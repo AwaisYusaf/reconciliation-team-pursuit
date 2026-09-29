@@ -5,6 +5,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { v7 as uuidv7 } from "uuid";
 
 import { db } from "@/src/db";
+import { LINE_ITEM_GONE, unlessLineItemGone } from "@/src/db/pg-errors";
 import { expenseDrafts, expenseImports, expenses, lineItems } from "@/src/db/schema";
 import { isValidIsoDate, monthLabel } from "@/src/domain/dates";
 import { UI } from "@/src/domain/strings";
@@ -311,7 +312,7 @@ export async function POST(request: NextRequest) {
     // column default precisely so that forgetting them is a type error (schema.ts).
     const rules = await rulesForFundingSource(session.orgId, fundingSourceId);
 
-    const result = await db.transaction(async (tx) => {
+    const result = await unlessLineItemGone(() => db.transaction(async (tx) => {
       // First thing inside the transaction, before any write (R10.7, D-96) — must still hold
       // even though the fast check above already refused most cases, for a page that was
       // already open before the lock landed.
@@ -440,8 +441,13 @@ export async function POST(request: NextRequest) {
       }
 
       return { ok: true as const };
-    });
+    }));
 
+    // A line item chosen for a charge was deleted by someone else mid-save: nothing was written.
+    if (result === LINE_ITEM_GONE) {
+      await deleteStoredObjects(key);
+      return NextResponse.json({ ok: false, error: UI.lineItemGone }, { status: 409 });
+    }
     if (!result.ok) {
       // The locked-month case (and any other refusal) must leave nothing behind — neither the
       // rows (already rolled back) nor the object just stored.

@@ -266,16 +266,24 @@ export async function insertExpenseWithAudit(
 }
 
 /**
- * The `deleted` audit event for an expense just moved to the trash, in the caller's transaction.
- * Every path that trashes an expense writes one (the Delete button, a recurring item's Remove),
- * so the history never shows an expense vanishing with no record of who removed it.
+ * The audit event for an expense just moved into or out of the trash, in the caller's
+ * transaction: `deleted` carries the row as it was, `restored` the row as it is again. Every path
+ * that trashes an expense writes one (the Delete button, a recurring item's Remove), so the
+ * history never shows an expense vanishing with no record of who removed it; restoring writes the
+ * other half.
  *
  * RETURNING cannot reach a joined table, so the line item's and its source's names cost one
  * extra select. The FK is `onDelete: "restrict"`, so the line item can never be gone.
  */
-export async function insertDeletedAudit(
+export async function insertTrashAudit(
   tx: Executor,
-  input: { orgId: string; actorUserId: string; expenseId: string; row: ExpenseRow },
+  input: {
+    action: "deleted" | "restored";
+    orgId: string;
+    actorUserId: string;
+    expenseId: string;
+    row: ExpenseRow;
+  },
 ): Promise<void> {
   const [lineItem] = await tx
     .select({ name: lineItems.name, fundingSourceName: fundingSources.name })
@@ -284,12 +292,13 @@ export async function insertDeletedAudit(
     .where(eq(lineItems.id, input.row.lineItemId))
     .limit(1);
 
+  const snapshot = snapshotOf(input.row, lineItem?.name ?? "", lineItem?.fundingSourceName ?? "");
   await tx.insert(expenseAuditEvents).values({
     orgId: input.orgId,
     expenseId: input.expenseId,
     actorUserId: input.actorUserId,
-    action: "deleted",
-    beforeData: snapshotOf(input.row, lineItem?.name ?? "", lineItem?.fundingSourceName ?? ""),
-    afterData: null,
+    action: input.action,
+    beforeData: input.action === "deleted" ? snapshot : null,
+    afterData: input.action === "restored" ? snapshot : null,
   });
 }
