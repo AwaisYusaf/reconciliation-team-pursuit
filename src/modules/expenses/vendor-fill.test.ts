@@ -219,3 +219,26 @@ describe("line item stays within the current funding source (Phase 4, D-93)", ()
     expect(filled.lineItemId).toBe("line-salary");
   });
 });
+
+describe("a name added from a receipt (Phase 19)", () => {
+  it("fills the line item, description and payment source, but never the remembered amounts", () => {
+    const filled = fillFromTypedName(BLANK, CANVA, ACTIVE_SOURCES, SOURCE_LINE_ITEMS, { amounts: false });
+    expect(filled.lineItemId).toBe("line-promo");
+    expect(filled.description).toBe("Design tool for canvassing materials");
+    expect(filled.paymentSource).toBe("Paid by us, reimbursement requested");
+    expect(filled.subtotal).toBe("");
+    expect(filled.tax).toBe("");
+    expect(filled.fees).toBe("");
+  });
+
+  it("leaves amounts already used from the receipt exactly as they are", () => {
+    const fromReceipt = { ...BLANK, subtotal: "80.00", tax: "4.17", fees: "0.00" };
+    const filled = fillFromTypedName(fromReceipt, CANVA, ACTIVE_SOURCES, SOURCE_LINE_ITEMS, { amounts: false });
+    expect(filled).toMatchObject({ subtotal: "80.00", tax: "4.17", fees: "0.00" });
+  });
+
+  it("typing a remembered name still offers its amounts, as before", () => {
+    const filled = fillFromTypedName(BLANK, CANVA, ACTIVE_SOURCES, SOURCE_LINE_ITEMS);
+    expect(filled).toMatchObject({ subtotal: "45.00", tax: "2.50", fees: "1.25" });
+  });
+});

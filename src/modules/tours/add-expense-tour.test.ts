@@ -134,10 +134,11 @@ describe("Add Expense tour proof/receipt steps (Phase 10, Plus)", () => {
     );
   });
 
-  it("with reading, both say what AI does, and the receipt step says nothing fills in without Use these amounts", () => {
+  it("with reading, both say what AI does, and the receipt step says nothing fills in until it is chosen", () => {
     expect(body(true, "add-expense-proof")).toContain("With Plus, AI reads the amount paid");
-    expect(body(true, "add-expense-receipt")).toContain("With Plus, AI reads its amounts");
-    expect(body(true, "add-expense-receipt")).toContain(`Nothing is filled in until you press ${UI.useTheseAmounts}`);
+    // Phase 19: the receipt also offers its vendor and date, each added with its own button.
+    expect(body(true, "add-expense-receipt")).toContain("With Plus, AI reads its amounts, vendor and date");
+    expect(body(true, "add-expense-receipt")).toContain("Nothing is filled in until you choose to use it");
   });
 
   it("the receipt step keeps 'The reason prints on the cover sheet' on both versions (PR #18 review #14: the Plus variant had dropped it)", () => {

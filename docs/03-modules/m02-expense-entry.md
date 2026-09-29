@@ -39,11 +39,14 @@ Writes `expenses`, `expense_documents`, upserts `vendor_defaults` (R8.2). Reads 
 - Auto-learn: on save, upsert name → (line item, description) into vendor library.
 - **Moving the funding source (edit only, D-93):** allowed at any time; moving *into* an archived source is refused, editing an expense that already sits on one is not. Changing the source or the month claims a new reference in the target `(source, month)` (R2.6) — the same "moved" logic, generalised.
 
-## Reading amounts from documents (Phase 10, D-105)
+## Reading amounts from documents (Phase 10, D-105; Phase 19, D-133)
 When `canReadAmounts` is true for the organisation, a panel appears directly under the
 Subtotal/Tax/Fees row. On Add, reading starts as soon as a receipt or proof is chosen; on Edit,
-nothing reads until "Read amounts from documents" is pressed (hidden when the expense has no
-receipt/proof queued or attached, or the month is locked). The panel shows "Reading N
+nothing reads on opening, but choosing a new receipt or proof starts reading every file on the
+expense, the attached ones too, exactly as "Read amounts from documents" does (Phase 19; hidden
+when the expense has no receipt/proof queued or attached, or the month is locked). A draft
+reads only on the button, and an invoice card as on Add. When is decided in one place,
+`readingFor` in `src/domain/amount-suggestion.ts`. The panel shows "Reading N
 documents…" while any file is still in flight, nothing when none could be read (each file row
 already says "No amount found"), or the found amounts per file plus a
 combined total — receipts summed as the suggestion, proofs summed as a check against them
@@ -51,7 +54,25 @@ combined total — receipts summed as the suggestion, proofs summed as a check a
 only Subtotal/Tax/Fees, after a confirm if the fields already hold a non-zero value; Dismiss
 hides the panel until the set of files changes. Nothing is ever sent to OpenAI unless the
 organisation's plan, its Settings switch, and the server's OpenAI key/model are all present
-(`src/modules/amount-reading/access.ts`).
+(`src/modules/ai/access.ts`).
+
+**A receipt's vendor and date (Phase 19, D-133).** The same read also returns who was paid and
+the date on each receipt (never a proof of payment). On Add and Edit, never a draft or an
+invoice card, a box just above the amounts panel offers "Vendor on this receipt: Home Depot"
+and "Date on this receipt: 9/12/2026", each with an **Add** button:
+
+- Vendor Add fills **Name**, in the vendor library's spelling when the receipt's vendor is a
+  remembered one (`matchLibraryVendor`, `src/domain/vendor-match.ts`: capitals, punctuation, a
+  leading "The", store numbers and endings like Inc, LLC or .com ignored, nothing looser, and a
+  tie is not guessed). Vendor memory then fills line item, description and payment source
+  blanks-only, but never the remembered amounts (R8.1 "Added from a receipt").
+- Date Add fills **Date** only; the reporting Month stays as it is (R2.2).
+- A vendor is offered only when every receipt names the same business, a date only when they all
+  show the same day. A row disappears once the field already holds it (Name compared ignoring
+  capitals and spaces), so there is no dismiss. A future date is never offered. The field that
+  changed is briefly highlighted.
+- Nothing is compared, flagged or stored: the box is a suggestion only, and Save works whether
+  or not it is used, or still reading.
 
 ## Server surface
 `createExpenseAction(input)`, `updateExpenseAction(input)`, `deleteExpenseAction`, `presignExpenseUpload` (quota-checked, R13), `attachDocument(docId)`, `deleteExpenseDocument(docId)`, `searchVendorsAction(q)` (all in `src/modules/expenses/actions.ts`). `ExpenseInput` carries `fundingSourceId`; every write verifies it via `requireOwnedFundingSource` and refuses an unowned or (on create, or when moving into it) archived source.

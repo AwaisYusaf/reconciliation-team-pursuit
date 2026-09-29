@@ -65,6 +65,52 @@ export function isValidIsoDate(value: string): boolean {
   return day >= 1 && day <= daysInMonth(year, month);
 }
 
+/**
+ * A date as a document prints it, as an `IsoDate`, or null when it cannot be read as one.
+ *
+ * For dates read by the model off an invoice or receipt (Phase 14, Phase 19). The prompt asks
+ * for YYYY-MM-DD, but a model that answers in the document's own words must not have its date
+ * thrown away or, worse, reshaped into a wrong one: `formatDateUS` splits on "-", so a slashed
+ * date renders as `undefined/undefined/NaN`, and every stored date is validated with
+ * `isValidIsoDate` before it is written.
+ *
+ * Deliberately narrow: ISO; US month-first slashed or dashed (`7/14/2026`, `07-14-2026`), month
+ * first because these documents are American and 03/04 cannot be told from 04/03 otherwise; and
+ * a month written as a word, before or after the day (`March 18, 2026`, `18 March 2026`,
+ * `Sept 5 2026`), the year always four digits. Anything else is null rather than a guess, and
+ * `2026-02-30` or `2026-13-01` are refused by the calendar check, not accepted for their shape.
+ */
+export function isoDateFromPrinted(value: string | null | undefined): IsoDate | null {
+  if (!value) return null;
+  const text = value.trim();
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return isValidIsoDate(text) ? text : null;
+
+  const us = /^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/.exec(text);
+  if (us) {
+    const [, month, day, year] = us;
+    return realDate(year, month, day);
+  }
+
+  const named =
+    /^(?:([A-Za-z]{3,9})\.?\s+(\d{1,2})|(\d{1,2})\s+([A-Za-z]{3,9})\.?),?\s+(\d{4})$/.exec(text);
+  if (named) {
+    // First three letters matched, so "Sept", "Sep" and "September" all land.
+    const monthWord = (named[1] ?? named[4]).toLowerCase().slice(0, 3);
+    const index = MONTH_NAMES.findIndex((name) => name.toLowerCase().startsWith(monthWord));
+    if (index === -1) return null;
+    return realDate(named[5], String(index + 1), named[2] ?? named[3]);
+  }
+
+  return null;
+}
+
+/** The padded ISO form of a year, month and day, or null when that day does not exist. */
+function realDate(year: string, month: string, day: string): IsoDate | null {
+  const iso = `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+  return isValidIsoDate(iso) ? iso : null;
+}
+
 /** The month a date belongs to by default: `2026-03-02` → `2026-03`. */
 export function monthKeyOfDate(date: IsoDate): MonthKey {
   return date.slice(0, 7);

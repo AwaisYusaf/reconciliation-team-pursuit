@@ -737,6 +737,101 @@ describe.skipIf(!hasDatabase)("read amounts (integration, Phase 10)", async () =
     });
   });
 
+  describe("a receipt's vendor and date (Phase 19)", () => {
+    const amounts = { subtotalCents: 8000, taxCents: 417, feesCents: 0, totalCents: 8417 };
+
+    async function usageRowCount(org: string): Promise<number> {
+      const rows = await db.select({ id: aiUsageEvents.id }).from(aiUsageEvents).where(eq(aiUsageEvents.orgId, org));
+      return rows.length;
+    }
+
+    async function readReceipt() {
+      const form = new FormData();
+      form.set("file", await jpegFile());
+      form.set("kind", "receipt");
+      return POST(readRequest(form));
+    }
+
+    beforeAll(async () => {
+      const { vendorDefaults } = await import("@/src/db/schema");
+      // This org remembers "Home Depot"; the other org remembers "Lowes". Neither may leak.
+      await db.insert(vendorDefaults).values([
+        { orgId, name: "Home Depot" },
+        { orgId, name: "Staples" },
+        { orgId: otherOrgId, name: "Lowes" },
+      ]);
+    });
+
+    it("offers the organization's own library spelling, with the date, from one read and one usage row", async () => {
+      asSession(orgId, userId);
+      clearAll();
+      readAmountsMock.mockReset();
+      readAmountsMock.mockResolvedValue({
+        outcome: "found",
+        amounts,
+        details: { vendor: "THE HOME DEPOT #2718", date: "2026-09-12" },
+        inputTokens: 900,
+        outputTokens: 120,
+      });
+      const before = await usageRowCount(orgId);
+
+      const response = await readReceipt();
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({
+        ok: true,
+        data: { found: true, ...amounts, vendor: "Home Depot", date: "2026-09-12" },
+      });
+      expect(readAmountsMock).toHaveBeenCalledTimes(1);
+      expect(await usageRowCount(orgId)).toBe(before + 1);
+      const row = await latestAmountRead(orgId);
+      expect(row!.feature).toBe("amount_read");
+      expect(row!.outcome).toBe("found");
+    });
+
+    it("a vendor that is not remembered is offered as read", async () => {
+      asSession(orgId, userId);
+      readAmountsMock.mockResolvedValue({
+        outcome: "found",
+        amounts,
+        details: { vendor: "Cafe Luna", date: null },
+        inputTokens: 1,
+        outputTokens: 1,
+      });
+      expect(await (await readReceipt()).json()).toEqual({
+        ok: true,
+        data: { found: true, ...amounts, vendor: "Cafe Luna" },
+      });
+    });
+
+    it("never matches against another organization's library", async () => {
+      asSession(orgId, userId);
+      readAmountsMock.mockResolvedValue({
+        outcome: "found",
+        amounts,
+        details: { vendor: "LOWES", date: null },
+        inputTokens: 1,
+        outputTokens: 1,
+      });
+      const body = await (await readReceipt()).json();
+      expect(body.data.vendor).toBe("LOWES");
+    });
+
+    it("a receipt with no readable amount still names its vendor and date, logged as 'none'", async () => {
+      asSession(orgId, userId);
+      readAmountsMock.mockResolvedValue({
+        outcome: "none",
+        details: { vendor: "Staples Inc", date: "2026-09-01" },
+        inputTokens: 1,
+        outputTokens: 1,
+      });
+      expect(await (await readReceipt()).json()).toEqual({
+        ok: true,
+        data: { found: false, vendor: "Staples", date: "2026-09-01" },
+      });
+      expect((await latestAmountRead(orgId))!.outcome).toBe("none");
+    });
+  });
+
   describe("ai_usage_events constraints (D-106)", () => {
     it("refuses an amount_read row without its document source or kind, or with a summary outcome", async () => {
       const base = { orgId, feature: "amount_read" as const, model: "test-model" };
