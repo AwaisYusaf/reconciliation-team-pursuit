@@ -373,13 +373,24 @@ export const UI = {
   dismiss: "Dismiss",
   /** Confirm dialog before "Use these amounts" overwrites fields already typed (Appendix A §2). */
   replaceTypedAmounts: "Replace the amounts you typed?",
+
+  /* ------------------------------------------- Phase 19: a receipt's vendor and date */
+
+  /** The box above the amounts panel: its two rows' labels, the value shown after each. */
+  receiptVendorLabel: "Vendor on this receipt:",
+  receiptDateLabel: "Date on this receipt:",
+  /** Each row's button. Fills Name, or Date; never Month (R2.2). */
+  addReceiptDetail: "Add",
+  /** The buttons' accessible names, since two "Add" buttons side by side say nothing alone. */
+  addReceiptVendorLabel: (vendor: string) => `Add ${vendor} as the name`,
+  addReceiptDateLabel: (date: string) => `Add ${date} as the date`,
   /** Edit Expense button that starts a read on request (Appendix A §3). */
   readAmountsFromDocuments: "Read amounts from documents",
   /** Settings → Organization switch label (Appendix A §4). */
   readAmountsSwitchLabel: "Read amounts from uploaded documents",
   /** Settings → Organization switch help text (Appendix A §4). */
   readAmountsSwitchHelp:
-    "Receipts and proofs of payment are sent to OpenAI to suggest amounts. OpenAI doesn't use them for training. Nothing is saved until you confirm.",
+    "Receipts and proofs of payment are sent to OpenAI to suggest amounts, and a receipt's vendor and date. OpenAI doesn't use them for training. Nothing is saved until you confirm.",
   /** A document with too many pages to read (Phase 10 §3.4; OpenAI bills a PDF per page). */
   /** A file's own row in the panel when it was refused for length — "No amount found" there
    *  reads as the AI having failed (PR #18 review). */
@@ -542,8 +553,13 @@ export const UI = {
     "Enter the amounts from the receipt, or use the ones AI finds in the receipt you added above. If it includes tax or fees, you'll be asked whether the funder pays for them.",
   /** Plus upload section note on Add — reading starts on its own (Appendix A §2). */
   aiUploadNoteAdd: "AI reads the amounts when you add a file.",
-  /** Plus upload section note on Edit — reading only on request (Appendix A §3). */
-  aiUploadNoteEdit: "AI reads the amounts when you press Read amounts from documents.",
+  /** Plus upload section note on Edit: a newly added file starts reading, or the button reads
+   *  what is already attached (Phase 19, amends Appendix A §3). */
+  aiUploadNoteEdit:
+    "AI reads the amounts when you add a file, or when you press Read amounts from documents.",
+  /** Plus upload section note on a draft: reading only on request (Appendix A §3), since a
+   *  draft's own files are not read on their own (Phase 19 Q9). */
+  aiUploadNoteDraft: "AI reads the amounts when you press Read amounts from documents.",
   /** A file row's AI status while its read is running. */
   aiFileReading: "Reading amounts…",
   /** Toast while a picked iPhone photo (HEIC) is converted to JPEG in the browser, so it can be
@@ -564,11 +580,11 @@ export const UI = {
    *  itself — carries the same "reason prints on the cover sheet" sentence as the base
    *  `tourReceiptBody` (PR #18 review #14: the Plus variant had dropped it). */
   tourReceiptBodyWithReading:
-    "Add the receipt, invoice or timesheet. With Plus, AI reads its amounts and shows them under Subtotal, Tax and Fees. Nothing is filled in until you press Use these amounts. If there isn't a receipt, check No receipt available and give a reason. The reason prints on the cover sheet.",
+    "Add the receipt, invoice or timesheet. With Plus, AI reads its amounts, vendor and date and shows them for you to add. Nothing is filled in until you choose to use it. If there isn't a receipt, check No receipt available and give a reason. The reason prints on the cover sheet.",
   /** Settings tour step for the Plus reading switch (only shown where the switch exists). */
   tourReadAmountsSwitchTitle: "Read amounts with AI",
   tourReadAmountsSwitchBody:
-    "Included with Plus. When it's on, AI reads the receipts and proofs of payment added to an expense and suggests the amounts. Nothing is filled in until someone chooses to use them. Only an admin can change this.",
+    "Included with Plus. When it's on, AI reads the receipts and proofs of payment added to an expense and suggests the amounts, and a receipt's vendor and date. Nothing is filled in until someone chooses to use them. Only an admin can change this.",
   /** Generic dialog dismiss label — no existing `UI.cancel` before Phase 10; reused here for the
    *  "Replace the amounts you typed?" dialog rather than adding a feature-specific word for it. */
   cancel: "Cancel",

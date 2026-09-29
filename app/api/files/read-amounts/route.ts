@@ -2,8 +2,16 @@ import { and, eq, isNull } from "drizzle-orm";
 import { NextResponse, type NextRequest } from "next/server";
 
 import { db } from "@/src/db";
-import { aiUsageEvents, expenseDocuments, expenses, type AiUsageDocumentKind } from "@/src/db/schema";
+import {
+  aiUsageEvents,
+  expenseDocuments,
+  expenses,
+  vendorDefaults,
+  type AiUsageDocumentKind,
+} from "@/src/db/schema";
+import type { ReceiptDetails } from "@/src/domain/amount-suggestion";
 import { UI } from "@/src/domain/strings";
+import { matchLibraryVendor } from "@/src/domain/vendor-match";
 import { isUuid } from "@/src/lib/ids";
 import { sameOrigin } from "@/src/lib/same-origin";
 import { readAmountsAllowedForOrg } from "@/src/modules/ai/access";
@@ -107,8 +115,11 @@ export async function POST(request: NextRequest) {
     if (result.outcome === "failed") {
       return NextResponse.json({ ok: false, error: "That document could not be read." }, { status: 502 });
     }
+    // A receipt's vendor and date (Phase 19), after the usage row so the log never depends on
+    // them. Absent keys, not nulls, when nothing was read: that response is Phase 10's exactly.
+    const details = result.details ? await detailFields(session.orgId, result.details) : {};
     if (result.outcome === "none") {
-      return NextResponse.json({ ok: true, data: { found: false } });
+      return NextResponse.json({ ok: true, data: { found: false, ...details } });
     }
     return NextResponse.json({
       ok: true,
@@ -118,6 +129,7 @@ export async function POST(request: NextRequest) {
         taxCents: result.amounts.taxCents,
         feesCents: result.amounts.feesCents,
         totalCents: result.amounts.totalCents,
+        ...details,
       },
     });
   } catch (error) {
@@ -224,6 +236,36 @@ async function resolveInput(orgId: string, userId: string, form: FormData): Prom
     await logFailure(orgId, userId, "attached", row.kind);
     return { ok: false, status: 502, error: "That document could not be read." };
   }
+}
+
+/**
+ * What the form is offered from a receipt (Phase 19): the vendor in this organization's own
+ * library spelling when it is a remembered business, as read otherwise, and the date.
+ *
+ * The library is read here, scoped to the session's organization, rather than matched in the
+ * browser: one query per read, and no list of remembered names ever sent to the page for it. A
+ * failed lookup only loses the library spelling; the read itself still answers.
+ */
+async function detailFields(
+  orgId: string,
+  details: ReceiptDetails,
+): Promise<{ vendor?: string; date?: string }> {
+  const fields: { vendor?: string; date?: string } = {};
+  if (details.vendor) {
+    let library: string[] = [];
+    try {
+      const rows = await db
+        .select({ name: vendorDefaults.name })
+        .from(vendorDefaults)
+        .where(eq(vendorDefaults.orgId, orgId));
+      library = rows.map((row) => row.name);
+    } catch {
+      console.error("read-amounts vendor library lookup failed", { orgId });
+    }
+    fields.vendor = matchLibraryVendor(details.vendor, library) ?? details.vendor;
+  }
+  if (details.date) fields.date = details.date;
+  return fields;
 }
 
 function tooManyPages(pages: number): string {

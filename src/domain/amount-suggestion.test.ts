@@ -5,10 +5,13 @@ import { describe, expect, it } from "vitest";
 
 import {
   aggregateAmountSuggestion,
+  aggregateReceiptDetails,
   fileSetSignature,
   nextKeysToRead,
   panelVisible,
+  readingFor,
   type ReadableFile,
+  type ReceiptDetails,
 } from "./amount-suggestion";
 
 function found(subtotalCents: number, taxCents: number, feesCents: number, totalCents: number) {
@@ -254,5 +257,123 @@ describe("refunds (PR #18 round 2, #5)", () => {
   it("with no receipt, a refund's bank credit fills a negative subtotal, so it saves as a refund", () => {
     const result = aggregateAmountSuggestion([proof("p", "credit.png", found(-14500, 0, 0, -14500))], true);
     expect(result).toMatchObject({ state: "done", subtotalCents: -14500, totalCents: -14500 });
+  });
+});
+
+describe("aggregateReceiptDetails (Phase 19)", () => {
+  const withDetails = (details: ReceiptDetails) => ({ ...found(8000, 417, 0, 8417), details });
+  const noAmount = (details: ReceiptDetails) => ({ status: "none" as const, details });
+
+  it("one receipt: offers its vendor and date", () => {
+    const files = [receipt("r1", "a.pdf", withDetails({ vendor: "Home Depot", date: "2026-09-12" }))];
+    expect(aggregateReceiptDetails(files, false)).toEqual({ vendor: "Home Depot", date: "2026-09-12" });
+  });
+
+  it("offers them from a receipt whose amounts could not be read", () => {
+    const files = [receipt("r1", "a.pdf", noAmount({ vendor: "Cafe Luna", date: null }))];
+    expect(aggregateReceiptDetails(files, false)).toEqual({ vendor: "Cafe Luna", date: null });
+  });
+
+  it("two receipts from the same business agree, whatever the spelling; the first spelling is offered", () => {
+    const files = [
+      receipt("r1", "a.pdf", withDetails({ vendor: "Home Depot", date: "2026-09-12" })),
+      receipt("r2", "b.pdf", withDetails({ vendor: "THE HOME DEPOT", date: "2026-09-12" })),
+    ];
+    expect(aggregateReceiptDetails(files, false)).toEqual({ vendor: "Home Depot", date: "2026-09-12" });
+  });
+
+  it("two different vendors offer no vendor; two different days offer no date", () => {
+    const vendors = [
+      receipt("r1", "a.pdf", withDetails({ vendor: "Home Depot", date: "2026-09-12" })),
+      receipt("r2", "b.pdf", withDetails({ vendor: "Lowes", date: "2026-09-12" })),
+    ];
+    expect(aggregateReceiptDetails(vendors, false)).toEqual({ vendor: null, date: "2026-09-12" });
+    const days = [
+      receipt("r1", "a.pdf", withDetails({ vendor: "Home Depot", date: "2026-09-12" })),
+      receipt("r2", "b.pdf", withDetails({ vendor: "Home Depot", date: "2026-09-13" })),
+    ];
+    expect(aggregateReceiptDetails(days, false)).toEqual({ vendor: "Home Depot", date: null });
+  });
+
+  it("two different names in another alphabet do not agree", () => {
+    const files = [
+      receipt("r1", "a.jpg", withDetails({ vendor: "東京ラーメン", date: null })),
+      receipt("r2", "b.jpg", withDetails({ vendor: "大阪ラーメン", date: null })),
+    ];
+    expect(aggregateReceiptDetails(files, false)).toBeNull();
+  });
+
+  it("a receipt that names nothing does not block the others", () => {
+    const files = [
+      receipt("r1", "a.pdf", withDetails({ vendor: "Home Depot", date: null })),
+      receipt("r2", "b.pdf", none),
+    ];
+    expect(aggregateReceiptDetails(files, false)).toEqual({ vendor: "Home Depot", date: null });
+  });
+
+  it("waits while any receipt is still being read", () => {
+    const files = [
+      receipt("r1", "a.pdf", withDetails({ vendor: "Home Depot", date: "2026-09-12" })),
+      receipt("r2", "b.pdf", pending),
+    ];
+    expect(aggregateReceiptDetails(files, false)).toBeNull();
+  });
+
+  it("proofs are never used, even if a result carried details", () => {
+    const files = [proof("p1", "bank.png", withDetails({ vendor: "WAL-MART", date: "2026-09-12" }))];
+    expect(aggregateReceiptDetails(files, false)).toBeNull();
+    const withReceipt = [
+      receipt("r1", "a.pdf", withDetails({ vendor: "Home Depot", date: "2026-09-12" })),
+      proof("p1", "bank.png", withDetails({ vendor: "WAL-MART", date: "2026-09-11" })),
+    ];
+    expect(aggregateReceiptDetails(withReceipt, false)).toEqual({ vendor: "Home Depot", date: "2026-09-12" });
+  });
+
+  it("nothing while No receipt available is ticked, and nothing when nothing was named", () => {
+    const files = [receipt("r1", "a.pdf", withDetails({ vendor: "Home Depot", date: "2026-09-12" }))];
+    expect(aggregateReceiptDetails(files, true)).toBeNull();
+    expect(aggregateReceiptDetails([receipt("r1", "a.pdf", none)], false)).toBeNull();
+    expect(aggregateReceiptDetails([], false)).toBeNull();
+  });
+});
+
+describe("readingFor (Phase 19)", () => {
+  const base = {
+    allowed: true,
+    editing: false,
+    draft: false,
+    embedded: false,
+    requested: false,
+    newFileQueued: false,
+  };
+
+  it("Add reads straight away and offers the vendor and date", () => {
+    expect(readingFor(base)).toEqual({ reading: true, offerDetails: true });
+  });
+
+  it("an invoice card reads amounts as before, but offers no vendor or date", () => {
+    expect(readingFor({ ...base, embedded: true })).toEqual({ reading: true, offerDetails: false });
+  });
+
+  it("Edit reads nothing on opening", () => {
+    expect(readingFor({ ...base, editing: true })).toEqual({ reading: false, offerDetails: false });
+  });
+
+  it("Edit reads, and offers, once a new file is chosen or the button is pressed", () => {
+    expect(readingFor({ ...base, editing: true, newFileQueued: true })).toEqual({ reading: true, offerDetails: true });
+    expect(readingFor({ ...base, editing: true, requested: true })).toEqual({ reading: true, offerDetails: true });
+  });
+
+  it("a draft never reads on its own, and its button reads amounts only", () => {
+    const draft = { ...base, editing: true, draft: true };
+    expect(readingFor({ ...draft, newFileQueued: true })).toEqual({ reading: false, offerDetails: false });
+    expect(readingFor({ ...draft, requested: true })).toEqual({ reading: true, offerDetails: false });
+  });
+
+  it("nothing at all without access", () => {
+    expect(readingFor({ ...base, allowed: false, requested: true, newFileQueued: true })).toEqual({
+      reading: false,
+      offerDetails: false,
+    });
   });
 });

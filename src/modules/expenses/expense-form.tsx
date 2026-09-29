@@ -19,7 +19,7 @@ import toast from "react-hot-toast";
 import { reportResult } from "@/src/components/ui/toast";
 import { setActiveFundingSourceAction } from "@/src/modules/auth/actions";
 import { projectedRemainingCents } from "@/src/domain/budget-math";
-import { compareMonthKeys, monthLabel } from "@/src/domain/dates";
+import { compareMonthKeys, formatDateUS, monthLabel } from "@/src/domain/dates";
 import { draftNeeds } from "@/src/domain/draft-rules";
 import { formatMoney } from "@/src/domain/format";
 import {
@@ -29,12 +29,19 @@ import {
   receiptTotalCents,
   reimbursableCents as domainReimbursable,
 } from "@/src/domain/money";
-import { aggregateAmountSuggestion, panelVisible, type ReadableFile } from "@/src/domain/amount-suggestion";
+import {
+  aggregateAmountSuggestion,
+  aggregateReceiptDetails,
+  panelVisible,
+  readingFor,
+  type ReadableFile,
+} from "@/src/domain/amount-suggestion";
+import { sameName } from "@/src/domain/vendor-match";
 import { exclusionNote, UI } from "@/src/domain/strings";
 import { SESSION_EXPIRED, type ActionResult } from "@/src/lib/action-result";
 import { cn } from "@/src/lib/cn";
 
-import { AmountSuggestionPanel } from "./amount-suggestion-panel";
+import { AmountSuggestionPanel, ReceiptDetailsSuggestion } from "./amount-suggestion-panel";
 import { useAmountReads, type AmountReadInput } from "./use-amount-reads";
 import {
   fillFromClick,
@@ -369,7 +376,16 @@ export function ExpenseForm({
       })),
   ];
 
-  const readEnabled = editing ? readAmounts && requested : readAmounts;
+  // Add reads on choosing a file; Edit on the button, or on choosing a new file, which then
+  // reads the attached ones too (Phase 19 Q8). The vendor and date box is Add and Edit only.
+  const { reading: readEnabled, offerDetails } = readingFor({
+    allowed: readAmounts,
+    editing,
+    draft: draftMode,
+    embedded: Boolean(embedded),
+    requested,
+    newFileQueued: readableFiles.some((file) => file.source === "upload"),
+  });
   const { results: amountReadResults, signature: amountReadSignature } = useAmountReads({
     files: readableFiles,
     enabled: readEnabled,
@@ -392,10 +408,62 @@ export function ExpenseForm({
   // once reading is on for it — on Edit, not until the button is pressed.
   const uploadAi = readAmounts
     ? {
-        note: editing ? UI.aiUploadNoteEdit : UI.aiUploadNoteAdd,
+        note: draftMode ? UI.aiUploadNoteDraft : editing ? UI.aiUploadNoteEdit : UI.aiUploadNoteAdd,
         statusFor: (key: string) => (readEnabled ? amountReadResults.get(key) : undefined),
       }
     : undefined;
+
+  // --------------------------------------------------------- Phase 19: vendor and date
+  // What the receipts name, less whatever the form already holds: pressing Add is what makes a
+  // row go away, and a row that would change nothing is never offered.
+  const receiptDetails = offerDetails
+    ? aggregateReceiptDetails(suggestionFiles, values.noReceipt)
+    : null;
+  const vendorToOffer =
+    receiptDetails?.vendor && !sameName(values.name, receiptDetails.vendor)
+      ? receiptDetails.vendor
+      : null;
+  const dateToOffer =
+    receiptDetails?.date && receiptDetails.date !== values.date ? receiptDetails.date : null;
+
+  // The name the receipt's Add just set, read once by the vendor lookup below: a remembered
+  // vendor then fills its line item, description and payment source but not its amounts, which
+  // come from the receipt (vendor-fill.ts, `amounts: false`).
+  const nameFromReceipt = useRef<string | null>(null);
+  // The field a receipt's Add just changed, lit up briefly like vendor memory's fills: Name
+  // sits at the top of the form, well away from the box that changed it.
+  const [receiptFilled, setReceiptFilled] = useState<"name" | "date" | null>(null);
+  function flashReceiptFill(field: "name" | "date") {
+    setReceiptFilled(field);
+    setTimeout(() => setReceiptFilled((current) => (current === field ? null : current)), 1400);
+  }
+
+  // Add removes its own row, and the next row moves up under the pointer: a second press within
+  // half a second is the rest of a double-click, not a choice to add that one too.
+  const lastReceiptAdd = useRef(0);
+  // Where focus goes once the row that held it is gone (read by the effect below `fieldId`).
+  const receiptBoxRef = useRef<HTMLDivElement>(null);
+  const refocusAfterAdd = useRef<{ field: "name" | "date"; fromKeyboard: boolean } | null>(null);
+  function receiptAdd(field: "name" | "date", fromKeyboard: boolean, apply: () => void) {
+    const now = Date.now();
+    if (now - lastReceiptAdd.current < 500) return;
+    lastReceiptAdd.current = now;
+    apply();
+    flashReceiptFill(field);
+    refocusAfterAdd.current = { field, fromKeyboard };
+  }
+
+  function addReceiptVendor(vendor: string, fromKeyboard: boolean) {
+    receiptAdd("name", fromKeyboard, () => {
+      nameFromReceipt.current = vendor.trim();
+      set("name", vendor);
+    });
+  }
+
+  function addReceiptDate(date: string, fromKeyboard: boolean) {
+    // Date only. The reporting month is chosen separately and stays as it is (R2.2).
+    receiptAdd("date", fromKeyboard, () => set("date", date));
+  }
 
   function applySuggestedAmounts() {
     if (suggestion.state !== "done") return;
@@ -540,6 +608,9 @@ export function ExpenseForm({
     // All state changes happen inside the debounce callback, never synchronously in the
     // effect body, so typing never triggers a render cascade.
     searchTimer.current = setTimeout(async () => {
+      // Read and cleared here, once: a name typed over it within the delay no longer matches.
+      const fromReceipt = nameFromReceipt.current === term;
+      nameFromReceipt.current = null;
       // In edit mode the name is prefilled; searching it would pop an unrequested dropdown
       // over the fields below a moment after the page loads.
       if (term.length < 2 || term === loadedName) {
@@ -566,10 +637,15 @@ export function ExpenseForm({
             exact,
             options.paymentSources,
             (options.lineItemsBySource[current.fundingSourceId] ?? []).map((item) => item.id),
+            { amounts: !fromReceipt },
           ),
         );
         setAutofilled(true);
         setTimeout(() => setAutofilled(false), 1400);
+        setSuggestions([]);
+      } else if (fromReceipt) {
+        // The receipt's vendor was chosen on purpose: no list of other remembered names drops
+        // open over the top of the form, away from the box the Add was pressed in.
         setSuggestions([]);
       } else {
         setSuggestions(
@@ -712,6 +788,18 @@ export function ExpenseForm({
    */
   const uid = useId();
   const fieldId = useCallback((field: string) => `${field}-${uid}`, [uid]);
+
+  // After a receipt's Add has re-rendered the box: focus the Add that is left, or, when the box
+  // has gone, the field just filled. That field sits at the top of the form, so the page only
+  // scrolls to it for a keyboard press; a mouse user keeps their place by the amounts.
+  useEffect(() => {
+    const pending = refocusAfterAdd.current;
+    if (!pending) return;
+    refocusAfterAdd.current = null;
+    const nextAdd = receiptBoxRef.current?.querySelector("button");
+    if (nextAdd) nextAdd.focus();
+    else document.getElementById(fieldId(pending.field))?.focus({ preventScroll: !pending.fromKeyboard });
+  });
 
   /**
    * What this charge would still be refused for, by the same rule the drafts list shows in its
@@ -1092,6 +1180,7 @@ export function ExpenseForm({
             <Label htmlFor={fieldId("name")}>Name</Label>
             <Input
               id={fieldId("name")}
+              className={receiptFilled === "name" ? "bg-autofill!" : undefined}
               value={values.name}
               autoComplete="off"
               onChange={(event) => set("name", event.target.value)}
@@ -1267,6 +1356,7 @@ export function ExpenseForm({
               <Label htmlFor={fieldId("date")}>Date</Label>
               <Input
                 id={fieldId("date")}
+                className={receiptFilled === "date" ? "bg-autofill!" : undefined}
                 type="date"
                 value={values.date}
                 onChange={(event) => set("date", event.target.value)}
@@ -1332,6 +1422,14 @@ export function ExpenseForm({
               </Button>
             </div>
           )}
+
+          <ReceiptDetailsSuggestion
+            containerRef={receiptBoxRef}
+            vendor={vendorToOffer}
+            date={dateToOffer ? formatDateUS(dateToOffer) : null}
+            onAddVendor={(fromKeyboard) => vendorToOffer && addReceiptVendor(vendorToOffer, fromKeyboard)}
+            onAddDate={(fromKeyboard) => dateToOffer && addReceiptDate(dateToOffer, fromKeyboard)}
+          />
 
           {showAmountSuggestionPanel && (
             <AmountSuggestionPanel

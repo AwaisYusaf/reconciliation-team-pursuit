@@ -10,6 +10,8 @@ import "server-only";
  * than a single subtotal/tax/fees/total, and the 50-line cap is enforced here, server side,
  * never trusted to the model.
  */
+import { isoDateFromPrinted } from "@/src/domain/dates";
+
 import { modelAmountToCents } from "./read-amounts";
 import { completedOutputText, isRecord, readUsage } from "./responses";
 
@@ -99,7 +101,7 @@ const INSTRUCTION =
   "refund or credit, or null when that field does not apply. Report the vendor name and invoice " +
   "date when shown, and a whole-bill tax or fee only when it is not already broken out per line. " +
   // The prompt and the parser are two paths that must agree (invariants H): whatever shape is
-  // asked for here has to be one `toIsoDate` accepts, or the date is dropped and every charge
+  // asked for here has to be one `isoDateFromPrinted` accepts, or the date is dropped and every charge
   // silently takes today's date instead of the bill's.
   "Write the invoice date as YYYY-MM-DD, whatever format the invoice itself prints it in.";
 
@@ -234,7 +236,9 @@ export function parseReadInvoiceResponse(json: unknown): ReadInvoiceResult {
   if (lines.length === 0) return { outcome: "none", ...usage };
 
   const vendor = toNullableString(parsed.vendor) ?? null;
-  const invoiceDate = toIsoDate(toNullableString(parsed.invoice_date));
+  // ISO downstream, whatever the model wrote: see `isoDateFromPrinted` (moved to the dates
+  // module in Phase 19 so the receipt reader shares one parser).
+  const invoiceDate = isoDateFromPrinted(toNullableString(parsed.invoice_date));
   const billTax = toNullableString(parsed.bill_tax);
   const billFees = toNullableString(parsed.bill_fees);
   // A whole-bill tax or fee is a note only (Phase 14 assumptions); an unparsable value is dropped
@@ -249,83 +253,6 @@ export function parseReadInvoiceResponse(json: unknown): ReadInvoiceResult {
     unreadableLines,
     ...usage,
   };
-}
-
-/**
- * The invoice's printed date, as an `IsoDate`, or null when it cannot be read as one.
- *
- * The model returns the date as the invoice prints it, and a US vendor prints `07/14/2026`.
- * Everything downstream expects ISO: `formatDateUS` splits on "-" (so a slashed date renders as
- * `undefined/undefined/NaN`), and every draft's `date` is validated with `isValidIsoDate` before
- * the create route will write it. Normalising here, in the one place the model's answer is
- * parsed, is what keeps both of those honest — asking the prompt for ISO is not enough on its
- * own, because a model that ignores the instruction would otherwise break the whole import.
- *
- * Deliberately narrow: ISO, and US month-first slashed or dashed. A date this cannot read
- * becomes null, which the screen then falls back to today for, rather than a guess. `2026-13-45`
- * is rejected by the calendar check rather than accepted for having the right shape.
- */
-function toIsoDate(value: string | null): string | null {
-  if (!value) return null;
-  const text = value.trim();
-
-  const iso = /^(\d{4})-(\d{2})-(\d{2})$/.exec(text);
-  if (iso) return isRealDate(iso[1], iso[2], iso[3]) ? text : null;
-
-  // 7/14/2026, 07-14-2026. Month first: these invoices are American, and there is no way to
-  // tell 03/04 apart from 04/03 without knowing that, so the ambiguity is resolved by locale
-  // rather than left to chance.
-  const us = /^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/.exec(text);
-  if (us) {
-    const [, month, day, year] = us;
-    const padded = `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
-    return isRealDate(year, month, day) ? padded : null;
-  }
-
-  // "March 18, 2026", "18 March 2026", "Mar 18 2026". The backstop, not the expectation: the
-  // prompt asks for YYYY-MM-DD, but a model that answers in the invoice's own words used to
-  // have its date thrown away, and every charge then took today's date — a wrong date on a
-  // document the funder reads, arrived at silently. Month name first or day first, since both
-  // are written; the year is always four digits, which is what keeps the two apart.
-  const named =
-    /^(?:([A-Za-z]{3,9})\.?\s+(\d{1,2})|(\d{1,2})\s+([A-Za-z]{3,9})\.?)\,?\s+(\d{4})$/.exec(text);
-  if (named) {
-    const monthWord = (named[1] ?? named[4]).toLowerCase();
-    const day = named[2] ?? named[3];
-    const year = named[5];
-    const index = MONTH_NAMES.findIndex((name) => name.startsWith(monthWord.slice(0, 3)));
-    if (index === -1) return null;
-    const month = String(index + 1);
-    const padded = `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
-    return isRealDate(year, month, day) ? padded : null;
-  }
-
-  return null;
-}
-
-/** Lower case, first three letters matched, so "Sept", "Sep" and "September" all land. */
-const MONTH_NAMES = [
-  "january",
-  "february",
-  "march",
-  "april",
-  "may",
-  "june",
-  "july",
-  "august",
-  "september",
-  "october",
-  "november",
-  "december",
-] as const;
-
-/** A real day in a real month, so 2026-02-30 and 2026-13-01 are refused, not merely reshaped. */
-function isRealDate(year: string, month: string, day: string): boolean {
-  const y = Number(year);
-  const m = Number(month);
-  const d = Number(day);
-  if (m < 1 || m > 12 || d < 1) return false;
-  return d <= new Date(Date.UTC(y, m, 0)).getUTCDate();
 }
 
 /**
