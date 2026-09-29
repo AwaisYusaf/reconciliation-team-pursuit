@@ -999,7 +999,7 @@ export const UI = {
 
   // PHASE-16 Track C (landing, funding-source limit)
   fundingSourceLimitReached:
-    "Reconciliation includes one active funding source. To add more, try Plus.",
+    "Reconciliation includes one active funding source. To add more, switch to Reconciliation + AI.",
   fundingSourceLimitManager:
     "Reconciliation includes one active funding source. Ask your admin about upgrading.",
   /** Archiving the only active funding source (Settings hides Archive on it; the server refuses). */

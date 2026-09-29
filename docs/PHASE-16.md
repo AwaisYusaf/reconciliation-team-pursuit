@@ -1092,7 +1092,7 @@ From the usability review, wording to confirm with the client; canonical rows go
 | billingCancelledCompToast | Your paid plan won't renew. Your complimentary access continues. |
 | fundingSourceKeepOneActive | Keep at least one active funding source. |
 | billingDowngradeTooManySources | Reconciliation includes one active funding source, and you have {n}. Archive the ones you don't use in Funding sources, then switch. |
-| fundingSourceLimitReached | Reconciliation includes one active funding source. To add more, try Plus. |
+| fundingSourceLimitReached | Reconciliation includes one active funding source. To add more, switch to Reconciliation + AI. (usability #23, 2026-09-29; was "To add more, try Plus.") |
 | fundingSourceLimitManager | Reconciliation includes one active funding source. Ask your admin about upgrading. |
 | fundingSourceLimitQueued | Your plan switches to Reconciliation on {date}, which includes one active funding source. To add another, cancel that switch in Plan & billing. |
 | billingSeePlans / billingGoToSources | See plans / Go to Funding sources |

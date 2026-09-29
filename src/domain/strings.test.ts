@@ -602,7 +602,7 @@ describe("sharing copy (PHASE-12, Appendix A verbatim)", () => {
 describe("funding source limit copy (Phase 16 Track C, C8 verbatim)", () => {
   it("pins the ticket's wording", () => {
     expect(UI.fundingSourceLimitReached).toBe(
-      "Reconciliation includes one active funding source. To add more, try Plus.",
+      "Reconciliation includes one active funding source. To add more, switch to Reconciliation + AI.",
     );
     expect(UI.fundingSourceLimitManager).toBe(
       "Reconciliation includes one active funding source. Ask your admin about upgrading.",
