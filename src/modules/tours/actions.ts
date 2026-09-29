@@ -25,8 +25,9 @@ function isTourKey(value: unknown): value is TourKey {
 }
 
 /**
- * Mark one tour seen — called on Finish **and** on Skip, which count the same for storage
- * (the spec: "Skipping or finishing means it doesn't show again"). `onConflictDoNothing` makes
+ * Mark one tour seen — called on Finish. Skip marks every tour instead (`skipAllToursAction`,
+ * D-132, which amended the spec's "Skipping or finishing means it doesn't show again", per tour,
+ * after skipping on one tab kept showing the next tab's tour). `onConflictDoNothing` makes
  * this idempotent: the tour component calls it exactly once per dismissal, but a slow double
  * click or a retried request must not error on the primary key it already wrote.
  *
@@ -42,6 +43,25 @@ export async function completeTourAction(tour: TourKey): Promise<ActionResult> {
   await db
     .insert(userTourProgress)
     .values({ userId: current.userId, tour })
+    .onConflictDoNothing();
+
+  return ok();
+}
+
+/**
+ * Skip (or Escape) on any walkthrough: marks **every** tour seen for this user, so none shows on
+ * another tab afterwards. Skipping used to mark only the current tab's tour, so someone who
+ * skipped on Settings was walked through Add Expense on their next visit there. Finishing a tour
+ * still marks only that one (`completeTourAction`) and carries on to the next tab. "Show the app
+ * guide again" (`resetToursAction`) and the replay button bring them back.
+ */
+export async function skipAllToursAction(): Promise<ActionResult> {
+  const current = await actionSession();
+  if ("expired" in current) return current.expired;
+
+  await db
+    .insert(userTourProgress)
+    .values(tourKey.enumValues.map((tour) => ({ userId: current.userId, tour })))
     .onConflictDoNothing();
 
   return ok();

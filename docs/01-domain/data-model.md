@@ -414,7 +414,7 @@ Unique index `generated_artifacts_scope_id_uq` on `(id, org_id, funding_source_i
 |---|---|---|
 | user_id | uuid FK | **cascade delete** with user |
 | tour | enum PK | `dashboard` \| `add_expense` \| `recurring` \| `packet` \| `expenses` \| `cover_sheets` \| `contract_summary` \| `line_items` \| `settings` (D-95 added the last five) |
-| completed_at | timestamptz | Set on Skip or Finish, never on mid-tour navigation away |
+| completed_at | timestamptz | Finish sets it for that tour; Skip (or Escape) sets it for **every** tour at once, so no other tab's tour appears later (D-132). Never set on mid-tour navigation away |
 
 Composite PK `(user_id, tour)`. Keyed by user, not organization or browser — a tour shown once
 must not reappear for that user on another device, but must show once each for every other user

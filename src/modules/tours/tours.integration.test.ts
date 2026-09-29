@@ -22,11 +22,11 @@ const hasDatabase = Boolean(process.env.DATABASE_URL);
 
 describe.skipIf(!hasDatabase)("tour progress (integration)", async () => {
   const { db } = await import("@/src/db");
-  const { organizations, userTourProgress, users } = await import("@/src/db/schema");
+  const { organizations, tourKey, userTourProgress, users } = await import("@/src/db/schema");
   const { createTestOrg } = await import("@/src/db/test-org");
   const { actionSession } = await import("@/src/lib/action-session");
   const { fail, SESSION_EXPIRED } = await import("@/src/lib/action-result");
-  const { completeTourAction, replayTourAction, resetToursAction } = await import("./actions");
+  const { completeTourAction, replayTourAction, resetToursAction, skipAllToursAction } = await import("./actions");
   const { hasSeenTour } = await import("./queries");
 
   const session = vi.mocked(actionSession);
@@ -175,6 +175,33 @@ describe.skipIf(!hasDatabase)("tour progress (integration)", async () => {
     expect(await hasSeenTour(userId, "line_items")).toBe(false);
   });
 
+  it("skipping any tour marks every tour seen for that user only, and the guide can still bring them back", async () => {
+    const { orgId } = await createTestOrg({ name: "Tour Org Skip" });
+    createdOrgIds.push(orgId);
+    const skipper = await createUser(orgId);
+    const colleague = await createUser(orgId);
+
+    // Already finished one: skipping must not trip over its existing row.
+    asUser(orgId, skipper);
+    await completeTourAction("settings");
+    expect(await skipAllToursAction()).toEqual({ ok: true, data: undefined });
+
+    // Skipped on Settings, so Add Expense (and every other tab) must not show one later.
+    for (const tour of tourKey.enumValues) expect(await hasSeenTour(skipper, tour)).toBe(true);
+    // Per person: a colleague in the same organization is still shown every tour.
+    for (const tour of tourKey.enumValues) expect(await hasSeenTour(colleague, tour)).toBe(false);
+
+    // Skipping again is harmless.
+    expect((await skipAllToursAction()).ok).toBe(true);
+
+    // The replay button re-arms just that tab's tour; "Show the app guide again" re-arms all.
+    await replayTourAction("add_expense");
+    expect(await hasSeenTour(skipper, "add_expense")).toBe(false);
+    expect(await hasSeenTour(skipper, "dashboard")).toBe(true);
+    await resetToursAction();
+    for (const tour of tourKey.enumValues) expect(await hasSeenTour(skipper, tour)).toBe(false);
+  });
+
   it("an expired session refuses every action and writes nothing", async () => {
     const { orgId } = await createTestOrg({ name: "Tour Org 5" });
     createdOrgIds.push(orgId);
@@ -190,7 +217,9 @@ describe.skipIf(!hasDatabase)("tour progress (integration)", async () => {
     const complete = await completeTourAction("packet");
     const reset = await resetToursAction();
     const replay = await replayTourAction("dashboard");
+    const skipAll = await skipAllToursAction();
     expect(complete).toMatchObject({ ok: false });
+    expect(skipAll).toMatchObject({ ok: false });
     expect(reset).toMatchObject({ ok: false });
     expect(replay).toMatchObject({ ok: false });
 

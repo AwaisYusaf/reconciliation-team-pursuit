@@ -26,7 +26,7 @@ tablet as one React Native app for iOS and Android, for organizations that alrea
 | M7 | **The full expense form**, the same as the web, narrative required. No "photo now, finish later" in the first version | The user, 2026-09-28. The alternative needs a new kind of draft and a database change. Revisit after testing |
 | M8 | **Build the whole app, then test it** on production with the existing demo account (a complimentary organization with fake data). No staging server | The user, 2026-09-28 |
 | M9 | **The web app's colours, type and UI rules** (`docs/03-modules/design-language.md`, `docs/redesign-brief.md`). Light only | The user, 2026-09-28. The website has no dark mode |
-| M10 | **Addresses are built screen by screen** with the app, not all 83 up front | Round 1. The sign-in key, error format and versioning get proven by the first screen that uses them, and no address is built that nothing calls |
+| M10 | **Addresses are built screen by screen** with the app, not all 84 up front | Round 1. The sign-in key, error format and versioning get proven by the first screen that uses them, and no address is built that nothing calls |
 
 ---
 
@@ -62,7 +62,7 @@ All of it is additive. Existing screens and behaviour do not change.
 
 ### 3.1 What exists and what does not
 
-- 83 server actions in 17 files, and 18 routes (Appendix A). The actions are plain functions taking
+- 84 server actions in 17 files, and 18 routes (Appendix A). The actions are plain functions taking
   typed objects (not form data), so a JSON wrapper is straightforward. Sign in, sign out, sign up
   and onboarding are the exceptions: they take form data, write cookies and redirect.
 - Every page, action and route reads the session through one place (`resolveSession`), which is
@@ -401,7 +401,7 @@ Each is on the phone (with its phase), web only, or left out, with the reason.
 | `app/a`, `a/orgs/[id]`, `a/feature-requests`, `a/feature-requests/[id]` | Left out: super admin dashboard (M4) |
 | `app/s/[token]` (public share page), `app/page.tsx` (landing), `app/privacy`, `app/terms` | Web only; the app links to the privacy policy |
 
-### Actions (83)
+### Actions (84)
 
 | File | Action | Phone |
 |---|---|---|
@@ -423,7 +423,7 @@ Each is on the phone (with its phase), web only, or left out, with the reason.
 | `feature-requests/staff-actions.ts` | `editFeatureRequestAction`, `setFeatureRequestStatusAction`, `setFeatureRequestShownAction`, `staffReplyToFeatureRequestAction` | Left out: super admin only (M4) |
 | `billing/actions.ts` | `startCheckoutAction`, `quoteChangeAction`, `applyChangeAction`, `cancelPendingChangeAction`, `cancelPlanAction`, `endPlanNowAction`, `resumePlanAction`, `billingPortalAction` | Web only (M3); the plan screen uses a new read |
 | `admin/actions.ts` | `changePlanAction`, `setComplimentaryAction`, `suspendOrgAction`, `reinstateOrgAction` | Left out: super admin only (M4) |
-| `tours/actions.ts` | `completeTourAction`, `resetToursAction`, `replayTourAction` | Web only; the phone's intro cards are remembered on the device (§4.2) |
+| `tours/actions.ts` | `completeTourAction`, `skipAllToursAction`, `resetToursAction`, `replayTourAction` | Web only; the phone's intro cards are remembered on the device (§4.2) |
 
 ### Routes (18)
 

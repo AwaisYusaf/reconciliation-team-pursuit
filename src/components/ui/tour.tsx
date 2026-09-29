@@ -30,7 +30,7 @@ import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 
 import { Button } from "@/src/components/ui/button";
 import type { TourKey } from "@/src/db/schema";
-import { completeTourAction } from "@/src/modules/tours/actions";
+import { completeTourAction, skipAllToursAction } from "@/src/modules/tours/actions";
 import {
   countResolvableAfter,
   firstShown,
@@ -338,21 +338,23 @@ export function TourGuide({
   }
 
   /**
-   * `skipped` decides what happens to the guided walkthrough, not just this one tour (both
-   * still write the same "seen" row — spec: "Skipping or finishing means it doesn't show
-   * again"). Skip (or Escape) is treated as "stop guiding me", not just "not this tour": it
-   * ends the walkthrough outright rather than silently carrying the user to the next tab
-   * anyway. Finishing, with the walkthrough on this tab, navigates on to `TOUR_SEQUENCE`'s next
-   * tab, whose own `TourGuide` picks up from there.
+   * `skipped` decides what happens to the guided walkthrough, not just this one tour. Skip (or
+   * Escape) is "stop guiding me": it marks every tour seen (`skipAllToursAction`), so no other
+   * tab's tour appears later, and ends the walkthrough outright rather than carrying the user
+   * to the next tab. Finishing marks only this tour seen and, with the walkthrough on this tab,
+   * navigates on to `TOUR_SEQUENCE`'s next tab, whose own `TourGuide` picks up from there.
    */
   function finish(skipped: boolean) {
     setCurrent(null);
     closeAnythingOpened();
-    void completeTourAction(tour);
     if (skipped) {
+      // Skip means "stop guiding me" everywhere: every tour is marked seen, not just this tab's,
+      // so skipping on Settings doesn't bring Add Expense's up on the next visit.
+      void skipAllToursAction();
       endTourSequence();
       return;
     }
+    void completeTourAction(tour);
     continueTourSequence(tour, router);
   }
 

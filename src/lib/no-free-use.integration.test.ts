@@ -91,6 +91,11 @@ describe.skipIf(!hasDatabase)("no free use at every entry point (I-9, I-16)", as
   const { GET: avatarGet } = await import("@/app/api/me/avatar/route");
   const { NextRequest } = await import("next/server");
   const DashboardPage = (await import("@/app/r/page")).default;
+  // The plan page is imported here, with the others, not inside the tests that render it: its
+  // first import takes several seconds while other files compile, which timed those tests out.
+  const PlanPage = (await import("@/app/r/plan/page")).default;
+  const { PlanBillingSection } = await import("@/app/r/plan-billing-section");
+  const { SubscribeButton } = await import("@/app/r/subscribe-button");
 
   let orgId: string;
   let sourceId: string;
@@ -180,12 +185,10 @@ describe.skipIf(!hasDatabase)("no free use at every entry point (I-9, I-16)", as
 
     it("a plan on hold shows its Plan & billing panel on /r/plan instead of the chooser, which would only refuse", async () => {
       const { orgBilling } = await import("@/src/db/schema");
-      const { PlanBillingSection } = await import("@/app/r/plan-billing-section");
       // Stripe stopped retrying: the org is unpaid, but its plan still exists in Stripe.
       await setBillingCopy(orgId, { stripeStatus: "unpaid", syncedAt: new Date() });
       await startSession(adminId);
       try {
-        const PlanPage = (await import("@/app/r/plan/page")).default;
         const page = await PlanPage({ searchParams: Promise.resolve({}) });
         expect(find(page, PlanBillingSection)[0]?.props.data).toMatchObject({
           isAdmin: true,
@@ -232,7 +235,6 @@ describe.skipIf(!hasDatabase)("no free use at every entry point (I-9, I-16)", as
     it("with two active sources, choosing Reconciliation on /r/plan asks which of those two to keep; nothing is listed up front", async () => {
       const { fundingSources } = await import("@/src/db/schema");
       const { ORIGINAL_RULES } = await import("@/src/modules/expenses/reimbursement");
-      const { SubscribeButton } = await import("@/app/r/subscribe-button");
       const added = await db
         .insert(fundingSources)
         .values([
@@ -249,7 +251,6 @@ describe.skipIf(!hasDatabase)("no free use at every entry point (I-9, I-16)", as
 
       await startSession(adminId);
       try {
-        const PlanPage = (await import("@/app/r/plan/page")).default;
         const page = await PlanPage({ searchParams: Promise.resolve({}) });
         const buttons = find(page, SubscribeButton);
         const reconciliation = buttons.find((b) => b.props.plan === "reconciliation");
