@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { formatBytes, formatMoney, formatPercent, percentValue, ratio, roundHalfAwayFromZero } from "./format";
+import { formatBytes, formatMoney, formatMoneyInput, formatPercent, percentValue, ratio, roundHalfAwayFromZero } from "./format";
+import { parseMoneyToCents } from "./money";
 
 describe("formatMoney (R1.2)", () => {
   it("always shows two decimals and thousands separators", () => {
@@ -140,5 +141,20 @@ describe("formatBytes (Phase 9 §5, §6)", () => {
     expect(formatBytes(-1)).toBe("0 B");
     expect(formatBytes(Number.NaN)).toBe("0 B");
     expect(formatBytes(Number.POSITIVE_INFINITY)).toBe("0 B");
+  });
+});
+
+describe("formatMoneyInput (usability #13): what a money input starts with", () => {
+  it("groups thousands, keeps two decimals, drops the $, keeps a leading minus", () => {
+    expect(formatMoneyInput(0)).toBe("0.00");
+    expect(formatMoneyInput(12_000_000)).toBe("120,000.00");
+    expect(formatMoneyInput(1234)).toBe("12.34");
+    expect(formatMoneyInput(-500)).toBe("-5.00");
+  });
+
+  it("reads back to the same cents through parseMoneyToCents", () => {
+    for (const cents of [0, 12_000_000, 1234, -500]) {
+      expect(parseMoneyToCents(formatMoneyInput(cents))).toBe(cents);
+    }
   });
 });

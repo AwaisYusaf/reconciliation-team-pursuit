@@ -7,7 +7,10 @@ import { and, asc, eq, isNull } from "drizzle-orm";
 import { cache } from "react";
 
 import { db, type Database } from "@/src/db";
-import { fundingSources, type FundingSource } from "@/src/db/schema";
+import { loadLineItemBudgets } from "@/src/db/queries";
+import { fundingSources, organizations, type FundingSource } from "@/src/db/schema";
+import type { FundingPosition } from "@/src/domain/funding-limit";
+import { sumBy } from "@/src/domain/money";
 import { fail, type ActionResult } from "@/src/lib/action-result";
 import { isUuid } from "@/src/lib/ids";
 
@@ -23,9 +26,10 @@ type Executor = Database | Parameters<Parameters<Database["transaction"]>[0]>[0]
  *
  * Was a stopgap for every Phase 1 insert path until each was taught to take an explicit
  * source (Phases 2 and 4 retired all of those). What's left is its correct permanent use:
- * `signUpAction`/`saveOnboardingLineItemsAction`/`completeOnboardingAction` in
- * `src/modules/auth/actions.ts`, where there is by construction exactly one source — the one
- * just created — so "the default" and "the only one" are the same thing.
+ * `signUpAction`/`saveOnboardingFundingAction`/`saveOnboardingLineItemsAction` in
+ * `src/modules/auth/actions.ts` and the two onboarding pages, where there is by construction
+ * exactly one source, the one created at sign-up, so "the default" and "the only one" are the
+ * same thing.
  */
 export async function primaryFundingSourceId(orgId: string, reader: Executor = db): Promise<string> {
   const [row] = await reader
@@ -66,6 +70,54 @@ export async function findFundingSource(
     .where(and(eq(fundingSources.id, id), eq(fundingSources.orgId, orgId)))
     .limit(1);
   return row ?? null;
+}
+
+/**
+ * A funding source's position for the funding limit (R9.6): its contract value, and the line
+ * items' scheduled and new-performance totals from `loadLineItemBudgets` (the one supplier).
+ *
+ * `lock` (only inside a transaction) takes two row locks, in this order, before reading the
+ * line items:
+ * 1. the organisation row FOR KEY SHARE. Archiving (Settings and the billing sync) locks the
+ *    organisation FOR UPDATE and then updates the source row; a line item insert needs a key
+ *    share on the organisation for its foreign key. Taking it here first puts every path in the
+ *    same order (organisation, then source), so an add and an archive queue instead of
+ *    deadlocking. KEY SHARE is the lock the insert's foreign key takes anyway.
+ * 2. the source row FOR NO KEY UPDATE, so every change to either side (line item base values,
+ *    the onboarding line items, the contract value) queues on the same row and then reads the
+ *    other's committed result. NO KEY UPDATE, not FOR UPDATE: expense and draft inserts take a
+ *    key share on the source for their foreign key, and must not wait on this.
+ * Null when the source isn't this organisation's. `archivedAt` comes from the locked row, so a
+ * caller can re-check R14.3 after waiting.
+ */
+export async function loadFundingPosition(
+  reader: Executor,
+  orgId: string,
+  fundingSourceId: string,
+  lock = false,
+): Promise<(FundingPosition & { archivedAt: Date | null }) | null> {
+  if (lock) {
+    await reader
+      .select({ id: organizations.id })
+      .from(organizations)
+      .where(eq(organizations.id, orgId))
+      .for("key share");
+  }
+  const query = reader
+    .select({ contractValueCents: fundingSources.contractValueCents, archivedAt: fundingSources.archivedAt })
+    .from(fundingSources)
+    .where(and(eq(fundingSources.id, fundingSourceId), eq(fundingSources.orgId, orgId)));
+  // The locks above come before the line items are read: under READ COMMITTED each statement
+  // sees what was committed when it started, so the read after a wait sees the other side's change.
+  const [row] = lock ? await query.for("no key update") : await query;
+  if (!row) return null;
+  const budgets = await loadLineItemBudgets(orgId, fundingSourceId, reader);
+  return {
+    contractValueCents: row.contractValueCents,
+    scheduledCents: sumBy(budgets, (b) => b.scheduledValueCents),
+    newPerformanceCents: sumBy(budgets, (b) => b.newPerformanceCents),
+    archivedAt: row.archivedAt,
+  };
 }
 
 export type SourceContext = {

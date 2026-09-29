@@ -1,10 +1,14 @@
 import { PageTitle } from "@/src/components/ui/surfaces";
 import { TourGuide } from "@/src/components/ui/tour";
+import { db } from "@/src/db";
+import { formatMoneyInput } from "@/src/domain/format";
+import { fundingTotalCents } from "@/src/domain/funding-limit";
 import { pageTitle } from "@/src/domain/strings";
 import { aiAllowedForOrg } from "@/src/modules/ai/access";
 import { billingEnabled } from "@/src/modules/billing/config";
 import { loadPlanBilling } from "@/src/modules/billing/plan-view-loader";
 import { loadFundingSourceLimit } from "@/src/modules/funding-sources/limit";
+import { loadFundingPosition } from "@/src/modules/funding-sources/queries";
 import { loadSettings } from "@/src/modules/settings/queries";
 import { parseSettingsSection } from "@/src/modules/settings/sections";
 import { pageSession } from "@/src/lib/page-session";
@@ -47,7 +51,10 @@ export default async function SettingsPage({
   const users: OrgUser[] = usersResult?.ok ? usersResult.data : [];
   const usersError = usersResult && !usersResult.ok ? usersResult.error : undefined;
 
-  const money = (cents: number) => (cents / 100).toFixed(2);
+  // Each source's line items against its contract total, for the funding card (R9.6).
+  const positions = await Promise.all(
+    data.fundingSources.map((source) => loadFundingPosition(db, session.orgId, source.id)),
+  );
 
   return (
     <div>
@@ -64,7 +71,7 @@ export default async function SettingsPage({
         userName={session.userName ?? null}
         avatarVersion={session.avatarKey ? avatarVersionOf(session.avatarKey) : null}
         organisation={{ name: data.org.name, docName: data.org.docName }}
-        fundingSources={data.fundingSources.map((source) => ({
+        fundingSources={data.fundingSources.map((source, i) => ({
           id: source.id,
           name: source.name,
           type: source.type,
@@ -73,14 +80,16 @@ export default async function SettingsPage({
           contractNumber: source.contractNumber,
           basePoNumber: source.basePoNumber,
           performancePoNumber: source.performancePoNumber,
-          contractValue: money(source.contractValueCents),
+          contractValue: formatMoneyInput(source.contractValueCents),
           contractStart: source.contractStart ?? "",
           contractEnd: source.contractEnd ?? "",
           fiduciaryName: source.fiduciaryName,
-          advancesReceived: money(source.advancesReceivedCents),
+          advancesReceived: formatMoneyInput(source.advancesReceivedCents),
           taxReimbursable: source.taxReimbursable,
           feesReimbursable: source.feesReimbursable,
           archived: source.archivedAt !== null,
+          newPerformanceCents: positions[i]?.newPerformanceCents ?? 0,
+          contractTotalCents: positions[i] ? fundingTotalCents(positions[i]) : 0,
         }))}
         paymentSources={data.sources.map((row) => ({
           id: row.id,

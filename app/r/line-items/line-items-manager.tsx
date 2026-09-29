@@ -8,15 +8,17 @@ import { ConfirmButton } from "@/src/components/ui/confirm-button";
 import { Dialog } from "@/src/components/ui/dialog";
 import { Input, Label, MoneyInput } from "@/src/components/ui/field";
 import { Modal } from "@/src/components/ui/modal";
-import { Card, DangerPanel } from "@/src/components/ui/surfaces";
+import { ColumnHints } from "@/src/components/ui/column-hints";
+import { Card, DangerPanel, InfoNote } from "@/src/components/ui/surfaces";
 import { TableCard, Td, Th } from "@/src/components/ui/table";
 import { reportResult } from "@/src/components/ui/toast";
 import type { ActionResult } from "@/src/lib/action-result";
 import { cn } from "@/src/lib/cn";
 import { formatDateUS, todayIso } from "@/src/domain/dates";
-import { formatMoney } from "@/src/domain/format";
+import { formatMoney, formatMoneyInput } from "@/src/domain/format";
 import { cascadeConfirmation, moveInOrder } from "@/src/domain/line-item-rules";
-import { UI } from "@/src/domain/strings";
+import { sumBy } from "@/src/domain/money";
+import { lineItemsAgainstTotal, UI } from "@/src/domain/strings";
 import {
   addLineItemPerformanceAction,
   deleteLineItemAction,
@@ -27,11 +29,6 @@ import {
   type LineItemDeleteConfirmation,
 } from "@/src/modules/line-items/actions";
 import type { LineItemRow } from "@/src/modules/line-items/queries";
-
-/** Cents → the editable string form, so an edit round-trips without reformatting surprises. */
-function toInput(cents: number): string {
-  return (cents / 100).toFixed(2);
-}
 
 /** Sum of a line item's performances (m08) — 0 for a line item with none. */
 function performanceTotal(row: LineItemRow): number {
@@ -112,9 +109,12 @@ const DENSE_BUTTON = "min-h-8! px-2.5! py-0.5! text-[15px]!";
 export function LineItemsManager({
   rows,
   fundingSourceId,
+  contractTotalCents,
 }: {
   rows: LineItemRow[];
   fundingSourceId: string;
+  /** The source's contract total (R7.3); null when no contract value is set (no limit, R9.6). */
+  contractTotalCents: number | null;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -133,6 +133,9 @@ export function LineItemsManager({
   const [showAdd, setShowAdd] = useState(false);
   const [addDraft, setAddDraft] = useState({ name: "", scheduledValue: "", openingBilled: "" });
   const [error, setError] = useState<string | null>(null);
+  /** The "+ Add line item" card's own refusal, shown in the card only: the page-level panel is
+   *  far above it, and showing both repeated the same message twice on one screen. */
+  const [addError, setAddError] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<
     ({ id: string; changed?: boolean } & LineItemDeleteConfirmation) | null
   >(null);
@@ -141,8 +144,10 @@ export function LineItemsManager({
     work: () => Promise<ActionResult<unknown>>,
     onDone?: () => void,
     successMessage?: string,
+    showError: (message: string | null) => void = setError,
   ) {
     setError(null);
+    showError(null);
     startTransition(async () => {
       const result = await work();
       if (reportResult(result, successMessage)) {
@@ -150,7 +155,7 @@ export function LineItemsManager({
         router.refresh();
       } else {
         // Kept inline as well: a refusal explains a rule and should stay on screen.
-        setError(result.error ?? "That change couldn't be saved. Try again.");
+        showError(result.error ?? "That change couldn't be saved. Try again.");
       }
     });
   }
@@ -160,14 +165,15 @@ export function LineItemsManager({
     setError(null);
     setDraft({
       name: row.name,
-      scheduledValue: toInput(row.scheduledValueCents),
-      openingBilled: toInput(row.openingBilledCents),
+      scheduledValue: formatMoneyInput(row.scheduledValueCents),
+      openingBilled: formatMoneyInput(row.openingBilledCents),
     });
     setNewPerformance(emptyPerformanceDraft());
   }
 
   function closeManage() {
     setManagingId(null);
+    setError(null);
     setNewPerformance(emptyPerformanceDraft());
     setEditingPerformance(null);
   }
@@ -180,7 +186,7 @@ export function LineItemsManager({
       id: performance.id,
       name: performance.name ?? "",
       date: performance.date ?? "",
-      amount: toInput(performance.amountCents),
+      amount: formatMoneyInput(performance.amountCents),
     });
   }
 
@@ -245,6 +251,11 @@ export function LineItemsManager({
   function removePerformance(id: string) {
     run(() => deleteLineItemPerformanceAction(id), undefined, "Performance deleted.");
   }
+
+  // The figure the Scheduled Value column shows, summed: one source for the Total row and the
+  // comparison with the contract total below it.
+  const lineItemsTotal = sumBy(rows, (row) => row.totalScheduledValueCents);
+  const performancesTotal = sumBy(rows, performanceTotal);
 
   return (
     <div>
@@ -526,6 +537,13 @@ export function LineItemsManager({
                 </Button>
               </div>
 
+              {/* The refusal where it happened: the page-level panel is behind this overlay. */}
+              {error && (
+                <DangerPanel tone="notice" className="mt-4">
+                  {error}
+                </DangerPanel>
+              )}
+
               <div className="flex justify-end mt-5 pt-4 border-t border-line">
                 <Button
                   variant="secondary"
@@ -625,12 +643,49 @@ export function LineItemsManager({
               </Td>
             </tr>
           ))}
+          {rows.length > 0 && (
+            <tr className={cn(ROW_DENSE, "font-bold")}>
+              <Td className="border-t-2 border-ink" />
+              <Td className="border-t-2 border-ink">Total</Td>
+              <Td align="right" numeric className="border-t-2 border-ink">
+                {formatMoney(lineItemsTotal)}
+              </Td>
+              <Td align="right" numeric className="border-t-2 border-ink">
+                {performancesTotal > 0 ? formatMoney(performancesTotal) : "-"}
+              </Td>
+              <Td align="right" numeric className="border-t-2 border-ink">
+                {formatMoney(sumBy(rows, (row) => row.openingBilledCents))}
+              </Td>
+              <Td className="border-t-2 border-ink" />
+            </tr>
+          )}
         </tbody>
       </TableCard>
 
+      {/* Also with no line items yet: this screen has no other place showing the total. */}
+      {contractTotalCents !== null &&
+        (lineItemsTotal > contractTotalCents ? (
+          <DangerPanel className="mt-4">{lineItemsAgainstTotal(lineItemsTotal, contractTotalCents)}</DangerPanel>
+        ) : (
+          <InfoNote className="mt-4">{lineItemsAgainstTotal(lineItemsTotal, contractTotalCents)}</InfoNote>
+        ))}
+
+      <ColumnHints
+        items={[
+          { term: UI.termScheduledValue, text: UI.hintScheduledValue },
+          { term: UI.termPerformances, text: UI.hintPerformances },
+        ]}
+      />
+
       {!showAdd ? (
         <div className="mt-6">
-          <Button variant="secondary" onClick={() => setShowAdd(true)}>
+          <Button
+            variant="secondary"
+            onClick={() => {
+              setAddError(null);
+              setShowAdd(true);
+            }}
+          >
             + Add line item
           </Button>
         </div>
@@ -675,6 +730,13 @@ export function LineItemsManager({
             </div>
           </div>
 
+          {/* The refusal where it happened: the page-level panel is far above this card. */}
+          {addError && (
+            <DangerPanel tone="notice" className="mt-4">
+              {addError}
+            </DangerPanel>
+          )}
+
           <div className="flex flex-wrap gap-3 mt-[22px]">
             <Button
               disabled={pending}
@@ -686,12 +748,19 @@ export function LineItemsManager({
                     setAddDraft({ name: "", scheduledValue: "", openingBilled: "" });
                   },
                   "Line item added.",
+                  setAddError,
                 )
               }
             >
               Add line item
             </Button>
-            <Button variant="secondary" onClick={() => setShowAdd(false)}>
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setAddError(null);
+                setShowAdd(false);
+              }}
+            >
               Cancel
             </Button>
           </div>

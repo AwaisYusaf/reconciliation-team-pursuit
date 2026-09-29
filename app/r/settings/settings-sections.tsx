@@ -70,6 +70,10 @@ export type FundingSourceRow = {
   taxReimbursable: boolean;
   feesReimbursable: boolean;
   archived: boolean;
+  /** The performances that count toward the contract total (D-82), added on top of the value. */
+  newPerformanceCents: number;
+  /** The contract total (R7.3): the value plus `newPerformanceCents` when a value is set. */
+  contractTotalCents: number;
 };
 
 const FUNDING_SOURCE_TYPES = [
@@ -479,6 +483,7 @@ function FundingSourceDetails({
   orgDocName: string;
 }) {
   const money = (value: string) => formatMoney(parseMoneyToCents(value) ?? 0);
+  const cv = parseMoneyToCents(source.contractValue) ?? 0;
   const date = (value: string) => (value ? formatDateUS(value) : null);
   const period =
     source.contractStart || source.contractEnd
@@ -505,7 +510,16 @@ function FundingSourceDetails({
       {/* The two figures people come here for, then when the money runs, read at a glance. The
           contract value is the one figure the row exists to show, so it takes the accent tile. */}
       <div className="grid gap-3 sm:grid-cols-3">
-        <StatTile label="Contract value" value={money(source.contractValue)} tone="accent" />
+        <StatTile
+          label="Contract value"
+          value={money(source.contractValue)}
+          sub={
+            cv > 0 && source.newPerformanceCents > 0
+              ? `+ Performances ${formatMoney(source.newPerformanceCents)} = Total ${formatMoney(source.contractTotalCents)}`
+              : undefined
+          }
+          tone="accent"
+        />
         <StatTile label="Advances received" value={money(source.advancesReceived)} />
         <StatTile
           label="Contract period"
@@ -593,10 +607,18 @@ function FundingSourcesSection({
 }) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState(EMPTY_FUNDING_SOURCE_DRAFT);
+  /** A refusal stays in the form (a toast alone disappears while the person reads it). */
+  const [formError, setFormError] = useState<string | null>(null);
 
   function startAdd() {
     setDraft(EMPTY_FUNDING_SOURCE_DRAFT);
+    setFormError(null);
     setEditingId(NEW_FUNDING_SOURCE);
+  }
+
+  function cancelEdit() {
+    setFormError(null);
+    setEditingId(null);
   }
 
   function startEdit(source: FundingSourceRow) {
@@ -616,6 +638,7 @@ function FundingSourcesSection({
       taxReimbursable: source.taxReimbursable,
       feesReimbursable: source.feesReimbursable,
     });
+    setFormError(null);
     setEditingId(source.id);
   }
 
@@ -627,7 +650,11 @@ function FundingSourcesSection({
     // Closed only once the save succeeds: closing straight away threw the typed values away on
     // any refusal (duplicate name, end before start), and reopening reset the draft.
     run(
-      work,
+      async () => {
+        const result = await work();
+        setFormError(result.ok ? null : result.error);
+        return result;
+      },
       editingId === NEW_FUNDING_SOURCE ? "Funding source added." : "Funding source saved.",
       () => setEditingId(null),
     );
@@ -746,7 +773,9 @@ function FundingSourcesSection({
                   setDraft={setDraft}
                   orgDocName={orgDocName}
                   pending={pending}
-                  onCancel={() => setEditingId(null)}
+                  error={formError}
+                  newPerformanceCents={source.newPerformanceCents}
+                  onCancel={cancelEdit}
                   onSave={save}
                 />
               </div>
@@ -771,7 +800,9 @@ function FundingSourcesSection({
               setDraft={setDraft}
               orgDocName={orgDocName}
               pending={pending}
-              onCancel={() => setEditingId(null)}
+              error={formError}
+              newPerformanceCents={0}
+              onCancel={cancelEdit}
               onSave={save}
             />
           </div>
@@ -820,6 +851,8 @@ function FundingSourceForm({
   setDraft,
   orgDocName,
   pending,
+  error,
+  newPerformanceCents,
   onCancel,
   onSave,
 }: {
@@ -827,6 +860,9 @@ function FundingSourceForm({
   setDraft: (next: FundingSourceDraft) => void;
   orgDocName: string;
   pending: boolean;
+  error: string | null;
+  /** The performances counted on top of the contract value (D-82); 0 for a new source. */
+  newPerformanceCents: number;
   onCancel: () => void;
   onSave: () => void;
 }) {
@@ -914,7 +950,11 @@ function FundingSourceForm({
                 value={draft.contractValue}
                 onChange={(event) => setDraft({ ...draft, contractValue: event.target.value })}
               />
-              <Helper>Leave at 0.00 to use the total of the line items&apos; scheduled values.</Helper>
+              <Helper>
+                Leave at 0.00 to use the total of the line items&apos; scheduled values.
+                {newPerformanceCents > 0 &&
+                  ` Performances added on the Line Items screen (${formatMoney(newPerformanceCents)}) are added on top of this.`}
+              </Helper>
             </div>
             <div>
               <Label htmlFor="fsAdvancesReceived">Advances received</Label>
@@ -968,6 +1008,12 @@ function FundingSourceForm({
               This funder reimburses fees
             </label>
           </div>
+
+          {error && (
+            <DangerPanel tone="notice" className="mt-5">
+              {error}
+            </DangerPanel>
+          )}
 
           <div className="flex justify-end gap-3 mt-6">
             <Button variant="quiet" disabled={pending} onClick={onCancel}>

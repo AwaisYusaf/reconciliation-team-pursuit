@@ -6,6 +6,7 @@
  */
 import { invoicePeriod, type MonthKey } from "./dates";
 import { formatMoney } from "./format";
+import { contractTotalCents } from "./summary";
 
 export type ContractContextInput = {
   contractNumber: string;
@@ -58,15 +59,9 @@ export function contractContextItems(
     items.push(identifier("Contract", input.contractNumber.trim()));
   }
 
-  // Falls back to the scheduled total so the strip is useful before the contract value is
-  // entered; suppressed entirely when there is no budget yet either. A configured contract
-  // value only needs a *new* performance added on top (D-82), same read-side approach as
-  // `contractTotalCents` in summary.ts — a migrated one is already inside it. The fallback
-  // (`scheduledTotalCents`) already has every performance folded in either way.
-  const totalCents =
-    input.contractValueCents > 0
-      ? input.contractValueCents + input.newPerformanceCents
-      : input.scheduledTotalCents;
+  // The one definition, `contractTotalCents` in summary.ts; suppressed entirely when there is
+  // no budget yet either.
+  const totalCents = contractTotalCents(input);
   if (totalCents > 0) {
     items.push(measure("Contract total", formatMoney(totalCents)));
   }

@@ -176,6 +176,54 @@ export const UI = {
   lockNeedsDocuments: "Add the missing documents before locking this month.",
   /** Lock upload refusal for anything but a PDF (R10.7). */
   lockNotPdf: "Upload the signed packet as a PDF.",
+  /** The funding limit (R9.6): a line item add or edit that would take the line items further
+   *  over the contract total. Amounts arrive formatted. */
+  fundingLimitExceeded: (lineItemsTotal: string, contractTotal: string) =>
+    `These line items would add up to ${lineItemsTotal}, more than the ${contractTotal} contract total. Lower a line item, or raise the contract value in Settings.`,
+  /** Settings: a contract value that would put the contract total below the line items (R9.6). */
+  contractValueBelowLineItems: (lineItemsTotal: string, contractTotal: string) =>
+    `The line items add up to ${lineItemsTotal}, more than the ${contractTotal} contract total this would give. Lower a line item first, or enter a larger contract value.`,
+  /** Column hints (usability #39, #47): each column's own name, then what it means in plain
+   *  words, shown together in `ColumnHints`. The column names stay the funder's (R7.1). */
+  termScheduledValue: "Scheduled value",
+  hintScheduledValue: "The budget for a line item, including any performances.",
+  termPerformances: "Performances",
+  hintPerformances: "Extra money added to a line item after the budget was set. Add them under Manage.",
+  termPreviouslyBilled: "Previously billed",
+  hintPreviouslyBilled: "What was billed before this month.",
+  termBalanceToFinish: "Balance to finish",
+  hintBalanceToFinish: "What is left to spend.",
+  termBase: "BASE",
+  hintBase: "The heading the funder's form uses for the budget line items.",
+  /** The fold that holds the column hints (user review 2026-09-29). */
+  columnsHelp: "What do these columns mean?",
+  /** m07: the link beside a blocked download, to where the missing documents are listed. */
+  openMonthEndPacket: "Open the Month-End Packet",
+  /** m07 reconciliation card with no advances recorded (R7.4, usability #38). */
+  noAdvancesYet:
+    "No advances received are recorded for this funding source. If your funder paid you in advance, enter the amount in Settings, under Funding sources, and this shows how much of it your expenses have used.",
+  /** Onboarding (m00). */
+  onboardingFundingFirst: "Set up your funding first.",
+  onboardingNoLineItems: "Add at least one line item with an amount.",
+  onboardingCheckRows: "Check the line items marked above.",
+  onboardingRowNeedsAmount: (name: string) => `Enter an amount for ${name}, or remove the row.`,
+  onboardingRowNeedsName: "Enter a name for this line item, or remove the row.",
+  onboardingRowNegative: (name: string) => `The amount for ${name} can't be negative.`,
+  onboardingOverTotal: (lineItemsTotal: string, total: string) =>
+    `These line items add up to ${lineItemsTotal}, more than your total of ${total}. Lower a line item, or go back and change the total amount.`,
+  onboardingPlanned: (planned: string, total: string, rest: string, over: boolean) =>
+    `Planned ${planned} of ${total} · ${rest} ${over ? "over" : "left"}`,
+  onboardingPaymentReceived: "Payment received. Thank you.",
+  onboardingRules: (taxReimbursable: boolean, feesReimbursable: boolean) =>
+    `By default, this funding ${
+      taxReimbursable && feesReimbursable
+        ? "reimburses sales tax and fees"
+        : taxReimbursable
+          ? "reimburses sales tax but not fees"
+          : feesReimbursable
+            ? "reimburses fees but not sales tax"
+            : "doesn't reimburse sales tax or fees"
+    }. You can change this later in Settings, under Funding sources.`,
   /** Lock upload refusal — the row was already locked by someone else. */
   monthAlreadyLocked: "This month is already locked.",
   /** Unlock refusal — nothing to undo. */
@@ -1138,9 +1186,21 @@ export const FEATURE_REQUEST_STATUS_DESCRIPTIONS: Record<FeatureRequestStatus, s
   already_requested: "Someone asked for this before. A reply points to the existing request.",
 };
 
-/** Inline explanation beside a disabled download button (m07, R4.3). */
+/** Notice under a disabled download button (m07, R4.3), beside a link to the Month-End Packet
+ *  (`UI.openMonthEndPacket`), so the sentence no longer points at a tab itself. */
 export function downloadBlockedReason(count: number): string {
-  return `Blocked: ${count} ${count === 1 ? "expense is" : "expenses are"} missing documentation. See the Month-End Packet tab.`;
+  return `The summary can't be downloaded yet: ${count} ${count === 1 ? "expense is" : "expenses are"} missing documentation.`;
+}
+
+/** The line items against the contract total, for Line Items and Contract Summary (#46, #37). */
+export function lineItemsAgainstTotal(lineItemsCents: number, contractTotalCents: number): string {
+  if (lineItemsCents > contractTotalCents) {
+    return `Line items total ${formatMoney(lineItemsCents)}, ${formatMoney(lineItemsCents - contractTotalCents)} more than the ${formatMoney(contractTotalCents)} contract total. Lower a line item, or raise the contract value in Settings.`;
+  }
+  if (lineItemsCents < contractTotalCents) {
+    return `Line items total ${formatMoney(lineItemsCents)} of the ${formatMoney(contractTotalCents)} contract total. ${formatMoney(contractTotalCents - lineItemsCents)} is not in a line item yet.`;
+  }
+  return `Line items total ${formatMoney(lineItemsCents)}, the full contract total.`;
 }
 
 /** Refusal message when a line item still has expenses (R9.3). */
