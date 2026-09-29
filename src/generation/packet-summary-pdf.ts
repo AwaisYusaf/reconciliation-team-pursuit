@@ -15,6 +15,8 @@ import { formatMoney, formatPercent, summaryRowLabel } from "@/src/domain/format
 import { packetSummaryTitle } from "@/src/domain/strings";
 import { contractSummary, type SummaryRow } from "@/src/domain/summary";
 
+import { DOCUMENT_THEME, channels } from "./document-theme";
+import { strokeOpenTop } from "./pdf-grid";
 import { PACKET_MARGIN_IN, inchesToPoints } from "./layout-constants";
 import { winAnsiSafe } from "./pdf-text";
 import type { MonthSnapshot } from "./month-snapshot";
@@ -24,9 +26,13 @@ const PAGE_HEIGHT = inchesToPoints(11);
 const MARGIN = inchesToPoints(PACKET_MARGIN_IN);
 const CONTENT_WIDTH = PAGE_WIDTH - MARGIN * 2;
 
-const YELLOW = rgb(1, 1, 0);
-const SECTION_FILL = rgb(0.945, 0.925, 0.886);
-const BLACK = rgb(0, 0, 0);
+// The cover sheet's palette (D-137): a brown header band, a tinted total, a warm grey grid.
+const INK = rgb(...channels(DOCUMENT_THEME.ink));
+const SUB = rgb(...channels(DOCUMENT_THEME.sub));
+const LINE = rgb(...channels(DOCUMENT_THEME.line));
+const ACCENT = rgb(...channels(DOCUMENT_THEME.accent));
+const SECTION_FILL = rgb(...channels(DOCUMENT_THEME.section));
+const WHITE = rgb(...channels(DOCUMENT_THEME.onAccent));
 
 const TITLE_SIZE = 16;
 const SUBTITLE_SIZE = 9;
@@ -80,6 +86,7 @@ function drawCellText(
     align: "left" | "right";
     font: PDFFont;
     size: number;
+    color?: ReturnType<typeof rgb>;
   },
 ): void {
   const text = winAnsiSafe(rawText);
@@ -89,7 +96,7 @@ function drawCellText(
       ? options.x + options.width - CELL_PAD - textWidth
       : options.x + CELL_PAD;
 
-  page.drawText(text, { x, y: options.y, size: options.size, font: options.font, color: BLACK });
+  page.drawText(text, { x, y: options.y, size: options.size, font: options.font, color: options.color ?? INK });
 }
 
 /** A bordered row of cells; `values` is index-aligned with COLUMNS. */
@@ -98,7 +105,7 @@ function drawRow(
   top: number,
   values: string[],
   fonts: Fonts,
-  options: { bold?: boolean; fill?: ReturnType<typeof rgb>; size?: number } = {},
+  options: { bold?: boolean; fill?: ReturnType<typeof rgb>; size?: number; rule?: boolean } = {},
 ): number {
   const size = options.size ?? BODY_SIZE;
   const font = options.bold ? fonts.bold : fonts.regular;
@@ -113,14 +120,7 @@ function drawRow(
     if (options.fill) {
       page.drawRectangle({ x, y: bottom, width: column.width, height, color: options.fill });
     }
-    page.drawRectangle({
-      x,
-      y: bottom,
-      width: column.width,
-      height,
-      borderColor: BLACK,
-      borderWidth: 0.5,
-    });
+    strokeOpenTop(page, { x, y: bottom, width: column.width, height }, LINE);
 
     const value = values[index] ?? "";
     if (index === 0) {
@@ -148,6 +148,11 @@ function drawRow(
     x += column.width;
   });
 
+  // The total's 1 pt brown rule, as on the cover sheet.
+  if (options.rule) {
+    page.drawLine({ start: { x: MARGIN, y: top }, end: { x: MARGIN + CONTENT_WIDTH, y: top }, thickness: 1, color: ACCENT });
+  }
+
   return bottom;
 }
 
@@ -157,21 +162,14 @@ function drawSectionRow(page: PDFPage, top: number, rawLabel: string, fonts: Fon
   const height = ROW_HEIGHT;
   const bottom = top - height;
 
-  page.drawRectangle({
-    x: MARGIN,
-    y: bottom,
-    width: CONTENT_WIDTH,
-    height,
-    color: SECTION_FILL,
-    borderColor: BLACK,
-    borderWidth: 0.5,
-  });
+  page.drawRectangle({ x: MARGIN, y: bottom, width: CONTENT_WIDTH, height, color: SECTION_FILL });
+  strokeOpenTop(page, { x: MARGIN, y: bottom, width: CONTENT_WIDTH, height }, LINE);
   page.drawText(label, {
     x: MARGIN + CELL_PAD,
     y: bottom + (height - HEADER_SIZE) / 2 + 1,
     size: HEADER_SIZE,
     font: fonts.bold,
-    color: BLACK,
+    color: INK,
   });
 
   return bottom;
@@ -187,8 +185,8 @@ function drawTableHeader(page: PDFPage, top: number, fonts: Fonts): number {
       y: bottom,
       width: column.width,
       height: HEADER_HEIGHT,
-      color: YELLOW,
-      borderColor: BLACK,
+      color: ACCENT,
+      borderColor: ACCENT,
       borderWidth: 0.5,
     });
 
@@ -202,6 +200,7 @@ function drawTableHeader(page: PDFPage, top: number, fonts: Fonts): number {
         align: column.align,
         font: fonts.bold,
         size: HEADER_SIZE,
+        color: WHITE,
       });
     });
 
@@ -248,9 +247,12 @@ export async function buildSummarySectionPdf(snapshot: MonthSnapshot): Promise<B
     y: y - TITLE_SIZE,
     size: TITLE_SIZE,
     font: fonts.bold,
-    color: BLACK,
+    color: INK,
   });
-  y -= TITLE_SIZE + 12;
+  y -= TITLE_SIZE + 6;
+  // A brown rule under the title, across the content width, as on the cover sheet.
+  page.drawLine({ start: { x: MARGIN, y }, end: { x: MARGIN + CONTENT_WIDTH, y }, thickness: 1.5, color: ACCENT });
+  y -= 10;
 
   // One subtitle line carrying the R7.3 context, empty settings omitted.
   const context = winAnsiSafe(
@@ -275,7 +277,7 @@ export async function buildSummarySectionPdf(snapshot: MonthSnapshot): Promise<B
       y: y - SUBTITLE_SIZE,
       size: SUBTITLE_SIZE,
       font: fonts.regular,
-      color: rgb(0.35, 0.32, 0.28),
+      color: SUB,
     });
     y -= SUBTITLE_SIZE + 3;
   }
@@ -303,7 +305,11 @@ export async function buildSummarySectionPdf(snapshot: MonthSnapshot): Promise<B
   ensureSpace(ROW_HEIGHT);
   // performanceCents zeroed for display only: the split annotation belongs to an individual
   // line item, not this aggregate row (see the same note in contract-summary/page.tsx).
-  y = drawRow(page, y, rowValues({ ...summary.totals, performanceCents: 0 }), fonts, { bold: true });
+  y = drawRow(page, y, rowValues({ ...summary.totals, performanceCents: 0 }), fonts, {
+    bold: true,
+    fill: SECTION_FILL,
+    rule: true,
+  });
 
   // Reconciliation: label left, value right, no grid — the same four lines as the screen.
   y -= 24;
@@ -324,7 +330,7 @@ export async function buildSummarySectionPdf(snapshot: MonthSnapshot): Promise<B
       y: y - BODY_SIZE,
       size: BODY_SIZE,
       font: fonts.regular,
-      color: BLACK,
+      color: INK,
     });
     const valueWidth = fonts.bold.widthOfTextAtSize(value, BODY_SIZE);
     page.drawText(value, {
@@ -332,7 +338,7 @@ export async function buildSummarySectionPdf(snapshot: MonthSnapshot): Promise<B
       y: y - BODY_SIZE,
       size: BODY_SIZE,
       font: fonts.bold,
-      color: BLACK,
+      color: INK,
     });
     y -= 18;
   }

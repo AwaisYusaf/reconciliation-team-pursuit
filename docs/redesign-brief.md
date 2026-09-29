@@ -96,7 +96,7 @@ These are Tailwind 4 `@theme` tokens in `app/globals.css`. This is the set the a
 | `placeholder` | `#8C8177` | Input placeholders |
 | `diff-added` | `#BFE6CD` | Inline audit-trail highlight, added words |
 | `diff-removed` | `#F3C8C2` | Inline audit-trail highlight, removed words |
-| `doc-yellow` | `#FFFF00` | **Only** inside previews that mimic the real submission documents (header rows, total cells). Never app chrome. |
+| `doc-yellow` | `#FFFF00` | **Only** inside previews that mimic the real submission documents (header rows, total cells). Never app chrome. *Retired by D-137: the documents and their previews now use the app's palette.* |
 | `plus-light` | `#94603F` | Caramel start of the Plus badge gradient |
 
 Shadows exist only on modals, dropdown menus and the tour card. Cards and tables have **no
@@ -466,6 +466,10 @@ the line "Please see below for additional information for some of the above item
 expense a bold `{Name} ({reference}):` heading, any notes highlighted yellow inline, the
 narrative paragraph, proof images at full column width, and — on screen only — a dashed red
 **"Proof of payment missing"** box where a proof is absent.
+
+*Superseded by D-137 (PHASE-21): the document and this preview now use the app's palette (a
+brown header band, a warm grey grid, a tinted total and tinted notes), at the Word file's
+24% / 58% / 18% columns.*
 
 ### Recurring — `/r/recurring`
 h1 "Recurring items", subtext "Vendors and salaries billed every month. Nothing is added

@@ -35,10 +35,6 @@
   --color-disabled-ink: #7a7364;
   --color-placeholder: #8c8177;
 
-  /* Pure yellow is reserved for cells inside document previews that mimic the real
-     submission documents (header rows, total cells). Never for app chrome. */
-  --color-doc-yellow: #ffff00;
-
   /* The Plus gradient's caramel start (`plus-badge.tsx`) — light enough to read as a gradient
      on a 20 px pill, dark enough that white bold text clears 4.5:1 (#94603F on white ≈ 5.2:1). */
   --color-plus-light: #94603f;

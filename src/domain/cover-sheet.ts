@@ -29,7 +29,7 @@ export type CoverSheetRow = {
   role: string;
   /** Table column 3: reimbursable, so tax is excluded (R1.3, R6.2). */
   amountCents: number;
-  /** Yellow-highlighted notes appended to the heading, in R6.5 order. */
+  /** Highlighted notes appended to the heading, in R6.5 order (tinted brown since D-137). */
   notes: string[];
   /** Plain paragraph under the heading, above the proofs (R6.6). */
   narrative: string | null;

@@ -32,7 +32,14 @@ import type { CoverSheetRow } from "@/src/domain/cover-sheet";
 import { formatMoney } from "@/src/domain/format";
 import { coverSheetHeading, SEE_BELOW } from "@/src/domain/strings";
 
-import { COVER_IMAGE_BOX, COVER_MARGIN_IN, COVER_TEXT_WIDTH_IN, fitWithin } from "./layout-constants";
+import { DOCUMENT_THEME as THEME } from "./document-theme";
+import {
+  COVER_COLUMN_SHARES,
+  COVER_IMAGE_BOX,
+  COVER_MARGIN_IN,
+  COVER_TEXT_WIDTH_IN,
+  fitWithin,
+} from "./layout-constants";
 
 /**
  * Aptos is the golden documents' theme font.
@@ -46,7 +53,6 @@ import { COVER_IMAGE_BOX, COVER_MARGIN_IN, COVER_TEXT_WIDTH_IN, fitWithin } from
  */
 const FONT = "Aptos";
 
-const YELLOW = "FFFF00";
 /** Word border widths are in eighths of a point; the spec asks for 0.5 pt. */
 const BORDER_SIZE = 4;
 /** 11 pt and 12 pt, in half-points. */
@@ -72,18 +78,28 @@ const TEXT_WIDTH_TWIPS = convertInchesToTwip(COVER_TEXT_WIDTH_IN);
  *
  * The 3% comes from Role, which is free text and wraps deliberately; Name is untouched.
  */
-const COLUMN_WIDTHS = [
-  Math.round(TEXT_WIDTH_TWIPS * 0.24),
-  Math.round(TEXT_WIDTH_TWIPS * 0.58),
-  Math.round(TEXT_WIDTH_TWIPS * 0.18),
-];
+const COLUMN_WIDTHS = COVER_COLUMN_SHARES.map((share) => Math.round(TEXT_WIDTH_TWIPS * share));
 
-const CELL_BORDERS = {
-  top: { style: BorderStyle.SINGLE, size: BORDER_SIZE, color: "000000" },
-  bottom: { style: BorderStyle.SINGLE, size: BORDER_SIZE, color: "000000" },
-  left: { style: BorderStyle.SINGLE, size: BORDER_SIZE, color: "000000" },
-  right: { style: BorderStyle.SINGLE, size: BORDER_SIZE, color: "000000" },
-};
+function borders(color: string) {
+  const side = { style: BorderStyle.SINGLE, size: BORDER_SIZE, color };
+  return { top: side, bottom: side, left: side, right: side };
+}
+
+/** Warm grey grid, as the app's tables draw their dividers. */
+const CELL_BORDERS = borders(THEME.line);
+/**
+ * A body cell draws no top edge of its own: the row above supplies it, brown under the header
+ * band (repeated headers included) and grey between rows.
+ *
+ * Two touching borders of equal width are a tie, and the renderers break it differently: Word
+ * keeps the darker brown, LibreOffice the lower cell's grey, which drew a grey hairline under
+ * the band in every PDF we produced while Word showed none. With one edge there is no tie.
+ */
+const BODY_BORDERS = { ...CELL_BORDERS, top: { style: BorderStyle.NIL, size: 0, color: "auto" } };
+/** The header band's own colour, so its cells read as one band rather than boxed labels. */
+const HEADER_BORDERS = borders(THEME.accent);
+/** 1 pt rule above the total, in eighths of a point. */
+const TOTAL_RULE = { style: BorderStyle.SINGLE, size: 8, color: THEME.accent };
 
 /** ~4 pt of padding inside every cell. */
 const CELL_MARGINS = { top: 80, bottom: 80, left: 80, right: 80 };
@@ -103,29 +119,32 @@ export type CoverSheetInput = {
   images: CoverImage[][];
 };
 
-function cell(options: {
-  children: Paragraph[];
-  width: number;
-  shaded?: boolean;
-}): TableCell {
+type CellStyle = "header" | "body" | "total";
+
+function cell(options: { children: Paragraph[]; width: number; style?: CellStyle }): TableCell {
+  const style = options.style ?? "body";
+  const fill = style === "header" ? THEME.accent : style === "total" ? THEME.section : null;
   return new TableCell({
     children: options.children,
     width: { size: options.width, type: WidthType.DXA },
-    borders: CELL_BORDERS,
+    borders:
+      style === "header"
+        ? HEADER_BORDERS
+        : style === "total"
+          ? { ...CELL_BORDERS, top: TOTAL_RULE }
+          : BODY_BORDERS,
     margins: CELL_MARGINS,
     verticalAlign: VerticalAlign.CENTER,
-    ...(options.shaded
-      ? { shading: { type: ShadingType.CLEAR, fill: YELLOW, color: "auto" } }
-      : {}),
+    ...(fill ? { shading: { type: ShadingType.CLEAR, fill, color: "auto" } } : {}),
   });
 }
 
 /** Every cell in the table is centered, matching the golden documents. */
-function cellText(text: string, bold = false): Paragraph {
+function cellText(text: string, bold = false, color: string = THEME.ink): Paragraph {
   return new Paragraph({
     alignment: AlignmentType.CENTER,
     spacing: { after: 0 },
-    children: [new TextRun({ text, bold, font: FONT, size: BODY_SIZE })],
+    children: [new TextRun({ text, bold, color, font: FONT, size: BODY_SIZE })],
   });
 }
 
@@ -133,7 +152,11 @@ function buildTable(input: CoverSheetInput): Table {
   const header = new TableRow({
     tableHeader: true,
     children: ["Name", "Role", "Amount"].map((label, index) =>
-      cell({ children: [cellText(label, true)], width: COLUMN_WIDTHS[index], shaded: true }),
+      cell({
+        children: [cellText(label, true, THEME.onAccent)],
+        width: COLUMN_WIDTHS[index],
+        style: "header",
+      }),
     ),
   });
 
@@ -149,15 +172,15 @@ function buildTable(input: CoverSheetInput): Table {
   );
 
   // Name and Role are empty but keep their borders, so the grid closes cleanly under the
-  // last row; only the Amount cell is filled and shaded.
+  // last row. The whole row is tinted under a brown rule, so the total reads as one row.
   const total = new TableRow({
     children: [
-      cell({ children: [cellText("")], width: COLUMN_WIDTHS[0] }),
-      cell({ children: [cellText("")], width: COLUMN_WIDTHS[1] }),
+      cell({ children: [cellText("")], width: COLUMN_WIDTHS[0], style: "total" }),
+      cell({ children: [cellText("")], width: COLUMN_WIDTHS[1], style: "total" }),
       cell({
         children: [cellText(formatMoney(input.totalCents), true)],
         width: COLUMN_WIDTHS[2],
-        shaded: true,
+        style: "total",
       }),
     ],
   });
@@ -176,10 +199,12 @@ function buildTable(input: CoverSheetInput): Table {
 }
 
 /**
- * The bold `{Name}:` heading with its yellow notes on the same line (R6.4, R6.5).
+ * The bold `{Name} ({reference}):` heading with its notes on the same line (R6.4, R6.5).
  *
  * Notes are separate runs rather than one concatenated string so only the note text carries
- * the highlight — the name itself stays unhighlighted, as in the golden documents.
+ * the tint and the brown (D-137) — the name itself stays plain, as in the golden documents.
+ * `shading`, not `highlight`: Word's highlight offers sixteen named colours, none of them the
+ * app's tint.
  */
 function headingParagraph(row: CoverSheetRow): Paragraph {
   const children = [
@@ -196,7 +221,8 @@ function headingParagraph(row: CoverSheetRow): Paragraph {
       new TextRun({
         text: ` ${note}`,
         bold: true,
-        highlight: "yellow",
+        color: THEME.accent,
+        shading: { type: ShadingType.CLEAR, fill: THEME.section, color: "auto" },
         font: FONT,
         size: BODY_SIZE,
       }),
@@ -240,6 +266,8 @@ export async function buildCoverSheetDocx(input: CoverSheetInput): Promise<Buffe
       alignment: AlignmentType.CENTER,
       heading: HeadingLevel.TITLE,
       spacing: { after: PARAGRAPH_AFTER },
+      // A brown rule under the title, across the text width: the sheet's one piece of brand.
+      border: { bottom: { style: BorderStyle.SINGLE, size: 12, color: THEME.accent, space: 6 } },
       children: [new TextRun({ text: input.title, bold: true, font: FONT, size: TITLE_SIZE })],
     }),
     // One empty line between the title and the table.
@@ -273,7 +301,7 @@ export async function buildCoverSheetDocx(input: CoverSheetInput): Promise<Buffe
     styles: {
       default: {
         document: {
-          run: { font: FONT, size: BODY_SIZE, color: "000000" },
+          run: { font: FONT, size: BODY_SIZE, color: THEME.ink },
           // `lineRule` is stated explicitly, not left to the default.
           //
           // OOXML says a `w:line` with no `w:lineRule` means "auto" — single spacing — but

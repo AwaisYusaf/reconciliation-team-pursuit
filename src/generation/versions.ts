@@ -29,7 +29,9 @@
 // page's contract line now separates its parts with bars too.
 // Bumped "packet-14": the contract summary and the expense index are hidden for now, so the
 // packet starts at the first cover sheet (D-114). Bump again when they are uncommented.
-export const PACKET_GENERATOR_VERSION = "packet-14";
+// Bumped "packet-15": the packet is drawn in the app's colours (D-137): the embedded cover sheets,
+// the footer, and the hidden summary and index sections.
+export const PACKET_GENERATOR_VERSION = "packet-15";
 
 // Bumped "summary-3": the detail sheet gained a Receipt Total column (R1.3a). Without this, pinned and cached
 // artifacts would keep serving output built before the change.
@@ -42,4 +44,5 @@ export const SUMMARY_GENERATOR_VERSION = "summary-3";
 // cached sheets keep printing headings the packet's links cannot anchor on.
 // Bumped "cover-9": the heading is `{Name} ({reference}):` and the no-receipt note reads
 // "(Note: No receipt available. Reason: …)" (D-113), neither of which the snapshot carries.
-export const COVER_SHEET_GENERATOR_VERSION = "cover-9";
+// Bumped "cover-10": the sheet is drawn in the app's colours (D-137), not the old yellow.
+export const COVER_SHEET_GENERATOR_VERSION = "cover-10";

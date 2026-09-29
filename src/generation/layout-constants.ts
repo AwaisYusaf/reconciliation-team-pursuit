@@ -18,6 +18,15 @@ export const PACKET_MARGIN_IN = 0.5;
 export const COVER_TEXT_WIDTH_IN = PAGE_WIDTH_IN - COVER_MARGIN_IN * 2; // 6.5"
 export const COVER_TEXT_HEIGHT_IN = PAGE_HEIGHT_IN - COVER_MARGIN_IN * 2; // 9"
 
+/**
+ * The cover sheet table's columns — Name, Role, Amount — as shares of the text width.
+ *
+ * Read by the Word file and by the on-screen preview, which promises to match it. The preview
+ * once kept its own copy and was still drawing the pre-D-76 24/61/15 split a month after the
+ * file moved to 24/58/18.
+ */
+export const COVER_COLUMN_SHARES = [0.24, 0.58, 0.18] as const;
+
 /** Word measures images in pixels at 96 DPI. */
 export const DOCX_PIXELS_PER_INCH = 96;
 

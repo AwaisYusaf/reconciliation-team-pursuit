@@ -1,4 +1,8 @@
+import type { CSSProperties } from "react";
+
 import { formatMoney } from "@/src/domain/format";
+import { DOCUMENT_THEME as THEME } from "@/src/generation/document-theme";
+import { COVER_COLUMN_SHARES } from "@/src/generation/layout-constants";
 
 import { CoverSheetProofs } from "./cover-sheet-proofs";
 import { SEE_BELOW, UI } from "@/src/domain/strings";
@@ -22,12 +26,31 @@ export type PreviewRow = CoverSheetRow & {
 };
 
 /**
+ * The document's colours, read from the same supplier as the Word file (D-137), so the preview
+ * cannot show one palette while the City receives another.
+ */
+const hex = (value: string) => `#${value}`;
+const CELL: CSSProperties = { border: `1px solid ${hex(THEME.line)}` };
+const HEADER_CELL: CSSProperties = {
+  border: `1px solid ${hex(THEME.accent)}`,
+  backgroundColor: hex(THEME.accent),
+  color: hex(THEME.onAccent),
+};
+const TOTAL_CELL: CSSProperties = {
+  ...CELL,
+  borderTop: `1.5px solid ${hex(THEME.accent)}`,
+  backgroundColor: hex(THEME.section),
+};
+const NOTE: CSSProperties = { backgroundColor: hex(THEME.section), color: hex(THEME.accent) };
+
+/**
  * The Breakdown document rendered as HTML, matching the generated file 1:1.
  *
  * This preview is the product's trust-builder: what is seen here is what the City receives,
  * so it deliberately uses document styling rather than app styling — a serif-free document
- * face, black text on white, the same yellow, the same all-centered table. Any divergence
- * between this and `cover-sheet-docx.ts` is a bug in one of them.
+ * face, ink on white, the same brown header band and tinted total and notes, the same
+ * all-centered table. Any divergence between this and `cover-sheet-docx.ts` is a bug in one of
+ * them.
  */
 export function CoverSheetPreview({
   title,
@@ -45,8 +68,8 @@ export function CoverSheetPreview({
   showMissingProofPlaceholders: boolean;
 }) {
   // Full width of the content column, not capped at 820px. Widening stays faithful to the
-  // document rather than departing from it: the table's columns are percentages (24/61/15),
-  // exactly as the Word file sets them, so a wider card renders the same proportions at a
+  // document rather than departing from it: the table's columns are the Word file's own
+  // shares (`COVER_COLUMN_SHARES`), so a wider card renders the same proportions at a
   // larger size. The cap left a third of the screen empty beside the one thing this screen
   // exists to show.
   return (
@@ -57,8 +80,16 @@ export function CoverSheetPreview({
         which defeats the point of a preview that is meant to show exactly what the City
         receives. Padding steps down as well, since 40px each side was a quarter of the card.
       */}
-      <div className="min-w-[560px] p-5 sm:p-8 lg:p-10 text-black [font-family:Aptos,Calibri,Carlito,system-ui,sans-serif]">
-      <h2 className="text-center font-bold text-[15px] mb-6">{title}</h2>
+      <div
+        className="min-w-[560px] p-5 sm:p-8 lg:p-10 [font-family:Aptos,Calibri,Carlito,system-ui,sans-serif]"
+        style={{ color: hex(THEME.ink) }}
+      >
+      <h2
+        className="text-center font-bold text-[15px] mb-6 pb-2"
+        style={{ borderBottom: `2px solid ${hex(THEME.accent)}` }}
+      >
+        {title}
+      </h2>
 
       <table className="w-full border-collapse text-[13px]">
         <thead>
@@ -66,8 +97,8 @@ export function CoverSheetPreview({
             {["Name", "Role", "Amount"].map((label, index) => (
               <th
                 key={label}
-                className="border border-black bg-[#FFFF00] font-bold text-center p-1.5"
-                style={{ width: ["24%", "61%", "15%"][index] }}
+                className="font-bold text-center p-1.5"
+                style={{ ...HEADER_CELL, width: `${COVER_COLUMN_SHARES[index] * 100}%` }}
               >
                 {label}
               </th>
@@ -77,18 +108,18 @@ export function CoverSheetPreview({
         <tbody>
           {rows.map((row) => (
             <tr key={row.expenseId}>
-              <td className="border border-black text-center p-1.5">{row.name}</td>
-              <td className="border border-black text-center p-1.5">{row.role}</td>
-              <td className="border border-black text-center p-1.5 tabular-nums">
+              <td className="text-center p-1.5" style={CELL}>{row.name}</td>
+              <td className="text-center p-1.5" style={CELL}>{row.role}</td>
+              <td className="text-center p-1.5 tabular-nums" style={CELL}>
                 {formatMoney(row.amountCents)}
               </td>
             </tr>
           ))}
-          {/* Name and Role empty, borders kept; only the Amount cell is shaded. */}
+          {/* Name and Role empty; the whole row is tinted, with a brown rule above it. */}
           <tr>
-            <td className="border border-black p-1.5">&nbsp;</td>
-            <td className="border border-black p-1.5">&nbsp;</td>
-            <td className="border border-black bg-[#FFFF00] font-bold text-center p-1.5 tabular-nums">
+            <td className="p-1.5" style={TOTAL_CELL}>&nbsp;</td>
+            <td className="p-1.5" style={TOTAL_CELL}>&nbsp;</td>
+            <td className="font-bold text-center p-1.5 tabular-nums" style={TOTAL_CELL}>
               {formatMoney(totalCents)}
             </td>
           </tr>
@@ -102,7 +133,7 @@ export function CoverSheetPreview({
           <p className="text-[13px] font-bold">
             {coverSheetHeading(row.name, row.reference)}
             {row.notes.map((note) => (
-              <span key={note} className="bg-[#FFFF00] font-bold">
+              <span key={note} className="font-bold" style={NOTE}>
                 {" "}
                 {note}
               </span>
