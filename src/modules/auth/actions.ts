@@ -221,28 +221,29 @@ export async function signUpAction(
   const budget = consume("signUp", await clientIp());
   if (!budget.allowed) return fail(tooManyAttempts(budget.retryAfterSeconds));
 
-  const parsed = signUpSchema.safeParse({
+  const raw = {
     orgName: formData.get("orgName") ?? "",
     name: formData.get("name") ?? "",
     email: formData.get("email") ?? "",
     password: formData.get("password") ?? "",
     confirmPassword: formData.get("confirmPassword") ?? "",
-  });
-
-  if (!parsed.success) {
-    return fail("Check the highlighted fields.", fieldErrorsFrom(parsed.error));
-  }
-
-  const { orgName, name, email, password, confirmPassword } = parsed.data;
-
+  };
+  const parsed = signUpSchema.safeParse(raw);
+  // Every problem at once (usability #2): the schema's, the password policy and the confirmation,
+  // instead of stopping at the first. "Already in use" is asked only once everything else passes,
+  // so a form with a bad password can't be used to test whether an address has an account.
+  const fieldErrors: Record<string, string> = parsed.success ? {} : fieldErrorsFrom(parsed.error);
+  const password = typeof raw.password === "string" ? raw.password : "";
+  const confirmPassword = typeof raw.confirmPassword === "string" ? raw.confirmPassword : "";
   const policyError = validatePasswordPolicy(password);
-  if (policyError) return fail("Check the highlighted fields.", { password: policyError });
-  if (password !== confirmPassword) {
-    return fail("Check the highlighted fields.", { confirmPassword: "Passwords don't match." });
+  if (policyError) fieldErrors.password ??= policyError;
+  if (password !== confirmPassword) fieldErrors.confirmPassword ??= "Passwords don't match.";
+  if (!parsed.success || Object.keys(fieldErrors).length > 0) {
+    return fail(UI.checkHighlightedFields, fieldErrors);
   }
-
-  if (await emailInUse(email)) {
-    return fail("Check the highlighted fields.", { email: UI.duplicateEmail });
+  const { orgName, name, email: cleanEmail } = parsed.data;
+  if (await emailInUse(cleanEmail)) {
+    return fail(UI.checkHighlightedFields, { email: UI.duplicateEmail });
   }
 
   const passwordHash = await hashPassword(password);
@@ -267,7 +268,7 @@ export async function signUpAction(
 
     const [user] = await tx
       .insert(users)
-      .values({ orgId: org.id, name, email, passwordHash, role: "admin" })
+      .values({ orgId: org.id, name, email: cleanEmail, passwordHash, role: "admin" })
       .returning({ id: users.id });
 
     // Every organisation gets a first funding source at sign-up (Phase 6, D-93 decision 2.2).
