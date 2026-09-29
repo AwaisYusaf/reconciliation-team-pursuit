@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 
 import { pageTitle, UI } from "@/src/domain/strings";
 import { signupEnabled } from "@/src/modules/auth/config";
+import { billingEnabled } from "@/src/modules/billing/config";
 import { isInterval, isPlanId } from "@/src/modules/billing/rules";
 import { getSession, getStaffSession } from "@/src/services/auth/session";
 
@@ -60,7 +61,11 @@ export default async function SignupPage({
         bare
         eyebrow={<span className="text-[14px] font-bold text-accent">Create an account</span>}
         title="Create your organization"
-        subtitle="A few details and your first budget, then you can start recording expenses."
+        subtitle={
+          billingEnabled()
+            ? "A few details to start. Next, you'll choose a plan and set up your budget."
+            : "A few details to start. Next, you'll set up your budget."
+        }
         footer={
           <>
             Already have an account?{" "}
