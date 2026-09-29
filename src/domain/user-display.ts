@@ -9,7 +9,7 @@ export function userDisplay(name: string | null | undefined, email: string): str
  *
  * Deliberately not `userDisplay`. That falls back to the whole email address, which is right
  * for an audit line naming who did something and wrong in a greeting, where it would read
- * "Welcome back, tech@authenticbusiness.io!". With no name on file this takes the local part and
+ * "Welcome, tech@authenticbusiness.io!". With no name on file this takes the local part and
  * leaves it as typed rather than guessing at capitalisation, and an address with no local
  * part at all falls back to a greeting with no name in it (handled by the caller).
  */

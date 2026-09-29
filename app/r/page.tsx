@@ -60,7 +60,7 @@ export default async function DashboardPage() {
       */}
       <Subtext className="mb-1">Budget status for {monthLabel(month)}.</Subtext>
       <PageTitle className="mb-5 sm:mb-6">
-        {greeting ? `Welcome back, ${greeting}!` : "Welcome back!"}
+        {greeting ? `Welcome, ${greeting}!` : "Welcome!"}
       </PageTitle>
 
       {!session.welcomeDismissed && <WelcomeBanner />}
