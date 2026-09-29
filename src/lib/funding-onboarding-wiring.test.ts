@@ -6,7 +6,7 @@
  * rules themselves are proven through the real actions and pages
  * (`src/modules/{line-items,funding-sources}/funding-limit.integration.test.ts`,
  * `src/modules/auth/onboarding.integration.test.ts`); this file pins the conditions each client
- * screen puts around them, in the style of `usability-round-1-wiring.test.ts`. Comments are
+ * screen puts around them, in the style of `src/modules/auth/signup-form-wiring.test.ts`. Comments are
  * stripped first, so a sentence that mentions a call can never satisfy a check meant for code.
  */
 import { describe, expect, it } from "vitest";

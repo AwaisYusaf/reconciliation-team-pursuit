@@ -7,7 +7,7 @@ import { UI } from "@/src/domain/strings";
  */
 export function ColumnHints({ items }: { items: readonly { term: string; text: string }[] }) {
   return (
-    <details className="group mt-4 max-w-[640px]">
+    <details className="mt-4 max-w-[640px]">
       <summary className="cursor-pointer w-fit text-[15px] text-accent underline hover:text-accent-dark">
         {UI.columnsHelp}
       </summary>

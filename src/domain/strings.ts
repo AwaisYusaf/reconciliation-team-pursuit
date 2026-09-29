@@ -161,7 +161,7 @@ export const UI = {
   signupsClosed: "Sign-ups are closed.",
   /** m02 — saved, but the documentation gate will still hold this record. */
   savedMissingProof: "Expense saved. It's still missing proof of payment.",
-  /** m02: above Save while any field carries its own error. */
+  /** Sign-up and onboarding step 1: the summary line while any field carries its own error. */
   checkHighlightedFields: "Check the highlighted fields.",
   /** Add Expense caution (non-blocking) — tax excluded from reimbursable (R1.3), so a large
    *  tax relative to the subtotal isn't a domain-rule violation, just worth a second look. */

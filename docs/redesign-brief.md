@@ -534,7 +534,7 @@ item with a performance reads `{name} (includes {amount} performance)`. Balance 
 bold red when negative.
 
 Under the table, when a contract value is set and the Totals row differs from it, one line saying
-how (`lineItemsAgainstTotal`), then short hints for Scheduled value, Previously billed, Balance
+how (`lineItemsAgainstTotal`), then a closed "What do these columns mean?" fold with hints for Scheduled value, Previously billed, Balance
 to finish and BASE (D-134). Then a **reconciliation card** (max 460px) with four rows: total
 advances received, total reconciled to date, balance remaining to reconcile, percentage of
 advance payments reconciled; while advances received is $0.00 it shows only a plain explanation
@@ -552,7 +552,7 @@ Previously Billed | Actions`. The reorder column is stacked ▲/▼ buttons, dis
 Scheduled Value is the effective total; Performances is the performance-only slice or `-`.
 Actions: **Manage** and **Delete** (both quiet). A bold **Total** row closes the table; under it,
 when a contract value is set, one line comparing the line items with the contract total (red when
-over), then hints for Scheduled value and Performances (D-134). Bottom: **"+ Add line item"** (secondary)
+over), then a closed "What do these columns mean?" fold with hints for Scheduled value and Performances (D-134). Bottom: **"+ Add line item"** (secondary)
 opening a card with **Line item name**, **Scheduled value**, **Opening previously billed
 (optional)**.
 
@@ -620,8 +620,9 @@ Shared layout: paper background, content top-centred, a white card.
   **Sign in** ("Signing in…"), and the centred line "Forgot your password? Email
   tech@teampursuit.org."
 - **`/signup`**: closed by default, showing "Sign-ups are closed." and a support line. When open:
-  Organization name, Your name, Email, Password (with Show/Hide and "At least 12 characters."),
-  Confirm password, **Create account**.
+  Subtitle "A few details to start. Next, you'll choose a plan and set up your budget." (without billing: "Next,
+  you'll set up your budget."). Organization name, Your name, Email, Password (with Show/Hide and "At
+  least 12 characters."), Confirm password (its own Show/Hide), **Create account**.
 - **`/onboarding/funding`** (max 720px; funding first, D-134): eyebrow "Step 1 of 2", h1 "Your
   funding", "Payment received. Thank you." at the top after checkout, then Funding name and
   Total amount (both required), Start and End date and Fiduciary or reviewing organization name
