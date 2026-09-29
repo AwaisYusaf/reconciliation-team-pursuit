@@ -198,6 +198,16 @@ body {
   --focus-ring: var(--color-primary-fixed);
 }
 
+/* A money box (MoneyInput) is a "$" beside a borderless input: the ring goes around the whole
+   box, and the input inside draws none, or focus showed as a second box inside the first. */
+.money-field:has(input:focus-visible) {
+  outline: 2px solid var(--focus-ring, var(--color-accent));
+  outline-offset: 2px;
+}
+.money-field input:focus-visible {
+  outline: none;
+}
+
 @media print {
   .no-print {
     display: none !important;

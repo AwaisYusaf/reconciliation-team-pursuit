@@ -12,6 +12,7 @@ import { z } from "zod";
 
 import { db } from "@/src/db";
 import { billingCopyOn } from "@/src/db/billing-copy";
+import { isUniqueViolation } from "@/src/db/pg-errors";
 import {
   fundingSources,
   lineItems,
@@ -23,8 +24,10 @@ import {
   supportingDocTypes,
   users,
 } from "@/src/db/schema";
-import { currentMonthKey, isValidMonthKey } from "@/src/domain/dates";
-import { parseMoneyToCents } from "@/src/domain/money";
+import { currentMonthKey, isValidIsoDate, isValidMonthKey } from "@/src/domain/dates";
+import { formatMoney } from "@/src/domain/format";
+import { fundingTotalCents, overLimitCents } from "@/src/domain/funding-limit";
+import { parseMoneyToCents, sumBy } from "@/src/domain/money";
 import { UI } from "@/src/domain/strings";
 import { fail, ok, type ActionResult } from "@/src/lib/action-result";
 import { actionSession } from "@/src/lib/action-session";
@@ -40,7 +43,12 @@ import { ENTITLEMENT_COLUMNS, entitlementOf, ORG_ENTITLEMENT_COLUMNS } from "@/s
 import { isInterval, isPlanId } from "@/src/modules/billing/rules";
 import { emailInUse } from "@/src/modules/auth/emails";
 import { ORIGINAL_RULES } from "@/src/modules/expenses/reimbursement";
-import { primaryFundingSourceId, requireOwnedFundingSource } from "@/src/modules/funding-sources/queries";
+import {
+  findFundingSource,
+  loadFundingPosition,
+  primaryFundingSourceId,
+  requireOwnedFundingSource,
+} from "@/src/modules/funding-sources/queries";
 import { clientIp } from "@/src/services/client-ip";
 import { consume, reset } from "@/src/services/rate-limit";
 import { nameSchema } from "@/src/domain/name";
@@ -300,12 +308,100 @@ export async function signUpAction(
 
 /* --------------------------------------------------------------- onboarding */
 
+/*
+ * Onboarding is two steps, funding first (m00): step 1 names the organisation's first funding
+ * source and records its total, step 2 splits that total into line items and finishes. Both
+ * are resumable: step 1 is saved to the database, and `onboarded_at` stays null until step 2
+ * succeeds.
+ */
+
+const ALREADY_SET_UP = "Your organization is already set up.";
+
 /**
- * Onboarding step 1 — replace the organisation's line items.
+ * Onboarding step 1: the funding. Renames the organisation's first funding source (created as
+ * "Source 1" at sign-up) and records its total, dates and fiduciary. Saving it again later (the
+ * Back button on step 2) simply overwrites it.
  *
- * Saved immediately rather than held in client state, so a refresh or an abandoned
- * signup never loses the budget the user just typed; `onboarded_at` stays null until
- * step 2, which is what makes the flow resumable.
+ * Does not check the total against line items: the app's pages stay closed until step 2
+ * finishes, and step 2 replaces the line items and refuses to finish over the total (R9.6).
+ */
+export async function saveOnboardingFundingAction(
+  _previous: ActionResult,
+  formData: FormData,
+): Promise<ActionResult> {
+  const session = await actionSession();
+  if ("expired" in session) return session.expired;
+  // Server Actions are directly invocable, so the page guard is not enough: a replayed or
+  // stale-tab call would otherwise rewrite a live organisation's funding.
+  if (session.onboarded) return fail(ALREADY_SET_UP);
+
+  const name = String(formData.get("fundingName") ?? "").trim();
+  const contractValue = String(formData.get("contractValue") ?? "");
+  const start = String(formData.get("contractStart") ?? "").trim();
+  const end = String(formData.get("contractEnd") ?? "").trim();
+  const fiduciaryName = String(formData.get("fiduciaryName") ?? "").trim();
+
+  // Every problem at once, not the first only.
+  const fieldErrors: Record<string, string> = {};
+  if (!name) fieldErrors.fundingName = "Enter a name for this funding.";
+  const contractValueCents = parseMoneyToCents(contractValue);
+  if (contractValueCents === null || contractValueCents <= 0) {
+    fieldErrors.contractValue = "Enter the total amount.";
+  }
+  const startValid = start === "" || isValidIsoDate(start);
+  const endValid = end === "" || isValidIsoDate(end);
+  if (!startValid) fieldErrors.contractStart = "Enter a valid start date.";
+  if (!endValid) fieldErrors.contractEnd = "Enter a valid end date.";
+  if (start && end && startValid && endValid && end < start) {
+    fieldErrors.contractEnd = "The end date is before the start date.";
+  }
+  if (Object.keys(fieldErrors).length > 0 || contractValueCents === null) {
+    return fail(UI.checkHighlightedFields, fieldErrors);
+  }
+
+  let result: ActionResult | null;
+  try {
+    result = await db.transaction(async (tx) => {
+      // NO KEY UPDATE, not `lockOrg`'s FOR UPDATE: it queues with the other onboarding step and
+      // with completion, which updates this row, without blocking foreign-key key shares.
+      const [org] = await tx
+        .select({ onboardedAt: organizations.onboardedAt })
+        .from(organizations)
+        .where(eq(organizations.id, session.orgId))
+        .for("no key update");
+      if (!org || org.onboardedAt) return fail(ALREADY_SET_UP);
+
+      const fundingSourceId = await primaryFundingSourceId(session.orgId, tx);
+      await tx
+        .update(fundingSources)
+        .set({
+          name,
+          contractValueCents,
+          contractStart: start || null,
+          contractEnd: end || null,
+          fiduciaryName,
+        })
+        .where(and(eq(fundingSources.id, fundingSourceId), eq(fundingSources.orgId, session.orgId)));
+      return null;
+    });
+  } catch (error) {
+    if (isUniqueViolation(error)) {
+      return fail(UI.checkHighlightedFields, {
+        fundingName: "A funding source with that name already exists.",
+      });
+    }
+    throw error;
+  }
+  if (result) return result;
+
+  redirect("/onboarding/line-items");
+}
+
+/**
+ * Onboarding step 2: the line items, then finish. All or nothing: any row error, or rows adding
+ * up to more than the funding's total (R9.6), saves nothing; otherwise it replaces the funding
+ * source's line items, seeds the configurable lists (D-19) and marks the organisation onboarded
+ * in one transaction.
  */
 export async function saveOnboardingLineItemsAction(
   _previous: ActionResult,
@@ -315,117 +411,117 @@ export async function saveOnboardingLineItemsAction(
   if ("expired" in session) return session.expired;
   // Server Actions are directly invocable, so the page guard is not enough: a replayed or
   // stale-tab call would otherwise wipe a live organisation's approved budget.
-  if (session.onboarded) return fail("Your organization is already set up.");
+  if (session.onboarded) return fail(ALREADY_SET_UP);
+
+  // Funding first, before the rows are read: a tab left open on the previous flow posts line
+  // items before any funding exists, and this is a message its page can show.
+  const source = await findFundingSource(session.orgId, await primaryFundingSourceId(session.orgId));
+  if (!source || source.contractValueCents <= 0) return fail(UI.onboardingFundingFirst);
 
   const names = formData.getAll("lineItemName").map((value) => String(value).trim());
-  const budgets = formData.getAll("lineItemBudget").map((value) => String(value));
+  const amounts = formData.getAll("lineItemBudget").map((value) => String(value));
 
-  const rows = names
-    .map((name, index) => ({ name, cents: parseMoneyToCents(budgets[index] ?? "") }))
-    .filter((row) => row.name !== "" && row.cents !== null && row.cents > 0);
-
-  if (rows.length === 0) {
-    return fail("Add at least one line item with a budget.");
-  }
-
+  // One message per row (the first that applies), every row's at once. Blank rows are ignored.
+  const fieldErrors: Record<string, string> = {};
   const seen = new Set<string>();
-  for (const row of rows) {
-    const key = row.name.toLowerCase();
-    if (seen.has(key)) return fail(UI.lineItemDuplicate);
+  const rows: { name: string; cents: number }[] = [];
+  names.forEach((name, index) => {
+    const amount = amounts[index] ?? "";
+    const rowKey = `row-${index}`;
+    if (name === "" && amount.trim() === "") return;
+    if (name === "") {
+      fieldErrors[rowKey] = UI.onboardingRowNeedsName;
+      return;
+    }
+    // Every named row counts as seen, errored or not.
+    const key = name.toLowerCase();
+    const repeated = seen.has(key);
     seen.add(key);
-  }
-
-  await db.transaction(async (tx) => {
-    const fundingSourceId = await primaryFundingSourceId(session.orgId, tx);
-    // Safe to replace wholesale: onboarding runs before any expense can exist.
-    await tx
-      .delete(lineItems)
-      .where(and(eq(lineItems.orgId, session.orgId), eq(lineItems.fundingSourceId, fundingSourceId)));
-    await tx.insert(lineItems).values(
-      rows.map((row, index) => ({
-        orgId: session.orgId,
-        fundingSourceId,
-        name: row.name,
-        scheduledValueCents: row.cents as number,
-        sortOrder: index,
-      })),
-    );
+    const cents = amount.trim() === "" ? null : parseMoneyToCents(amount);
+    if (cents === null) fieldErrors[rowKey] = UI.onboardingRowNeedsAmount(name);
+    else if (cents < 0) fieldErrors[rowKey] = UI.onboardingRowNegative(name);
+    else if (repeated) fieldErrors[rowKey] = UI.lineItemDuplicate;
+    else rows.push({ name, cents });
   });
+  if (Object.keys(fieldErrors).length > 0) return fail(UI.onboardingCheckRows, fieldErrors);
+  if (rows.length === 0) return fail(UI.onboardingNoLineItems);
 
-  redirect("/onboarding/contract");
-}
+  let result: ActionResult;
+  try {
+    result = await db.transaction(async (tx): Promise<ActionResult> => {
+      const [org] = await tx
+        .select({ onboardedAt: organizations.onboardedAt })
+        .from(organizations)
+        .where(eq(organizations.id, session.orgId))
+        .for("no key update");
+      if (!org || org.onboardedAt) return fail(ALREADY_SET_UP);
 
-const contractSchema = z.object({
-  contractValue: z.string().optional(),
-  contractStart: z.string().optional(),
-  contractEnd: z.string().optional(),
-  fiduciaryName: z.string().optional(),
-});
+      const fundingSourceId = await primaryFundingSourceId(session.orgId, tx);
+      const position = await loadFundingPosition(tx, session.orgId, fundingSourceId, true);
+      if (!position || position.contractValueCents <= 0) return fail(UI.onboardingFundingFirst);
 
-/**
- * Onboarding step 2 — record the optional contract details, seed the configurable
- * lists, and mark the organisation onboarded. "Skip for now" runs the same path with
- * empty values, so the contract settings row always exists (data-model).
- */
-export async function completeOnboardingAction(
-  _previous: ActionResult,
-  formData: FormData,
-): Promise<ActionResult> {
-  const session = await actionSession();
-  if ("expired" in session) return session.expired;
-  if (session.onboarded) return fail("Your organization is already set up.");
-  const skip = formData.get("intent") === "skip";
-
-  const parsed = contractSchema.safeParse({
-    contractValue: formData.get("contractValue") ?? "",
-    contractStart: formData.get("contractStart") ?? "",
-    contractEnd: formData.get("contractEnd") ?? "",
-    fiduciaryName: formData.get("fiduciaryName") ?? "",
-  });
-  if (!parsed.success) return fail("Check the highlighted fields.", fieldErrorsFrom(parsed.error));
-
-  const values = skip
-    ? { contractValueCents: 0, contractStart: null, contractEnd: null, fiduciaryName: "" }
-    : {
-        contractValueCents: parseMoneyToCents(parsed.data.contractValue ?? "") ?? 0,
-        contractStart: emptyToNull(parsed.data.contractStart),
-        contractEnd: emptyToNull(parsed.data.contractEnd),
-        fiduciaryName: (parsed.data.fiduciaryName ?? "").trim(),
+      // The replace below removes every performance, and none can exist before onboarding, so 0
+      // is the truth. Strict, not "further over": onboarding only finishes within the total (R9.6).
+      const planned = {
+        contractValueCents: position.contractValueCents,
+        scheduledCents: sumBy(rows, (row) => row.cents),
+        newPerformanceCents: 0,
       };
+      if (overLimitCents(planned) > 0) {
+        return fail(
+          UI.onboardingOverTotal(formatMoney(planned.scheduledCents), formatMoney(fundingTotalCents(planned))),
+        );
+      }
 
-  await db.transaction(async (tx) => {
-    // Writes the contract fields straight to the org's (only, at onboarding time) funding
-    // source row — the sole reader of contract details as of Phase 3.
-    const fundingSourceId = await primaryFundingSourceId(session.orgId, tx);
-    await tx.update(fundingSources).set(values).where(eq(fundingSources.id, fundingSourceId));
-
-    await tx
-      .insert(paymentSources)
-      .values(
-        DEFAULT_PAYMENT_SOURCES.map((label, index) => ({
+      // Safe to replace wholesale: onboarding runs before any expense can exist.
+      await tx
+        .delete(lineItems)
+        .where(and(eq(lineItems.orgId, session.orgId), eq(lineItems.fundingSourceId, fundingSourceId)));
+      await tx.insert(lineItems).values(
+        rows.map((row, index) => ({
           orgId: session.orgId,
-          label,
+          fundingSourceId,
+          name: row.name,
+          scheduledValueCents: row.cents,
           sortOrder: index,
         })),
-      )
-      .onConflictDoNothing();
+      );
 
-    await tx
-      .insert(supportingDocTypes)
-      .values(
-        DEFAULT_SUPPORTING_DOC_TYPES.map((label, index) => ({
-          orgId: session.orgId,
-          label,
-          sortOrder: index,
-        })),
-      )
-      .onConflictDoNothing();
+      await tx
+        .insert(paymentSources)
+        .values(
+          DEFAULT_PAYMENT_SOURCES.map((label, index) => ({
+            orgId: session.orgId,
+            label,
+            sortOrder: index,
+          })),
+        )
+        .onConflictDoNothing();
 
-    await tx
-      .update(organizations)
-      .set({ onboardedAt: new Date() })
-      .where(eq(organizations.id, session.orgId));
-  });
+      await tx
+        .insert(supportingDocTypes)
+        .values(
+          DEFAULT_SUPPORTING_DOC_TYPES.map((label, index) => ({
+            orgId: session.orgId,
+            label,
+            sortOrder: index,
+          })),
+        )
+        .onConflictDoNothing();
+
+      await tx
+        .update(organizations)
+        .set({ onboardedAt: new Date() })
+        .where(eq(organizations.id, session.orgId));
+      return ok();
+    });
+  } catch (error) {
+    // JS `toLowerCase` and Postgres `lower()` can disagree on some Unicode names, so the index
+    // can still refuse a pair the check above let through.
+    if (isUniqueViolation(error)) return fail(UI.lineItemDuplicate);
+    throw error;
+  }
+  if (!result.ok) return result;
 
   redirect("/r");
 }
@@ -481,9 +577,4 @@ function fieldErrorsFrom(error: z.ZodError): Record<string, string> {
     if (typeof key === "string" && !result[key]) result[key] = issue.message;
   }
   return result;
-}
-
-function emptyToNull(value: string | undefined): string | null {
-  const trimmed = (value ?? "").trim();
-  return trimmed === "" ? null : trimmed;
 }

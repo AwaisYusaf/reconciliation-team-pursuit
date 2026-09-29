@@ -389,7 +389,7 @@ Each is on the phone (with its phase), web only, or left out, with the reason.
 | Page | Phone |
 |---|---|
 | `app/(auth)/login` | Phase 2 |
-| `app/(auth)/signup`, `onboarding/contract`, `onboarding/line-items` | Web only (M2) |
+| `app/(auth)/signup`, `onboarding/funding`, `onboarding/line-items` | Web only (M2) |
 | `app/r` (dashboard) | Phase 2 |
 | `app/r/expenses`, `expenses/new`, `expenses/[id]/edit`, `expenses/trash` | Phase 3 |
 | `app/r/expenses/drafts/[id]/edit` (and `expenses/new/from-invoice`) | Phase 3 |
@@ -406,7 +406,7 @@ Each is on the phone (with its phase), web only, or left out, with the reason.
 | File | Action | Phone |
 |---|---|---|
 | `auth/actions.ts` | `signInAction`, `signOutAction` | Phase 1, as key versions |
-| | `signUpAction`, `saveOnboardingLineItemsAction`, `completeOnboardingAction` | Web only (M2) |
+| | `signUpAction`, `saveOnboardingFundingAction`, `saveOnboardingLineItemsAction` | Web only (M2) |
 | | `setActiveMonthAction`, `setActiveFundingSourceAction`, `dismissWelcomeAction` | Phase 2 |
 | `expenses/actions.ts` | `createExpenseAction`, `updateExpenseAction`, `deleteExpenseAction`, `restoreExpenseAction`, `permanentlyDeleteExpenseAction`, `removeExpenseDocumentAction`, `loadExpenseHistoryAction`, `searchVendorsAction` | Phase 3 |
 | `expense-imports/draft-actions.ts` | `approveDraftAction`, `approveReadyDraftsAction`, `removeDraftDocumentAction`, `discardDraftAction`, `undoDiscardAction`, `updateDraftAction` | Phase 3 |

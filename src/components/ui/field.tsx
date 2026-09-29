@@ -9,7 +9,9 @@ export const CONTROL =
   "w-full min-h-11 px-3.5 py-3 text-base font-sans text-ink bg-surface " +
   "border border-line rounded-[3px] box-border " +
   // Read-only (a locked month's expense) must not look editable.
-  "disabled:bg-section disabled:text-sub disabled:cursor-not-allowed";
+  "disabled:bg-section disabled:text-sub disabled:cursor-not-allowed " +
+  // A control marked invalid (its own error under it) gets a red border.
+  "aria-[invalid=true]:border-danger";
 
 /** Field label — 15px semibold above the control, per the design system. */
 export function Label({ className, ...props }: ComponentProps<"label">) {
@@ -50,7 +52,8 @@ export function MoneyInput({ className, onChange, ...props }: ComponentProps<"in
   return (
     <div
       className={cn(
-        "flex items-center gap-1.5 min-h-11 px-3 bg-surface border border-line rounded-[3px] has-[:disabled]:bg-section",
+        // `money-field`: the focus ring goes on this box, not the inner input (globals.css).
+        "money-field flex items-center gap-1.5 min-h-11 px-3 bg-surface border border-line rounded-[3px] has-[:disabled]:bg-section has-[[aria-invalid=true]]:border-danger",
         className,
       )}
     >

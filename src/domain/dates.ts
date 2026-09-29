@@ -59,6 +59,8 @@ export function isValidMonthKey(value: string): boolean {
 export function isValidIsoDate(value: string): boolean {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
   const [year, month, day] = value.split("-").map(Number);
+  // Year 0000 matches the pattern but Postgres rejects it, so a forged request got a 500.
+  if (year < 1) return false;
   if (month < 1 || month > 12) return false;
   return day >= 1 && day <= daysInMonth(year, month);
 }

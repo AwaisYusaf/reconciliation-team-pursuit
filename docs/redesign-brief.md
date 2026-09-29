@@ -533,8 +533,12 @@ Finish`, with a `BASE` section row, one row per line item, and a bold **Totals**
 item with a performance reads `{name} (includes {amount} performance)`. Balance to Finish goes
 bold red when negative.
 
-Then a **reconciliation card** (max 460px) with four rows: total advances received, total
-reconciled to date, balance remaining to reconcile, percentage of advance payments reconciled.
+Under the table, when a contract value is set and the Totals row differs from it, one line saying
+how (`lineItemsAgainstTotal`), then short hints for Scheduled value, Previously billed, Balance
+to finish and BASE (D-134). Then a **reconciliation card** (max 460px) with four rows: total
+advances received, total reconciled to date, balance remaining to reconcile, percentage of
+advance payments reconciled; while advances received is $0.00 it shows only a plain explanation
+instead (`UI.noAdvancesYet`).
 Then **Download summary (Excel)** (primary), disabled when blocked with the reason beneath.
 Then **Reporting periods**: `Month | Status | Details` where Status is Reconciled / Submitted /
 Open, expanding to list every lock event for months with more than one.
@@ -546,7 +550,9 @@ and packet. Order here controls their order in documents."
 Table (min 900): `(reorder) | Line Item Name | Scheduled Value | Performances | Opening
 Previously Billed | Actions`. The reorder column is stacked ▲/▼ buttons, disabled at the ends.
 Scheduled Value is the effective total; Performances is the performance-only slice or `-`.
-Actions: **Manage** and **Delete** (both quiet). Bottom: **"+ Add line item"** (secondary)
+Actions: **Manage** and **Delete** (both quiet). A bold **Total** row closes the table; under it,
+when a contract value is set, one line comparing the line items with the contract total (red when
+over), then hints for Scheduled value and Performances (D-134). Bottom: **"+ Add line item"** (secondary)
 opening a card with **Line item name**, **Scheduled value**, **Opening previously billed
 (optional)**.
 
@@ -581,7 +587,8 @@ and label, the active one a solid accent pill.
   Managers see it disabled.
 - **Funding sources** — a **"Show archived (N)"** switch, then one expandable row per source
   with its name, an uppercase type label, an "Archived" pill, **Edit** and
-  **Archive**/**Unarchive**. Expanding shows three tiles (contract value, advances received,
+  **Archive**/**Unarchive**. Expanding shows three tiles (contract value, with a second line
+  "+ Performances $X = Total $Y" when there are new performances (D-134), advances received,
   contract period), a definition grid, and two chips for the tax and fee rules. Editing replaces
   the panel in place with the full form. **Add funding source** at the bottom.
 - **Lists** — two columns, **Payment sources** and **Supporting document types**, each a list of
@@ -615,13 +622,15 @@ Shared layout: paper background, content top-centred, a white card.
 - **`/signup`**: closed by default, showing "Sign-ups are closed." and a support line. When open:
   Organization name, Your name, Email, Password (with Show/Hide and "At least 12 characters."),
   Confirm password, **Create account**.
-- **`/onboarding/line-items`** (max 720px): eyebrow "Step 1 of 2", h1 "Set up your budget line
-  items", a table `Line item | Budget | Remove` prefilled with six starter names and **empty
-  budgets**, **Add line item**, a bold **"Total budget: $X"**, and **Continue** disabled until at
-  least one row has a name and a budget above zero.
-- **`/onboarding/contract`**: eyebrow "Step 2 of 2", h1 "Your contract", all fields optional —
-  total contract value, start and end dates, fiduciary name — then **Finish setup**, **Skip for
-  now**, and **Back to budget line items**.
+- **`/onboarding/funding`** (max 720px; funding first, D-134): eyebrow "Step 1 of 2", h1 "Your
+  funding", "Payment received. Thank you." at the top after checkout, then Funding name and
+  Total amount (both required), Start and End date and Fiduciary or reviewing organization name
+  (optional), a line naming the tax and fee defaults, and **Continue**. No Skip.
+- **`/onboarding/line-items`**: eyebrow "Step 2 of 2", h1 "Your budget line items", a table
+  `Line item | Amount | Remove` prefilled with six starter names and **empty amounts**, **Add
+  line item**, a live bold line **"Planned $X of $Y · $Z left"** (red and "over" above the
+  total), **Finish setup** (saves only when every row is valid and they fit the total) and
+  **Back to your funding**. Both steps end with "Signed in as {email}." and **Sign out**.
 
 ### Staff admin — `/a`
 A separate shell: "AB Solutions admin" over the staff member's name, and **Sign out**. No month

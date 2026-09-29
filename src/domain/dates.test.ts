@@ -134,6 +134,9 @@ describe("date-only formatting", () => {
     expect(isValidIsoDate("2026-04-31")).toBe(false);
     expect(isValidIsoDate("2026-13-01")).toBe(false);
     expect(isValidIsoDate("3/2/2026")).toBe(false);
+    // Postgres has no year 0: accepting it turned a forged date into a 500.
+    expect(isValidIsoDate("0000-01-01")).toBe(false);
+    expect(isValidIsoDate("0001-01-01")).toBe(true);
   });
 });
 

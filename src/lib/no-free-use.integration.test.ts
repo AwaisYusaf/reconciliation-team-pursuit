@@ -66,7 +66,7 @@ describe.skipIf(!hasDatabase)("no free use at every entry point (I-9, I-16)", as
     signUpAction,
     signInAction,
     saveOnboardingLineItemsAction,
-    completeOnboardingAction,
+    saveOnboardingFundingAction,
   } = await import("@/src/modules/auth/actions");
   const { planPageSession } = await import("@/src/lib/page-session");
   const { todayIso } = await import("@/src/domain/dates");
@@ -733,15 +733,22 @@ describe.skipIf(!hasDatabase)("no free use at every entry point (I-9, I-16)", as
 
       const OnboardingLineItemsPage = (await import("@/app/(auth)/onboarding/line-items/page")).default;
       await expect(OnboardingLineItemsPage()).rejects.toThrow("NEXT_REDIRECT:/r/plan");
+      const OnboardingFundingPage = (await import("@/app/(auth)/onboarding/funding/page")).default;
+      await expect(OnboardingFundingPage({ searchParams: Promise.resolve({ paid: "1" }) })).rejects.toThrow(
+        "NEXT_REDIRECT:/r/plan",
+      );
 
+      const fundingForm = new FormData();
+      fundingForm.set("fundingName", "Kresge Grant");
+      fundingForm.set("contractValue", "5,000.00");
       const lineItemForm = new FormData();
       lineItemForm.set("lineItemName", "Salary");
       lineItemForm.set("lineItemBudget", "1000.00");
-      expect(await saveOnboardingLineItemsAction({ ok: false, error: "" }, lineItemForm)).toEqual({
+      expect(await saveOnboardingFundingAction({ ok: false, error: "" }, fundingForm)).toEqual({
         ok: false,
         error: UI.billingPlanRequired,
       });
-      expect(await completeOnboardingAction({ ok: false, error: "" }, new FormData())).toEqual({
+      expect(await saveOnboardingLineItemsAction({ ok: false, error: "" }, lineItemForm)).toEqual({
         ok: false,
         error: UI.billingPlanRequired,
       });
@@ -761,10 +768,13 @@ describe.skipIf(!hasDatabase)("no free use at every entry point (I-9, I-16)", as
 
       await startSession(row.id);
       await expect(planPageSession()).rejects.toThrow("NEXT_REDIRECT:/onboarding/line-items");
-      // Success redirects on to step 2 rather than returning an ActionResult — proves the action
-      // itself now runs, not merely that it stopped refusing.
+      // Success redirects on (step 1 to step 2, step 2 to the app) rather than returning an
+      // ActionResult: proves each action itself now runs, not merely that it stopped refusing.
+      await expect(saveOnboardingFundingAction({ ok: false, error: "" }, fundingForm)).rejects.toThrow(
+        "NEXT_REDIRECT:/onboarding/line-items",
+      );
       await expect(saveOnboardingLineItemsAction({ ok: false, error: "" }, lineItemForm)).rejects.toThrow(
-        "NEXT_REDIRECT:/onboarding/contract",
+        /^NEXT_REDIRECT:\/r$/,
       );
       await endSession();
     });

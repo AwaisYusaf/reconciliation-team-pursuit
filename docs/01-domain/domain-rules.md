@@ -195,7 +195,7 @@ Let `opening` = line item's opening previously-billed balance (setup figure), `e
   grant, a donation, a line of credit. Each one owns its own line items, expenses, contract
   details (funder, fiduciary, contract number, PO numbers, contract value, start/end dates,
   advances received) and tax/fee reimbursement rules. Every organisation gets a first funding
-  source at sign-up; an existing organisation's current single contract became its first funding
+  source at sign-up (named "Source 1" until the onboarding funding step names it, D-134); an existing organisation's current single contract became its first funding
   source when this shipped, named after its project name (or "Source 1" if that was empty) —
   nothing else changed for it (R14.5).
 - **R14.2** **Selection**, exactly like the active month (R2.3): each person's own choice,
