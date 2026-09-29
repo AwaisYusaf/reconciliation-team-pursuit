@@ -13,7 +13,8 @@ const MAX_CENTS = 1_000_000_000_000; // $10 billion
  * Parse user input into integer cents.
  *
  * Accepts the shapes people actually type or paste: `1234.5`, `1,234.56`, `$1,234.56`,
- * `-145`, `(145.00)` (accounting negative), and leading/trailing whitespace.
+ * `-145`, `(145.00)` (accounting negative), `12,50` (a decimal comma, $12.50), and
+ * leading/trailing whitespace.
  * Returns `null` for anything that is not a number, so callers can distinguish
  * "empty/invalid" from "zero" (R1.4 allows genuine negatives).
  */
@@ -35,7 +36,13 @@ export function parseMoneyToCents(input: string | number | null | undefined): nu
     text = text.slice(1, -1).trim();
   }
 
-  text = text.replace(/[$\s,]/g, "");
+  text = text.replace(/[$\s]/g, "");
+  // A decimal comma (Phase 0 B1, the user's decision): with no dot, a single comma followed by
+  // one or two digits is the cents, so "12,50" is $12.50. Phone keypads in some regions offer
+  // only a comma, and stripping it as a thousands separator used to save $1,250.00. A comma
+  // before three digits ("1,250") is still a thousands separator, as it always was.
+  if (!text.includes(".") && /^[-+]?\d*,\d{1,2}$/.test(text)) text = text.replace(",", ".");
+  text = text.replace(/,/g, "");
 
   if (text.startsWith("-")) {
     negative = !negative;

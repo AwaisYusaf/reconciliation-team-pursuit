@@ -478,4 +478,40 @@ describe.skipIf(!hasDatabase)("cross-organisation funding source sweep (P7.2)", 
       .where(eq(monthDocuments.id, monthDocumentA));
     expect(row.status).toBe("attached");
   });
+
+  it("the upload route refuses a month document on the organisation's own archived source (R14.3, Phase 0 B10)", async () => {
+    const [archived] = await db
+      .insert(fundingSources)
+      .values({
+        orgId: orgA,
+        name: "B10 Archived",
+        type: "grant",
+        sortOrder: 9,
+        taxReimbursable: false,
+        feesReimbursable: true,
+        archivedAt: new Date(),
+      })
+      .returning({ id: fundingSources.id });
+    routeSessionAsOrgA();
+    const form = new FormData();
+    form.set("target", "month");
+    form.set("category", "bank_statement");
+    form.set("month", MONTH);
+    form.set("fundingSourceId", archived.id);
+    form.set("file", new File([new Uint8Array([1, 2, 3])], "statement.pdf", { type: "application/pdf" }));
+
+    const response = await uploadPost(
+      new NextRequest("http://localhost/api/files/upload", {
+        method: "POST",
+        body: form,
+        headers: { "sec-fetch-site": "same-origin" },
+      }),
+    );
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({
+      ok: false,
+      error: "That funding source is archived. Unarchive it in Settings to add documents.",
+    });
+    expect(await db.select().from(monthDocuments).where(eq(monthDocuments.fundingSourceId, archived.id))).toEqual([]);
+  });
 });

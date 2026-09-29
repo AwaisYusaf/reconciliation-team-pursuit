@@ -11,8 +11,18 @@ import { and, eq, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
 import { db } from "@/src/db";
-import { organizations, paymentSources, supportingDocTypes, users, vendorDefaults } from "@/src/db/schema";
+import { lockOrg } from "@/src/db/org-lock";
+import { isMissingLineItem, isUniqueViolation } from "@/src/db/pg-errors";
+import {
+  lineItems,
+  organizations,
+  paymentSources,
+  supportingDocTypes,
+  users,
+  vendorDefaults,
+} from "@/src/db/schema";
 import { parseMoneyToCents } from "@/src/domain/money";
+import { UI } from "@/src/domain/strings";
 import { fail, ok, type ActionResult } from "@/src/lib/action-result";
 import { actionSession, actionSessionAnyPlan, requireAdmin } from "@/src/lib/action-session";
 import { consume, reset as resetLimit } from "@/src/services/rate-limit";
@@ -53,6 +63,11 @@ function table(kind: ListKind) {
   return kind === "paymentSource" ? paymentSources : supportingDocTypes;
 }
 
+/** Anything else used to fall through to the document types without complaint. */
+function isListKind(kind: unknown): kind is ListKind {
+  return kind === "paymentSource" || kind === "supportingDocType";
+}
+
 /**
  * Add or rename a label.
  *
@@ -66,41 +81,45 @@ export async function saveLabelAction(input: {
 }): Promise<ActionResult> {
   const current = await actionSession();
   if ("expired" in current) return current.expired;
+  if (!isListKind(input.kind) || typeof input.label !== "string") return fail("That is not a valid value.");
 
   const label = input.label.trim();
   if (!label) return fail("Enter a name.");
   if (input.id && !isUuid(input.id)) return fail("That entry no longer exists.");
 
   const target = table(input.kind);
+  const exists =
+    input.kind === "paymentSource" ? "That payment source already exists." : "That document type already exists.";
 
   const clash = await db
     .select({ id: target.id })
     .from(target)
     .where(and(eq(target.orgId, current.orgId), sql`lower(${target.label}) = lower(${label})`))
     .limit(1);
-  if (clash[0] && clash[0].id !== input.id) {
-    return fail(
-      input.kind === "paymentSource"
-        ? "That payment source already exists."
-        : "That document type already exists.",
-    );
-  }
+  if (clash[0] && clash[0].id !== input.id) return fail(exists);
 
-  if (input.id) {
-    const updated = await db
-      .update(target)
-      .set({ label })
-      .where(and(eq(target.id, input.id), eq(target.orgId, current.orgId)))
-      .returning({ id: target.id });
-    if (updated.length === 0) return fail("That entry no longer exists.");
-  } else {
-    const [{ next }] = await db
-      .select({ next: sql<number>`coalesce(max(${target.sortOrder}), -1) + 1` })
-      .from(target)
-      .where(eq(target.orgId, current.orgId));
-    await db
-      .insert(target)
-      .values({ orgId: current.orgId, label, sortOrder: Number(next) });
+  try {
+    if (input.id) {
+      const updated = await db
+        .update(target)
+        .set({ label })
+        .where(and(eq(target.id, input.id), eq(target.orgId, current.orgId)))
+        .returning({ id: target.id });
+      if (updated.length === 0) return fail("That entry no longer exists.");
+    } else {
+      const [{ next }] = await db
+        .select({ next: sql<number>`coalesce(max(${target.sortOrder}), -1) + 1` })
+        .from(target)
+        .where(eq(target.orgId, current.orgId));
+      await db
+        .insert(target)
+        .values({ orgId: current.orgId, label, sortOrder: Number(next) });
+    }
+  } catch (error) {
+    // Two saves of the same label at once pass the check above together; the unique index
+    // stops the second, which gets the same answer instead of a 500 (Phase 0 B6).
+    if (isUniqueViolation(error)) return fail(exists);
+    throw error;
   }
 
   revalidatePath("/", "layout");
@@ -122,30 +141,44 @@ export async function setLabelActiveAction(input: {
   const current = await actionSession();
   if ("expired" in current) return current.expired;
   if (!isUuid(input.id)) return fail("That entry no longer exists.");
+  // An action's arguments arrive from the client unchecked. `active: "false"` (a string) used to
+  // skip the lock and the count below (`!"false"` is false) while Postgres still stored false,
+  // so the last payment source could be switched off after all (PR #25 review).
+  if (!isListKind(input.kind) || typeof input.active !== "boolean") return fail("That is not a valid value.");
 
   const target = table(input.kind);
 
-  // Expense entry requires a payment source, so the last active one cannot be turned off.
-  if (!input.active && input.kind === "paymentSource") {
-    const active = await db
-      .select({ id: target.id })
-      .from(target)
-      .where(and(eq(target.orgId, current.orgId), eq(target.active, true)));
-    if (active.length <= 1) return fail("Keep at least one payment source active.");
-  }
+  const result = await db.transaction(async (tx) => {
+    // Expense entry requires a payment source, so the last active one cannot be turned off.
+    // The org row is locked first so the count and the update can't interleave with another
+    // deactivation: two people each turning off one of the last two used to both pass the
+    // count and leave none active (Phase 0 B4).
+    if (!input.active && input.kind === "paymentSource") {
+      await lockOrg(tx, current.orgId, { id: organizations.id });
+      const active = await tx
+        .select({ id: target.id })
+        .from(target)
+        .where(and(eq(target.orgId, current.orgId), eq(target.active, true)));
+      if (active.length <= 1) return fail("Keep at least one payment source active.");
+    }
 
-  const updated = await db
-    .update(target)
-    .set({ active: input.active })
-    .where(and(eq(target.id, input.id), eq(target.orgId, current.orgId)))
-    .returning({ id: target.id });
-  if (updated.length === 0) return fail("That entry no longer exists.");
+    const updated = await tx
+      .update(target)
+      .set({ active: input.active })
+      .where(and(eq(target.id, input.id), eq(target.orgId, current.orgId)))
+      .returning({ id: target.id });
+    if (updated.length === 0) return fail("That entry no longer exists.");
+    return ok();
+  });
+  if (!result.ok) return result;
 
   revalidatePath("/", "layout");
   return ok();
 }
 
 /* --------------------------------------------------------- vendor library */
+
+const VENDOR_EXISTS = "A vendor with that name already exists.";
 
 export async function saveVendorAction(input: {
   id: string;
@@ -175,21 +208,47 @@ export async function saveVendorAction(input: {
       ),
     )
     .limit(1);
-  if (clash[0] && clash[0].id !== input.id) return fail("A vendor with that name already exists.");
+  if (clash[0] && clash[0].id !== input.id) return fail(VENDOR_EXISTS);
 
-  const updated = await db
-    .update(vendorDefaults)
-    .set({
-      name,
-      defaultLineItemId: input.defaultLineItemId,
-      defaultDescription: input.defaultDescription.trim(),
-      defaultPaymentSource: input.defaultPaymentSource,
-      defaultSubtotalCents: parseMoneyToCents(input.defaultSubtotal),
-      defaultTaxCents: parseMoneyToCents(input.defaultTax),
-      defaultFeesCents: parseMoneyToCents(input.defaultFees),
-    })
-    .where(and(eq(vendorDefaults.id, input.id), eq(vendorDefaults.orgId, current.orgId)))
-    .returning({ id: vendorDefaults.id });
+  // The default line item comes from the browser, so it must be one of this organisation's own
+  // (Phase 0 B3). The foreign key only proves it exists somewhere, and a malformed id reached
+  // Postgres as an unhandled error. Blank means "no default".
+  const defaultLineItemId = input.defaultLineItemId || null;
+  if (defaultLineItemId !== null) {
+    const owned =
+      isUuid(defaultLineItemId) &&
+      (
+        await db
+          .select({ id: lineItems.id })
+          .from(lineItems)
+          .where(and(eq(lineItems.id, defaultLineItemId), eq(lineItems.orgId, current.orgId)))
+          .limit(1)
+      ).length > 0;
+    if (!owned) return fail("Choose a line item.");
+  }
+
+  let updated: { id: string }[];
+  try {
+    updated = await db
+      .update(vendorDefaults)
+      .set({
+        name,
+        defaultLineItemId,
+        defaultDescription: input.defaultDescription.trim(),
+        defaultPaymentSource: input.defaultPaymentSource,
+        defaultSubtotalCents: parseMoneyToCents(input.defaultSubtotal),
+        defaultTaxCents: parseMoneyToCents(input.defaultTax),
+        defaultFeesCents: parseMoneyToCents(input.defaultFees),
+      })
+      .where(and(eq(vendorDefaults.id, input.id), eq(vendorDefaults.orgId, current.orgId)))
+      .returning({ id: vendorDefaults.id });
+  } catch (error) {
+    // Two renames to the same name at once both pass the check above (Phase 0 B6).
+    if (isUniqueViolation(error)) return fail(VENDOR_EXISTS);
+    // The line item checked above was deleted before this update landed.
+    if (isMissingLineItem(error)) return fail(UI.lineItemGone);
+    throw error;
+  }
   if (updated.length === 0) return fail("That vendor no longer exists.");
 
   revalidatePath("/", "layout");

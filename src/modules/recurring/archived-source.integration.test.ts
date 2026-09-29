@@ -21,7 +21,7 @@ const hasDatabase = Boolean(process.env.DATABASE_URL);
 
 describe.skipIf(!hasDatabase)("recurring actions refuse archived funding sources (integration)", async () => {
   const { db } = await import("@/src/db");
-  const { expenses, fundingSources, lineItems, organizations, recurringItems } = await import(
+  const { expenses, fundingSources, lineItems, organizations, recurringItems, users } = await import(
     "@/src/db/schema"
   );
   const { createTestOrg } = await import("@/src/db/test-org");
@@ -31,6 +31,7 @@ describe.skipIf(!hasDatabase)("recurring actions refuse archived funding sources
   const session = vi.mocked(actionSession);
 
   let orgId: string;
+  let userId: string;
   let activeSourceId: string;
   let archivedSourceId: string;
   let activeLineItemId: string;
@@ -40,7 +41,7 @@ describe.skipIf(!hasDatabase)("recurring actions refuse archived funding sources
   function asOrg() {
     session.mockResolvedValue({
       orgId,
-      userId: "u",
+      userId,
       email: "e@example.com",
       role: "admin",
       orgName: "Org",
@@ -57,6 +58,13 @@ describe.skipIf(!hasDatabase)("recurring actions refuse archived funding sources
     const org = await createTestOrg({ name: "Archived Source Recurring Org", activeMonth: MONTH });
     orgId = org.orgId;
     activeSourceId = org.fundingSourceId;
+
+    // A real person: adding to a month writes a history entry naming who did it (Phase 0 B2).
+    const [user] = await db
+      .insert(users)
+      .values({ orgId, email: `archived-recurring-${Date.now()}@example.test`, passwordHash: "unused", role: "admin" })
+      .returning({ id: users.id });
+    userId = user.id;
 
     const [archived] = await db
       .insert(fundingSources)

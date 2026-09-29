@@ -17,7 +17,14 @@ import "server-only";
 import { and, eq, sql } from "drizzle-orm";
 
 import { db } from "@/src/db";
-import { expenseAuditEvents, expenses, vendorDefaults, type ExpenseAuditSnapshot } from "@/src/db/schema";
+import {
+  expenseAuditEvents,
+  expenses,
+  fundingSources,
+  lineItems,
+  vendorDefaults,
+  type ExpenseAuditSnapshot,
+} from "@/src/db/schema";
 import { parseMoneyToCentsOrZero } from "@/src/domain/money";
 
 import { claimReferenceSeq, type Executor } from "./references";
@@ -43,6 +50,31 @@ export type ExpenseRow = {
   noReceipt: boolean;
   noReceiptReason: string | null;
 };
+
+/**
+ * The audit snapshot's field set, minus `lineItemName` — one shared column list for every action
+ * that reads it straight off `expenses` (delete, restore, permanent delete, a recurring item's
+ * Remove) rather than building it from `toRow()`, so there's one place to update if a field is
+ * ever added. Lives here rather than in `actions.ts` so the recurring actions can share it.
+ */
+export const EXPENSE_SNAPSHOT_COLUMNS = {
+  name: expenses.name,
+  fundingSourceId: expenses.fundingSourceId,
+  lineItemId: expenses.lineItemId,
+  paymentSource: expenses.paymentSource,
+  month: expenses.month,
+  date: expenses.date,
+  description: expenses.description,
+  subtotalCents: expenses.subtotalCents,
+  taxCents: expenses.taxCents,
+  feesCents: expenses.feesCents,
+  taxReimbursable: expenses.taxReimbursable,
+  feesReimbursable: expenses.feesReimbursable,
+  note: expenses.note,
+  narrative: expenses.narrative,
+  noReceipt: expenses.noReceipt,
+  noReceiptReason: expenses.noReceiptReason,
+} as const;
 
 /** Form input to column values. The one place user-typed money becomes cents on this path. */
 export function toRow(input: ExpenseInput): ExpenseRow {
@@ -188,6 +220,8 @@ export async function insertExpenseWithAudit(
     fromInvoice?: boolean;
     /** Given when the caller is inserting several in a row and has already read the counter. */
     sortOrder?: number;
+    /** The recurring item this expense was added from (R8.3), so its Remove can find it. */
+    recurringItemId?: string;
   },
 ): Promise<{ id: string }> {
   const sortOrder =
@@ -206,6 +240,7 @@ export async function insertExpenseWithAudit(
     .values({
       orgId: input.orgId,
       ...input.row,
+      ...(input.recurringItemId ? { recurringItemId: input.recurringItemId } : {}),
       sortOrder,
       referenceSeq: await claimReferenceSeq(
         input.orgId,
@@ -228,4 +263,42 @@ export async function insertExpenseWithAudit(
   });
 
   return inserted;
+}
+
+/**
+ * The audit event for an expense just moved into or out of the trash, in the caller's
+ * transaction: `deleted` carries the row as it was, `restored` the row as it is again. Every path
+ * that trashes an expense writes one (the Delete button, a recurring item's Remove), so the
+ * history never shows an expense vanishing with no record of who removed it; restoring writes the
+ * other half.
+ *
+ * RETURNING cannot reach a joined table, so the line item's and its source's names cost one
+ * extra select. The FK is `onDelete: "restrict"`, so the line item can never be gone.
+ */
+export async function insertTrashAudit(
+  tx: Executor,
+  input: {
+    action: "deleted" | "restored";
+    orgId: string;
+    actorUserId: string;
+    expenseId: string;
+    row: ExpenseRow;
+  },
+): Promise<void> {
+  const [lineItem] = await tx
+    .select({ name: lineItems.name, fundingSourceName: fundingSources.name })
+    .from(lineItems)
+    .innerJoin(fundingSources, eq(fundingSources.id, lineItems.fundingSourceId))
+    .where(eq(lineItems.id, input.row.lineItemId))
+    .limit(1);
+
+  const snapshot = snapshotOf(input.row, lineItem?.name ?? "", lineItem?.fundingSourceName ?? "");
+  await tx.insert(expenseAuditEvents).values({
+    orgId: input.orgId,
+    expenseId: input.expenseId,
+    actorUserId: input.actorUserId,
+    action: input.action,
+    beforeData: input.action === "deleted" ? snapshot : null,
+    afterData: input.action === "restored" ? snapshot : null,
+  });
 }

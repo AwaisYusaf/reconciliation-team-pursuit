@@ -15,6 +15,10 @@ import { fileURLToPath } from "node:url";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
 
+/** Reads every source file; under the full suite's parallel load that takes longer than the
+ *  5 s default, which failed it at random. */
+const SCAN_TIMEOUT = 30_000;
+
 const repoRoot = fileURLToPath(new URL("../../", import.meta.url));
 
 function sourceFiles(relDir: string): string[] {
@@ -83,7 +87,7 @@ describe("U-20: only the entitlement decides access from billing columns", () =>
       accessReads(f, readFileSync(path.join(repoRoot, f), "utf8")),
     );
     expect(offenders).toEqual([]);
-  });
+  }, SCAN_TIMEOUT);
 
   it("every join to org_billing goes through billingCopyOn(), so a copy from the other Stripe mode never counts (D-125)", () => {
     const joins = FILES.filter((f) => f !== "src/db/test-org.ts").flatMap((f) =>

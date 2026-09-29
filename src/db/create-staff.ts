@@ -24,6 +24,7 @@ import { sql } from "drizzle-orm";
 import { Pool } from "pg";
 import { z } from "zod";
 
+import { isUniqueViolation } from "./pg-errors";
 import * as schema from "./schema";
 
 function argument(name: string): string | undefined {
@@ -138,8 +139,7 @@ async function main() {
       // The unique-index race: two creates for the same email land within the same window.
       // Only a unique violation (23505, raw or wrapped as Drizzle's `cause`) means that; any
       // other failure is rethrown so it isn't misreported as a duplicate.
-      const code = (value: unknown) => (value as { code?: unknown } | undefined)?.code;
-      if (code(error) === "23505" || code((error as { cause?: unknown }).cause) === "23505") {
+      if (isUniqueViolation(error)) {
         throw new Error(`An account already exists for ${email}`);
       }
       throw error;

@@ -16,6 +16,7 @@ import { cn } from "@/src/lib/cn";
 import { formatDateUS, todayIso } from "@/src/domain/dates";
 import { formatMoney } from "@/src/domain/format";
 import { cascadeConfirmation, moveInOrder } from "@/src/domain/line-item-rules";
+import { UI } from "@/src/domain/strings";
 import {
   addLineItemPerformanceAction,
   deleteLineItemAction,
@@ -133,7 +134,7 @@ export function LineItemsManager({
   const [addDraft, setAddDraft] = useState({ name: "", scheduledValue: "", openingBilled: "" });
   const [error, setError] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<
-    ({ id: string } & LineItemDeleteConfirmation) | null
+    ({ id: string; changed?: boolean } & LineItemDeleteConfirmation) | null
   >(null);
 
   function run(
@@ -197,11 +198,15 @@ export function LineItemsManager({
   function move(index: number, delta: number) {
     const next = moveInOrder(rows, index, delta);
     if (next[index] === rows[index]) return;
-    run(
-      () => reorderLineItemsAction(next.map((row) => row.id), fundingSourceId),
-      undefined,
-      "Order updated.",
-    );
+    setError(null);
+    startTransition(async () => {
+      const result = await reorderLineItemsAction(next.map((row) => row.id), fundingSourceId);
+      // Refreshed either way: on success to show the saved order, and on a refusal because the
+      // list on screen is out of date (someone added or deleted a line item), so the fresh list
+      // is what the person reorders next rather than the same stale one.
+      if (!reportResult(result, "Order updated.")) setError(result.error ?? "That change couldn't be saved. Try again.");
+      router.refresh();
+    });
   }
 
   function remove(row: LineItemRow) {
@@ -258,10 +263,17 @@ export function LineItemsManager({
           label: "Delete line item",
           disabled: pending,
           onConfirm: () => {
-            const id = confirmDelete!.id;
+            const { id, recurringNames, performanceTotalCents } = confirmDelete!;
             startTransition(async () => {
               setError(null);
-              const result = await deleteLineItemAction(id, true);
+              // Sends back exactly what the dialog listed, so the server deletes only that.
+              const result = await deleteLineItemAction(id, { recurringNames, performanceTotalCents });
+              // Something was added or removed since the dialog opened: show the new list and
+              // let the person confirm again, rather than deleting what they never saw.
+              if (result.ok && result.data?.requiresConfirmation) {
+                setConfirmDelete({ id, changed: true, ...result.data.requiresConfirmation });
+                return;
+              }
               // Stays open (Delete disabled via `pending`) until the outcome is known, so the
               // dialog doesn't vanish out from under a failure the general error banner is
               // about to show — the dialog would otherwise hide that banner behind its overlay.
@@ -272,6 +284,7 @@ export function LineItemsManager({
           },
         }}
       >
+        {confirmDelete?.changed && <p className="mb-3 font-semibold">{UI.lineItemDeleteChanged}</p>}
         {confirmDelete &&
           cascadeConfirmation(confirmDelete.recurringNames, confirmDelete.performanceTotalCents)}
       </Dialog>

@@ -17,6 +17,10 @@ import { fileURLToPath } from "node:url";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
 
+/** Reads every source file; under the full suite's parallel load that takes longer than the
+ *  5 s default, which failed it at random. */
+const SCAN_TIMEOUT = 30_000;
+
 const repoRoot = fileURLToPath(new URL("../../", import.meta.url));
 
 /** Files that must name a dash, each with exactly how many places it does, so new copy there still fails. */
@@ -97,7 +101,7 @@ describe("no em or en dash in anything the app writes (D-113)", () => {
       dashesIn(file, readFileSync(path.join(repoRoot, file), "utf8")),
     );
     expect(offenders).toEqual([]);
-  });
+  }, SCAN_TIMEOUT);
 
   it("allows each listed file exactly the dashes it needs, and no more", () => {
     for (const [file, { count }] of Object.entries(ALLOWED)) {

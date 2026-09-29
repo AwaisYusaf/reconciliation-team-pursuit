@@ -7,12 +7,13 @@
  * on a machine without it; the application container always ships it.
  */
 import { execFileSync } from "node:child_process";
-import { readdir } from "node:fs/promises";
+import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
+import path from "node:path";
 
 import { PDFDocument, StandardFonts } from "pdf-lib";
 import sharp from "sharp";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { normalizeImage, pdfPageCount, rasterizePdf, RASTER_LADDER } from "./raster";
 
@@ -91,16 +92,30 @@ describe.skipIf(!hasPoppler())("rasterizePdf", () => {
   });
 
   it("leaves no temp directory behind, even when the caller throws", async () => {
-    const before = (await readdir(tmpdir())).filter((name) => name.startsWith("ngo-raster-"));
+    // A temp root of its own (Phase 0 B9), as `docx-to-pdf.test.ts` does. Counting `ngo-raster-`
+    // in the shared temp folder also counted other test files' live directories, so it failed
+    // at random whenever the whole suite ran at once. `os.tmpdir()` reads these variables on each
+    // call, and each test file runs in its own process, so only this test is redirected.
+    const root = await mkdtemp(path.join(tmpdir(), "ngo-rastercheck-"));
+    // `vi.stubEnv`, never a plain assignment: writing `undefined` back to `process.env` stores the
+    // string "undefined", so on Linux (no TMPDIR set) the next temp folder landed in a relative
+    // directory named "undefined" and the tests after this one failed (PR #25 review).
+    vi.stubEnv("TMPDIR", root);
+    vi.stubEnv("TEMP", root);
+    vi.stubEnv("TMP", root);
 
-    await expect(
-      rasterizePdf(await makePdf(2), () => {
-        throw new Error("caller exploded");
-      }),
-    ).rejects.toThrow("caller exploded");
+    try {
+      await expect(
+        rasterizePdf(await makePdf(2), () => {
+          throw new Error("caller exploded");
+        }),
+      ).rejects.toThrow("caller exploded");
 
-    const after = (await readdir(tmpdir())).filter((name) => name.startsWith("ngo-raster-"));
-    expect(after.length).toBe(before.length);
+      expect(await readdir(root)).toEqual([]);
+    } finally {
+      vi.unstubAllEnvs();
+      await rm(root, { recursive: true, force: true });
+    }
   });
 
   it("refuses a file that is not a PDF rather than producing a broken page", async () => {

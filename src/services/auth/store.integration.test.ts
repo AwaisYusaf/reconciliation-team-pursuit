@@ -194,8 +194,14 @@ describe.skipIf(!hasDatabase)("session store (integration)", async () => {
       .set({ expiresAt: new Date(Date.now() - DAY) })
       .where(eq(sessions.id, hashSessionToken(stale)));
 
-    expect(await deleteExpiredSessions()).toBeGreaterThanOrEqual(1);
-    expect(await resolveSession(stale)).toBeNull();
+    // Asserts on the rows, not the count this call returns (Phase 0 B9): every sign-in in any
+    // other test file also sweeps, so the stale row may already be gone and the count 0. What
+    // matters is the outcome, the same way `staff-session.integration.test.ts` checks it.
+    await deleteExpiredSessions();
+    const rowOf = async (token: string) =>
+      db.select({ id: sessions.id }).from(sessions).where(eq(sessions.id, hashSessionToken(token)));
+    expect(await rowOf(stale)).toEqual([]);
+    expect(await rowOf(fresh)).toHaveLength(1);
     expect(await resolveSession(fresh)).not.toBeNull();
 
     await deleteSession(fresh);

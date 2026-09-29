@@ -7,6 +7,7 @@ import { and, asc, count, eq, isNull, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
 import { db } from "@/src/db";
+import { LINE_ITEM_GONE, unlessLineItemGone } from "@/src/db/pg-errors";
 import {
   expenseDocuments,
   expenses,
@@ -23,8 +24,12 @@ import { UI } from "@/src/domain/strings";
 import { fail, ok, type ActionResult } from "@/src/lib/action-result";
 import { actionSession } from "@/src/lib/action-session";
 import { isUuid } from "@/src/lib/ids";
+import {
+  EXPENSE_SNAPSHOT_COLUMNS,
+  insertTrashAudit,
+  insertExpenseWithAudit,
+} from "@/src/modules/expenses/expense-row";
 import { rulesForFundingSource } from "@/src/modules/expenses/reimbursement";
-import { claimReferenceSeq } from "@/src/modules/expenses/references";
 import { monthLocked } from "@/src/modules/packet/month-guard";
 
 
@@ -76,25 +81,26 @@ export async function saveRecurringItemAction(input: {
     defaultFeesCents: parseMoneyToCents(input.defaultFees),
   };
 
-  if (input.id) {
-    // As above: a non-UUID must fail as "not found", not as an unhandled database error.
-    if (!isUuid(input.id)) return fail("That recurring item no longer exists.");
-    const updated = await db
-      .update(recurringItems)
-      .set(values)
-      .where(and(eq(recurringItems.id, input.id), eq(recurringItems.orgId, current.orgId)))
-      .returning({ id: recurringItems.id });
-    if (updated.length === 0) return fail("That recurring item no longer exists.");
-  } else {
+  // As above: a non-UUID must fail as "not found", not as an unhandled database error.
+  if (input.id && !isUuid(input.id)) return fail("That recurring item no longer exists.");
+  const saved = await unlessLineItemGone(async () => {
+    if (input.id) {
+      const updated = await db
+        .update(recurringItems)
+        .set(values)
+        .where(and(eq(recurringItems.id, input.id), eq(recurringItems.orgId, current.orgId)))
+        .returning({ id: recurringItems.id });
+      return updated.length > 0;
+    }
     const [{ next }] = await db
       .select({ next: sql<number>`coalesce(max(${recurringItems.sortOrder}), -1) + 1` })
       .from(recurringItems)
       .where(eq(recurringItems.orgId, current.orgId));
-
-    await db
-      .insert(recurringItems)
-      .values({ orgId: current.orgId, ...values, sortOrder: Number(next) });
-  }
+    await db.insert(recurringItems).values({ orgId: current.orgId, ...values, sortOrder: Number(next) });
+    return true;
+  });
+  if (saved === LINE_ITEM_GONE) return fail(UI.lineItemGone);
+  if (!saved) return fail("That recurring item no longer exists.");
 
   revalidatePath("/", "layout");
   return ok();
@@ -137,7 +143,9 @@ export async function addRecurringToMonthAction(
       name: recurringItems.name,
       amountCents: recurringItems.amountCents,
       lineItemId: recurringItems.lineItemId,
+      lineItemName: lineItems.name,
       fundingSourceId: lineItems.fundingSourceId,
+      fundingSourceName: fundingSources.name,
       sourceArchivedAt: fundingSources.archivedAt,
       defaultDescription: recurringItems.defaultDescription,
       defaultNarrative: recurringItems.defaultNarrative,
@@ -185,57 +193,54 @@ export async function addRecurringToMonthAction(
     defaultSource?.label ??
     "Paid by us, reimbursement requested";
 
-  // Deliberately not filtered on `deletedAt`: see the same counter in
-  // `createExpenseAction` — a trashed row keeps its sortOrder.
-  const [{ next }] = await db
-    .select({ next: sql<number>`coalesce(max(${expenses.sortOrder}), -1) + 1` })
-    .from(expenses)
-    .where(and(eq(expenses.orgId, current.orgId), eq(expenses.month, month)));
-
   // The funding source decides what it reimburses, so a one-click add must resolve the same
   // rules the expense form does (D-67, Phase 4/D-93 — no longer the payment source). Falling
   // through to the column defaults meant the identical expense claimed a different amount
   // depending on how it was entered.
   const rules = await rulesForFundingSource(current.orgId, item.fundingSourceId);
 
-  // The insert and its reference claim must land together — a refused insert must never spend
-  // the month's next reference number (plan §3.4, the same non-atomicity createExpenseAction
-  // already avoids).
-  const result = await db.transaction(async (tx) => {
-    // First thing inside the transaction, before any write and before claimReferenceSeq
+  // Through the one shared insert, so a one-click add gets what every other create path gets in
+  // the same transaction: the month's next reference (R2.6), the sort order, and the `created`
+  // audit event naming who added it. It used to insert directly and wrote no history at all.
+  const result = await unlessLineItemGone(() => db.transaction(async (tx) => {
+    // First thing inside the transaction, before any write and before the reference is claimed
     // (R10.7, D-96).
     const locked = await monthLocked(tx, current.orgId, [
       { fundingSourceId: item.fundingSourceId, month },
     ]);
     if (locked) return { ok: false as const, locked };
 
-    await tx.insert(expenses).values({
+    await insertExpenseWithAudit(tx, {
       orgId: current.orgId,
-      lineItemId: item.lineItemId,
-      fundingSourceId: item.fundingSourceId,
-      month,
-      date: todayIso(),
-      name: item.name,
-      description: item.defaultDescription ?? vendor?.description ?? "",
-      // The narrative is the whole point of carrying a template forward: it arrives filled in
-      // and editable, so nobody reopens last month to copy and paste it (R8.3).
-      narrative: item.defaultNarrative,
-      // A remembered source is only offered while it is still one the organisation uses (R5.2).
-      paymentSource,
-      subtotalCents: item.amountCents,
-      taxCents: item.defaultTaxCents ?? 0,
-      feesCents: item.defaultFeesCents ?? 0,
-      taxReimbursable: rules.taxReimbursable,
-      feesReimbursable: rules.feesReimbursable,
-      sortOrder: Number(next),
-      // R2.6: a one-click add is an expense like any other and needs the month's next
-      // reference. Omitting this left every added row at the column default, so the second
-      // add into a month collided on `expenses_org_month_reference_uq` and failed.
-      referenceSeq: await claimReferenceSeq(current.orgId, item.fundingSourceId, month, tx),
+      actorUserId: current.userId,
+      lineItemName: item.lineItemName,
+      fundingSourceName: item.fundingSourceName,
       recurringItemId: id,
+      row: {
+        name: item.name,
+        fundingSourceId: item.fundingSourceId,
+        lineItemId: item.lineItemId,
+        // A remembered source is only offered while it is still one the organisation uses (R5.2).
+        paymentSource,
+        month,
+        date: todayIso(),
+        description: item.defaultDescription ?? vendor?.description ?? "",
+        subtotalCents: item.amountCents,
+        taxCents: item.defaultTaxCents ?? 0,
+        feesCents: item.defaultFeesCents ?? 0,
+        taxReimbursable: rules.taxReimbursable,
+        feesReimbursable: rules.feesReimbursable,
+        note: null,
+        // The narrative is the whole point of carrying a template forward: it arrives filled in
+        // and editable, so nobody reopens last month to copy and paste it (R8.3).
+        narrative: item.defaultNarrative,
+        noReceipt: false,
+        noReceiptReason: null,
+      },
     });
     return { ok: true as const };
-  });
+  }));
+  if (result === LINE_ITEM_GONE) return fail(UI.lineItemGone);
   if (!result.ok) return fail(UI.monthLocked(monthLabel(result.locked.month)));
 
   revalidatePath("/", "layout");
@@ -344,7 +349,17 @@ export async function removeRecurringFromMonthAction(
           eq(expenses.fundingSourceId, item.fundingSourceId),
         ),
       )
-      .returning({ id: expenses.id });
+      .returning(EXPENSE_SNAPSHOT_COLUMNS);
+    // The same `deleted` history entry the Delete button writes; this path used to write none.
+    if (trashed[0]) {
+      await insertTrashAudit(tx, {
+        action: "deleted",
+        orgId: current.orgId,
+        actorUserId: current.userId,
+        expenseId: targetExpenseId,
+        row: trashed[0],
+      });
+    }
     return { ok: true as const, trashed };
   });
   if (!result.ok) return fail(UI.monthLocked(monthLabel(result.locked.month)));

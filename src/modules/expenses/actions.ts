@@ -7,6 +7,7 @@ import { and, eq, isNotNull, isNull, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
 import { db } from "@/src/db";
+import { LINE_ITEM_GONE, unlessLineItemGone } from "@/src/db/pg-errors";
 import {
   expenseAuditEvents,
   expenseDocuments,
@@ -29,7 +30,14 @@ import { deleteStoredObjects } from "@/src/services/storage/documents";
 import { isUuid } from "@/src/lib/ids";
 import { isKnownPaymentSource } from "@/src/modules/settings/labels";
 
-import { insertExpenseWithAudit, learnVendor, snapshotOf, toRow } from "./expense-row";
+import {
+  EXPENSE_SNAPSHOT_COLUMNS,
+  insertTrashAudit,
+  insertExpenseWithAudit,
+  learnVendor,
+  snapshotOf,
+  toRow,
+} from "./expense-row";
 import { validate } from "./validation";
 
 export type ExpenseInput = {
@@ -76,31 +84,6 @@ function pickSnapshot(row: ExpenseAuditSnapshot): ExpenseAuditSnapshot {
     noReceiptReason: row.noReceiptReason,
   };
 }
-
-/**
- * The audit snapshot's field set, minus `lineItemName` — one shared column list for the three
- * actions (delete/restore/permanent-delete) that read it straight off `expenses` rather than
- * building it from `toRow()`, so there's one place to update if a field is ever added instead
- * of three near-identical `.select()` calls drifting apart.
- */
-const EXPENSE_SNAPSHOT_COLUMNS = {
-  name: expenses.name,
-  fundingSourceId: expenses.fundingSourceId,
-  lineItemId: expenses.lineItemId,
-  paymentSource: expenses.paymentSource,
-  month: expenses.month,
-  date: expenses.date,
-  description: expenses.description,
-  subtotalCents: expenses.subtotalCents,
-  taxCents: expenses.taxCents,
-  feesCents: expenses.feesCents,
-  taxReimbursable: expenses.taxReimbursable,
-  feesReimbursable: expenses.feesReimbursable,
-  note: expenses.note,
-  narrative: expenses.narrative,
-  noReceipt: expenses.noReceipt,
-  noReceiptReason: expenses.noReceiptReason,
-} as const;
 
 /** Signals a row that existed at the read inside a transaction but was gone by the write — a
  *  concurrent delete raced this one. Caught at the call site and turned into the normal
@@ -173,7 +156,7 @@ export async function createExpenseAction(
   // The insert and its audit event must land together: if the second write failed after the
   // first committed, the expense would exist with no record of who created it, defeating the
   // audit trail's whole purpose.
-  const created = await db.transaction(async (tx) => {
+  const created = await unlessLineItemGone(() => db.transaction(async (tx) => {
     // First thing inside the transaction, before any write (R10.7, D-96) — the month must
     // still be checked here even though a page can't reach this month at all once locked,
     // because the block has to hold for a page that was already open before the lock landed.
@@ -194,7 +177,8 @@ export async function createExpenseAction(
     });
 
     return { ok: true as const, row: row_ };
-  });
+  }));
+  if (created === LINE_ITEM_GONE) return fail(UI.lineItemGone);
   if (!created.ok) return fail(UI.monthLocked(monthLabel(created.locked.month)));
 
   await learnVendor(current.orgId, row);
@@ -319,7 +303,7 @@ export async function updateExpenseAction(input: ExpenseInput): Promise<ActionRe
   // The update and its audit event must land together — see the same reasoning in
   // createExpenseAction. A failure between them would otherwise leave an edit applied with no
   // record of what it changed from.
-  const updated = await db.transaction(async (tx) => {
+  const updated = await unlessLineItemGone(() => db.transaction(async (tx) => {
     // First thing inside the transaction, before any write, and before claimReferenceSeq below
     // (R10.7, D-96) — checks both the expense's current month and its target month, so a
     // refused move can never spend the target month's reference number (plan §3.4).
@@ -410,7 +394,8 @@ export async function updateExpenseAction(input: ExpenseInput): Promise<ActionRe
         : [];
 
     return { ok: true as const, rows: updated_, removedDocs, raceMessage: undefined as string | undefined };
-  });
+  }));
+  if (updated === LINE_ITEM_GONE) return fail(UI.lineItemGone);
   if (!updated.ok) return fail(UI.monthLocked(monthLabel(updated.locked.month)));
   if (updated.rows.length === 0) return fail(updated.raceMessage ?? "That expense no longer exists.");
 
@@ -493,25 +478,12 @@ export async function deleteExpenseAction(id: string): Promise<ActionResult> {
       const raceMessage = found ? "That expense just changed. Try again." : "That expense no longer exists.";
       return { ok: true as const, rows: trashed_, raceMessage };
     }
-    const [row] = trashed_;
-
-    // RETURNING cannot reach a joined table, so the line item's (and its source's) name — the
-    // fields the snapshot needs that aren't columns on `expenses` — cost one extra select. The
-    // FK is `onDelete: "restrict"` (schema.ts), so the row this points at can never be gone.
-    const [lineItem] = await tx
-      .select({ name: lineItems.name, fundingSourceName: fundingSources.name })
-      .from(lineItems)
-      .innerJoin(fundingSources, eq(fundingSources.id, lineItems.fundingSourceId))
-      .where(eq(lineItems.id, row.lineItemId))
-      .limit(1);
-
-    await tx.insert(expenseAuditEvents).values({
-      orgId: current.orgId,
-      expenseId: id,
-      actorUserId: current.userId,
+    await insertTrashAudit(tx, {
       action: "deleted",
-      beforeData: snapshotOf(row, lineItem?.name ?? "", lineItem?.fundingSourceName ?? ""),
-      afterData: null,
+      orgId: current.orgId,
+      actorUserId: current.userId,
+      expenseId: id,
+      row: trashed_[0],
     });
 
     return { ok: true as const, rows: trashed_, raceMessage: undefined as string | undefined };
@@ -567,24 +539,12 @@ export async function restoreExpenseAction(id: string): Promise<ActionResult> {
       const raceMessage = found ? "That expense just changed. Try again." : "That expense no longer exists.";
       return { ok: true as const, rows: restored_, raceMessage };
     }
-    const [row] = restored_;
-
-    // RETURNING cannot reach a joined table, so the line item's (and its source's) name costs
-    // one extra select, the same cost as `deleteExpenseAction`.
-    const [lineItem] = await tx
-      .select({ name: lineItems.name, fundingSourceName: fundingSources.name })
-      .from(lineItems)
-      .innerJoin(fundingSources, eq(fundingSources.id, lineItems.fundingSourceId))
-      .where(eq(lineItems.id, row.lineItemId))
-      .limit(1);
-
-    await tx.insert(expenseAuditEvents).values({
-      orgId: current.orgId,
-      expenseId: id,
-      actorUserId: current.userId,
+    await insertTrashAudit(tx, {
       action: "restored",
-      beforeData: null,
-      afterData: snapshotOf(row, lineItem?.name ?? "", lineItem?.fundingSourceName ?? ""),
+      orgId: current.orgId,
+      actorUserId: current.userId,
+      expenseId: id,
+      row: restored_[0],
     });
 
     return { ok: true as const, rows: restored_, raceMessage: undefined as string | undefined };

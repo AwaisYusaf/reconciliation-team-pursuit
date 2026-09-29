@@ -57,6 +57,23 @@ describe("parseMoneyToCents (R1.1)", () => {
     expect(parseMoneyToCentsOrZero("")).toBe(0);
     expect(parseMoneyToCentsOrZero("12.34")).toBe(1234);
   });
+
+  it("reads a decimal comma as the cents, never as a thousands separator (Phase 0 B1)", () => {
+    expect(parseMoneyToCents("12,50")).toBe(1250); // was $1,250.00
+    expect(parseMoneyToCents("12,5")).toBe(1250);
+    expect(parseMoneyToCents(",50")).toBe(50);
+    expect(parseMoneyToCents("$12,50")).toBe(1250);
+    expect(parseMoneyToCents("-12,50")).toBe(-1250);
+    expect(parseMoneyToCents("(12,50)")).toBe(-1250);
+    expect(parseMoneyToCentsOrZero("7,05")).toBe(705);
+  });
+
+  it("still reads a comma before three digits, or alongside a dot, as thousands", () => {
+    expect(parseMoneyToCents("1,250")).toBe(125000);
+    expect(parseMoneyToCents("12,345,678")).toBe(1234567800);
+    expect(parseMoneyToCents("1,250.50")).toBe(125050);
+    expect(parseMoneyToCents("1,25.00")).toBe(12500);
+  });
 });
 
 describe("arithmetic", () => {
