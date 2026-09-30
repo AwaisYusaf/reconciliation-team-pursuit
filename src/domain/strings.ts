@@ -561,6 +561,65 @@ export const UI = {
    */
   invoiceWholeBillCharge: (amount: string) =>
     `This invoice charges ${amount} on the whole bill, not on any one line. It is not included in the drafts below. Add it as its own expense if it belongs in this month.`,
+  /* ---------------- Usability round 1 (2026-09-29): dashboard, packet, cover sheets, tours, AI screens ---------------- */
+  /** The dashboard's one calm line on an organization whose plan includes AI and whose AI
+   *  reading is on (usability #56). */
+  dashboardAiIntro:
+    "Your plan includes AI. It reads receipt amounts and turns invoices into expenses on Add Expense, and writes your monthly summary on the Month-End Packet page.",
+  /** The same line while AI reading is off (the Settings switch, D-105): only the summary is left. */
+  dashboardAiIntroSummaryOnly: "Your plan includes AI. It writes your monthly summary on the Month-End Packet page.",
+  /** The drafts card's title: drafts waiting for review in this source and month, with their
+   *  total (usability #64). */
+  draftsWaitingTitle: (count: number, amount: string) =>
+    `${count} ${count === 1 ? "draft" : "drafts"} waiting for review · ${amount}`,
+  /** The drafts card's line under the title (usability #64). */
+  draftsWaitingBody: (count: number) =>
+    count === 1
+      ? "It isn't in your totals or the packet until you approve it."
+      : "They aren't in your totals or the packet until you approve them.",
+  /** The same line on a locked month, where approving is refused (R10.7): no promise of
+   *  approval, only why it can't happen yet (usability #64). */
+  draftsWaitingLockedBody: (count: number, month: string) =>
+    `${month} is locked, so ${count === 1 ? "it" : "they"} can't be approved until the month is unlocked.`,
+  /** The link after a drafts notice, to the Expenses page's drafts view (usability #64). */
+  draftsReviewLink: "Review drafts",
+  /** The monthly summary's note that drafts are left out of it (usability #65). */
+  summaryDraftsWaiting: (count: number) =>
+    count === 1
+      ? "1 draft is still waiting for review, so it isn't in this summary."
+      : `${count} drafts are still waiting for review, so they aren't in this summary.`,
+  /** The packet page's next steps once the packet can be downloaded (usability #35). */
+  packetReadyNextSteps:
+    "The packet is ready. Next: 1. Download the packet. 2. Send it to your funder. 3. Mark as submitted. 4. When the signed copy comes back, Lock month.",
+  /** The same place once the month is marked as submitted: only the last step is left (#35). */
+  packetSubmittedNextStep: "The packet is marked as submitted. When the signed copy comes back, Lock month.",
+  /** A page count, singular for one (usability #33). */
+  pageCount: (n: number) => `${n} ${n === 1 ? "page" : "pages"}`,
+  /** The button and the confirm button of the mark-as-submitted dialog (usability #31, #36). */
+  markSubmittedButton: "Mark as submitted",
+  /** The mark-as-submitted dialog's title (usability #31, #36). */
+  markSubmittedTitle: (month: string) => `Mark ${month} as submitted?`,
+  /** What marking does, in every mark-as-submitted dialog (usability #31, #36). */
+  markSubmittedBody:
+    "Do this once you've sent the packet to your funder. The month's figures are saved as they are now, so any later change is shown to you. You can still make corrections.",
+  /** Heads the list of records still missing documents in the mark dialog (usability #36). */
+  markSubmittedMissing: (count: number) =>
+    count === 1
+      ? "1 expense is still missing documents, so the packet can't be downloaded yet:"
+      : `${count} expenses are still missing documents, so the packet can't be downloaded yet:`,
+  /** After that list: marking is still allowed (usability #36, R3.9). */
+  markSubmittedAnyway: "You can still mark the month as submitted.",
+  /** The Undo confirmation's title, worded like the mark dialog's (usability #36). */
+  undoSubmittedTitle: (month: string) => `Undo marking ${month} as submitted?`,
+  /** The Undo confirmation's text (R3.9: the figures captured at submission are discarded). */
+  undoSubmittedBody:
+    "The month goes back to not submitted. If you mark it again later, the figures are saved fresh at that time.",
+  /** What a cover sheet is, on an empty single line item's sheet (usability #41). */
+  coverSheetWhatItIs:
+    "A cover sheet lists this line item's expenses for the month, with each proof of payment. It goes into the packet for your funder.",
+  /** The files the packet puts after an expense's cover sheet, screen only (usability #42). */
+  coverSheetFollowingDocs: (filenames: readonly string[]) =>
+    `In the packet, after this cover sheet: ${filenames.join(", ")}.`,
   /* ---------------- Drafts waiting for review (Phase 14) ---------------- */
   /** The section above the month's expenses, and the mark on each of its rows. */
   draftsWaitingHeading: (count: number) => `Waiting for review (${count})`,

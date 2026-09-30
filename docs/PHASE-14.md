@@ -43,6 +43,7 @@ switch and the server's OpenAI configuration must all be on for the entry point 
 | C7 | "Unticking a row leaves it out. **Create drafts** makes one draft expense per ticked row." | The check screen is a list of **charge cards**, each one a real expense form, with **Save as expense** / **Mark as draft** per card, **Remove** instead of unticking, and one **Done** that writes everything at once. So the invoice path can create real expenses directly, not only drafts. Nothing is written until Done, so an abandoned screen leaves nothing behind. | User, 2026-09-22 |
 | C8 | "A file picker for **one PDF**", and "Not part of this ticket: photos or scans of invoices. PDF only for now." | **Photos are accepted too** (JPEG, PNG, WebP, and HEIC converted in the browser per D-111), because an invoice photographed on a phone is the same document and the reader already handles images. Still one file at a time, still 25 MB, still 10 pages. | User, 2026-09-22 |
 | C9 | The ticket's §1 upload step: a screen or dialog with a title, an explanation, **Read invoice** and **Cancel**. | **Not built.** The entry point on the Add Expense screen opens the file picker directly and the read starts on pick. One fewer step; the cost is that the limits and the explanation of what a draft is are never stated before the read. | User, 2026-09-22 |
+| C12 | Silent on reminding anyone that drafts are waiting | **A reminder with the count and total**: each dashboard section and the Month-End Packet page show a card titled `{N} drafts waiting for review · {total}` with a `Review drafts` link when that source and month have any, and the monthly summary section notes that they are not in the summary. The total is the drafts' reimbursable sum, the figure each draft row shows. On a locked month the reminder says the drafts can't be approved until the month is unlocked, rather than promising approval (R10.7). Reminders only: no figure, gate, page count, file or summary changes (§6). | User, usability test 2026-09-29 (#64, #65) |
 
 ### 2.2 Assumptions
 
@@ -147,8 +148,8 @@ invoice date; the month is the one in the header.
 
 ## 6. What a draft does not do
 
-Not in the month total, the line item spend or the amount left on a line item. Not on the
-dashboard. Not in the Excel summary, the packet or the cover sheets. Not read by the AI monthly
+Not in the month total, the line item spend or the amount left on a line item. Not in any
+dashboard figure (the dashboard and packet page only remind how many are waiting, C12). Not in the Excel summary, the packet or the cover sheets. Not read by the AI monthly
 summary. Holds no reference number; the number is given at approval, like any other new expense.
 Does not block the packet, because only approved expenses are checked for missing documents.
 

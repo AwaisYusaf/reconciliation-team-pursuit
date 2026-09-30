@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { DraftsWaitingCard } from "@/src/components/drafts-waiting-card";
 import { buttonClassName } from "@/src/components/ui/button";
 import { StatTile } from "@/src/components/ui/stat-tile";
 import {
@@ -14,6 +15,7 @@ import { cn } from "@/src/lib/cn";
 import { TableCard, Td, Th, Tr } from "@/src/components/ui/table";
 import type { FundingSource } from "@/src/db/schema";
 import { monthLabel, monthShortLabel, type MonthKey } from "@/src/domain/dates";
+import { draftsReviewHref } from "@/src/domain/draft-rules";
 import { formatMoney, formatPercent } from "@/src/domain/format";
 import { documentationStatus } from "@/src/domain/gate";
 import { loadSourceBudget, loadYearSpend } from "@/src/modules/dashboard/queries";
@@ -43,6 +45,8 @@ export async function SourceBudgetSection({
   showTitle,
   summaryReady,
   selectedId,
+  waitingDrafts,
+  monthLocked,
 }: {
   orgId: string;
   source: FundingSource;
@@ -50,6 +54,10 @@ export async function SourceBudgetSection({
   showTitle: boolean;
   summaryReady: boolean;
   selectedId: string | null;
+  /** This source's drafts waiting for review this month, or null with none (usability #64). */
+  waitingDrafts: { count: number; totalCents: number } | null;
+  /** This source's month is locked (R10.7): approving is refused, so the drafts note says so. */
+  monthLocked: boolean;
 }) {
   const { lineItems, stats, positions, grant, drift } = await loadSourceBudget(
     orgId,
@@ -109,6 +117,15 @@ export async function SourceBudgetSection({
             ))}
           </ul>
         </DangerPanel>
+      )}
+
+      {waitingDrafts && waitingDrafts.count > 0 && (
+        <DraftsWaitingCard
+          count={waitingDrafts.count}
+          amount={formatMoney(waitingDrafts.totalCents)}
+          lockedMonth={monthLocked ? monthLabel(month) : null}
+          href={draftsReviewHref(selectedId === null ? source.id : null)}
+        />
       )}
 
       {lineItems.length === 0 ? (

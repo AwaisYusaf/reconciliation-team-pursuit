@@ -1,7 +1,7 @@
 import { formatMoney } from "@/src/domain/format";
 
 import { CoverSheetProofs } from "./cover-sheet-proofs";
-import { SEE_BELOW } from "@/src/domain/strings";
+import { SEE_BELOW, UI } from "@/src/domain/strings";
 import type { CoverSheetRow } from "@/src/domain/cover-sheet";
 import { coverSheetHeading } from "@/src/domain/strings";
 
@@ -16,6 +16,9 @@ export type PreviewProof = {
 export type PreviewRow = CoverSheetRow & {
   expenseId: string;
   proofs: PreviewProof[];
+  /** Attached receipts, then attached supporting files: what the packet puts after the sheet
+   *  for this expense (usability #42). Screen only. */
+  followingDocuments: string[];
 };
 
 /**
@@ -114,6 +117,14 @@ export function CoverSheetPreview({
             <div className="mt-2 border border-dashed border-danger text-danger px-3 py-5 text-[11px] text-center">
               Proof of payment missing
             </div>
+          )}
+
+          {/* Screen only: the packet adds these after the sheet (packet-pdf-spec §3...n); the
+              cover sheet file itself does not contain them. */}
+          {row.followingDocuments.length > 0 && (
+            <p className="mt-2 text-[11px] text-sub font-sans">
+              {UI.coverSheetFollowingDocs(row.followingDocuments)}
+            </p>
           )}
         </section>
       ))}

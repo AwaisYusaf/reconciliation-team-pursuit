@@ -333,7 +333,7 @@ export function SavedTick({ children = "Saved" }: { children?: ReactNode }) {
 
 /**
  * A calm note: information the person should read, never an error or a block. Red stays for
- * things that stop an action (`DangerPanel`). Usability round 1 (#37, #46).
+ * things that stop an action (`DangerPanel`). Usability round 1 (#37, #46, #63, #64, #65, #35, #56).
  */
 export function InfoNote({ className, ...props }: ComponentProps<"div">) {
   return (

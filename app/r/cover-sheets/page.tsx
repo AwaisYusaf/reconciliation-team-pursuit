@@ -3,6 +3,7 @@ import Link from "next/link";
 import { BlockingPanel } from "@/src/components/ui/blocking-panel";
 import { PickFundingSource } from "@/src/components/app-shell/pick-funding-source";
 import { TourSequenceSkip } from "@/src/components/app-shell/tour-sequence-skip";
+import { buttonClassName } from "@/src/components/ui/button";
 import { DownloadButton } from "@/src/components/ui/download-button";
 import {
   EmptyState,
@@ -11,7 +12,7 @@ import {
 } from "@/src/components/ui/surfaces";
 import { TourGuide } from "@/src/components/ui/tour";
 import { loadLineItemBudgets } from "@/src/db/queries";
-import { coverSheetRows } from "@/src/domain/cover-sheet";
+import { coverSheetRows, defaultCoverSheetLineItemId } from "@/src/domain/cover-sheet";
 import { monthLabel } from "@/src/domain/dates";
 import { blockingRecords, type GateExpense } from "@/src/domain/gate";
 import { coverSheetTitle, pageTitle, UI } from "@/src/domain/strings";
@@ -71,12 +72,18 @@ export default async function CoverSheetsPage({
   ]);
 
   const { lineItem: requested } = await searchParams;
-  // An unknown or absent id falls back to the first line item rather than erroring — the
-  // parameter comes from a URL anyone can edit.
+  // An unknown or absent id falls back rather than erroring — the parameter comes from a URL
+  // anyone can edit. The fallback is the first line item with an expense this month, so the
+  // screen opens on a sheet with something on it (usability #40), else the first line item.
   const selected =
     requested === ALL_LINE_ITEMS
       ? ALL_LINE_ITEMS
-      : (lineItems.find((item) => item.id === requested)?.id ?? lineItems[0]?.id ?? ALL_LINE_ITEMS);
+      : (lineItems.find((item) => item.id === requested)?.id ??
+        defaultCoverSheetLineItemId(
+          lineItems.map((item) => item.id),
+          expenses.map((expense) => expense.lineItemId),
+        ) ??
+        ALL_LINE_ITEMS);
 
   const label = monthLabel(month);
 
@@ -106,7 +113,10 @@ export default async function CoverSheetsPage({
         subtext={`Cover sheets for ${label}, one for each line item.`}
         actions={
           <div data-tour="cover-sheet-line-item-picker">
-            <LineItemSelect lineItems={lineItems} selected={selected} />
+            <LineItemSelect
+              lineItems={lineItems.map((item) => ({ id: item.id, name: item.name }))}
+              selected={selected}
+            />
           </div>
         }
       />
@@ -124,6 +134,7 @@ export default async function CoverSheetsPage({
             fundingSourceId={fundingSourceId}
             lineItem={lineItem}
             expenses={expenses.filter((expense) => expense.lineItemId === lineItem.id)}
+            compact={selected === ALL_LINE_ITEMS}
           />
         ))}
       </div>
@@ -139,6 +150,7 @@ function CoverSheetSection({
   fundingSourceId,
   lineItem,
   expenses,
+  compact,
 }: {
   docName: string;
   monthLabelText: string;
@@ -146,6 +158,9 @@ function CoverSheetSection({
   fundingSourceId: string;
   lineItem: { id: string; name: string };
   expenses: ExpenseDetail[];
+  /** "All line items" mode: an empty sheet keeps to the one pinned sentence, since the
+   *  explanation and button repeated per line item would crowd the list (usability #41). */
+  compact: boolean;
 }) {
   const title = coverSheetTitle(docName, monthLabelText, lineItem.name);
 
@@ -153,9 +168,21 @@ function CoverSheetSection({
     return (
       <section>
         <SectionHeading title={lineItem.name} />
-        <EmptyState>
-          No expenses recorded for {monthLabelText} in {lineItem.name} yet.
-        </EmptyState>
+        {compact ? (
+          <EmptyState>
+            No expenses recorded for {monthLabelText} in {lineItem.name} yet.
+          </EmptyState>
+        ) : (
+          <EmptyState>
+            <p className="m-0">
+              No expenses recorded for {monthLabelText} in {lineItem.name} yet.
+            </p>
+            <p className="mt-2 mb-4">{UI.coverSheetWhatItIs}</p>
+            <Link href="/r/expenses/new" className={buttonClassName("primary")}>
+              Add Expense
+            </Link>
+          </EmptyState>
+        )}
       </section>
     );
   }
@@ -185,6 +212,16 @@ function CoverSheetSection({
           // Only images have a stored thumbnail; a PDF proof is labelled instead of broken.
           isImage: document.mimeType.startsWith("image/"),
         })),
+      // What the packet puts after this sheet for this expense: receipts, then supporting
+      // files, each in the order the documents already come in (usability #42).
+      followingDocuments: [
+        ...expense.documents
+          .filter((document) => document.kind === "receipt" && document.status === "attached")
+          .map((document) => document.filename),
+        ...expense.documents
+          .filter((document) => document.kind === "supporting" && document.status === "attached")
+          .map((document) => document.filename),
+      ],
     };
   });
 

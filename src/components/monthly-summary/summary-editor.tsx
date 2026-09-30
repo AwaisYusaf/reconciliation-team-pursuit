@@ -10,6 +10,7 @@
  * autosave scheduler and Write again). `initialWriting` — another tab's run, reported by the
  * server — is read by both, since either branch can be the one showing while it finishes.
  */
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
@@ -17,8 +18,9 @@ import { Button } from "@/src/components/ui/button";
 import { ConfirmButton } from "@/src/components/ui/confirm-button";
 import { DownloadButton } from "@/src/components/ui/download-button";
 import { PLUS_FRAME_STYLE, SparkleIcon } from "@/src/components/ui/plus-badge";
-import { Card, DangerPanel, SectionTitle } from "@/src/components/ui/surfaces";
+import { Card, DangerPanel, InfoNote, SectionTitle } from "@/src/components/ui/surfaces";
 import { toast } from "@/src/components/ui/toast";
+import { draftsReviewHref } from "@/src/domain/draft-rules";
 import { UI } from "@/src/domain/strings";
 import { downloadBlock } from "@/src/modules/monthly-summary/autosave";
 import { saveSummaryAction } from "@/src/modules/monthly-summary/actions";
@@ -57,6 +59,20 @@ async function requestWrite(body: {
   }
 }
 
+/** Drafts waiting for review in this source and month are not in the summary; says so, with a
+ *  link to them (usability #65). Nothing when there are none. */
+function DraftsWaitingNote({ count }: { count: number }) {
+  if (count <= 0) return null;
+  return (
+    <InfoNote className="mb-4">
+      {UI.summaryDraftsWaiting(count)}{" "}
+      <Link href={draftsReviewHref(null)} className="text-accent underline hover:text-accent-dark">
+        {UI.draftsReviewLink}
+      </Link>
+    </InfoNote>
+  );
+}
+
 export function SummaryEditor({
   sourceId,
   month,
@@ -68,6 +84,7 @@ export function SummaryEditor({
   stale,
   viewerName,
   todayLabel,
+  waitingDrafts,
 }: {
   sourceId: string;
   month: string;
@@ -79,6 +96,8 @@ export function SummaryEditor({
   stale: boolean;
   viewerName: string;
   todayLabel: string;
+  /** Drafts waiting for review in this source and month (usability #65). */
+  waitingDrafts: number;
 }) {
   const router = useRouter();
   // `summary` (the server prop) always wins once it's non-null: a background poll or another
@@ -126,6 +145,7 @@ export function SummaryEditor({
         {/* The page title already says "Monthly summary"; the card names the month it is for. */}
         <SectionTitle className="mb-3">{monthLabel}</SectionTitle>
         <p className="text-[15px] text-ink leading-relaxed mb-4">{UI.summaryIntro(monthLabel)}</p>
+        <DraftsWaitingNote count={waitingDrafts} />
         {writeError && <DangerPanel className="mb-4">{writeError}</DangerPanel>}
         {canWrite && (
           <>
@@ -155,6 +175,7 @@ export function SummaryEditor({
       stale={stale}
       viewerName={viewerName}
       todayLabel={todayLabel}
+      waitingDrafts={waitingDrafts}
     />
   );
 }
@@ -169,6 +190,7 @@ function SummaryBody({
   stale,
   viewerName,
   todayLabel,
+  waitingDrafts,
 }: {
   sourceId: string;
   month: string;
@@ -179,6 +201,7 @@ function SummaryBody({
   stale: boolean;
   viewerName: string;
   todayLabel: string;
+  waitingDrafts: number;
 }) {
   const router = useRouter();
   const [localWriting, setLocalWriting] = useState(false);
@@ -302,6 +325,8 @@ function SummaryBody({
             {UI.summaryChangedNotice(monthLabel)}
           </DangerPanel>
         )}
+
+        <DraftsWaitingNote count={waitingDrafts} />
 
         {/* A calm note, not an alert (PR #18 review #9) — red stays for the changed-records notice
             above and real errors; this is neither. */}

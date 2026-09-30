@@ -147,3 +147,17 @@ export async function loadYearSpend(
     return { month, label: monthShortLabel(month), spentCents: totals.get(month) ?? 0 };
   });
 }
+
+/**
+ * Whether the organization has ever saved an expense: any source, any month, trashed included
+ * (usability #52). The welcome banner's "Add your first expense" stops being true the moment
+ * one exists, whoever saved it.
+ */
+export async function orgHasAnyExpense(orgId: string): Promise<boolean> {
+  const [row] = await db
+    .select({ id: expensesTable.id })
+    .from(expensesTable)
+    .where(eq(expensesTable.orgId, orgId))
+    .limit(1);
+  return row !== undefined;
+}
