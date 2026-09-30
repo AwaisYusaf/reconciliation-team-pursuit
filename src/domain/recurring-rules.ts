@@ -112,6 +112,20 @@ export function removeConfirmation(name: string, documentCount: number): string 
   return `This moves the ${name} expense${files} to the trash. You can restore it from there.`;
 }
 
+/** R5.1's first seeded label: what a one-click add falls back to if an organization somehow has
+ *  no active payment source. */
+const LAST_RESORT_PAYMENT_SOURCE = "Paid by us, reimbursement requested";
+
+/**
+ * The payment source a one-click add gives the expense (R8.3, R5.2): the template's own while it
+ * is still active, else the organization's first active one. The action and the form's "Use the
+ * default" hint both call this, so the hint can never name a different source (usability #43).
+ */
+export function recurringPaymentSource(remembered: string | null, activeLabels: readonly string[]): string {
+  if (remembered && activeLabels.includes(remembered)) return remembered;
+  return activeLabels[0] ?? LAST_RESORT_PAYMENT_SOURCE;
+}
+
 /** Validation for the add/edit form (R8.3). */
 export function validateRecurring(input: {
   name: string;

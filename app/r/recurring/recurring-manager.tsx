@@ -11,12 +11,13 @@ import { Select } from "@/src/components/ui/select";
 import { Card, DangerPanel, EmptyState } from "@/src/components/ui/surfaces";
 import { cn } from "@/src/lib/cn";
 import { TableCard, Td, Th, Tr } from "@/src/components/ui/table";
-import { reportResult } from "@/src/components/ui/toast";
+import { reportResult, toastWithAction } from "@/src/components/ui/toast";
 import type { ActionResult } from "@/src/lib/action-result";
 import { formatMoney } from "@/src/domain/format";
 import {
   ALL_LINE_ITEMS,
   matchesRecurringFilters,
+  recurringPaymentSource,
   removeConfirmation,
 } from "@/src/domain/recurring-rules";
 import { UI } from "@/src/domain/strings";
@@ -184,14 +185,26 @@ export function RecurringManager({
   }
 
   function add(row: RecurringRow) {
-    // The flash confirms the add, so it must wait for the add to succeed. It used to fire
-    // first, which meant a failed add still went green — exactly how a live insert failure
-    // stayed invisible on this screen (TASKS.md U2).
-    run(
-      () => addRecurringToMonthAction(row.id, month),
-      () => flash(row.id),
-      `${row.name} added to ${monthLabel}.`,
-    );
+    setError(null);
+    startTransition(async () => {
+      const result = await addRecurringToMonthAction(row.id, month);
+      if (!result.ok) {
+        reportResult(result);
+        setError(result.error);
+        return;
+      }
+      // The flash confirms the add, so it must wait for the add to succeed. It used to fire
+      // first, which meant a failed add still went green — exactly how a live insert failure
+      // stayed invisible on this screen (TASKS.md U2).
+      flash(row.id);
+      // Says what the new expense still needs and opens it (#44); it starts incomplete on
+      // purpose (R4.5), so only the message changes.
+      toastWithAction(UI.recurringAdded(row.name, monthLabel, result.data.missing), {
+        label: UI.openExpense,
+        onAction: () => router.push(`/r/expenses/${result.data.id}/edit`),
+      });
+      router.refresh();
+    });
   }
 
   function remove(row: RecurringRow) {
@@ -393,6 +406,9 @@ export function RecurringManager({
                 </option>
               ))}
             </Select>
+            {currentDraft.defaultPaymentSource === "" && (
+              <Helper>The default is {recurringPaymentSource(null, paymentSources)}.</Helper>
+            )}
           </div>
           <div>
             <Label htmlFor={fieldId("tax")}>

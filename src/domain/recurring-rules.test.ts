@@ -4,6 +4,7 @@ import {
   ALL_LINE_ITEMS,
   addedState,
   matchesRecurringFilters,
+  recurringPaymentSource,
   removeConfirmation,
   validateRecurring,
   type ExpenseMatchable,
@@ -290,5 +291,27 @@ describe("matchesRecurringFilters", () => {
     expect(matchesRecurringFilters(saved, { query: "Zephyr", lineFilter: ALL_LINE_ITEMS })).toBe(
       false,
     );
+  });
+});
+
+describe("recurringPaymentSource (R8.3, R5.2, usability #43)", () => {
+  const ACTIVE = ["Paid by us, reimbursement requested", "Cash", "Company card"];
+
+  it("E24: no remembered source gives the first active one", () => {
+    expect(recurringPaymentSource(null, ACTIVE)).toBe("Paid by us, reimbursement requested");
+    expect(recurringPaymentSource("", ["Cash", "Company card"])).toBe("Cash");
+  });
+
+  it("E24: a remembered source that is still active is kept, even when it is not first", () => {
+    expect(recurringPaymentSource("Company card", ACTIVE)).toBe("Company card");
+  });
+
+  it("E24: a remembered source that was retired falls back to the first active one", () => {
+    expect(recurringPaymentSource("Old card", ["Cash", "Company card"])).toBe("Cash");
+  });
+
+  it("E24: no active source at all falls back to R5.1's first seeded label", () => {
+    expect(recurringPaymentSource(null, [])).toBe("Paid by us, reimbursement requested");
+    expect(recurringPaymentSource("Old card", [])).toBe("Paid by us, reimbursement requested");
   });
 });

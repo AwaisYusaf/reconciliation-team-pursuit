@@ -14,7 +14,6 @@ import {
   expenses,
   fundingSources,
   lineItems,
-  paymentSources,
   supportingDocTypes,
   users,
 } from "@/src/db/schema";
@@ -22,6 +21,7 @@ import type { DocumentKind, ExpenseAuditActionType, ExpenseAuditSnapshot } from 
 import { formatMoney } from "@/src/domain/format";
 import { expenseReference } from "@/src/domain/strings";
 import { reimbursableCents } from "@/src/domain/money";
+import { activePaymentSources } from "@/src/modules/settings/labels";
 
 export type AttachedDocument = {
   id: string;
@@ -85,11 +85,9 @@ export async function loadExpenseFormOptions(orgId: string, currentSourceId: str
           .where(and(eq(fundingSources.id, currentSourceId), eq(fundingSources.orgId, orgId)))
           .limit(1)
       : Promise.resolve([]),
-    db
-      .select({ label: paymentSources.label })
-      .from(paymentSources)
-      .where(and(eq(paymentSources.orgId, orgId), eq(paymentSources.active, true)))
-      .orderBy(asc(paymentSources.sortOrder)),
+    // One reader for the list and its order: the first is the "usual" source an invoice charge
+    // falls back to, and the default a recurring add picks.
+    activePaymentSources(orgId),
     db
       .select({ label: supportingDocTypes.label })
       .from(supportingDocTypes)
@@ -122,7 +120,7 @@ export async function loadExpenseFormOptions(orgId: string, currentSourceId: str
   return {
     fundingSources: fundingSourcesList,
     lineItemsBySource,
-    paymentSources: paySources.map((row) => row.label),
+    paymentSources: paySources,
     supportingDocTypes: docTypes.map((row) => row.label),
   };
 }

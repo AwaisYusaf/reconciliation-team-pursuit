@@ -227,7 +227,21 @@ export const UI = {
    *  R4.2); a complete record gets the plain line. */
   expenseSaved: (missing: readonly MissingItem[] | null): string =>
     missing && missing.length > 0 ? `Expense saved. ${stillMissing(missing)}` : "Expense saved.",
+  /** m05: after "Add to {month}". A one-click expense starts with no documents on purpose
+   *  (R4.5), and with no narrative when its template has none. */
+  recurringAdded: (name: string, month: string, missing: readonly MissingItem[] | null): string =>
+    missing && missing.length > 0 ? `${name} added to ${month}. ${stillMissing(missing)}` : `${name} added to ${month}.`,
+  /** The action beside `recurringAdded`, opening the expense it just created. */
+  openExpense: "Open expense",
   checkHighlightedFields: "Check the highlighted fields.",
+  /** Settings, Users (D-85, D-120). Admin-only today: user management, an expense's History
+   *  (`loadExpenseHistoryAction`), plan and billing (`billing/actions.ts`), and the AI reading
+   *  switch (`setReadAmountsEnabledAction`). Update this line if that list changes. */
+  managerRoleHint:
+    "New users are added as Managers. A Manager can do everything except manage users, change the plan or billing, change AI settings, and see an expense's History.",
+  /** Settings, Users: what the one-time password panel's copy button puts on the clipboard. */
+  newUserSignIn: (signInUrl: string, password: string): string =>
+    `Sign in at ${signInUrl} with your email address and this password: ${password}`,
   /** Add Expense caution (non-blocking) — tax excluded from reimbursable (R1.3), so a large
    *  tax relative to the subtotal isn't a domain-rule violation, just worth a second look. */
   taxExceedsSubtotalWarning: "Tax is more than the subtotal. Double-check this entry.",

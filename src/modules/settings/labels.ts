@@ -14,12 +14,18 @@ import { and, asc, eq } from "drizzle-orm";
 import { db } from "@/src/db";
 import { paymentSources, supportingDocTypes } from "@/src/db/schema";
 
+/**
+ * The organization's active payment sources, in the order Settings lists them. The first is the
+ * default a one-click recurring add falls back to (`recurringPaymentSource`), so every screen that
+ * names that default reads it from here. Label breaks a `sort_order` tie (two adds racing to the
+ * same next number): without it the order, and so the default, could differ between two reads.
+ */
 export async function activePaymentSources(orgId: string): Promise<string[]> {
   const rows = await db
     .select({ label: paymentSources.label })
     .from(paymentSources)
     .where(and(eq(paymentSources.orgId, orgId), eq(paymentSources.active, true)))
-    .orderBy(asc(paymentSources.sortOrder));
+    .orderBy(asc(paymentSources.sortOrder), asc(paymentSources.label));
   return rows.map((row) => row.label);
 }
 

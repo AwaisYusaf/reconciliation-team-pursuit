@@ -1,4 +1,4 @@
-﻿/**
+/**
  * User management (RBAC phase 1), exercised against a real database.
  *
  * `@/src/services/auth/session` is mocked so the test controls which session is "signed
@@ -29,7 +29,7 @@ vi.mock("@/src/services/auth/session", () => {
 config({ path: ".env.local", quiet: true });
 
 import { eq } from "drizzle-orm";
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 const hasDatabase = Boolean(process.env.DATABASE_URL);
 
@@ -491,6 +491,72 @@ describe.skipIf(!hasDatabase)("user management (integration)", async () => {
       // And a manager never even reaches the budget â€” requireAdmin refuses first.
       asSession({ userId: managerAId, orgId: orgAId, role: "manager" });
       expect(await listOrgUsersAction()).toEqual({ ok: false, error: FORBIDDEN });
+    });
+  });
+
+  describe("(j) the one-time password comes with the sign-in link (usability #51)", () => {
+    afterEach(() => {
+      vi.unstubAllEnvs();
+    });
+
+    /** Its own admin, so these calls cannot spend admin A's provisioning budget. */
+    async function freshAdmin() {
+      const id = await insertUser(orgAId, "admin");
+      asSession({ userId: id, orgId: orgAId, role: "admin" });
+      return id;
+    }
+
+    it("E32: createOrgUserAction returns APP_URL's origin plus /login, whatever path APP_URL carries", async () => {
+      vi.stubEnv("APP_URL", "https://app.example.org/some/path/");
+      await freshAdmin();
+      const email = `signin-link-${Date.now()}@example.test`;
+
+      const result = await createOrgUserAction({ name: "Link Person", email });
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) throw new Error(result.error);
+      expect(result.data.signInUrl).toBe("https://app.example.org/login");
+      const [row] = await db.select({ hash: users.passwordHash }).from(users).where(eq(users.email, email));
+      expect(await verifyPassword(row.hash, result.data.password)).toBe(true);
+    });
+
+    it("E32: a generated reset returns the same link; an admin-chosen one still returns nothing", async () => {
+      vi.stubEnv("APP_URL", "https://app.example.org");
+      await freshAdmin();
+
+      const generated = await setUserPasswordAction(targetInOrgAId);
+      expect(generated.ok).toBe(true);
+      if (!generated.ok || !generated.data) throw new Error("expected a generated password back");
+      expect(generated.data.signInUrl).toBe("https://app.example.org/login");
+      expect(await verifyPassword((await hashOf(targetInOrgAId)) as string, generated.data.password)).toBe(true);
+
+      expect(await setUserPasswordAction(targetInOrgAId, "a-chosen-password-12")).toEqual({ ok: true, data: undefined });
+    });
+
+    it("E33: a manager's refusal is unchanged and carries no link", async () => {
+      vi.stubEnv("APP_URL", "https://app.example.org");
+      asSession({ userId: managerAId, orgId: orgAId, role: "manager" });
+
+      expect(await createOrgUserAction({ name: "Nope", email: `nope-${Date.now()}@example.test` })).toEqual({
+        ok: false,
+        error: FORBIDDEN,
+      });
+      expect(await setUserPasswordAction(targetInOrgAId)).toEqual({ ok: false, error: FORBIDDEN });
+    });
+
+    it("an unusable APP_URL in production fails BEFORE the user is created or the password changed", async () => {
+      await freshAdmin();
+      const email = `no-origin-${Date.now()}@example.test`;
+      const before = await hashOf(targetInOrgAId);
+      vi.stubEnv("NODE_ENV", "production");
+      vi.stubEnv("APP_URL", "");
+
+      await expect(createOrgUserAction({ name: "No Origin", email })).rejects.toThrow(/APP_URL is unusable/);
+      await expect(setUserPasswordAction(targetInOrgAId)).rejects.toThrow(/APP_URL is unusable/);
+
+      vi.unstubAllEnvs();
+      expect(await db.select({ id: users.id }).from(users).where(eq(users.email, email))).toHaveLength(0);
+      expect(await hashOf(targetInOrgAId)).toBe(before);
     });
   });
 
