@@ -38,7 +38,7 @@ import {
   snapshotOf,
   toRow,
 } from "./expense-row";
-import { validate } from "./validation";
+import { expenseRefusal } from "./validation";
 
 export type ExpenseInput = {
   id?: string;
@@ -109,8 +109,8 @@ export async function createExpenseAction(
   const current = await actionSession();
   if ("expired" in current) return current.expired;
 
-  const invalid = validate(input);
-  if (invalid) return fail(invalid);
+  const refusal = expenseRefusal(input);
+  if (refusal) return fail(refusal.error, refusal.fieldErrors);
 
   const source = await requireOwnedFundingSource(current, input.fundingSourceId);
   if ("denied" in source) return source.denied;
@@ -122,23 +122,25 @@ export async function createExpenseAction(
   // "saving against another source's line item is impossible" hold even if this check were
   // ever forgotten — the composite FK `expenses(line_item_id, funding_source_id) →
   // line_items(id, funding_source_id)` (D-93) backstops it at the database.
-  const owned = await db
-    .select({ id: lineItems.id, name: lineItems.name })
-    .from(lineItems)
-    .where(
-      and(
-        eq(lineItems.id, input.lineItemId),
-        eq(lineItems.orgId, current.orgId),
-        eq(lineItems.fundingSourceId, input.fundingSourceId),
-      ),
-    )
-    .limit(1);
-  if (owned.length === 0) return fail("Choose a line item.");
+  const owned = isUuid(input.lineItemId)
+    ? await db
+        .select({ id: lineItems.id, name: lineItems.name })
+        .from(lineItems)
+        .where(
+          and(
+            eq(lineItems.id, input.lineItemId),
+            eq(lineItems.orgId, current.orgId),
+            eq(lineItems.fundingSourceId, input.fundingSourceId),
+          ),
+        )
+        .limit(1)
+    : [];
+  if (owned.length === 0) return fail("Choose a line item.", { lineItemId: "Choose a line item." });
 
   // The label is stored verbatim and prints on the submitted cover sheet, so it must be
   // one this organisation actually offers rather than whatever the client posted.
   if (!(await isKnownPaymentSource(current.orgId, input.paymentSource))) {
-    return fail("Choose a payment source.");
+    return fail("Choose a payment source.", { paymentSource: "Choose a payment source." });
   }
 
   const row = toRow(input);
@@ -189,10 +191,11 @@ export async function createExpenseAction(
 export async function updateExpenseAction(input: ExpenseInput): Promise<ActionResult> {
   const current = await actionSession();
   if ("expired" in current) return current.expired;
-  if (!input.id) return fail("That expense no longer exists.");
+  // `?.`: a crafted call can send no object at all, and that must be a refusal, not a throw.
+  if (!input?.id) return fail("That expense no longer exists.");
 
-  const invalid = validate(input);
-  if (invalid) return fail(invalid);
+  const refusal = expenseRefusal(input);
+  if (refusal) return fail(refusal.error, refusal.fieldErrors);
   if (!isUuid(input.id)) return fail("That expense no longer exists.");
 
   const source = await requireOwnedFundingSource(current, input.fundingSourceId);
@@ -201,18 +204,22 @@ export async function updateExpenseAction(input: ExpenseInput): Promise<ActionRe
   // The line item must belong to this organisation AND the (possibly new) source. Without
   // this check an update could rebind an expense to another source's — or another
   // organisation's — line item, the same invariant `createExpenseAction` enforces.
-  const ownsLineItem = await db
-    .select({ id: lineItems.id, name: lineItems.name })
-    .from(lineItems)
-    .where(
-      and(
-        eq(lineItems.id, input.lineItemId),
-        eq(lineItems.orgId, current.orgId),
-        eq(lineItems.fundingSourceId, input.fundingSourceId),
-      ),
-    )
-    .limit(1);
-  if (ownsLineItem.length === 0) return fail("Choose a line item.");
+  const ownsLineItem = isUuid(input.lineItemId)
+    ? await db
+        .select({ id: lineItems.id, name: lineItems.name })
+        .from(lineItems)
+        .where(
+          and(
+            eq(lineItems.id, input.lineItemId),
+            eq(lineItems.orgId, current.orgId),
+            eq(lineItems.fundingSourceId, input.fundingSourceId),
+          ),
+        )
+        .limit(1)
+    : [];
+  if (ownsLineItem.length === 0) {
+    return fail("Choose a line item.", { lineItemId: "Choose a line item." });
+  }
 
   // An expense keeps the label it was saved with, even after that label is retired (R5.1,
   // R5.2). Re-validating an unchanged value would make every historical expense
@@ -263,7 +270,7 @@ export async function updateExpenseAction(input: ExpenseInput): Promise<ActionRe
     input.paymentSource !== existing.paymentSource &&
     !(await isKnownPaymentSource(current.orgId, input.paymentSource))
   ) {
-    return fail("Choose a payment source.");
+    return fail("Choose a payment source.", { paymentSource: "Choose a payment source." });
   }
 
   // Moving source is allowed; moving INTO an archived source is not. An expense that already

@@ -1,9 +1,19 @@
 import Link from "next/link";
 
+import { ColumnHints } from "@/src/components/ui/column-hints";
+
 import { PickFundingSource } from "@/src/components/app-shell/pick-funding-source";
 import { TourSequenceSkip } from "@/src/components/app-shell/tour-sequence-skip";
 import { DownloadButton } from "@/src/components/ui/download-button";
-import { Card, EmptyState, PageTitle, SectionTitle, Subtext } from "@/src/components/ui/surfaces";
+import {
+  Card,
+  DangerPanel,
+  EmptyState,
+  InfoNote,
+  PageTitle,
+  SectionTitle,
+  Subtext,
+} from "@/src/components/ui/surfaces";
 import { SectionRow, TableCard, Td, Th } from "@/src/components/ui/table";
 import { TourGuide } from "@/src/components/ui/tour";
 import { loadExpenseAmounts, loadFundingSourceSettings, loadLineItemBudgets } from "@/src/db/queries";
@@ -14,7 +24,7 @@ import { contractContextItems } from "@/src/domain/contract-context";
 import { formatDateUS, monthLabel, todayIso } from "@/src/domain/dates";
 import { formatMoney, formatPercent, summaryRowLabel } from "@/src/domain/format";
 import { blockingRecords, type GateExpense } from "@/src/domain/gate";
-import { downloadBlockedReason, pageTitle, UI } from "@/src/domain/strings";
+import { downloadBlockedReason, lineItemsAgainstTotal, pageTitle, UI } from "@/src/domain/strings";
 import { contractSummary, type SummaryRow } from "@/src/domain/summary";
 import { loadMonthExpenses } from "@/src/modules/expenses/queries";
 import { loadSourceContext } from "@/src/modules/funding-sources/queries";
@@ -132,6 +142,8 @@ export default async function ContractSummaryPage() {
   const blockedCount = blockingRecords(gate).length;
   const refusal = blockedCount > 0 ? downloadBlockedReason(blockedCount) : null;
 
+  const overTotal = summary.totals.scheduledCents > summary.contractTotalCents;
+
   return (
     <div>
       <TourGuide
@@ -189,24 +201,54 @@ export default async function ContractSummaryPage() {
         </tbody>
       </TableCard>
 
+      {/* Only when the two differ: the Contract total tile already sits above the Totals row,
+          and when they are equal they visibly match. */}
+      {settings.contractValueCents > 0 && summary.totals.scheduledCents !== summary.contractTotalCents &&
+        (overTotal ? (
+          <DangerPanel className="mt-4">
+            {lineItemsAgainstTotal(summary.totals.scheduledCents, summary.contractTotalCents)}
+          </DangerPanel>
+        ) : (
+          <InfoNote className="mt-4">
+            {lineItemsAgainstTotal(summary.totals.scheduledCents, summary.contractTotalCents)}
+          </InfoNote>
+        ))}
+
+      <ColumnHints
+        items={[
+          { term: UI.termScheduledValue, text: UI.hintScheduledValue },
+          { term: UI.termPreviouslyBilled, text: UI.hintPreviouslyBilled },
+          { term: UI.termBalanceToFinish, text: UI.hintBalanceToFinish },
+          { term: UI.termBase, text: UI.hintBase },
+        ]}
+      />
+
+      {/* With no advances recorded the four rows are all zero or a negative balance, which
+          reads as a problem; a plain explanation instead (R7.4). The Excel keeps its rows. */}
       <Card className="max-w-[460px] mt-7" data-tour="contract-summary-reconciliation">
-        <ReconciliationRow
-          label="Total advances received"
-          value={formatMoney(summary.reconciliation.advancesCents)}
-        />
-        <ReconciliationRow
-          label="Total reconciled to date"
-          value={formatMoney(summary.reconciliation.reconciledCents)}
-        />
-        <ReconciliationRow
-          label="Balance remaining to reconcile"
-          value={formatMoney(summary.reconciliation.balanceCents)}
-        />
-        <ReconciliationRow
-          label="Percentage of advance payments reconciled"
-          value={formatPercent(summary.reconciliation.percentReconciled)}
-          last
-        />
+        {summary.reconciliation.advancesCents === 0 ? (
+          <p className="px-4 py-3 text-[15px] text-sub">{UI.noAdvancesYet}</p>
+        ) : (
+          <>
+            <ReconciliationRow
+              label="Total advances received"
+              value={formatMoney(summary.reconciliation.advancesCents)}
+            />
+            <ReconciliationRow
+              label="Total reconciled to date"
+              value={formatMoney(summary.reconciliation.reconciledCents)}
+            />
+            <ReconciliationRow
+              label="Balance remaining to reconcile"
+              value={formatMoney(summary.reconciliation.balanceCents)}
+            />
+            <ReconciliationRow
+              label="Percentage of advance payments reconciled"
+              value={formatPercent(summary.reconciliation.percentReconciled)}
+              last
+            />
+          </>
+        )}
       </Card>
 
       <div className="mt-7">
@@ -216,7 +258,14 @@ export default async function ContractSummaryPage() {
         >
           Download summary (Excel)
         </DownloadButton>
-        {refusal && <p className="mt-2.5 text-sm text-danger">{refusal}</p>}
+        {refusal && (
+          <DangerPanel className="mt-3 max-w-[640px]">
+            {refusal}{" "}
+            <Link href="/r/packet" className="text-danger font-semibold underline whitespace-nowrap">
+              {UI.openMonthEndPacket}
+            </Link>
+          </DangerPanel>
+        )}
       </div>
 
       <div className="mt-8">

@@ -13,10 +13,11 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/src/components/ui/button";
 import { Dialog } from "@/src/components/ui/dialog";
 import { Menu, MenuItem } from "@/src/components/ui/menu";
-import { Input, Label } from "@/src/components/ui/field";
-import { Card, CARD_PADDING, DangerPanel, SectionTitle } from "@/src/components/ui/surfaces";
+import { Helper, Input, Label } from "@/src/components/ui/field";
+import { Card, CARD_PADDING, InfoNote, SectionTitle } from "@/src/components/ui/surfaces";
 import { TableCard, Td, Th } from "@/src/components/ui/table";
 import { formatDateUS, todayIso } from "@/src/domain/dates";
+import { UI } from "@/src/domain/strings";
 import { userDisplay } from "@/src/domain/user-display";
 import { reportResult } from "@/src/components/ui/toast";
 import type { UserRole } from "@/src/db/schema";
@@ -41,23 +42,28 @@ export type OrgUser = {
   deletable: boolean;
 };
 
-/** Shown once, right after a password is generated — never persisted anywhere. */
+/** Shown once, right after a password is generated — never persisted anywhere. Neutral, not
+ *  the danger styling: nothing went wrong (#50). Carries the sign-in link too (#51). */
 function GeneratedPasswordPanel({
   password,
+  signInUrl,
   onDismiss,
 }: {
   password: string;
+  signInUrl: string;
   onDismiss: () => void;
 }) {
   const [copied, setCopied] = useState(false);
 
   return (
-    <DangerPanel tone="notice" className="mt-4">
+    <InfoNote role="status" className="mt-4 border border-line">
       <div className="flex flex-wrap items-center gap-3 justify-between">
         <div>
           <div className="font-bold">Password (shown once): {password}</div>
-          <div className="mt-1">
-            Give it to the user yourself, for example by text. It can&apos;t be shown again.
+          <div className="mt-1 break-all">Sign-in page: {signInUrl}</div>
+          <div className="mt-1 text-sub">
+            Send both to the user yourself, for example by text. The password can&apos;t be shown
+            again.
           </div>
         </div>
         <div className="flex gap-2">
@@ -65,18 +71,18 @@ function GeneratedPasswordPanel({
             variant="secondary"
             className="min-h-9 px-3 text-[15px]"
             onClick={async () => {
-              await navigator.clipboard.writeText(password);
+              await navigator.clipboard.writeText(UI.newUserSignIn(signInUrl, password));
               setCopied(true);
             }}
           >
-            {copied ? "Copied" : "Copy"}
+            {copied ? "Copied" : "Copy both"}
           </Button>
           <Button variant="quiet" onClick={onDismiss}>
             Dismiss
           </Button>
         </div>
       </div>
-    </DangerPanel>
+    </InfoNote>
   );
 }
 
@@ -85,9 +91,11 @@ export function UsersManager({ users }: { users: OrgUser[] }) {
   const [pending, startTransition] = useTransition();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
-  const [shownPassword, setShownPassword] = useState<{ userId: string; password: string } | null>(
-    null,
-  );
+  const [shownPassword, setShownPassword] = useState<{
+    userId: string;
+    password: string;
+    signInUrl: string;
+  } | null>(null);
   // Inline row edit state — which row's name cell is swapped for an Input, and its draft value.
   /** The manager a confirmation is open for, or null. The menu closes on click, so the
    *  question has to live outside it. */
@@ -204,7 +212,11 @@ export function UsersManager({ users }: { users: OrgUser[] }) {
                             const result = await setUserPasswordAction(user.id);
                             if (reportResult(result, "Password reset.")) {
                               if (result.data) {
-                                setShownPassword({ userId: user.id, password: result.data.password });
+                                setShownPassword({
+                                  userId: user.id,
+                                  password: result.data.password,
+                                  signInUrl: result.data.signInUrl,
+                                });
                               }
                               router.refresh();
                             }
@@ -317,6 +329,7 @@ export function UsersManager({ users }: { users: OrgUser[] }) {
       {shownPassword && (
         <GeneratedPasswordPanel
           password={shownPassword.password}
+          signInUrl={shownPassword.signInUrl}
           onDismiss={() => setShownPassword(null)}
         />
       )}
@@ -347,7 +360,11 @@ export function UsersManager({ users }: { users: OrgUser[] }) {
               startTransition(async () => {
                 const result = await createOrgUserAction({ name, email });
                 if (reportResult(result, "User added.")) {
-                  setShownPassword({ userId: "new", password: result.data.password });
+                  setShownPassword({
+                    userId: "new",
+                    password: result.data.password,
+                    signInUrl: result.data.signInUrl,
+                  });
                   setName("");
                   setEmail("");
                   router.refresh();
@@ -358,6 +375,7 @@ export function UsersManager({ users }: { users: OrgUser[] }) {
             Add
           </Button>
         </div>
+        <Helper>{UI.managerRoleHint}</Helper>
       </div>
     </Card>
   );

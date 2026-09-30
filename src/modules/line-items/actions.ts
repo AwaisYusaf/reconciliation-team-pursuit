@@ -13,13 +13,15 @@ import { db } from "@/src/db";
 import { isDeadlock, isUniqueViolation, LINE_ITEM_GONE, unlessLineItemGone } from "@/src/db/pg-errors";
 import { expenseDrafts, expenses, lineItemPerformances, lineItems, recurringItems } from "@/src/db/schema";
 import { isValidIsoDate } from "@/src/domain/dates";
+import { formatMoney } from "@/src/domain/format";
+import { fundingTotalCents, raisesOverLimit } from "@/src/domain/funding-limit";
 import { isDuplicateName, planLineItemDelete, sameCascade } from "@/src/domain/line-item-rules";
 import { parseMoneyToCents } from "@/src/domain/money";
 import { UI } from "@/src/domain/strings";
 import { fail, ok, type ActionResult } from "@/src/lib/action-result";
 import { actionSession } from "@/src/lib/action-session";
 import { isUuid } from "@/src/lib/ids";
-import { requireOwnedFundingSource } from "@/src/modules/funding-sources/queries";
+import { loadFundingPosition, requireOwnedFundingSource } from "@/src/modules/funding-sources/queries";
 
 
 /** Every screen reads line items, so a change invalidates the whole authenticated tree. */
@@ -61,44 +63,79 @@ export async function saveLineItemAction(input: {
     .where(eq(lineItems.fundingSourceId, source.id));
   if (isDuplicateName(name, existing, input.id)) return fail(UI.lineItemDuplicate);
 
+  const ARCHIVED = "That funding source is archived. Unarchive it in Settings to add line items.";
   if (input.id) {
     // A malformed id would reach a uuid column and raise a Postgres 22P02 rather than a
     // handled failure; "no longer exists" is both true and what a probe should learn.
     if (!isUuid(input.id)) return fail("That line item no longer exists.");
   } else if (source.archivedAt) {
     // Archived sources still hold history, but no new line item may be added to one.
-    return fail("That funding source is archived. Unarchive it in Settings to add line items.");
+    return fail(ARCHIVED);
   }
 
   try {
-    if (input.id) {
-      const updated = await db
-        .update(lineItems)
-        .set({ name, scheduledValueCents, openingBilledCents })
-        .where(
-          and(
-            eq(lineItems.id, input.id),
-            eq(lineItems.orgId, current.orgId),
-            eq(lineItems.fundingSourceId, source.id),
-          ),
-        )
-        .returning({ id: lineItems.id });
-      if (updated.length === 0) return fail("That line item no longer exists.");
-    } else {
-      const [{ value: maxSort }] = await db
-        .select({ value: sql<number>`coalesce(max(${lineItems.sortOrder}), -1)` })
-        .from(lineItems)
-        .where(eq(lineItems.fundingSourceId, source.id));
+    // One transaction with the funding source row locked (R9.6), so this and a contract value
+    // change on the same source queue, and each checks the funding limit on the other's result.
+    const result = await db.transaction(async (tx): Promise<ActionResult> => {
+      const before = await loadFundingPosition(tx, current.orgId, source.id, true);
+      if (!before) return fail("Choose a funding source.");
+      // Re-checked under the lock (R14.3): an archive can commit while this waited for it.
+      if (!input.id && before.archivedAt) return fail(ARCHIVED);
 
-      await db.insert(lineItems).values({
-        orgId: current.orgId,
-        fundingSourceId: source.id,
-        name,
-        scheduledValueCents,
-        openingBilledCents,
-        sortOrder: Number(maxSort) + 1,
-      });
-    }
+      let previousCents = 0;
+      if (input.id) {
+        const [row] = await tx
+          .select({ cents: lineItems.scheduledValueCents })
+          .from(lineItems)
+          .where(
+            and(
+              eq(lineItems.id, input.id),
+              eq(lineItems.orgId, current.orgId),
+              eq(lineItems.fundingSourceId, source.id),
+            ),
+          )
+          .for("no key update");
+        if (!row) return fail("That line item no longer exists.");
+        previousCents = row.cents;
+      }
+
+      const after = { ...before, scheduledCents: before.scheduledCents - previousCents + scheduledValueCents };
+      if (raisesOverLimit(before, after)) {
+        return fail(
+          UI.fundingLimitExceeded(formatMoney(after.scheduledCents), formatMoney(fundingTotalCents(after))),
+        );
+      }
+
+      if (input.id) {
+        // No `.returning` check: the row was just read under a lock in this transaction.
+        await tx
+          .update(lineItems)
+          .set({ name, scheduledValueCents, openingBilledCents })
+          .where(
+            and(
+              eq(lineItems.id, input.id),
+              eq(lineItems.orgId, current.orgId),
+              eq(lineItems.fundingSourceId, source.id),
+            ),
+          );
+      } else {
+        const [{ value: maxSort }] = await tx
+          .select({ value: sql<number>`coalesce(max(${lineItems.sortOrder}), -1)` })
+          .from(lineItems)
+          .where(eq(lineItems.fundingSourceId, source.id));
+
+        await tx.insert(lineItems).values({
+          orgId: current.orgId,
+          fundingSourceId: source.id,
+          name,
+          scheduledValueCents,
+          openingBilledCents,
+          sortOrder: Number(maxSort) + 1,
+        });
+      }
+      return ok();
+    });
+    if (!result.ok) return result;
   } catch (error) {
     if (isUniqueViolation(error)) return fail(UI.lineItemDuplicate);
     throw error;
@@ -291,6 +328,9 @@ export async function reorderLineItemsAction(
  * A name, amount and date, all given by whoever adds it. Only the amount rolls into
  * `scheduledValueCents` via `loadLineItemBudgets` — name/date are display-only, so every
  * screen and document that already reads the total picks up the new amount without change.
+ *
+ * No funding limit check in the performance actions (R9.6): a counted performance raises both
+ * sides equally; a migrated one can only be edited in name/date.
  */
 export async function addLineItemPerformanceAction(input: {
   lineItemId: string;

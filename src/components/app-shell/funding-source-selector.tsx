@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useTransition } from "react";
 
 import { Select } from "@/src/components/ui/select";
 import { reportResult } from "@/src/components/ui/toast";
@@ -24,7 +24,6 @@ export function FundingSourceSelector({
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
-  const [error, setError] = useState<string | null>(null);
 
   // Review fix: history and documents stay after archiving (spec §1), and that only holds if
   // an archived source is still reachable to view them — omitting it here is what made an
@@ -34,14 +33,15 @@ export function FundingSourceSelector({
   const archived = sources.filter((source) => source.archivedAt !== null);
 
   function apply(value: string) {
-    setError(null);
     startTransition(async () => {
       const result = await setActiveFundingSourceAction(value === ALL ? null : value);
-      if (reportResult(result)) {
-        router.refresh();
-      } else {
-        setError(result.error);
+      // A toast, not a line under the picker: in the header a line of text has no room on a
+      // phone, and it covered the "Other month" box (PR #27).
+      if (!result.ok) {
+        reportResult(result);
+        return;
       }
+      router.refresh();
     });
   }
 
@@ -85,18 +85,6 @@ export function FundingSourceSelector({
         )}
       </Select>
 
-      {/* Floated in compact form, so an error cannot grow the header row. */}
-      {error && (
-        <div
-          className={
-            compact
-              ? "absolute top-full right-0 mt-1 z-40 text-[13px] text-danger bg-surface border border-danger rounded-[8px] px-2.5 py-1.5 whitespace-nowrap"
-              : "text-[15px] text-danger"
-          }
-        >
-          {error}
-        </div>
-      )}
     </div>
   );
 }

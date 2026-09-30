@@ -11,12 +11,13 @@ import { Select } from "@/src/components/ui/select";
 import { Card, DangerPanel, EmptyState } from "@/src/components/ui/surfaces";
 import { cn } from "@/src/lib/cn";
 import { TableCard, Td, Th, Tr } from "@/src/components/ui/table";
-import { reportResult } from "@/src/components/ui/toast";
+import { reportResult, toastWithAction } from "@/src/components/ui/toast";
 import type { ActionResult } from "@/src/lib/action-result";
-import { formatMoney } from "@/src/domain/format";
+import { formatMoney, formatMoneyInput } from "@/src/domain/format";
 import {
   ALL_LINE_ITEMS,
   matchesRecurringFilters,
+  recurringPaymentSource,
   removeConfirmation,
 } from "@/src/domain/recurring-rules";
 import { UI } from "@/src/domain/strings";
@@ -101,6 +102,10 @@ export function RecurringManager({
   const lockedMonthKeys = useMemo(() => new Set(lockedMonths), [lockedMonths]);
   const [error, setError] = useState<string | null>(null);
   const [draft, setDraft] = useState<Draft | null>(null);
+  /** The add/edit form's own refusal, shown in the form (PR #27): the page panel is above the
+   *  list, far from a form under a row. Tied to the draft it was for, so typing (a new draft
+   *  object) or opening another item clears it. */
+  const [formError, setFormError] = useState<{ draft: Draft; message: string } | null>(null);
   const [confirmRemove, setConfirmRemove] = useState<{ row: RecurringRow; message: string } | null>(
     null,
   );
@@ -164,14 +169,18 @@ export function RecurringManager({
     work: () => Promise<ActionResult<unknown>>,
     onDone?: () => void,
     successMessage?: string,
+    showError: (message: string | null) => void = setError,
   ) {
     setError(null);
+    showError(null);
     startTransition(async () => {
       const result = await work();
-      if (!reportResult(result, successMessage)) {
-        setError(result.error ?? "That change couldn't be saved. Try again.");
+      if (!result.ok) {
+        // Inline only; a toast of the same words was a second copy (PR #27).
+        showError(result.error ?? "That change couldn't be saved. Try again.");
         return;
       }
+      reportResult(result, successMessage);
       onDone?.();
       router.refresh();
     });
@@ -184,14 +193,25 @@ export function RecurringManager({
   }
 
   function add(row: RecurringRow) {
-    // The flash confirms the add, so it must wait for the add to succeed. It used to fire
-    // first, which meant a failed add still went green — exactly how a live insert failure
-    // stayed invisible on this screen (TASKS.md U2).
-    run(
-      () => addRecurringToMonthAction(row.id, month),
-      () => flash(row.id),
-      `${row.name} added to ${monthLabel}.`,
-    );
+    setError(null);
+    startTransition(async () => {
+      const result = await addRecurringToMonthAction(row.id, month);
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
+      // The flash confirms the add, so it must wait for the add to succeed. It used to fire
+      // first, which meant a failed add still went green — exactly how a live insert failure
+      // stayed invisible on this screen (TASKS.md U2).
+      flash(row.id);
+      // Says what the new expense still needs and opens it (#44); it starts incomplete on
+      // purpose (R4.5), so only the message changes.
+      toastWithAction(UI.recurringAdded(row.name, monthLabel, result.data.missing), {
+        label: UI.openExpense,
+        onAction: () => router.push(`/r/expenses/${result.data.id}/edit`),
+      });
+      router.refresh();
+    });
   }
 
   function remove(row: RecurringRow) {
@@ -200,7 +220,6 @@ export function RecurringManager({
       const result = await removeRecurringFromMonthAction(row.id, month, false);
       if (!result.ok) {
         setError(result.error);
-        reportResult(result);
         return;
       }
       // Only ever reachable for an expense this recurring item actually created — one that
@@ -245,7 +264,7 @@ export function RecurringManager({
                 defaultFees: row.defaultFees,
                 id: row.id,
                 name: row.name,
-                amount: (row.amountCents / 100).toFixed(2),
+                amount: formatMoneyInput(row.amountCents),
                 lineItemId: row.lineItemId,
                 defaultDescription: row.defaultDescription,
               })
@@ -298,10 +317,18 @@ export function RecurringManager({
    * which on a desktop is the hidden phone one. Clicking "Name" focused nothing visible, and a
    * screen reader read the labels onto inputs nobody could see.
    */
+  function showFormError(currentDraft: Draft) {
+    return (message: string | null) => setFormError(message ? { draft: currentDraft, message } : null);
+  }
+
   function renderDraftForm(currentDraft: Draft, idPrefix: string) {
     const fieldId = (name: string) => `${idPrefix}-${name}`;
     return (
       <Card className="p-6 max-w-[860px]">
+        {/* Locked while saving: the refusal is shown for the draft that was sent, so typing or
+            Cancel mid-request must not swap it for another (PR #27). `contents` keeps the
+            card's own layout. */}
+        <fieldset disabled={pending} className="contents">
         <div className="flex flex-wrap gap-4">
           <div className="flex-[2] min-w-[220px]">
             <Label htmlFor={fieldId("name")}>Name</Label>
@@ -393,6 +420,9 @@ export function RecurringManager({
                 </option>
               ))}
             </Select>
+            {currentDraft.defaultPaymentSource === "" && (
+              <Helper>The default is {recurringPaymentSource(null, paymentSources)}.</Helper>
+            )}
           </div>
           <div>
             <Label htmlFor={fieldId("tax")}>
@@ -418,6 +448,11 @@ export function RecurringManager({
           </div>
         </div>
 
+        {formError?.draft === currentDraft && (
+          <DangerPanel tone="notice" className="mt-5">
+            {formError.message}
+          </DangerPanel>
+        )}
         <div className="flex flex-wrap gap-3 mt-5">
           <Button
             disabled={pending}
@@ -429,6 +464,7 @@ export function RecurringManager({
                   revealSaved(currentDraft);
                 },
                 currentDraft.id ? "Recurring item saved." : "Recurring item added.",
+                showFormError(currentDraft),
               )
             }
           >
@@ -455,6 +491,7 @@ export function RecurringManager({
                   () => deleteRecurringItemAction(currentDraft.id!),
                   () => setDraft(null),
                   "Recurring item deleted.",
+                  showFormError(currentDraft),
                 )
               }
             >
@@ -465,6 +502,7 @@ export function RecurringManager({
         {currentDraft.id && (
           <Helper>Deleting the list entry leaves any expenses already added untouched.</Helper>
         )}
+        </fieldset>
       </Card>
     );
   }
@@ -472,7 +510,7 @@ export function RecurringManager({
   return (
     <div>
       {error && (
-        <DangerPanel tone="notice" className="mb-4">
+        <DangerPanel key={error} tone="notice" className="mb-4" reveal>
           {error}
         </DangerPanel>
       )}
@@ -494,8 +532,10 @@ export function RecurringManager({
               // dialog doesn't vanish out from under a failure the general error banner is
               // about to show — the dialog would otherwise hide that banner behind its overlay.
               setConfirmRemove(null);
-              if (reportResult(result, "Removed from this month.")) router.refresh();
-              else setError(result.error ?? "That expense couldn't be removed from this month. Try again.");
+              if (result.ok) {
+                reportResult(result, "Removed from this month.");
+                router.refresh();
+              } else setError(result.error ?? "That expense couldn't be removed from this month. Try again.");
             });
           },
         }}

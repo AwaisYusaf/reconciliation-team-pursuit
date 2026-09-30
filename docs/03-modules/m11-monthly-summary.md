@@ -39,6 +39,11 @@ edit or an earlier month's change raises the notice too, not only this month's e
   flat: Tab doesn't indent, and a pasted nested list is saved as one line per item. Opening a
   summary never saves it — only a real change is reported to autosave. The bottom bar holds Save
   (3-second autosave) and **Write again** (secondary, confirm, replaces the text).
+- **Drafts left out (usability #65, 2026-09-29):** when this source and month have drafts waiting
+  for review, a calm note says `{N} drafts are still waiting for review, so they aren't in this
+  summary.` (singular for one) with a `Review drafts` link to `/r/expenses?view=drafts`, in both
+  states: after the intro text when no summary exists yet, and under the changed-records notice
+  once one does. The summary itself still never reads drafts (PHASE-14 §6).
 - A **Saved summaries** list, newest month first, one row per month with a summary for this
   source; clicking a row calls `setActiveMonthAction` so the header, this screen and the rest of
   the app agree on the month.

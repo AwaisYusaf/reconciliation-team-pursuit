@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 
 import { formatDateShort, monthLabel, type MonthKey, todayIso } from "@/src/domain/dates";
+import { loadMonthDrafts } from "@/src/modules/expense-imports/queries";
 import { loadMonthlySummaryScreen, loadViewerDisplay } from "@/src/modules/monthly-summary/queries";
 
 import { SavedSummaries, type SavedSummaryRow } from "./saved-summaries";
@@ -29,9 +30,12 @@ export async function MonthlySummarySection({
   fundingSourceId: string;
   month: MonthKey;
 }) {
-  const [screen, viewerName] = await Promise.all([
+  const [screen, viewerName, drafts] = await Promise.all([
     loadMonthlySummaryScreen(orgId, fundingSourceId, month),
     loadViewerDisplay(userId, email),
+    // Only counted for the note that they are left out (usability #65); the summary itself
+    // never reads drafts (PHASE-14 §6).
+    loadMonthDrafts(orgId, fundingSourceId, month),
   ]);
   if (!screen) notFound();
 
@@ -78,6 +82,7 @@ export async function MonthlySummarySection({
           stale={screen.stale}
           viewerName={viewerName}
           todayLabel={todayLabel}
+          waitingDrafts={drafts.length}
         />
       </div>
 

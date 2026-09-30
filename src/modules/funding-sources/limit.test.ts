@@ -48,7 +48,7 @@ describe("fundingSourceLimitRefusal", () => {
   it("gives the exact admin text", () => {
     expect(
       fundingSourceLimitRefusal({ entitlement: ent({ plan: "reconciliation" }), activeOthers: 1, role: "admin" }),
-    ).toBe("Reconciliation includes one active funding source. To add more, try Plus.");
+    ).toBe("Reconciliation includes one active funding source. To add more, switch to Reconciliation + AI.");
   });
 
   it("gives the exact manager text, distinct from the admin text", () => {

@@ -46,11 +46,12 @@ describe("moneyField", () => {
     expect(moneyField(null)).toBe("");
   });
 
-  it("renders cents as a plain editable amount, with no currency symbol", () => {
-    // It goes straight into a money input, which draws its own "$".
+  it("renders cents the way every money box starts (formatMoneyInput), with no currency symbol", () => {
+    // It goes straight into a money input, which draws its own "$" and drops the grouping on
+    // the first edit, so an edited "1,234.56" can never read as a decimal comma (PR #27).
     expect(moneyField(4500)).toBe("45.00");
     expect(moneyField(7)).toBe("0.07");
-    expect(moneyField(123456)).toBe("1234.56");
+    expect(moneyField(123456)).toBe("1,234.56");
   });
 });
 
@@ -217,5 +218,28 @@ describe("line item stays within the current funding source (Phase 4, D-93)", ()
     const chosen = { ...BLANK, lineItemId: "line-salary" };
     const filled = fillFromClick(chosen, CANVA, [], ["line-other-source"]);
     expect(filled.lineItemId).toBe("line-salary");
+  });
+});
+
+describe("a name added from a receipt (Phase 19)", () => {
+  it("fills the line item, description and payment source, but never the remembered amounts", () => {
+    const filled = fillFromTypedName(BLANK, CANVA, ACTIVE_SOURCES, SOURCE_LINE_ITEMS, { amounts: false });
+    expect(filled.lineItemId).toBe("line-promo");
+    expect(filled.description).toBe("Design tool for canvassing materials");
+    expect(filled.paymentSource).toBe("Paid by us, reimbursement requested");
+    expect(filled.subtotal).toBe("");
+    expect(filled.tax).toBe("");
+    expect(filled.fees).toBe("");
+  });
+
+  it("leaves amounts already used from the receipt exactly as they are", () => {
+    const fromReceipt = { ...BLANK, subtotal: "80.00", tax: "4.17", fees: "0.00" };
+    const filled = fillFromTypedName(fromReceipt, CANVA, ACTIVE_SOURCES, SOURCE_LINE_ITEMS, { amounts: false });
+    expect(filled).toMatchObject({ subtotal: "80.00", tax: "4.17", fees: "0.00" });
+  });
+
+  it("typing a remembered name still offers its amounts, as before", () => {
+    const filled = fillFromTypedName(BLANK, CANVA, ACTIVE_SOURCES, SOURCE_LINE_ITEMS);
+    expect(filled).toMatchObject({ subtotal: "45.00", tax: "2.50", fees: "1.25" });
   });
 });

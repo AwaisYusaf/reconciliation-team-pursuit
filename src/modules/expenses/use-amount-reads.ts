@@ -14,6 +14,7 @@ import {
   nextKeysToRead,
   type FileReadResult,
   type ReadKind,
+  type ReceiptDetails,
 } from "@/src/domain/amount-suggestion";
 
 export type AmountReadInput = {
@@ -24,7 +25,7 @@ export type AmountReadInput = {
 
 const MAX_CONCURRENT = 2;
 
-type ReadAmountsResponse = {
+export type ReadAmountsResponse = {
   ok: boolean;
   /** Set when the file was refused before the model saw it — see `FileReadResult.reason`. */
   code?: "too-long";
@@ -34,8 +35,18 @@ type ReadAmountsResponse = {
     taxCents?: number;
     feesCents?: number;
     totalCents?: number;
+    /** A receipt's vendor and date (Phase 19), each absent when not read. */
+    vendor?: string;
+    date?: string;
   };
 };
+
+/** The vendor and date in a response, or null when it named neither. */
+function detailsFrom(data: ReadAmountsResponse["data"]): ReceiptDetails | null {
+  const vendor = typeof data?.vendor === "string" && data.vendor ? data.vendor : null;
+  const date = typeof data?.date === "string" && data.date ? data.date : null;
+  return vendor === null && date === null ? null : { vendor, date };
+}
 
 async function readOne(input: AmountReadInput): Promise<FileReadResult> {
   const form = new FormData();
@@ -49,14 +60,26 @@ async function readOne(input: AmountReadInput): Promise<FileReadResult> {
   try {
     const response = await fetch("/api/files/read-amounts", { method: "POST", body: form });
     const json = (await response.json().catch(() => null)) as ReadAmountsResponse | null;
-    if (json?.code === "too-long") return { status: "none", reason: "too-long" };
-    if (!response.ok || !json) return { status: "none" };
-    if (!json.ok || !json.data?.found) return { status: "none" };
-    const { subtotalCents = 0, taxCents = 0, feesCents = 0, totalCents = 0 } = json.data;
-    return { status: "found", amounts: { subtotalCents, taxCents, feesCents, totalCents } };
+    return readResultFrom(response.ok, json);
   } catch {
     return { status: "none" };
   }
+}
+
+/**
+ * One file's result from the read route's reply. Pure, so what the form is handed (and in
+ * particular that a receipt with no readable amount still carries its vendor and date) is
+ * tested without a browser.
+ */
+export function readResultFrom(httpOk: boolean, json: ReadAmountsResponse | null): FileReadResult {
+  if (json?.code === "too-long") return { status: "none", reason: "too-long" };
+  if (!httpOk || !json) return { status: "none" };
+  // A receipt with no amount to read can still name its vendor and date.
+  const details = json.ok ? detailsFrom(json.data) : null;
+  const withDetails = details ? { details } : {};
+  if (!json.ok || !json.data?.found) return { status: "none", ...withDetails };
+  const { subtotalCents = 0, taxCents = 0, feesCents = 0, totalCents = 0 } = json.data;
+  return { status: "found", amounts: { subtotalCents, taxCents, feesCents, totalCents }, ...withDetails };
 }
 
 export function useAmountReads({

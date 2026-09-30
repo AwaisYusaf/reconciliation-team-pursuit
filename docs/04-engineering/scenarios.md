@@ -11,11 +11,13 @@ figure that disagrees with the published one is a failure regardless of what the
 
 ## S1 — First run: an empty organisation reaches a usable dashboard ✅
 
-Sign up → contract settings → line items → dashboard.
+Sign up → your funding (name and total amount) → line items within that total → dashboard
+(funding first, D-134).
 
 **Must hold:** signup rejects a duplicate email with the canonical wording; onboarding is
-resumable if abandoned midway; skipping line items still lands on a dashboard that says what
-to do next; the active month defaults to the current month.
+resumable if abandoned midway, at the step it stopped on; nothing can be skipped; line items
+adding up to more than the total are refused and nothing is saved (R9.6); the active month
+defaults to the current month.
 
 ## S2 — The happy month, end to end ✅
 

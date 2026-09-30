@@ -113,6 +113,30 @@ export function sanitiseMoneyInput(raw: string): string {
   return out;
 }
 
+/** A money box value grouped in threes: "20,000.00", "-1,234,567.89", "(1,000)". */
+const GROUPED = /^[-(]?\d{1,3}(,\d{3})+(\.\d*)?\)?$/;
+
+/**
+ * What a money box keeps after one edit, and where its caret goes (PR #27).
+ *
+ * Saved figures open grouped ("20,000.00", usability #13). Edited in place that could become
+ * "20,00", which the decimal-comma rule above reads as $20.00. So when the value before the
+ * edit was grouped, its old commas go and what was just typed (from where the text first
+ * differs up to the caret) stays as typed: Backspace on "20,000.00" leaves "20000.0",
+ * select-all then "12,50" leaves "12,50" ($12.50). Nothing changes until an edit, so focusing
+ * or selecting a box never alters it. A pasted grouped value stays as pasted until the next
+ * edit; both forms parse to the same cents.
+ */
+export function ungroupEdit(previous: string, next: string, caret: number): { value: string; caret: number } {
+  if (!GROUPED.test(previous)) return { value: next, caret };
+  let head = 0; // where the edit starts
+  while (head < caret && previous[head] === next[head]) head++;
+  const before = next.slice(0, head).replace(/,/g, "");
+  const typed = next.slice(head, caret);
+  const after = next.slice(caret).replace(/,/g, "");
+  return { value: before + typed + after, caret: before.length + typed.length };
+}
+
 /** Parse, treating empty/invalid input as zero. For optional money fields that default to $0.00. */
 export function parseMoneyToCentsOrZero(input: string | number | null | undefined): number {
   return parseMoneyToCents(input) ?? 0;

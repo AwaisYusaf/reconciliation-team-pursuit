@@ -7,7 +7,14 @@
  */
 import { describe, expect, it } from "vitest";
 
-import { draftIsReady, draftNeeds, type DraftReadiness } from "./draft-rules";
+import {
+  draftIsReady,
+  draftNeeds,
+  draftsReviewHref,
+  invoiceDoneHref,
+  waitingDraftTotals,
+  type DraftReadiness,
+} from "./draft-rules";
 import { UI } from "./strings";
 
 /** A draft with everything it needs; each test removes exactly one thing. */
@@ -65,5 +72,89 @@ describe("draftNeeds", () => {
   it("treats a $0.00 or negative amount as approvable, because neither is missing information", () => {
     // Amounts are not part of readiness at all. A refund line and a zero line are real charges.
     expect(draftIsReady(ready())).toBe(true);
+  });
+});
+
+/**
+ * `waitingDraftTotals` / `draftsReviewHref` (usability #64): the drafts reminder on the
+ * dashboard and packet page. Only reported, never counted (PHASE-14 §6); the figure is the
+ * same reimbursable total each draft row shows.
+ */
+describe("waitingDraftTotals", () => {
+  const A = "0190a000-0000-7000-8000-00000000000a";
+  const B = "0190a000-0000-7000-8000-00000000000b";
+
+  it("is empty with no drafts, so no section finds a notice (E9)", () => {
+    const totals = waitingDraftTotals([]);
+    expect(totals.size).toBe(0);
+    expect(totals.get(A)).toBeUndefined();
+  });
+
+  it("counts one draft with its own amount (E10)", () => {
+    expect(waitingDraftTotals([{ fundingSourceId: A, reimbursableCents: 12000 }]).get(A)).toEqual({
+      count: 1,
+      totalCents: 12000,
+    });
+  });
+
+  it("keeps each source's drafts to that source: drafts on B only give A nothing (E11, E12)", () => {
+    const totals = waitingDraftTotals([
+      { fundingSourceId: B, reimbursableCents: 5000 },
+      { fundingSourceId: B, reimbursableCents: 2500 },
+    ]);
+    expect(totals.get(A)).toBeUndefined();
+    expect(totals.get(B)).toEqual({ count: 2, totalCents: 7500 });
+  });
+
+  it("groups a mixed list per source, not one pooled total", () => {
+    const totals = waitingDraftTotals([
+      { fundingSourceId: A, reimbursableCents: 100 },
+      { fundingSourceId: B, reimbursableCents: 20000 },
+      { fundingSourceId: A, reimbursableCents: 250 },
+    ]);
+    expect(totals.get(A)).toEqual({ count: 2, totalCents: 350 });
+    expect(totals.get(B)).toEqual({ count: 1, totalCents: 20000 });
+    expect(totals.size).toBe(2);
+  });
+
+  it("sums a $0.00 draft and a refund as they are: a count with a zero or negative total (E14)", () => {
+    expect(waitingDraftTotals([{ fundingSourceId: A, reimbursableCents: 0 }]).get(A)).toEqual({
+      count: 1,
+      totalCents: 0,
+    });
+    expect(
+      waitingDraftTotals([
+        { fundingSourceId: A, reimbursableCents: 0 },
+        { fundingSourceId: A, reimbursableCents: -1000 },
+      ]).get(A),
+    ).toEqual({ count: 2, totalCents: -1000 });
+  });
+});
+
+describe("draftsReviewHref", () => {
+  it("links to the drafts view alone when the header already holds a source", () => {
+    expect(draftsReviewHref(null)).toBe("/r/expenses?view=drafts");
+  });
+
+  it("carries the section's source when the header is on All (E12)", () => {
+    expect(draftsReviewHref("0190a000-0000-7000-8000-00000000000b")).toBe(
+      "/r/expenses?view=drafts&source=0190a000-0000-7000-8000-00000000000b",
+    );
+  });
+
+  it("encodes the id, so nothing in it can add a parameter", () => {
+    expect(draftsReviewHref("a&view=all")).toBe("/r/expenses?view=drafts&source=a%26view%3Dall");
+  });
+});
+
+describe("invoiceDoneHref (PR #27: Done never hides the charges saved as expenses)", () => {
+  it("every charge a draft: the drafts view", () => {
+    expect(invoiceDoneHref(0, 3)).toBe("/r/expenses?view=drafts");
+  });
+  it("some expenses, some drafts: the Expenses list, where both are found", () => {
+    expect(invoiceDoneHref(1, 2)).toBe("/r/expenses");
+  });
+  it("every charge an expense: the Expenses list", () => {
+    expect(invoiceDoneHref(3, 0)).toBe("/r/expenses");
   });
 });

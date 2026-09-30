@@ -10,6 +10,7 @@ import {
   sanitiseMoneyInput,
   sumBy,
   sumCents,
+  ungroupEdit,
 } from "./money";
 
 describe("parseMoneyToCents (R1.1)", () => {
@@ -257,5 +258,36 @@ describe("sanitiseMoneyInput", () => {
         expect(full.startsWith(sanitiseMoneyInput(raw.slice(0, i)))).toBe(true);
       }
     }
+  });
+});
+
+describe("ungroupEdit (PR #27: an edit to a grouped money box never becomes a decimal comma)", () => {
+  it.each<[string, string, string, number, string, number]>([
+    ["Backspace at the end of a saved figure", "20,000.00", "20,000.0", 8, "20000.0", 7],
+    ["select-all then type", "100,000.00", "35", 2, "35", 2],
+    ["a digit deleted in the middle", "1,234,567.89", "1,34,567.89", 2, "134567.89", 1],
+    ["a digit typed in the middle", "1,000.00", "1,5000.00", 3, "15000.00", 2],
+    ["a decimal comma typed after a grouped figure is kept", "1,000", "1,000,5", 7, "1000,5", 6],
+    ["a grouped value pasted into an empty box stays as pasted (same cents)", "", "20,000.00", 9, "20,000.00", 9],
+    ["Delete on a grouping comma", "1,000.00", "1000.00", 1, "1000.00", 1],
+    ["a digit deleted with Delete after a comma", "1,234.00", "1,34.00", 2, "134.00", 1],
+    ["a selected run of digits deleted", "20,000.00", "20,.00", 3, "20.00", 2],
+    ["a decimal comma typed over a whole grouped value", "20,000.00", "12,50", 5, "12,50", 5],
+    ["a decimal comma typed into a plain box is kept", "12", "12,5", 4, "12,5", 4],
+    ["editing after a typed decimal comma keeps it ($12.50, never $1,250)", "12,5", "12,50", 5, "12,50", 5],
+    ["an ordinary edit of a plain box", "2000", "200", 3, "200", 3],
+  ])("%s", (_case, previous, next, caret, value, at) => {
+    expect(ungroupEdit(previous, next, caret)).toEqual({ value, caret: at });
+  });
+
+  it("the reported misread cannot happen: every step of deleting '.00' and one zero stays plain", () => {
+    let value = "20,000.00";
+    for (let i = 0; i < 4; i++) value = ungroupEdit(value, value.slice(0, -1), value.length - 1).value;
+    expect(value).toBe("2000");
+    expect(parseMoneyToCents(value)).toBe(200_000);
+  });
+
+  it("a comma typed after a grouped figure reads as the cents it was meant as", () => {
+    expect(parseMoneyToCents(ungroupEdit("1,000", "1,000,5", 7).value)).toBe(100_050);
   });
 });

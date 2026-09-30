@@ -3,7 +3,7 @@
 /**
  * Recurring items (m05) — the fixed monthly set, added on confirmation only (R8.3).
  */
-import { and, asc, count, eq, isNull, sql } from "drizzle-orm";
+import { and, count, eq, isNull, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
 import { db } from "@/src/db";
@@ -13,13 +13,13 @@ import {
   expenses,
   fundingSources,
   lineItems,
-  paymentSources,
   recurringItems,
   vendorDefaults,
 } from "@/src/db/schema";
 import { isValidMonthKey, monthLabel, todayIso } from "@/src/domain/dates";
+import { documentationStatus, type MissingItem } from "@/src/domain/gate";
 import { parseMoneyToCents } from "@/src/domain/money";
-import { addedState, validateRecurring } from "@/src/domain/recurring-rules";
+import { addedState, recurringPaymentSource, validateRecurring } from "@/src/domain/recurring-rules";
 import { UI } from "@/src/domain/strings";
 import { fail, ok, type ActionResult } from "@/src/lib/action-result";
 import { actionSession } from "@/src/lib/action-session";
@@ -31,6 +31,7 @@ import {
 } from "@/src/modules/expenses/expense-row";
 import { rulesForFundingSource } from "@/src/modules/expenses/reimbursement";
 import { monthLocked } from "@/src/modules/packet/month-guard";
+import { activePaymentSources } from "@/src/modules/settings/labels";
 
 
 export async function saveRecurringItemAction(input: {
@@ -132,7 +133,7 @@ export async function deleteRecurringItemAction(id: string): Promise<ActionResul
 export async function addRecurringToMonthAction(
   id: string,
   month: string,
-): Promise<ActionResult> {
+): Promise<ActionResult<{ id: string; missing: MissingItem[] }>> {
   const current = await actionSession();
   if ("expired" in current) return current.expired;
   if (!isUuid(id)) return fail("That recurring item no longer exists.");
@@ -177,21 +178,11 @@ export async function addRecurringToMonthAction(
     )
     .limit(1);
 
-  const sources = await db
-    .select({ label: paymentSources.label })
-    .from(paymentSources)
-    .where(and(eq(paymentSources.orgId, current.orgId), eq(paymentSources.active, true)))
-    .orderBy(asc(paymentSources.sortOrder));
-  const activeSources = sources.map((row) => row.label);
-  const [defaultSource] = sources;
+  // The same reader, in the same order, as the Recurring page that names this default (#43).
+  const activeSources = await activePaymentSources(current.orgId);
 
   // A remembered source is only used while it is still one the organisation offers (R5.2).
-  const paymentSource =
-    (item.defaultPaymentSource && activeSources.includes(item.defaultPaymentSource)
-      ? item.defaultPaymentSource
-      : null) ??
-    defaultSource?.label ??
-    "Paid by us, reimbursement requested";
+  const paymentSource = recurringPaymentSource(item.defaultPaymentSource, activeSources);
 
   // The funding source decides what it reimburses, so a one-click add must resolve the same
   // rules the expense form does (D-67, Phase 4/D-93 — no longer the payment source). Falling
@@ -210,7 +201,7 @@ export async function addRecurringToMonthAction(
     ]);
     if (locked) return { ok: false as const, locked };
 
-    await insertExpenseWithAudit(tx, {
+    const { id: expenseId } = await insertExpenseWithAudit(tx, {
       orgId: current.orgId,
       actorUserId: current.userId,
       lineItemName: item.lineItemName,
@@ -238,13 +229,21 @@ export async function addRecurringToMonthAction(
         noReceiptReason: null,
       },
     });
-    return { ok: true as const };
+    return { ok: true as const, id: expenseId };
   }));
   if (result === LINE_ITEM_GONE) return fail(UI.lineItemGone);
   if (!result.ok) return fail(UI.monthLocked(monthLabel(result.locked.month)));
 
+  // What the new expense still needs, for the toast (#44). Same `hasNarrative` rule every gate
+  // reader uses.
+  const { missing } = documentationStatus({
+    noReceipt: false,
+    hasNarrative: (item.defaultNarrative ?? "").trim() !== "",
+    documents: [],
+  });
+
   revalidatePath("/", "layout");
-  return ok();
+  return ok({ id: result.id, missing: [...(missing ?? [])] });
 }
 
 /**

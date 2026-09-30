@@ -304,9 +304,7 @@ export function UploadField({
                   </span>
                   <span className="block text-sm text-sub">
                     {document.supportingType ? `${document.supportingType} · ` : ""}
-                    {document.pageCount && document.pageCount > 1
-                      ? `${document.pageCount} pages`
-                      : "1 page"}
+                    {UI.pageCount(document.pageCount ?? 1)}
                   </span>
                   <AiStatus status={ai?.statusFor(`doc:${document.id}`)} />
                 </span>

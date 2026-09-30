@@ -36,6 +36,7 @@ export function MonthLockControls({
   locked,
   lockedEvent,
   blocked,
+  missingDocuments,
 }: {
   month: string;
   monthLabel: string;
@@ -47,6 +48,8 @@ export function MonthLockControls({
   /** The red blocking panel is showing — Lock month stays disabled with its reason
    *  (Appendix A §1). */
   blocked: boolean;
+  /** The blocking records' R4.4 labels, listed in the Mark as submitted dialog (usability #36). */
+  missingDocuments: readonly string[];
 }) {
   const router = useRouter();
   const [locking, setLocking] = useState(false);
@@ -146,8 +149,10 @@ export function MonthLockControls({
       <div className="flex flex-wrap items-center gap-3">
         <SubmittedMarker
           month={month}
+          monthLabel={monthLabel}
           submittedAt={submittedAt}
           fundingSourceId={fundingSourceId}
+          missingDocuments={missingDocuments}
           hideUndo={locked}
         />
         {!locked && (

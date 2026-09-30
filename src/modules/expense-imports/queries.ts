@@ -5,7 +5,7 @@ import "server-only";
  * `loadMonthExpenses` in src/modules/expenses/queries.ts.
  */
 import { alias } from "drizzle-orm/pg-core";
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, sql } from "drizzle-orm";
 
 import { db } from "@/src/db";
 import {
@@ -181,6 +181,9 @@ export async function loadDraftDocuments(
       mimeType: expenseDraftDocuments.mimeType,
       pageCount: expenseDraftDocuments.pageCount,
       status: expenseDraftDocuments.status,
+      // A draft's own files are always its own uploads (`draftDocumentKey`); the invoice is only
+      // attached, as a receipt, to the expense a draft becomes.
+      fromInvoice: sql<boolean>`false`,
     })
     .from(expenseDraftDocuments)
     .innerJoin(expenseDrafts, eq(expenseDrafts.id, expenseDraftDocuments.draftId))

@@ -110,7 +110,7 @@ The organization's copy of what Stripe knows, written only by `syncOrgBilling` a
 Superseded by `funding_sources`: contract details now live on each funding source. Kept in the database, no longer read or written, so the migration stays additive and reversible. A later phase drops this table once Phase 6 has run in production.
 | Field | Type | Notes |
 |---|---|---|
-| org_id | uuid PK/FK | Row always created at onboarding (zero/null defaults), even on Skip |
+| org_id | uuid PK/FK | Historical: was created at onboarding (zero/null defaults) until Phase 6 |
 | project_name | text | "Community Violence Intervention" |
 | contract_number | text | e.g. 6007211 |
 | base_po_number | text | e.g. 3086984 |
@@ -150,7 +150,7 @@ An organisation's separate pot of money: its own line items, expenses, monthly p
 | contract_number | text | e.g. 6007211 |
 | base_po_number | text | e.g. 3086984 |
 | performance_po_number | text | e.g. 3089749 |
-| contract_value_cents | bigint | 0 → derive from scheduled totals (R7.3) |
+| contract_value_cents | bigint | 0 → derive from scheduled totals (R7.3), and no funding limit (R9.6). Above 0 on the organization's first source marks onboarding's funding step saved (D-134) |
 | contract_start / contract_end | date null | |
 | fiduciary_name | text | "Detroit Crime Commission" |
 | advances_received_cents | bigint | R7.4 |

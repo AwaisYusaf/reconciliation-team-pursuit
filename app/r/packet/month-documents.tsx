@@ -9,6 +9,7 @@ import { ConfirmButton } from "@/src/components/ui/confirm-button";
 import { Select } from "@/src/components/ui/select";
 import { Card, CARD_PADDING, SectionTitle } from "@/src/components/ui/surfaces";
 import { reportResult } from "@/src/components/ui/toast";
+import { UI } from "@/src/domain/strings";
 import { removeMonthDocumentAction } from "@/src/modules/packet/actions";
 import type { MonthDocumentRow } from "@/src/modules/packet/queries";
 
@@ -114,7 +115,8 @@ export function MonthDocuments({
       </p>
 
       {!hasBankStatement && (
-        <p className="text-sm text-danger mb-4">No bank statement attached for {monthLabel} yet.</p>
+        // Grey, not red: a reminder, never a blocker (usability #34).
+        <p className="text-sm text-sub mb-4">No bank statement attached for {monthLabel} yet.</p>
       )}
 
       {grouped.length === 0 ? (
@@ -137,7 +139,7 @@ export function MonthDocuments({
                       {document.filename}
                       {document.pageCount ? (
                         <span className="text-sub">
-                          {` · ${document.pageCount} ${document.pageCount === 1 ? "page" : "pages"}`}
+                          {` · ${UI.pageCount(document.pageCount)}`}
                         </span>
                       ) : null}
                     </span>

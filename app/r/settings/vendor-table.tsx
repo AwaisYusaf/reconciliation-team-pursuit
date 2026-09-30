@@ -13,7 +13,7 @@ import { Input, MoneyInput } from "@/src/components/ui/field";
 import { Select } from "@/src/components/ui/select";
 import { EmptyState } from "@/src/components/ui/surfaces";
 import { TableCard, Td, Th } from "@/src/components/ui/table";
-import { formatMoney } from "@/src/domain/format";
+import { formatMoney, formatMoneyInput } from "@/src/domain/format";
 import type { ActionResult } from "@/src/lib/action-result";
 import { deleteVendorAction, saveVendorAction } from "@/src/modules/settings/actions";
 
@@ -42,7 +42,7 @@ export type Vendor = {
 type VendorEdit = Vendor & { subtotal: string; tax: string; fees: string };
 
 function toEdit(vendor: Vendor): VendorEdit {
-  const text = (cents: number | null) => (cents === null ? "" : (cents / 100).toFixed(2));
+  const text = (cents: number | null) => (cents === null ? "" : formatMoneyInput(cents));
   return {
     ...vendor,
     subtotal: text(vendor.defaultSubtotalCents),

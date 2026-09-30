@@ -17,6 +17,7 @@ import { nameSchema } from "@/src/domain/name";
 import { fail, ok, type ActionResult } from "@/src/lib/action-result";
 import { requireAdmin, requireAdminAnyPlan, type AdminSession } from "@/src/lib/action-session";
 import { isUuid } from "@/src/lib/ids";
+import { siteOrigin } from "@/src/lib/site-url";
 import { emailInUse } from "@/src/modules/auth/emails";
 import { generatePassword, hashPassword, validatePasswordPolicy } from "@/src/services/auth/passwords";
 import { revokeOtherSessions } from "@/src/services/auth/session";
@@ -51,7 +52,7 @@ export async function createOrgUserAction({
 }: {
   name: string;
   email: string;
-}): Promise<ActionResult<{ password: string }>> {
+}): Promise<ActionResult<{ password: string; signInUrl: string }>> {
   const current = await requireAdmin();
   if ("denied" in current) return current.denied;
 
@@ -59,6 +60,9 @@ export async function createOrgUserAction({
   // below can be used as a "does this address exist anywhere" oracle.
   const throttled = withinProvisioningBudget(current.userId);
   if (throttled) return throttled;
+
+  // Before any read or write, so a misconfigured APP_URL can never throw after the user exists.
+  const signInUrl = `${siteOrigin()}/login`;
 
   const parsedName = nameSchema.safeParse(name);
   if (!parsedName.success) return fail("Enter a name.");
@@ -91,18 +95,21 @@ export async function createOrgUserAction({
   }
 
   revalidatePath("/r/settings/users");
-  return ok({ password });
+  return ok({ password, signInUrl });
 }
 
 export async function setUserPasswordAction(
   userId: string,
   newPassword?: string,
-): Promise<ActionResult<{ password: string } | undefined>> {
+): Promise<ActionResult<{ password: string; signInUrl: string } | undefined>> {
   const current = await requireAdmin();
   if ("denied" in current) return current.denied;
 
   const throttled = withinProvisioningBudget(current.userId);
   if (throttled) return throttled;
+
+  // Before the update, for the same reason as in `createOrgUserAction`.
+  const signInUrl = `${siteOrigin()}/login`;
 
   if (!isUuid(userId)) return fail("That user no longer exists.");
 
@@ -133,7 +140,7 @@ export async function setUserPasswordAction(
   // own account keeps the current cookie, same as changePasswordAction.
   await revokeOtherSessions(userId);
 
-  return newPassword ? ok(undefined) : ok({ password });
+  return newPassword ? ok(undefined) : ok({ password, signInUrl });
 }
 
 /**

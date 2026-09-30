@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { DraftsWaitingCard } from "@/src/components/expense-imports/drafts-waiting-card";
 import { BlockingPanel } from "@/src/components/ui/blocking-panel";
 import { PickFundingSource } from "@/src/components/app-shell/pick-funding-source";
 import { TourSequenceSkip } from "@/src/components/app-shell/tour-sequence-skip";
@@ -7,16 +8,19 @@ import {
   Card,
   CARD_PADDING,
   EmptyState,
+  InfoNote,
   PageHeader,
   SectionTitle,
 } from "@/src/components/ui/surfaces";
 import { TableCard, Td, Th } from "@/src/components/ui/table";
 import { TourGuide } from "@/src/components/ui/tour";
 import { formatDateUS, monthLabel, todayIso } from "@/src/domain/dates";
+import { draftsReviewHref, waitingDraftTotals } from "@/src/domain/draft-rules";
 import { formatMoney } from "@/src/domain/format";
 import { pageTitle, UI } from "@/src/domain/strings";
 import { packetContents } from "@/src/generation/packet-order";
 import { summariesAccessForOrg } from "@/src/modules/ai/access";
+import { loadMonthDrafts } from "@/src/modules/expense-imports/queries";
 import { loadTrashedExpenses } from "@/src/modules/expenses/queries";
 import { loadSourceContext } from "@/src/modules/funding-sources/queries";
 import { loadLockedMonths, loadLockEvents, loadPacketReadiness } from "@/src/modules/packet/queries";
@@ -66,7 +70,7 @@ export default async function PacketPage() {
     );
   }
 
-  const [readiness, deletedInMonth, seenPacketTour, events, lockedMonths, summariesAccess, shared] = await Promise.all([
+  const [readiness, deletedInMonth, seenPacketTour, events, lockedMonths, summariesAccess, shared, drafts] = await Promise.all([
     loadPacketReadiness(session.orgId, fundingSourceId, month),
     loadTrashedExpenses(session.orgId, fundingSourceId, month),
     hasSeenTour(session.userId, "packet"),
@@ -74,7 +78,11 @@ export default async function PacketPage() {
     loadLockedMonths(session.orgId, fundingSourceId),
     summariesAccessForOrg(session.orgId),
     loadSharedLinks(session.orgId, fundingSourceId, month),
+    loadMonthDrafts(session.orgId, fundingSourceId, month),
   ]);
+  // Only reported, never counted: drafts are in no figure or page below (PHASE-14 §6).
+  const draftTotal = waitingDraftTotals(drafts).get(fundingSourceId) ?? null;
+  const draftsWaiting = draftTotal !== null && draftTotal.count > 0;
 
   // Locked state comes from `month_statuses.locked_at`, not from the newest event (PR #16
   // review): the newest event being a lock does not by itself mean the month is still locked —
@@ -129,6 +137,7 @@ export default async function PacketPage() {
             locked={locked}
             lockedEvent={lockedEvent}
             blocked={blocked}
+            missingDocuments={readiness.blocking.map((row) => row.label)}
           />
         }
       />
@@ -146,6 +155,25 @@ export default async function PacketPage() {
 
       {readiness.totalRecords === 0 && (
         <p className="text-[15px] text-sub mb-7">This month has no expenses.</p>
+      )}
+
+      {/* A locked month refuses approval (R10.7), so its note says why instead of promising it. */}
+      {draftTotal && draftsWaiting && (
+        <DraftsWaitingCard
+          count={draftTotal.count}
+          amount={formatMoney(draftTotal.totalCents)}
+          lockedMonth={locked ? label : null}
+          href={draftsReviewHref(null)}
+        />
+      )}
+
+      {/* The next steps once nothing is left to do on the month itself (usability #35): not
+          while it is blocked, empty or locked, and not while drafts wait, since the drafts note
+          above is the next step then. Once submitted, only the last step is left. */}
+      {!blocked && readiness.totalRecords > 0 && !locked && !draftsWaiting && (
+        <InfoNote className="mb-7">
+          {readiness.submittedAt ? UI.packetSubmittedNextStep : UI.packetReadyNextSteps}
+        </InfoNote>
       )}
 
       {/*
@@ -267,7 +295,7 @@ export default async function PacketPage() {
           <div className="flex items-baseline justify-between pt-3 mt-1 border-t-2 border-ink">
             <span className="text-[15px] font-bold text-ink">Total</span>
             <span className="text-[15px] font-bold tabular-nums text-ink">
-              {readiness.totalPages} pages
+              {UI.pageCount(readiness.totalPages)}
             </span>
           </div>
           <p className="text-[13px] text-sub mt-2">
@@ -343,7 +371,7 @@ function ContentsRow({
         {index}. {label}
       </span>
       <span className="text-[15px] text-sub tabular-nums whitespace-nowrap">
-        {pages} {pages === 1 ? "page" : "pages"}
+        {UI.pageCount(pages)}
       </span>
     </li>
   );

@@ -2,7 +2,13 @@ import { describe, expect, it } from "vitest";
 
 import type { MonthKey } from "./dates";
 
-import { coverSheetRow, coverSheetRows, inlineNotes, type CoverSheetExpense } from "./cover-sheet";
+import {
+  coverSheetRow,
+  coverSheetRows,
+  defaultCoverSheetLineItemId,
+  inlineNotes,
+  type CoverSheetExpense,
+} from "./cover-sheet";
 
 const MONTH = "2026-02" as MonthKey;
 import { TAX_NOTE } from "./strings";
@@ -195,5 +201,35 @@ describe("the exclusion note tells the truth (R6.5, D-67)", () => {
     ], MONTH);
     // subtotal + tax, fees excluded.
     expect(rows[0].amountCents).toBe(10_600);
+  });
+});
+
+/**
+ * `defaultCoverSheetLineItemId` (usability #40): the sheet Cover Sheets opens on when the URL
+ * names no line item (or one that isn't there; the page resolves a valid `?lineItem=` first).
+ */
+describe("defaultCoverSheetLineItemId", () => {
+  const SALARY = "0190b000-0000-7000-8000-000000000001";
+  const CPE = "0190b000-0000-7000-8000-000000000002";
+  const RENT = "0190b000-0000-7000-8000-000000000003";
+
+  it("skips a first line item with no expenses for the first one that has some (E33)", () => {
+    expect(defaultCoverSheetLineItemId([SALARY, CPE], [CPE])).toBe(CPE);
+  });
+
+  it("takes the first with expenses in the line items' own order, not the expenses' order", () => {
+    expect(defaultCoverSheetLineItemId([SALARY, CPE, RENT], [RENT, CPE, RENT])).toBe(CPE);
+  });
+
+  it("falls back to the first line item when no line item has an expense this month (E34)", () => {
+    expect(defaultCoverSheetLineItemId([SALARY, CPE], [])).toBe(SALARY);
+  });
+
+  it("ignores expenses on a line item not in the list (another source's)", () => {
+    expect(defaultCoverSheetLineItemId([SALARY, CPE], [RENT])).toBe(SALARY);
+  });
+
+  it("is undefined with no line items at all, so the page falls through to All", () => {
+    expect(defaultCoverSheetLineItemId([], [CPE])).toBeUndefined();
   });
 });

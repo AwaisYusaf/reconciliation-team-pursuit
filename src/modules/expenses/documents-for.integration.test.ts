@@ -15,7 +15,7 @@ const hasDatabase = Boolean(process.env.DATABASE_URL);
 
 describe.skipIf(!hasDatabase)("expense documents per expense (integration, Phase 0 B7)", async () => {
   const { db } = await import("@/src/db");
-  const { expenseDocuments, expenses, lineItems, organizations } = await import("@/src/db/schema");
+  const { expenseDocuments, expenseImports, expenses, lineItems, organizations } = await import("@/src/db/schema");
   const { createTestOrg } = await import("@/src/db/test-org");
   const { loadExpense, loadMonthExpenses, loadTrashedExpenses } = await import("./queries");
 
@@ -70,9 +70,24 @@ describe.skipIf(!hasDatabase)("expense documents per expense (integration, Phase
     ids.trashed = await expense("Trashed", 2, new Date());
   });
 
+  let otherOrgId: string | undefined;
+
   afterAll(async () => {
     if (orgId) await db.delete(organizations).where(eq(organizations.id, orgId));
+    if (otherOrgId) await db.delete(organizations).where(eq(organizations.id, otherOrgId));
   });
+
+  async function importedInvoice(org: string, source: string, s3Key: string) {
+    await db.insert(expenseImports).values({
+      orgId: org,
+      fundingSourceId: source,
+      month: MONTH,
+      s3Key,
+      filename: "invoice.pdf",
+      mimeType: "application/pdf",
+      sha256: "b".repeat(64),
+    });
+  }
 
   const filenames = (docs: Array<{ filename: string }>) => docs.map((doc) => doc.filename);
 
@@ -87,5 +102,18 @@ describe.skipIf(!hasDatabase)("expense documents per expense (integration, Phase
     expect(filenames((await loadExpense(orgId, ids.second))!.documents)).toEqual(["Second.pdf"]);
     const trash = await loadTrashedExpenses(orgId, fundingSourceId);
     expect(filenames(trash.find((row) => row.id === ids.trashed)!.documents)).toEqual(["Trashed.pdf"]);
+  });
+
+  it("a receipt that is the org's imported invoice is marked, so Edit never reads the whole bill as one charge", async () => {
+    await importedInvoice(orgId, fundingSourceId, `test/${ids.first}`);
+    const other = await createTestOrg({ name: `Documents per expense other ${Date.now()}` });
+    otherOrgId = other.orgId;
+    // Another organisation's import with the same key must not mark this org's file.
+    await importedInvoice(other.orgId, other.fundingSourceId, `test/${ids.second}`);
+
+    expect((await loadExpense(orgId, ids.first))!.documents.map((doc) => doc.fromInvoice)).toEqual([true]);
+    expect((await loadExpense(orgId, ids.second))!.documents.map((doc) => doc.fromInvoice)).toEqual([false]);
+    const rows = await loadMonthExpenses(orgId, fundingSourceId, MONTH);
+    expect(rows.find((row) => row.id === ids.first)!.documents[0].fromInvoice).toBe(true);
   });
 });

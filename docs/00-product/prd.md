@@ -28,7 +28,7 @@ Team Pursuit submits a monthly reconciliation packet to the City of Detroit (via
 
 ### In scope (MVP)
 
-- **Auth & org onboarding:** email+password sign-in; sign-up; 2-step onboarding (line items + budgets; contract details — optional/skippable). Single account per org.
+- **Auth & org onboarding:** email+password sign-in; sign-up; 2-step onboarding, funding first (funding name + total amount required, dates and fiduciary optional; then line items that must fit the total; not skippable, D-134). Single account per org.
 - **8 app screens:** Dashboard, Add Expense, Expenses, Cover Sheets, Recurring, Month-End Packet, Contract Summary, Line Items — plus **Settings** (org/contract config the prototype hardcoded).
 - **Expense capture:** name/label, line item, month + date, payment source, description(role), subtotal/tax/fees, inline note + narrative note, 1–n proofs of payment, receipt/justification docs (or explicit "no receipt available" + reason), typed supporting documents. Edit (incl. moving between months) + delete. Vendor library autofill (auto-learning). Recurring items one-click add.
 - **Configurable lists (SOW §1):** payment sources and supporting document types are org-editable label lists seeded with the defaults (D-19); line items fully managed.
@@ -56,7 +56,7 @@ Receipt OCR/auto-extraction; bank feed integration; ~~multi-project/multi-grant 
 
 ## 6. The monthly cycle (primary flow)
 
-1. **Setup (once):** onboarding creates line items/budgets and contract settings; Settings screen refines POs, performance grant figures, advances, fiduciary, document display name.
+1. **Setup (once):** onboarding sets up the funding first (name + total amount required, dates and fiduciary optional), then line items/budgets that must fit that total (not skippable, D-134); Settings screen refines POs, performance grant figures, advances, fiduciary, document display name.
 2. **During the month:** each purchase/payment is entered when it happens — autofill from vendor library, live reimbursable + projected-remaining feedback, documents uploaded to the expense. Recurring screen adds the fixed monthly set (subscriptions, salaries) in clicks; each lands documentation-incomplete until proofs are attached.
 3. **Month-end:** upload month documents (bank statements, combined hours…). Packet screen shows per-line-item readiness and a blocking list naming every record missing proof or receipt/justification, with jump-to-fix. When clear: download packet PDF + summary Excel; per-line-item Word/PDF cover sheets from the Cover Sheets screen.
 4. **Submission (outside the system):** org uploads the packet PDF to DocuSign for signatures (org director, DCC, City).
@@ -69,7 +69,7 @@ Details live in module specs (`03-modules/`) and output specs (`02-outputs/`). B
 
 | ID | Requirement | Where |
 |---|---|---|
-| FR-1 | Auth: sign in/out, sign up, onboarding (line items → contract, skippable) | m00 |
+| FR-1 | Auth: sign in/out, sign up, onboarding (funding first, then line items that fit its total; not skippable, D-134) | m00 |
 | FR-2 | App shell: org header, month selector (persisted), 9-item nav, log out | m00 |
 | FR-3 | Dashboard: per-line-item Budget / Spent This Month / Total Spent / Remaining with <10% warning | m01 |
 | FR-4 | Add/edit expense with all fields, live math, autofill, document uploads, no-receipt flow | m02 |

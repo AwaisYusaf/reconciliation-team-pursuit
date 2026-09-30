@@ -106,6 +106,7 @@ describe.skipIf(!hasDatabase)("read invoice route (integration, Phase 14 §4)", 
     outcome: "found" as const,
     invoice: {
       vendor: "Detroit Sound Supply",
+      invoiceNumber: "INV-2210",
       invoiceDate: "2093-03-18",
       billTaxCents: null,
       billFeesCents: null,
@@ -160,6 +161,8 @@ describe.skipIf(!hasDatabase)("read invoice route (integration, Phase 14 §4)", 
     expect(body.ok).toBe(true);
     expect(body.data.found).toBe(true);
     expect(body.data.invoice.vendor).toBe("Detroit Sound Supply");
+    // Passed through whole, so the check screen can put it in its heading (usability #61).
+    expect(body.data.invoice.invoiceNumber).toBe("INV-2210");
     expect(body.data.invoice.lines).toHaveLength(1);
     expect(body.data.unreadableLines).toBe(0);
 

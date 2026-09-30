@@ -314,8 +314,13 @@ function PasswordEditor({
     startSaving(async () => {
       const result = await changeSharedLinkPasswordAction({ shareId: link.id, password: required ? password : null });
       const message = !required ? UI.sharePasswordRemoved : link.hasPassword ? UI.sharePasswordChanged : UI.sharePasswordAdded;
-      if (reportResult(result, message)) onDone();
-      else if (result.fieldErrors?.password) setError(result.fieldErrors.password);
+      // A refusal is said once (PR #27): under the password box when it is about the password,
+      // a toast otherwise.
+      if (result.ok) {
+        reportResult(result, message);
+        onDone();
+      } else if (result.fieldErrors?.password) setError(result.fieldErrors.password);
+      else reportResult(result);
     });
   }
 

@@ -76,6 +76,25 @@ describe.skipIf(!hasDatabase)("settings (integration)", async () => {
     expect(await activePaymentSources(orgId)).toEqual(["Paid by us, reimbursement requested"]);
   });
 
+  it("breaks a sort order tie by label, so every reader agrees on which source is first (usability #43)", async () => {
+    // Two adds racing to the same next number give two rows one sort_order. The first active
+    // source is the default a recurring add picks and the Recurring page names, so its order
+    // must not depend on how the rows happen to come back.
+    const [tied] = await db
+      .insert(organizations)
+      .values({ name: "Settings Tie Org", docName: "Tie", activeMonth: "2026-02" })
+      .returning({ id: organizations.id });
+    try {
+      // Inserted in reverse label order, so row order alone would put Zeta first.
+      for (const label of ["Zeta card", "Mid card", "Alpha card"]) {
+        await db.insert(paymentSources).values({ orgId: tied.id, label, sortOrder: label === "Mid card" ? 0 : 1 });
+      }
+      expect(await activePaymentSources(tied.id)).toEqual(["Mid card", "Alpha card", "Zeta card"]);
+    } finally {
+      await db.delete(organizations).where(eq(organizations.id, tied.id));
+    }
+  });
+
   it("refuses a label the organisation does not offer, so it cannot reach a document", async () => {
     expect(await isKnownPaymentSource(orgId, "Paid by us, reimbursement requested")).toBe(true);
     expect(await isKnownPaymentSource(orgId, "Anything I Like")).toBe(false);

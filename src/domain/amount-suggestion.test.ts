@@ -3,12 +3,18 @@
  */
 import { describe, expect, it } from "vitest";
 
+import { formatMoneyInput } from "./format";
+
 import {
   aggregateAmountSuggestion,
+  aggregateReceiptDetails,
+  amountsMatchSuggestion,
   fileSetSignature,
   nextKeysToRead,
   panelVisible,
+  readingFor,
   type ReadableFile,
+  type ReceiptDetails,
 } from "./amount-suggestion";
 
 function found(subtotalCents: number, taxCents: number, feesCents: number, totalCents: number) {
@@ -254,5 +260,205 @@ describe("refunds (PR #18 round 2, #5)", () => {
   it("with no receipt, a refund's bank credit fills a negative subtotal, so it saves as a refund", () => {
     const result = aggregateAmountSuggestion([proof("p", "credit.png", found(-14500, 0, 0, -14500))], true);
     expect(result).toMatchObject({ state: "done", subtotalCents: -14500, totalCents: -14500 });
+  });
+});
+
+describe("aggregateReceiptDetails (Phase 19)", () => {
+  const withDetails = (details: ReceiptDetails) => ({ ...found(8000, 417, 0, 8417), details });
+  const noAmount = (details: ReceiptDetails) => ({ status: "none" as const, details });
+
+  it("one receipt: offers its vendor and date", () => {
+    const files = [receipt("r1", "a.pdf", withDetails({ vendor: "Home Depot", date: "2026-09-12" }))];
+    expect(aggregateReceiptDetails(files, false)).toEqual({ vendor: "Home Depot", date: "2026-09-12" });
+  });
+
+  it("offers them from a receipt whose amounts could not be read", () => {
+    const files = [receipt("r1", "a.pdf", noAmount({ vendor: "Cafe Luna", date: null }))];
+    expect(aggregateReceiptDetails(files, false)).toEqual({ vendor: "Cafe Luna", date: null });
+  });
+
+  it("two receipts from the same business agree, whatever the spelling; the first spelling is offered", () => {
+    const files = [
+      receipt("r1", "a.pdf", withDetails({ vendor: "Home Depot", date: "2026-09-12" })),
+      receipt("r2", "b.pdf", withDetails({ vendor: "THE HOME DEPOT", date: "2026-09-12" })),
+    ];
+    expect(aggregateReceiptDetails(files, false)).toEqual({ vendor: "Home Depot", date: "2026-09-12" });
+  });
+
+  it("two different vendors offer no vendor; two different days offer no date", () => {
+    const vendors = [
+      receipt("r1", "a.pdf", withDetails({ vendor: "Home Depot", date: "2026-09-12" })),
+      receipt("r2", "b.pdf", withDetails({ vendor: "Lowes", date: "2026-09-12" })),
+    ];
+    expect(aggregateReceiptDetails(vendors, false)).toEqual({ vendor: null, date: "2026-09-12" });
+    const days = [
+      receipt("r1", "a.pdf", withDetails({ vendor: "Home Depot", date: "2026-09-12" })),
+      receipt("r2", "b.pdf", withDetails({ vendor: "Home Depot", date: "2026-09-13" })),
+    ];
+    expect(aggregateReceiptDetails(days, false)).toEqual({ vendor: "Home Depot", date: null });
+  });
+
+  it("two different names in another alphabet do not agree", () => {
+    const files = [
+      receipt("r1", "a.jpg", withDetails({ vendor: "東京ラーメン", date: null })),
+      receipt("r2", "b.jpg", withDetails({ vendor: "大阪ラーメン", date: null })),
+    ];
+    expect(aggregateReceiptDetails(files, false)).toBeNull();
+  });
+
+  it("a receipt that names nothing does not block the others", () => {
+    const files = [
+      receipt("r1", "a.pdf", withDetails({ vendor: "Home Depot", date: null })),
+      receipt("r2", "b.pdf", none),
+    ];
+    expect(aggregateReceiptDetails(files, false)).toEqual({ vendor: "Home Depot", date: null });
+  });
+
+  it("waits while any receipt is still being read", () => {
+    const files = [
+      receipt("r1", "a.pdf", withDetails({ vendor: "Home Depot", date: "2026-09-12" })),
+      receipt("r2", "b.pdf", pending),
+    ];
+    expect(aggregateReceiptDetails(files, false)).toBeNull();
+  });
+
+  it("proofs are never used, even if a result carried details", () => {
+    const files = [proof("p1", "bank.png", withDetails({ vendor: "WAL-MART", date: "2026-09-12" }))];
+    expect(aggregateReceiptDetails(files, false)).toBeNull();
+    const withReceipt = [
+      receipt("r1", "a.pdf", withDetails({ vendor: "Home Depot", date: "2026-09-12" })),
+      proof("p1", "bank.png", withDetails({ vendor: "WAL-MART", date: "2026-09-11" })),
+    ];
+    expect(aggregateReceiptDetails(withReceipt, false)).toEqual({ vendor: "Home Depot", date: "2026-09-12" });
+  });
+
+  it("nothing while No receipt available is ticked, and nothing when nothing was named", () => {
+    const files = [receipt("r1", "a.pdf", withDetails({ vendor: "Home Depot", date: "2026-09-12" }))];
+    expect(aggregateReceiptDetails(files, true)).toBeNull();
+    expect(aggregateReceiptDetails([receipt("r1", "a.pdf", none)], false)).toBeNull();
+    expect(aggregateReceiptDetails([], false)).toBeNull();
+  });
+});
+
+describe("readingFor (Phase 19)", () => {
+  const base = {
+    allowed: true,
+    editing: false,
+    draft: false,
+    embedded: false,
+    requested: false,
+    newFileQueued: false,
+  };
+
+  it("Add reads straight away and offers the vendor and date", () => {
+    expect(readingFor(base)).toEqual({ reading: true, offerDetails: true });
+  });
+
+  it("an invoice card reads amounts as before, but offers no vendor or date", () => {
+    expect(readingFor({ ...base, embedded: true })).toEqual({ reading: true, offerDetails: false });
+  });
+
+  it("Edit reads nothing on opening", () => {
+    expect(readingFor({ ...base, editing: true })).toEqual({ reading: false, offerDetails: false });
+  });
+
+  it("Edit reads, and offers, once a new file is chosen or the button is pressed", () => {
+    expect(readingFor({ ...base, editing: true, newFileQueued: true })).toEqual({ reading: true, offerDetails: true });
+    expect(readingFor({ ...base, editing: true, requested: true })).toEqual({ reading: true, offerDetails: true });
+  });
+
+  it("a draft never reads on its own, and its button reads amounts only", () => {
+    const draft = { ...base, editing: true, draft: true };
+    expect(readingFor({ ...draft, newFileQueued: true })).toEqual({ reading: false, offerDetails: false });
+    expect(readingFor({ ...draft, requested: true })).toEqual({ reading: true, offerDetails: false });
+  });
+
+  it("nothing at all without access", () => {
+    expect(readingFor({ ...base, allowed: false, requested: true, newFileQueued: true })).toEqual({
+      reading: false,
+      offerDetails: false,
+    });
+  });
+});
+
+/**
+ * `amountsMatchSuggestion` (usability #58): while Subtotal, Tax and Fees hold the suggestion,
+ * the panel shows "Amounts used" in place of the Use button. Suggestions are built with the
+ * real `aggregateAmountSuggestion`, the way the form builds them.
+ */
+describe("amountsMatchSuggestion", () => {
+  /** What `applySuggestedAmounts` writes into the three fields: grouped, as every box opens. */
+  function applied(s: { subtotalCents: number; taxCents: number; feesCents: number }) {
+    return {
+      subtotal: formatMoneyInput(s.subtotalCents),
+      tax: formatMoneyInput(s.taxCents),
+      fees: formatMoneyInput(s.feesCents),
+    };
+  }
+
+  it("holds for a figure of $1,000 or more written grouped, and after the first edit ungroups it", () => {
+    const large = aggregateAmountSuggestion([receipt("r9", "big.pdf", found(1_234_500, 0, 0, 1_234_500))], false);
+    if (large.state !== "done") throw new Error("expected a done suggestion");
+    expect(applied(large).subtotal).toBe("12,345.00");
+    expect(amountsMatchSuggestion(applied(large), large)).toBe(true);
+    expect(amountsMatchSuggestion({ ...applied(large), subtotal: "12345.00" }, large)).toBe(true);
+  });
+  const oneReceipt = aggregateAmountSuggestion([receipt("r1", "a.pdf", found(45000, 2700, 300, 48000))], false);
+
+  it("is true once Use has filled empty fields (E40), and while they still hold the suggestion", () => {
+    if (oneReceipt.state !== "done") throw new Error("expected a done suggestion");
+    expect(amountsMatchSuggestion({ subtotal: "", tax: "", fees: "" }, oneReceipt)).toBe(false);
+    expect(amountsMatchSuggestion(applied(oneReceipt), oneReceipt)).toBe(true);
+  });
+
+  it("is false again once any one field is edited after use (E42)", () => {
+    expect(amountsMatchSuggestion({ subtotal: "450.01", tax: "27.00", fees: "3.00" }, oneReceipt)).toBe(false);
+    expect(amountsMatchSuggestion({ subtotal: "450.00", tax: "27.01", fees: "3.00" }, oneReceipt)).toBe(false);
+    expect(amountsMatchSuggestion({ subtotal: "450.00", tax: "27.00", fees: "3.01" }, oneReceipt)).toBe(false);
+    expect(amountsMatchSuggestion({ subtotal: "450.00", tax: "27.00", fees: "3.00" }, oneReceipt)).toBe(true);
+  });
+
+  it("stays true when a proof is added and the totals do not change: the reported case (E43)", () => {
+    const withProof = aggregateAmountSuggestion(
+      [receipt("r1", "a.pdf", found(45000, 2700, 300, 48000)), proof("p1", "bank.png", found(0, 0, 0, 48000))],
+      false,
+    );
+    if (withProof.state !== "done") throw new Error("expected a done suggestion");
+    // The suggestion itself is not the same object (a proof line was added)...
+    expect(withProof.lines).toHaveLength(2);
+    // ...but the fields filled from the first read still hold its amounts.
+    expect(amountsMatchSuggestion(applied({ subtotalCents: 45000, taxCents: 2700, feesCents: 300 }), withProof)).toBe(true);
+  });
+
+  it("is false when a new receipt changes the totals (E44)", () => {
+    const twoReceipts = aggregateAmountSuggestion(
+      [receipt("r1", "a.pdf", found(45000, 2700, 300, 48000)), receipt("r2", "b.pdf", found(1000, 0, 0, 1000))],
+      false,
+    );
+    expect(amountsMatchSuggestion(applied({ subtotalCents: 45000, taxCents: 2700, feesCents: 300 }), twoReceipts)).toBe(false);
+  });
+
+  it("is true for an all-zero suggestion and empty fields: nothing left to apply (E45)", () => {
+    const zero = aggregateAmountSuggestion([receipt("r1", "a.pdf", found(0, 0, 0, 0))], false);
+    expect(zero.state).toBe("done");
+    expect(amountsMatchSuggestion({ subtotal: "", tax: "", fees: "" }, zero)).toBe(true);
+  });
+
+  it("parses the fields the way the form does: '1,234.50' and '450' match (E46)", () => {
+    const big = aggregateAmountSuggestion([receipt("r1", "a.pdf", found(123450, 0, 45000, 168450))], false);
+    expect(amountsMatchSuggestion({ subtotal: "1,234.50", tax: "0", fees: "450" }, big)).toBe(true);
+  });
+
+  it("matches a refund's negative amounts as Use writes them", () => {
+    const refund = aggregateAmountSuggestion([receipt("r1", "a.pdf", found(-14500, 0, 0, -14500))], false);
+    if (refund.state !== "done") throw new Error("expected a done suggestion");
+    expect(amountsMatchSuggestion(applied(refund), refund)).toBe(true);
+  });
+
+  it("is false in every state that has no amounts, even with fields that are all zero", () => {
+    const empty = { subtotal: "", tax: "", fees: "" };
+    expect(amountsMatchSuggestion(empty, aggregateAmountSuggestion([], false))).toBe(false);
+    expect(amountsMatchSuggestion(empty, aggregateAmountSuggestion([receipt("r1", "a.pdf", none)], false))).toBe(false);
+    expect(amountsMatchSuggestion(empty, aggregateAmountSuggestion([receipt("r1", "a.pdf", pending)], false))).toBe(false);
   });
 });

@@ -50,3 +50,35 @@ export function draftNeeds(draft: DraftReadiness): string[] {
 export function draftIsReady(draft: DraftReadiness): boolean {
   return draftNeeds(draft).length === 0;
 }
+
+/** Drafts waiting for review, per funding source: how many and their reimbursable total, the
+ *  same figure each draft row shows (usability #64). Integer cents; formatted at render. */
+export function waitingDraftTotals(
+  drafts: readonly { fundingSourceId: string; reimbursableCents: number }[],
+): Map<string, { count: number; totalCents: number }> {
+  const totals = new Map<string, { count: number; totalCents: number }>();
+  for (const draft of drafts) {
+    const current = totals.get(draft.fundingSourceId) ?? { count: 0, totalCents: 0 };
+    totals.set(draft.fundingSourceId, {
+      count: current.count + 1,
+      totalCents: current.totalCents + draft.reimbursableCents,
+    });
+  }
+  return totals;
+}
+
+/** Where "Review drafts" goes. `sourceId` only when the header is on All, since the Expenses
+ *  page ignores `?source=` once the header holds a source. */
+export function draftsReviewHref(sourceId: string | null): string {
+  return sourceId
+    ? `/r/expenses?view=drafts&source=${encodeURIComponent(sourceId)}`
+    : "/r/expenses?view=drafts";
+}
+
+/** Where the invoice check screen's Done lands. The drafts view only when every charge became
+ *  a draft (usability #64): it lists drafts alone, so a charge saved as an expense would look
+ *  lost there (PR #27). Otherwise the Expenses list, which shows the expenses and links to the
+ *  drafts with their count. */
+export function invoiceDoneHref(expenseCount: number, draftCount: number): string {
+  return expenseCount === 0 && draftCount > 0 ? draftsReviewHref(null) : "/r/expenses";
+}

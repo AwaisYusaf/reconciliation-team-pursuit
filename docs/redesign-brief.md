@@ -329,7 +329,9 @@ Everything recorded for the month, what each one is still missing, and the way i
 - h1 **"Add Expense"**, subtext "Enter one expense for {Month YYYY}. It will appear on the
   Expenses list and the matching cover sheet right away."
 - On the right, stacked: a **Funding source** select (only when the header is on "All" or holds
-  an archived source), and **"Extract From Invoice"** (secondary), whose label becomes
+  an archived source), and **"Extract from invoice"** (secondary, with "Upload one invoice. Each
+  charge on it is read out for you to check before anything is saved." beneath it, usability
+  #60), whose label becomes
   **"Reading the invoice…"** while the read runs. It accepts PDF, JPEG, PNG, WebP and HEIC, and
   is disabled on a locked month with the locked sentence beneath.
 - **On the base plan neither control exists** and the screen is exactly the heading plus the
@@ -357,9 +359,10 @@ Replaces the whole page once a read succeeds. Max-width 720px.
 4. **Marking a card writes nothing.** The screen only records intent; everything is written when
    **Done** is pressed.
 5. Footer: **Done** (primary, label becomes "Saving the charges…") and **Back** (quiet).
-6. Dialogs: "Remove this charge from the screen?" and "Leave without saving every charge?"
-   ("{n} charges have not been marked yet. Going back reads nothing into the month, and the
-   invoice would have to be read again.")
+6. Dialogs: "Remove this charge?" ("This charge won't be added when you press Done.", asked
+   only for a marked card) and "Go back without adding these charges?" (asked whenever the screen
+   has charges: "Nothing is saved until you press Done. Going back throws away every charge on
+   this screen, and the invoice would have to be read again.")
 7. **A read survives a page reload**, scoped to that month and funding source, and is cleared
    once Done succeeds.
 
@@ -533,8 +536,12 @@ Finish`, with a `BASE` section row, one row per line item, and a bold **Totals**
 item with a performance reads `{name} (includes {amount} performance)`. Balance to Finish goes
 bold red when negative.
 
-Then a **reconciliation card** (max 460px) with four rows: total advances received, total
-reconciled to date, balance remaining to reconcile, percentage of advance payments reconciled.
+Under the table, when a contract value is set and the Totals row differs from it, one line saying
+how (`lineItemsAgainstTotal`), then a closed "What do these columns mean?" fold with hints for Scheduled value, Previously billed, Balance
+to finish and BASE (D-134). Then a **reconciliation card** (max 460px) with four rows: total
+advances received, total reconciled to date, balance remaining to reconcile, percentage of
+advance payments reconciled; while advances received is $0.00 it shows only a plain explanation
+instead (`UI.noAdvancesYet`).
 Then **Download summary (Excel)** (primary), disabled when blocked with the reason beneath.
 Then **Reporting periods**: `Month | Status | Details` where Status is Reconciled / Submitted /
 Open, expanding to list every lock event for months with more than one.
@@ -546,7 +553,9 @@ and packet. Order here controls their order in documents."
 Table (min 900): `(reorder) | Line Item Name | Scheduled Value | Performances | Opening
 Previously Billed | Actions`. The reorder column is stacked ▲/▼ buttons, disabled at the ends.
 Scheduled Value is the effective total; Performances is the performance-only slice or `-`.
-Actions: **Manage** and **Delete** (both quiet). Bottom: **"+ Add line item"** (secondary)
+Actions: **Manage** and **Delete** (both quiet). A bold **Total** row closes the table; under it,
+when a contract value is set, one line comparing the line items with the contract total (red when
+over), then a closed "What do these columns mean?" fold with hints for Scheduled value and Performances (D-134). Bottom: **"+ Add line item"** (secondary)
 opening a card with **Line item name**, **Scheduled value**, **Opening previously billed
 (optional)**.
 
@@ -581,7 +590,8 @@ and label, the active one a solid accent pill.
   Managers see it disabled.
 - **Funding sources** — a **"Show archived (N)"** switch, then one expandable row per source
   with its name, an uppercase type label, an "Archived" pill, **Edit** and
-  **Archive**/**Unarchive**. Expanding shows three tiles (contract value, advances received,
+  **Archive**/**Unarchive**. Expanding shows three tiles (contract value, with a second line
+  "+ Performances $X = Total $Y" when there are new performances (D-134), advances received,
   contract period), a definition grid, and two chips for the tax and fee rules. Editing replaces
   the panel in place with the full form. **Add funding source** at the bottom.
 - **Lists** — two columns, **Payment sources** and **Supporting document types**, each a list of
@@ -613,15 +623,18 @@ Shared layout: paper background, content top-centred, a white card.
   **Sign in** ("Signing in…"), and the centred line "Forgot your password? Email
   tech@teampursuit.org."
 - **`/signup`**: closed by default, showing "Sign-ups are closed." and a support line. When open:
-  Organization name, Your name, Email, Password (with Show/Hide and "At least 12 characters."),
-  Confirm password, **Create account**.
-- **`/onboarding/line-items`** (max 720px): eyebrow "Step 1 of 2", h1 "Set up your budget line
-  items", a table `Line item | Budget | Remove` prefilled with six starter names and **empty
-  budgets**, **Add line item**, a bold **"Total budget: $X"**, and **Continue** disabled until at
-  least one row has a name and a budget above zero.
-- **`/onboarding/contract`**: eyebrow "Step 2 of 2", h1 "Your contract", all fields optional —
-  total contract value, start and end dates, fiduciary name — then **Finish setup**, **Skip for
-  now**, and **Back to budget line items**.
+  Subtitle "A few details to start. Next, you'll choose a plan and set up your budget." (without billing: "Next,
+  you'll set up your budget."). Organization name, Your name, Email, Password (with Show/Hide and "At
+  least 12 characters."), Confirm password (its own Show/Hide), **Create account**.
+- **`/onboarding/funding`** (max 720px; funding first, D-134): eyebrow "Step 1 of 2", h1 "Your
+  funding", "Payment received. Thank you." at the top after checkout, then Funding name and
+  Total amount (both required), Start and End date and Fiduciary or reviewing organization name
+  (optional), a line naming the tax and fee defaults, and **Continue**. No Skip.
+- **`/onboarding/line-items`**: eyebrow "Step 2 of 2", h1 "Your budget line items", a table
+  `Line item | Amount | Remove` prefilled with six starter names and **empty amounts**, **Add
+  line item**, a live bold line **"Planned $X of $Y · $Z left"** (red and "over" above the
+  total), **Finish setup** (saves only when every row is valid and they fit the total) and
+  **Back to your funding**. Both steps end with "Signed in as {email}." and **Sign out**.
 
 ### Staff admin — `/a`
 A separate shell: "AB Solutions admin" over the staff member's name, and **Sign out**. No month
@@ -661,7 +674,7 @@ cause, so a probe learns nothing).
 |---|---|
 | **Single funding source** | No source selector in the header; no Funding source column anywhere; no source filter; the form's source field is static text. |
 | **Header on "All funding sources"** | Dashboard shows one section per source with no combined total. Expenses and Trash gain a source filter. Cover Sheets, Packet, Contract Summary, Line Items and Monthly summary all show a **PickFundingSource** panel instead of the screen. |
-| **Plus plan** (`reconciliation_ai`, the Settings switch on, and OpenAI configured) | The Plus badge, the "Extract From Invoice" button, the amount suggestion panel, uploads moved above the amounts, the reading switch in Settings, and a usable Monthly summary. All absent on the base plan. |
+| **Plus plan** (`reconciliation_ai`, the Settings switch on, and OpenAI configured) | The Plus badge, the "Extract from invoice" button, the amount suggestion panel, uploads moved above the amounts, the reading switch in Settings, and a usable Monthly summary. All absent on the base plan. |
 | **Admin vs manager** | Admin only: expense **History**, the Settings **Users** section, `/r/settings/users`, and toggling the read-amounts switch. |
 | **Locked month** | Expense Delete, Trash Restore and Delete permanently, Recurring Add and Remove, and the invoice button are all disabled with "{Month} is locked. Unlock it on the Month-End Packet tab to make changes."; the expense form is fully disabled; month documents go read-only; the packet header shows Reconciled with **View signed packet** and **Unlock**. |
 | **Archived funding source** | Still selectable so its history stays reachable. Month documents go read-only. Line Items does not offer it; Cover Sheets, Packet, Contract Summary and Monthly summary do. |

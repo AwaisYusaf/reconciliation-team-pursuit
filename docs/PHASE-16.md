@@ -141,7 +141,7 @@ off is the rollback.
 | D1 | **Which Stripe account.** The account in use is named "Authentic Business"; going live on it means its bank, its name on receipts, and account-wide settings (retry rules, emails, payment methods) shared with anything else on it | **Decided 2026-09-25: "use the same env"**, the existing account, for development (its sandbox) and live. Consequence accepted: §11 step 0 confirms the payout bank, receipt name and statement descriptor are right for Team Pursuit before switching billing on, and account-wide settings are changed only after checking nothing else on the account depends on them |
 | D2 | **A lapsed Reconciliation + AI org with three funding sources re-subscribes to Reconciliation** | **Decided 2026-09-25:** Reconciliation is refused at Checkout while more than one source is active, and the admin can archive sources from the plan page (archiving is on the paywall's allow-list); they can also choose Reconciliation + AI. **Amended 2026-09-28 (D-129):** choosing Reconciliation asks which source to keep; Checkout records it, and the others are archived by the sync once the payment goes through. Nothing is archived before then, and archiving is no longer on the allow-list |
 | D3 | **Staff suspend an org that is paying**: Stripe keeps charging an org that can't sign in | **Decided 2026-09-25:** suspending pauses collection (Stripe `pause_collection`, bills voided) and reinstating resumes it; the interaction with a queued change is settled by a sandbox test (S-30) |
-| D4 | **Usability changes that go beyond the ticket** | **Decided 2026-09-25:** warn admins 14 days before complimentary access ends (yes); the funding-source limit is a disabled button with the reason under it, worded "To add more, try Plus." (the user's wording, a deliberate exception to P18); Plan & billing is a Settings section ("in settings"; placed near the end, Organization stays the default); the landing plan buttons keep **Get started** and each pricing card gets a **Book a demo** button, the "Early access" button goes |
+| D4 | **Usability changes that go beyond the ticket** | **Decided 2026-09-25:** warn admins 14 days before complimentary access ends (yes); the funding-source limit is a disabled button with the reason under it, worded ~~"To add more, try Plus." (the user's wording, a deliberate exception to P18)~~ "To add more, switch to Reconciliation + AI." (usability #23, 2026-09-29: the exception to P18 ends, plan text uses the full plan name again); Plan & billing is a Settings section ("in settings"; placed near the end, Organization stays the default); the landing plan buttons keep **Get started** and each pricing card gets a **Book a demo** button, the "Early access" button goes |
 | D5 | **A complimentary org wants to buy a plan before its free access ends** | **Decided 2026-09-25 (while testing):** allowed. With an end date 2 or more days away (Stripe's minimum for `trial_end`, plus an hour), Checkout saves the card and defers the first charge to local midnight after the last free day; otherwise it charges today and the sync ends the free access once paid (subscription metadata `endComplimentary`, only for a grant older than the subscription, so a later staff grant is never undone). The free plan is pinned in `complimentary_plan` before Checkout, so buying Reconciliation during free Reconciliation + AI keeps the AI features until the free access ends. Switching plan and End plan now stay refused while complimentary; cancel, keep and Card and invoices are allowed for the bought plan. **Replaced by D-128 (2026-09-28):** buying always pays today and ends the free access once paid, whatever was left of it; no deferred first charge, no pinned free plan, and Keep my plan is refused while complimentary |
 
 Adopted without asking (reviewers' recommendations, reversible): an unpaid admin can still change
@@ -213,7 +213,7 @@ Every billing action is **admin only**, checked inside the action, and decides f
 | `endPlanNowAction()` | Payment failed: cancel now, void open invoices (C2) | `billingNoPlan` |
 | `resumePlanAction()` | Undo a pending cancel, including a dashboard `cancel_at` | `billingNoPlan` |
 | `billingPortalAction()` | Stripe portal | `billingPortalNotSetUp` |
-| `GET /r/billing/return` | Ignores query parameters; re-syncs this org's own customer (throttled); redirects to a fixed path | not signed in → `/login` |
+| `GET /r/billing/return` | Ignores query parameters; re-syncs this org's own customer (throttled); redirects to Settings (Plan & billing), or, for an org not yet set up, to onboarding's first step with a payment note (`/onboarding/funding?paid=1`, display only; D-134) | not signed in → `/login` |
 | `POST /api/stripe/webhook` | Body read with `readCappedText` (1 MB), never `readJsonBody` (its same-origin check would refuse Stripe); signature and mode check; org found by `stripe_customer_id` only, unknown customers skipped without calling Stripe; `syncOrgBilling`. 400 not from Stripe or wrong mode, 503 while billing is off, 500 on our failure, 200 otherwise. Not rate limited | |
 
 Actions return `ActionResult` and are rate limited per user. Code in `src/modules/billing/`
@@ -659,7 +659,8 @@ pass; §8.4 mutations done.
   `src/modules/billing/actions.ts` (the eight §4.1 actions: session, billing switch, admin check
   and a per-user `billing` rate limit inside each, then `BillingError` to its `UI` string and a
   Stripe error to `billingStripeError`); `app/r/billing/return/route.ts` (ignores the query,
-  re-syncs the org's own customer, redirects to `/r/settings?section=plan`);
+  re-syncs the org's own customer, redirects to `/r/settings?section=plan`, or to
+  `/onboarding/funding?paid=1` for an org not yet set up, D-134);
   `billing:move-subscribers` (dry run by default, `--apply`, `--live` for a live key). Entitlement
   in every AI gate: `summariesAccessForOrg`, `readAmountsAllowedForOrg` and a new `aiAllowedForOrg`
   in `src/modules/ai/access.ts` load the billing columns fresh and apply `orgEntitlement`; every AI
@@ -1091,7 +1092,7 @@ From the usability review, wording to confirm with the client; canonical rows go
 | billingCancelledCompToast | Your paid plan won't renew. Your complimentary access continues. |
 | fundingSourceKeepOneActive | Keep at least one active funding source. |
 | billingDowngradeTooManySources | Reconciliation includes one active funding source, and you have {n}. Archive the ones you don't use in Funding sources, then switch. |
-| fundingSourceLimitReached | Reconciliation includes one active funding source. To add more, try Plus. |
+| fundingSourceLimitReached | Reconciliation includes one active funding source. To add more, switch to Reconciliation + AI. (usability #23, 2026-09-29; was "To add more, try Plus.") |
 | fundingSourceLimitManager | Reconciliation includes one active funding source. Ask your admin about upgrading. |
 | fundingSourceLimitQueued | Your plan switches to Reconciliation on {date}, which includes one active funding source. To add another, cancel that switch in Plan & billing. |
 | billingSeePlans / billingGoToSources | See plans / Go to Funding sources |

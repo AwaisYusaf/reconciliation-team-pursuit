@@ -16,7 +16,7 @@ describe("Phase 10 UI copy — verbatim against Appendix A", () => {
     expect(UI.readAmountsFromDocuments).toBe("Read amounts from documents");
     expect(UI.readAmountsSwitchLabel).toBe("Read amounts from uploaded documents");
     expect(UI.readAmountsSwitchHelp).toBe(
-      "Receipts and proofs of payment are sent to OpenAI to suggest amounts. OpenAI doesn't use them for training. Nothing is saved until you confirm.",
+      "Receipts and proofs of payment are sent to OpenAI to suggest amounts, and a receipt's vendor and date. OpenAI doesn't use them for training. Nothing is saved until you confirm.",
     );
     expect(UI.receiptDoesNotAddUp).toBe("The amounts on this receipt don't add up. Check them before saving.");
     expect(UI.proofOfPaymentTag).toBe("(proof of payment)");
@@ -79,5 +79,32 @@ describe("a refund's total (PR #18 round 3, #7)", () => {
   it("a payment, and a zero total, still read 'Total paid'", () => {
     expect(amountFigures({ ...refund, subtotalCents: 16500, totalCents: 16500 })[3]).toMatchObject({ label: "Total paid", value: "$165.00" });
     expect(amountFigures({ ...refund, subtotalCents: 0, totalCents: 0 })[3]).toMatchObject({ label: "Total paid", value: "$0.00" });
+  });
+});
+
+describe("Phase 19 copy: a receipt's vendor and date (docs/tickets/receipt-vendor-and-date.md)", () => {
+  it("the box, its buttons and their accessible names", () => {
+    expect(UI.receiptVendorLabel).toBe("Vendor on this receipt:");
+    expect(UI.receiptDateLabel).toBe("Date on this receipt:");
+    expect(UI.addReceiptDetail).toBe("Add");
+    expect(UI.addReceiptVendorLabel("Home Depot")).toBe("Add Home Depot as the name");
+    expect(UI.addReceiptDateLabel("9/12/2026")).toBe("Add 9/12/2026 as the date");
+  });
+
+  it("upload notes: Add, Edit and a draft each say when reading happens", () => {
+    expect(UI.aiUploadNoteAdd).toBe("AI reads the amounts when you add a file.");
+    expect(UI.aiUploadNoteEdit).toBe(
+      "AI reads the amounts when you add a file, or when you press Read amounts from documents.",
+    );
+    expect(UI.aiUploadNoteDraft).toBe("AI reads the amounts when you press Read amounts from documents.");
+  });
+
+  it("the two tour steps mention the vendor and date", () => {
+    expect(UI.tourReceiptBodyWithReading).toBe(
+      "Add the receipt, invoice or timesheet. With Plus, AI reads its amounts, vendor and date and shows them for you to add. Nothing is filled in until you choose to use it. If there isn't a receipt, check No receipt available and give a reason. The reason prints on the cover sheet.",
+    );
+    expect(UI.tourReadAmountsSwitchBody).toBe(
+      "Included with Plus. When it's on, AI reads the receipts and proofs of payment added to an expense and suggests the amounts, and a receipt's vendor and date. Nothing is filled in until someone chooses to use them. Only an admin can change this.",
+    );
   });
 });

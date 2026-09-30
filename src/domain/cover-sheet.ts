@@ -90,3 +90,13 @@ export function coverSheetRows(
     totalCents: rows.reduce((sum, row) => sum + row.amountCents, 0),
   };
 }
+
+/** The line item Cover Sheets opens on when the URL names none (usability #40): the first, in
+ *  the order given, that has an expense this month, else the first. Undefined with none. */
+export function defaultCoverSheetLineItemId(
+  lineItemIds: readonly string[],
+  expenseLineItemIds: readonly string[],
+): string | undefined {
+  const withExpenses = new Set(expenseLineItemIds);
+  return lineItemIds.find((id) => withExpenses.has(id)) ?? lineItemIds[0];
+}

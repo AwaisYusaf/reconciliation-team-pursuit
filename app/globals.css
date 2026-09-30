@@ -198,6 +198,26 @@ body {
   --focus-ring: var(--color-primary-fixed);
 }
 
+/* A money box (MoneyInput) is a "$" beside a borderless input: the ring goes around the whole
+   box, and the input inside draws none, or focus showed as a second box inside the first. */
+.money-field:has(input:focus-visible) {
+  outline: 2px solid var(--focus-ring, var(--color-accent));
+  outline-offset: 2px;
+}
+.money-field input:focus-visible {
+  outline: none;
+}
+
+/*
+ * The header floats over the page with no bar of its own (D-121), so a control the browser
+ * scrolls to (Tab, Shift+Tab, a focused error) has to stop below it, not under the nav pill
+ * (usability #27). 6rem clears the header at every width, collapsed or not. Form controls in
+ * `main` only: listbox options and the nav's own links scroll inside their own boxes.
+ */
+main :is(input, textarea, select, button) {
+  scroll-margin-top: 6rem;
+}
+
 @media print {
   .no-print {
     display: none !important;

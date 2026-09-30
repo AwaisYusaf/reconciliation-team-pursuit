@@ -6,16 +6,16 @@ import "server-only";
  *
  * Its own file, not `queries.ts` — that file is owned by another concurrently-built phase.
  */
-import { asc, eq } from "drizzle-orm";
+import { and, asc, eq, isNotNull } from "drizzle-orm";
 
 import { db } from "@/src/db";
-import { recurringItems, vendorDefaults } from "@/src/db/schema";
+import { expenseImports, recurringItems, vendorDefaults } from "@/src/db/schema";
 import type { RecurringMatch, VendorMatch } from "@/src/domain/invoice-match";
 
 export async function loadInvoiceMatchContext(
   orgId: string,
-): Promise<{ recurringItems: RecurringMatch[]; vendors: VendorMatch[] }> {
-  const [recurring, vendors] = await Promise.all([
+): Promise<{ recurringItems: RecurringMatch[]; vendors: VendorMatch[]; earlierVendors: string[] }> {
+  const [recurring, vendors, imported] = await Promise.all([
     db
       .select({
         name: recurringItems.name,
@@ -38,7 +38,21 @@ export async function loadInvoiceMatchContext(
       })
       .from(vendorDefaults)
       .where(eq(vendorDefaults.orgId, orgId)),
+    loadEarlierInvoiceVendors(orgId),
   ]);
 
-  return { recurringItems: recurring, vendors };
+  return { recurringItems: recurring, vendors, earlierVendors: imported };
+}
+
+/**
+ * The vendors this organization's invoices have named, once each (usability #62): so
+ * `withInvoiceVendor` can drop one a remembered description already starts with, and
+ * `learnVendor` can keep them out of the vendor library in the first place.
+ */
+export async function loadEarlierInvoiceVendors(orgId: string): Promise<string[]> {
+  const rows = await db
+    .selectDistinct({ vendorName: expenseImports.vendorName })
+    .from(expenseImports)
+    .where(and(eq(expenseImports.orgId, orgId), isNotNull(expenseImports.vendorName)));
+  return rows.flatMap((row) => (row.vendorName ? [row.vendorName] : []));
 }

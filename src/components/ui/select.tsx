@@ -70,6 +70,7 @@ type SelectProps = {
   "aria-label"?: string;
   "aria-labelledby"?: string;
   "aria-describedby"?: string;
+  "aria-invalid"?: boolean;
 };
 
 const COMPACT_TRIGGER =
@@ -94,6 +95,7 @@ export function Select({
   "aria-label": ariaLabel,
   "aria-labelledby": ariaLabelledBy,
   "aria-describedby": ariaDescribedBy,
+  "aria-invalid": ariaInvalid,
 }: SelectProps) {
   const options = optionsFromChildren(children);
   // Matches native <select>: with no explicit value/defaultValue, the first option is what's
@@ -251,6 +253,7 @@ export function Select({
         aria-label={ariaLabel}
         aria-labelledby={ariaLabelledBy}
         aria-describedby={ariaDescribedBy}
+        aria-invalid={ariaInvalid || undefined}
         onClick={() => (open ? closePanel() : openPanel())}
         onKeyDown={onKeyDown}
         className={cn(

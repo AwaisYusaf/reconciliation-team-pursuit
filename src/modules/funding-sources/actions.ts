@@ -14,6 +14,8 @@ import { db } from "@/src/db";
 import { isUniqueViolation } from "@/src/db/pg-errors";
 import { fundingSourceType, fundingSources, organizations } from "@/src/db/schema";
 import { isValidIsoDate } from "@/src/domain/dates";
+import { formatMoney } from "@/src/domain/format";
+import { fundingTotalCents, raisesOverLimit } from "@/src/domain/funding-limit";
 import { isDuplicateName } from "@/src/domain/line-item-rules";
 import { parseMoneyToCents } from "@/src/domain/money";
 import { UI } from "@/src/domain/strings";
@@ -21,7 +23,11 @@ import { fail, ok, type ActionResult } from "@/src/lib/action-result";
 import { actionSession } from "@/src/lib/action-session";
 import { archiveFundingSources } from "@/src/modules/funding-sources/archive";
 import { fundingSourceLimitRefusal, lockedOrgEntitlement } from "@/src/modules/funding-sources/limit";
-import { listFundingSources, requireOwnedFundingSource } from "@/src/modules/funding-sources/queries";
+import {
+  listFundingSources,
+  loadFundingPosition,
+  requireOwnedFundingSource,
+} from "@/src/modules/funding-sources/queries";
 
 function revalidateAll(): void {
   revalidatePath("/", "layout");
@@ -180,10 +186,24 @@ export async function updateFundingSourceAction(
   if (!validated.ok) return validated;
 
   try {
-    await db
-      .update(fundingSources)
-      .set(validated.data)
-      .where(and(eq(fundingSources.id, source.id), eq(fundingSources.orgId, current.orgId)));
+    // The funding source row locked (R9.6), so this and a line item change on the same source
+    // queue, and each checks the funding limit on the other's result.
+    const refused = await db.transaction(async (tx) => {
+      const before = await loadFundingPosition(tx, current.orgId, source.id, true);
+      if (!before) return fail("Choose a funding source.");
+      const after = { ...before, contractValueCents: validated.data.contractValueCents };
+      if (raisesOverLimit(before, after)) {
+        return fail(
+          UI.contractValueBelowLineItems(formatMoney(after.scheduledCents), formatMoney(fundingTotalCents(after))),
+        );
+      }
+      await tx
+        .update(fundingSources)
+        .set(validated.data)
+        .where(and(eq(fundingSources.id, source.id), eq(fundingSources.orgId, current.orgId)));
+      return null;
+    });
+    if (refused) return refused;
   } catch (error) {
     if (isUniqueViolation(error)) return fail(DUPLICATE_NAME);
     throw error;

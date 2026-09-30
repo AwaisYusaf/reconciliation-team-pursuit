@@ -40,7 +40,7 @@ const hasDatabase = Boolean(process.env.DATABASE_URL);
 
 describe.skipIf(!hasDatabase)("read amounts (integration, Phase 10)", async () => {
   const { db } = await import("@/src/db");
-  const { aiUsageEvents, expenseDocuments, expenses, lineItems, organizations, supportingDocTypes } = await import(
+  const { aiUsageEvents, expenseDocuments, expenseImports, expenses, lineItems, organizations, supportingDocTypes } = await import(
     "@/src/db/schema"
   );
   const { createTestOrg } = await import("@/src/db/test-org");
@@ -501,6 +501,35 @@ describe.skipIf(!hasDatabase)("read amounts (integration, Phase 10)", async () =
       expect(response.status).toBe(400);
     });
 
+    it("an attached receipt that is the org's imported invoice → 400, never read (the whole bill, not this charge)", async () => {
+      const expenseId = await makeExpense(orgId, fundingSourceId, lineItemId);
+      const ingested = await ingestExpenseDocument({ orgId, expenseId, scope: "receipt", file: await jpegFile() });
+      if (!ingested.ok) throw new Error(ingested.error);
+      const [doc] = await db
+        .select({ s3Key: expenseDocuments.s3Key })
+        .from(expenseDocuments)
+        .where(eq(expenseDocuments.id, ingested.documentId));
+      // Approval re-points the invoice's own object as the charge's receipt: same key, same org.
+      await db.insert(expenseImports).values({
+        orgId,
+        fundingSourceId,
+        month: "2026-09",
+        s3Key: doc.s3Key,
+        filename: "invoice.jpg",
+        mimeType: "image/jpeg",
+        sha256: "c".repeat(64),
+      });
+
+      asSession(orgId, userId);
+      readAmountsMock.mockClear();
+      const form = new FormData();
+      form.set("documentId", ingested.documentId);
+      const response = await POST(readRequest(form));
+      expect(response.status).toBe(400);
+      expect(await response.json()).toMatchObject({ error: "That document type is not read." });
+      expect(readAmountsMock).not.toHaveBeenCalled();
+    });
+
     it("trashed expense's document → 404", async () => {
       const expenseId = await makeExpense(orgId, fundingSourceId, lineItemId);
       const ingested = await ingestExpenseDocument({
@@ -734,6 +763,101 @@ describe.skipIf(!hasDatabase)("read amounts (integration, Phase 10)", async () =
       const row = await latestAmountRead(orgId);
       expect(row!.outcome).toBe("found");
       expect(row!.documentSource).toBe("attached");
+    });
+  });
+
+  describe("a receipt's vendor and date (Phase 19)", () => {
+    const amounts = { subtotalCents: 8000, taxCents: 417, feesCents: 0, totalCents: 8417 };
+
+    async function usageRowCount(org: string): Promise<number> {
+      const rows = await db.select({ id: aiUsageEvents.id }).from(aiUsageEvents).where(eq(aiUsageEvents.orgId, org));
+      return rows.length;
+    }
+
+    async function readReceipt() {
+      const form = new FormData();
+      form.set("file", await jpegFile());
+      form.set("kind", "receipt");
+      return POST(readRequest(form));
+    }
+
+    beforeAll(async () => {
+      const { vendorDefaults } = await import("@/src/db/schema");
+      // This org remembers "Home Depot"; the other org remembers "Lowes". Neither may leak.
+      await db.insert(vendorDefaults).values([
+        { orgId, name: "Home Depot" },
+        { orgId, name: "Staples" },
+        { orgId: otherOrgId, name: "Lowes" },
+      ]);
+    });
+
+    it("offers the organization's own library spelling, with the date, from one read and one usage row", async () => {
+      asSession(orgId, userId);
+      clearAll();
+      readAmountsMock.mockReset();
+      readAmountsMock.mockResolvedValue({
+        outcome: "found",
+        amounts,
+        details: { vendor: "THE HOME DEPOT #2718", date: "2026-09-12" },
+        inputTokens: 900,
+        outputTokens: 120,
+      });
+      const before = await usageRowCount(orgId);
+
+      const response = await readReceipt();
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({
+        ok: true,
+        data: { found: true, ...amounts, vendor: "Home Depot", date: "2026-09-12" },
+      });
+      expect(readAmountsMock).toHaveBeenCalledTimes(1);
+      expect(await usageRowCount(orgId)).toBe(before + 1);
+      const row = await latestAmountRead(orgId);
+      expect(row!.feature).toBe("amount_read");
+      expect(row!.outcome).toBe("found");
+    });
+
+    it("a vendor that is not remembered is offered as read", async () => {
+      asSession(orgId, userId);
+      readAmountsMock.mockResolvedValue({
+        outcome: "found",
+        amounts,
+        details: { vendor: "Cafe Luna", date: null },
+        inputTokens: 1,
+        outputTokens: 1,
+      });
+      expect(await (await readReceipt()).json()).toEqual({
+        ok: true,
+        data: { found: true, ...amounts, vendor: "Cafe Luna" },
+      });
+    });
+
+    it("never matches against another organization's library", async () => {
+      asSession(orgId, userId);
+      readAmountsMock.mockResolvedValue({
+        outcome: "found",
+        amounts,
+        details: { vendor: "LOWES", date: null },
+        inputTokens: 1,
+        outputTokens: 1,
+      });
+      const body = await (await readReceipt()).json();
+      expect(body.data.vendor).toBe("LOWES");
+    });
+
+    it("a receipt with no readable amount still names its vendor and date, logged as 'none'", async () => {
+      asSession(orgId, userId);
+      readAmountsMock.mockResolvedValue({
+        outcome: "none",
+        details: { vendor: "Staples Inc", date: "2026-09-01" },
+        inputTokens: 1,
+        outputTokens: 1,
+      });
+      expect(await (await readReceipt()).json()).toEqual({
+        ok: true,
+        data: { found: false, vendor: "Staples", date: "2026-09-01" },
+      });
+      expect((await latestAmountRead(orgId))!.outcome).toBe("none");
     });
   });
 

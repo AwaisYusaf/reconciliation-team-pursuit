@@ -1,7 +1,6 @@
 import type { ComponentProps, ReactNode } from "react";
 import { useId } from "react";
 
-import { sanitiseMoneyInput } from "@/src/domain/money";
 import { cn } from "@/src/lib/cn";
 
 /** Shared control chrome. Exported so the custom `Select` trigger matches Input/Textarea. */
@@ -9,7 +8,9 @@ export const CONTROL =
   "w-full min-h-11 px-3.5 py-3 text-base font-sans text-ink bg-surface " +
   "border border-line rounded-[3px] box-border " +
   // Read-only (a locked month's expense) must not look editable.
-  "disabled:bg-section disabled:text-sub disabled:cursor-not-allowed";
+  "disabled:bg-section disabled:text-sub disabled:cursor-not-allowed " +
+  // A control marked invalid (its own error under it) gets a red border.
+  "aria-[invalid=true]:border-danger";
 
 /** Field label — 15px semibold above the control, per the design system. */
 export function Label({ className, ...props }: ComponentProps<"label">) {
@@ -41,51 +42,32 @@ export function Textarea({ className, ...props }: ComponentProps<"textarea">) {
   );
 }
 
-/**
- * Money input — a bordered composite with a leading `$` and a right-aligned,
- * tabular-numeral field, matching the approved design. The value stays a string
- * here; parsing to integer cents happens server-side in the domain layer.
- */
-export function MoneyInput({ className, onChange, ...props }: ComponentProps<"input">) {
-  return (
-    <div
-      className={cn(
-        "flex items-center gap-1.5 min-h-11 px-3 bg-surface border border-line rounded-[3px] has-[:disabled]:bg-section",
-        className,
-      )}
-    >
-      <span className="text-base text-sub">$</span>
-      <input
-        inputMode="decimal"
-        onChange={(event) => {
-          // Filter the value rather than the keystroke, so paste, autofill and dictation are
-          // covered too. `inputMode` alone is only a soft keyboard hint — on a desktop keyboard
-          // it stops nothing, which is how letters were reaching the parser and saving $0.00.
-          const input = event.currentTarget;
-          const clean = sanitiseMoneyInput(input.value);
+// A Client Component of its own (hooks), so this file stays importable from Server Components
+// (`app/r/feature-requests/page.tsx` renders `Input`). Re-exported so callers keep one import.
+export { MoneyInput } from "./money-input";
 
-          if (clean !== input.value) {
-            // Keep the caret where the user left it instead of flinging it to the end.
-            // `sanitiseMoneyInput` is a left-to-right fold whose state depends only on the
-            // text so far, so sanitising the prefix gives exactly the prefix of the result.
-            const caret = input.selectionStart ?? input.value.length;
-            const kept = sanitiseMoneyInput(input.value.slice(0, caret)).length;
-            input.value = clean;
-            input.setSelectionRange(kept, kept);
-          }
+/** `aria-invalid` and `aria-describedby` for a control whose error sits under it at `errorId`:
+ *  the wiring `Field` gives its own control, for controls that can't sit in a `Field` (fixed ids
+ *  the form focuses by, rows with no label of their own). Empty when there is no error. */
+export function invalidProps(errorId: string, error: unknown) {
+  return error ? { "aria-invalid": true as const, "aria-describedby": errorId } : {};
+}
 
-          onChange?.(event);
-        }}
-        className="flex-1 min-w-0 border-none outline-none bg-transparent py-[11px] text-base text-ink text-right tabular-nums font-sans disabled:text-sub disabled:cursor-not-allowed"
-        {...props}
-      />
-    </div>
-  );
+/** After a refused submit: focus the first marked control inside `root` and bring it to the
+ *  middle of the screen, so a long form (or a phone) lands on what to fix. */
+export function focusFirstInvalid(root: HTMLElement | null) {
+  const first = root?.querySelector<HTMLElement>('[aria-invalid="true"]');
+  first?.focus({ preventScroll: true });
+  first?.scrollIntoView({ block: "center" });
 }
 
 /**
  * Label + control + helper/error, wired together with a generated id so the label
- * is programmatically associated with its input.
+ * is programmatically associated with its input. With an error the control also gets
+ * `aria-invalid`, which gives it the red border (`Input`, `MoneyInput`).
+ *
+ * `id` fixes the id instead of generating one (a form that focuses fields by id); `labelAside`
+ * sits at the end of the label row (a password's Show toggle).
  */
 export function Field({
   label,
@@ -94,24 +76,39 @@ export function Field({
   optional,
   children,
   className,
+  id: fixedId,
+  labelAside,
 }: {
   label: string;
   helper?: ReactNode;
   error?: string;
   optional?: boolean;
-  children: (props: { id: string; "aria-describedby"?: string }) => ReactNode;
+  children: (props: { id: string; "aria-describedby"?: string; "aria-invalid"?: true }) => ReactNode;
   className?: string;
+  id?: string;
+  labelAside?: ReactNode;
 }) {
-  const id = useId();
+  const generatedId = useId();
+  const id = fixedId ?? generatedId;
   const describedBy = error ? `${id}-error` : helper ? `${id}-helper` : undefined;
+  const label_ = (
+    <Label htmlFor={id}>
+      {label}
+      {optional && <span className="font-normal text-sub"> (optional)</span>}
+    </Label>
+  );
 
   return (
     <div className={className}>
-      <Label htmlFor={id}>
-        {label}
-        {optional && <span className="font-normal text-sub"> (optional)</span>}
-      </Label>
-      {children({ id, "aria-describedby": describedBy })}
+      {labelAside ? (
+        <div className="flex items-baseline justify-between gap-2">
+          {label_}
+          {labelAside}
+        </div>
+      ) : (
+        label_
+      )}
+      {children({ id, "aria-describedby": describedBy, ...(error ? { "aria-invalid": true as const } : {}) })}
       {helper && !error && <Helper id={`${id}-helper`}>{helper}</Helper>}
       {error && <FieldError id={`${id}-error`}>{error}</FieldError>}
     </div>

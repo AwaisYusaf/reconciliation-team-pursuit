@@ -128,3 +128,96 @@ describe.skipIf(!hasDatabase)("loadSourceBudget isolation (integration)", async 
     expect(budget.drift).toEqual([]);
   });
 });
+
+/**
+ * `orgHasAnyExpense` (usability #52): the welcome banner shows until the organization has any
+ * expense at all, any source, any month, trashed included, and only its own.
+ */
+describe.skipIf(!hasDatabase)("orgHasAnyExpense (integration)", async () => {
+  const { db } = await import("@/src/db");
+  const { expenses, fundingSources, lineItems, organizations } = await import("@/src/db/schema");
+  const { createTestOrg } = await import("@/src/db/test-org");
+  const { claimReferenceSeq } = await import("@/src/modules/expenses/references");
+  const { orgHasAnyExpense } = await import("./queries");
+
+  // Far from any real or other test's month, and different per org on purpose.
+  const MONTH = "2097-05";
+  const OTHER_MONTH = "2096-11";
+  const created: string[] = [];
+
+  async function org(name: string) {
+    const made = await createTestOrg({ name, activeMonth: MONTH });
+    created.push(made.orgId);
+    return made;
+  }
+
+  async function addExpense(
+    orgId: string,
+    fundingSourceId: string,
+    month: string,
+    deletedAt: Date | null = null,
+  ): Promise<void> {
+    const [item] = await db
+      .insert(lineItems)
+      .values({ orgId, fundingSourceId, name: `Item ${month}`, scheduledValueCents: 100_000, sortOrder: 0 })
+      .returning({ id: lineItems.id });
+    await db.insert(expenses).values({
+      orgId,
+      fundingSourceId,
+      lineItemId: item.id,
+      month,
+      date: `${month}-05`,
+      name: "Banner test expense",
+      paymentSource: "x",
+      subtotalCents: 1_000,
+      taxReimbursable: false,
+      feesReimbursable: true,
+      sortOrder: 0,
+      referenceSeq: await claimReferenceSeq(orgId, fundingSourceId, month),
+      deletedAt,
+    });
+  }
+
+  afterAll(async () => {
+    for (const id of created) await db.delete(organizations).where(eq(organizations.id, id));
+  });
+
+  it("is false for a brand-new organization, so the banner shows (E2)", async () => {
+    const { orgId } = await org("Banner New Org");
+    expect(await orgHasAnyExpense(orgId)).toBe(false);
+  });
+
+  it("is true once one expense exists in another source and another month (E3)", async () => {
+    const { orgId } = await org("Banner Second Source Org");
+    const [second] = await db
+      .insert(fundingSources)
+      .values({ orgId, name: "Second", type: "donation", sortOrder: 1, taxReimbursable: true, feesReimbursable: false })
+      .returning({ id: fundingSources.id });
+    expect(await orgHasAnyExpense(orgId)).toBe(false);
+
+    await addExpense(orgId, second.id, OTHER_MONTH);
+
+    expect(await orgHasAnyExpense(orgId)).toBe(true);
+  });
+
+  it("is true when the only expense is in the trash (E4)", async () => {
+    const { orgId, fundingSourceId } = await org("Banner Trashed Org");
+    await addExpense(orgId, fundingSourceId, MONTH, new Date());
+    const [row] = await db
+      .select({ deletedAt: expenses.deletedAt })
+      .from(expenses)
+      .where(eq(expenses.orgId, orgId));
+    expect(row.deletedAt).not.toBeNull();
+
+    expect(await orgHasAnyExpense(orgId)).toBe(true);
+  });
+
+  it("never counts another organization's expense (E6)", async () => {
+    const a = await org("Banner Empty Org A");
+    const b = await org("Banner Busy Org B");
+    await addExpense(b.orgId, b.fundingSourceId, MONTH);
+
+    expect(await orgHasAnyExpense(b.orgId)).toBe(true);
+    expect(await orgHasAnyExpense(a.orgId)).toBe(false);
+  });
+});

@@ -68,7 +68,9 @@ that fails when the fix is reverted.
   number on a cover sheet.
 - **`READ_MAX_OUTPUT_TOKENS = 400`** on the read request. The answer is five short fields, about 40
   tokens; the cap is protection against a document whose own text talks the model into writing an
-  essay. The sibling of `SUMMARY_MAX_OUTPUT_TOKENS` (PHASE-11 §5).
+  essay. The sibling of `SUMMARY_MAX_OUTPUT_TOKENS` (PHASE-11 §5). *Raised to 600 by Phase 19 (D-133):
+  local reads had reached 267 of 400 once the model's reasoning counted, and a receipt now also
+  returns its vendor and date.*
 - **At most four reads in flight per organisation** (`src/modules/amount-reading/in-flight.ts`,
   `MAX_IN_FLIGHT_PER_ORG = 4`). The `readAmounts` rate limit bounds reads per *hour*, not reads at
   the same *instant*, and one read is memory-hungry while it lasts: the file is buffered, inspected
@@ -224,8 +226,12 @@ Panel rules that Appendix A leaves open, settled here so every state is consiste
 
 Panel lifecycle:
 - **Dismiss** hides the panel until the set of receipt/proof files changes.
-- **Use these amounts** (after the confirm if needed) fills the fields and hides the panel the
-  same way; it reappears only if the files change.
+- ~~**Use these amounts** (after the confirm if needed) fills the fields and hides the panel the
+  same way; it reappears only if the files change.~~ **Amended 2026-09-29 (usability #58):** Use
+  these amounts (after the confirm if needed) fills the fields and keeps the panel open. While
+  Subtotal, Tax and Fees equal the suggestion (`amountsMatchSuggestion`, parsed the way the form
+  parses them), "✓ Amounts used" (`SavedTick`) stands in place of the button; editing a field, or
+  a file change that moves the totals, brings the button back. Only Dismiss hides the panel.
 - While some files are still reading and others are done, the panel stays in the reading state
   ("Reading N documents…") — no partial totals, so a half-finished total is never offered.
 - A read refused because the feature was switched off meanwhile counts as "No amount found".
@@ -414,6 +420,9 @@ A panel appears next to the amount fields (Subtotal / Tax / Fees). It has three 
 
 On an existing expense, nothing is read automatically, so old expenses never change by surprise.
 
+> *Amended by Phase 19 (D-133): opening an expense still reads nothing, but choosing a new receipt
+> or proof on Edit now reads every file on it, as the button does. Drafts keep the button only.*
+
 - Near the amount fields, add a button: **Read amounts from documents**.
 - It reads the receipts and proofs attached to the expense, plus any files just added, and shows the same panel as on Add Expense.
 - The button is hidden when the expense has no receipts or proofs attached.
@@ -451,6 +460,9 @@ Change it to: "Enter the amounts from the receipt, or upload the receipt below a
 When the Settings switch is off, keep the old text.
 
 ### Not part of this ticket
+
+> *Phase 19 (D-133) later added a receipt's vendor name and date, offered with an Add button each
+> rather than filled in; §2's "Only amounts are read" and §4's help text changed with it.*
 
 - Reading the vendor name, date, description or line item
 - Reading supporting documents or month documents (such as bank statements)

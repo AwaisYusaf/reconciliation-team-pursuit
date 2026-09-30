@@ -1,14 +1,16 @@
 import { and, asc, count, eq, isNull } from "drizzle-orm";
 
+import { formatMoneyInput } from "@/src/domain/format";
 import { PageTitle, Subtext } from "@/src/components/ui/surfaces";
 import { TourGuide } from "@/src/components/ui/tour";
 import { db } from "@/src/db";
-import { expenseDocuments, expenses, lineItems, paymentSources, recurringItems } from "@/src/db/schema";
+import { expenseDocuments, expenses, lineItems, recurringItems } from "@/src/db/schema";
 import { monthLabel, monthShortLabel } from "@/src/domain/dates";
 import { addedState } from "@/src/domain/recurring-rules";
 import { pageTitle } from "@/src/domain/strings";
 import { loadSourceContext } from "@/src/modules/funding-sources/queries";
 import { loadLockedMonths } from "@/src/modules/packet/queries";
+import { activePaymentSources } from "@/src/modules/settings/labels";
 import { RECURRING_TOUR_STEPS } from "@/src/modules/tours/recurring-tour";
 import { hasSeenTour } from "@/src/modules/tours/queries";
 import { pageSession } from "@/src/lib/page-session";
@@ -33,7 +35,7 @@ export default async function RecurringPage() {
     fundingSources.filter((source) => source.archivedAt !== null).map((source) => source.id),
   );
 
-  const [items, options, sources, monthRows, lockedMonthKeys] = await Promise.all([
+  const [items, options, activeSources, monthRows, lockedMonthKeys] = await Promise.all([
     db
       .select({
         id: recurringItems.id,
@@ -68,11 +70,8 @@ export default async function RecurringPage() {
         ),
       )
       .orderBy(asc(lineItems.sortOrder)),
-    db
-      .select({ label: paymentSources.label })
-      .from(paymentSources)
-      .where(and(eq(paymentSources.orgId, session.orgId), eq(paymentSources.active, true)))
-      .orderBy(asc(paymentSources.sortOrder)),
+    // The reader addRecurringToMonthAction uses too, so "The default is ..." names what it picks.
+    activePaymentSources(session.orgId),
     db
       .select({
         id: expenses.id,
@@ -111,10 +110,9 @@ export default async function RecurringPage() {
         : item.name,
     }));
 
-  const activeSources = sources.map((row) => row.label);
   // Null means never set, which is a different fact from a genuine zero (D-54), so it shows
   // as an empty field rather than a confident $0.00.
-  const money = (cents: number | null) => (cents === null ? "" : (cents / 100).toFixed(2));
+  const money = (cents: number | null) => (cents === null ? "" : formatMoneyInput(cents));
 
   const rows: RecurringRow[] = items.map((item) => {
     // The recurring item's own id must be passed, exactly as `addRecurringToMonthAction`

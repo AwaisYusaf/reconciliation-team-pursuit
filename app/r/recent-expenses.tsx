@@ -34,8 +34,9 @@ export function RecentExpenses({
   // The card's `min-w-0` below is load-bearing, not tidiness. A grid item's default
   // `min-width: auto` sizes it to its content rather than to its track, so a row that refuses
   // to shrink widens the whole column and then the page: on a 390px phone this card measured
-  // 483px and gave the document a horizontal scrollbar. Capping it is what lets the
-  // truncation inside the rows actually run.
+  // 483px and gave the document a horizontal scrollbar. Capping it is what lets the rows'
+  // long names and line-item lines wrap inside the card instead (they used to be cut off with
+  // an ellipsis, usability #53).
 
   return (
     <Card className="p-4 sm:p-5 flex flex-col min-w-0">
@@ -72,10 +73,10 @@ export function RecentExpenses({
                   className="flex items-center gap-3 rounded-[8px] bg-section/60 px-3 py-2.5"
                 >
                   <span className="min-w-0 flex-1">
-                    <span className="block font-bold text-[15px] text-ink truncate">
+                    <span className="block font-bold text-[15px] text-ink break-words">
                       {expense.name}
                     </span>
-                    <span className="block text-[13px] text-sub truncate">
+                    <span className="block text-[13px] text-sub break-words">
                       {expense.lineItemName} · {formatDateUS(expense.date)}
                     </span>
                   </span>

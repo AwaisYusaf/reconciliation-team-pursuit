@@ -237,7 +237,7 @@ describe("readAmounts", () => {
     expect(body.store).toBe(false);
     expect(body.text.format.type).toBe("json_schema");
     expect(body.text.format.strict).toBe(true);
-    expect(body.max_output_tokens).toBe(400);
+    expect(body.max_output_tokens).toBe(600);
   });
 
   it("PDF → input_file with the generic filename 'document.pdf', never the user's own", async () => {
@@ -486,5 +486,154 @@ describe("proof direction (PR #18 round 2, #5): size from the amount, sign from 
       "receipt",
     );
     expect(purchase).toMatchObject({ amounts: { totalCents: 14500 } });
+  });
+});
+
+describe("receipt vendor and date (Phase 19)", () => {
+  const TODAY = "2026-09-29";
+  const amounts = { money_in: false, subtotal: "80.00", tax: "4.17", fees: "0", total: "84.17" };
+  const receipt = (fields: Record<string, unknown>) =>
+    parseReadAmountsResponse(responsesBody({ found: true, ...amounts, ...fields }), "receipt", TODAY);
+
+  async function requestBodyFor(kind: "receipt" | "proof") {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(responsesBody({ found: false })));
+    await readAmounts(
+      { body: Buffer.from("pdf-bytes"), mimeType: "application/pdf", kind },
+      { fetch: fetchMock, env: baseEnv(), timeoutMs: 5000 },
+    );
+    return JSON.parse(fetchMock.mock.calls[0][1].body);
+  }
+
+  it("a receipt's request requires vendor and date in the strict schema, and the prompt asks for both", async () => {
+    const body = await requestBodyFor("receipt");
+    const schema = body.text.format.schema;
+    expect(schema.required).toEqual(
+      expect.arrayContaining(["found", "money_in", "subtotal", "tax", "fees", "total", "vendor", "date"]),
+    );
+    expect(schema.properties.vendor).toEqual({ type: ["string", "null"] });
+    expect(schema.properties.date).toEqual({ type: ["string", "null"] });
+    const prompt: string = body.input[0].content[0].text;
+    expect(prompt).toContain("vendor is the business or person that was paid");
+    expect(prompt).toContain("YYYY-MM-DD");
+    expect(prompt).toContain("report both even when found is false");
+    expect(body.store).toBe(false);
+  });
+
+  it("a proof's request is Phase 10's: no vendor or date in the schema or the prompt", async () => {
+    const body = await requestBodyFor("proof");
+    const schema = body.text.format.schema;
+    expect(schema.required).toEqual(["found", "money_in", "subtotal", "tax", "fees", "total"]);
+    expect(schema.properties).not.toHaveProperty("vendor");
+    expect(schema.properties).not.toHaveProperty("date");
+    expect(body.input[0].content[0].text).not.toContain("vendor");
+    // The one thing a proof shares with the receipt change: the raised output cap.
+    expect(body.max_output_tokens).toBe(600);
+  });
+
+  it("reads the vendor and date alongside the amounts", () => {
+    expect(receipt({ vendor: "Home Depot", date: "2026-09-12" })).toEqual({
+      outcome: "found",
+      amounts: { subtotalCents: 8000, taxCents: 417, feesCents: 0, totalCents: 8417 },
+      details: { vendor: "Home Depot", date: "2026-09-12" },
+      inputTokens: 111,
+      outputTokens: 22,
+    });
+  });
+
+  it("keeps them when the document has no amount to read (found: false)", () => {
+    const result = parseReadAmountsResponse(
+      responsesBody({ found: false, subtotal: null, tax: null, fees: null, total: null, vendor: "Jane Doe", date: "2026-09-01" }),
+      "receipt",
+      TODAY,
+    );
+    expect(result).toEqual({
+      outcome: "none",
+      details: { vendor: "Jane Doe", date: "2026-09-01" },
+      inputTokens: 111,
+      outputTokens: 22,
+    });
+  });
+
+  it("keeps them when the strict money check refuses the amounts ('12,50')", () => {
+    const result = receipt({ subtotal: "12,50", total: "12,50", vendor: "Cafe Luna", date: "2026-09-12" });
+    expect(result.outcome).toBe("none");
+    expect(result).not.toHaveProperty("amounts");
+    expect(result).toMatchObject({ details: { vendor: "Cafe Luna", date: "2026-09-12" } });
+  });
+
+  it("a proof never carries them, even when the model sends them", () => {
+    const result = parseReadAmountsResponse(
+      responsesBody({ found: true, ...amounts, vendor: "WAL-MART #2345", date: "2026-09-12" }),
+      "proof",
+      TODAY,
+    );
+    expect(result.outcome).toBe("found");
+    expect(result).not.toHaveProperty("details");
+
+    // The "none" paths too: a bank line with no amount, or one the money check refuses.
+    for (const fields of [{ found: false }, { found: true, ...amounts, subtotal: "12,50", total: "12,50" }]) {
+      const none = parseReadAmountsResponse(
+        responsesBody({ ...fields, vendor: "WAL-MART #2345", date: "2026-09-12" }),
+        "proof",
+        TODAY,
+      );
+      expect(none.outcome).toBe("none");
+      expect(none).not.toHaveProperty("details");
+    }
+  });
+
+  it("a reply with neither has no details key at all, exactly like Phase 10", () => {
+    expect(receipt({ vendor: null, date: null })).not.toHaveProperty("details");
+    expect(receipt({})).not.toHaveProperty("details");
+  });
+
+  it("dates: ISO, US and written-month forms become ISO; impossible dates are refused", () => {
+    const dateOf = (date: unknown) => {
+      const result = receipt({ vendor: "Home Depot", date });
+      return result.outcome === "failed" ? undefined : result.details?.date;
+    };
+    expect(dateOf("2026-09-12")).toBe("2026-09-12");
+    expect(dateOf("09/12/2026")).toBe("2026-09-12");
+    expect(dateOf("9-5-2026")).toBe("2026-09-05");
+    expect(dateOf("March 18, 2026")).toBe("2026-03-18");
+    expect(dateOf("2026-02-30")).toBeNull();
+    expect(dateOf("2026-13-01")).toBeNull();
+    expect(dateOf("12/09/26")).toBeNull();
+    expect(dateOf(20260912)).toBeNull();
+  });
+
+  it("dates: today is kept, tomorrow is dropped", () => {
+    expect(receipt({ date: TODAY })).toMatchObject({ details: { vendor: null, date: TODAY } });
+    expect(receipt({ date: "2026-09-30" })).not.toHaveProperty("details");
+  });
+
+  it("vendor: spaces collapsed; empty, letterless, over-long or non-string is null, and the amounts still read", () => {
+    const vendorOf = (vendor: unknown) => {
+      const result = receipt({ vendor, date: null });
+      expect(result.outcome).toBe("found");
+      return result.outcome === "failed" ? undefined : (result.details?.vendor ?? null);
+    };
+    expect(vendorOf("  Home \n  Depot ")).toBe("Home Depot");
+    expect(vendorOf("")).toBeNull();
+    expect(vendorOf("   ")).toBeNull();
+    expect(vendorOf("#2718")).toBeNull();
+    expect(vendorOf("A".repeat(121))).toBeNull();
+    expect(vendorOf("A".repeat(120))).toBe("A".repeat(120));
+    expect(vendorOf(42)).toBeNull();
+    expect(vendorOf(["Home Depot"])).toBeNull();
+  });
+
+  it("a bad vendor never costs a good date, and the reverse", () => {
+    expect(receipt({ vendor: 42, date: "2026-09-12" })).toMatchObject({ details: { vendor: null, date: "2026-09-12" } });
+    expect(receipt({ vendor: "Home Depot", date: "soon" })).toMatchObject({ details: { vendor: "Home Depot", date: null } });
+  });
+
+  it("a failed read carries nothing", () => {
+    const result = parseReadAmountsResponse(
+      responsesBody("{not json"),
+      "receipt",
+      TODAY,
+    );
+    expect(result).not.toHaveProperty("details");
   });
 });

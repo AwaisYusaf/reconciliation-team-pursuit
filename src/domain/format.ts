@@ -20,6 +20,12 @@ export function formatMoney(cents: number): string {
   return `${sign}$${MONEY.format(Math.abs(rounded) / 100)}`;
 }
 
+/** Cents as the text a money input starts with: "120,000.00" (usability #13); `parseMoneyToCents`
+ *  reads it back. */
+export function formatMoneyInput(cents: number): string {
+  return formatMoney(cents).replace("$", "");
+}
+
 /**
  * {@link formatMoney} split at the decimal point, for the dashboard's hero figures, which
  * set the cents smaller than the dollars so a long grant total stays readable at a glance.

@@ -2,8 +2,10 @@ import { PickFundingSource } from "@/src/components/app-shell/pick-funding-sourc
 import { TourSequenceSkip } from "@/src/components/app-shell/tour-sequence-skip";
 import { PageHeader } from "@/src/components/ui/surfaces";
 import { TourGuide } from "@/src/components/ui/tour";
+import { db } from "@/src/db";
+import { fundingTotalCents } from "@/src/domain/funding-limit";
 import { pageTitle } from "@/src/domain/strings";
-import { loadSourceContext } from "@/src/modules/funding-sources/queries";
+import { loadFundingPosition, loadSourceContext } from "@/src/modules/funding-sources/queries";
 import { loadLineItemRows } from "@/src/modules/line-items/queries";
 import { LINE_ITEMS_TOUR_STEPS } from "@/src/modules/tours/line-items-tour";
 import { hasSeenTour } from "@/src/modules/tours/queries";
@@ -60,14 +62,20 @@ async function LineItemsManagerFor({
   userId: string;
   fundingSourceId: string;
 }) {
-  const [rows, seenLineItemsTour] = await Promise.all([
+  const [rows, seenLineItemsTour, position] = await Promise.all([
     loadLineItemRows(orgId, fundingSourceId),
     hasSeenTour(userId, "line_items"),
+    loadFundingPosition(db, orgId, fundingSourceId),
   ]);
   return (
     <>
       <TourGuide tour="line_items" steps={LINE_ITEMS_TOUR_STEPS} alreadySeen={seenLineItemsTour} />
-      <LineItemsManager rows={rows} fundingSourceId={fundingSourceId} />
+      <LineItemsManager
+        rows={rows}
+        fundingSourceId={fundingSourceId}
+        // Null: no contract value set, so nothing to compare the line items with (R9.6).
+        contractTotalCents={position && position.contractValueCents > 0 ? fundingTotalCents(position) : null}
+      />
     </>
   );
 }

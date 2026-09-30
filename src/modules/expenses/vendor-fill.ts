@@ -15,7 +15,7 @@
  * amount is the one field that is genuinely new each time, so a figure already typed is never
  * replaced by a remembered one.
  */
-import { centsToDollars } from "@/src/domain/money";
+import { formatMoneyInput } from "@/src/domain/format";
 
 import type { ExpenseInput } from "./actions";
 
@@ -37,7 +37,7 @@ export type VendorFill = {
  * only `null` means the library has nothing to say.
  */
 export function moneyField(cents: number | null): string {
-  return cents === null ? "" : centsToDollars(cents).toFixed(2);
+  return cents === null ? "" : formatMoneyInput(cents);
 }
 
 /**
@@ -72,12 +72,20 @@ function usableLineItemId(
   return current;
 }
 
-/** Applied when the typed name matches a vendor exactly — blanks only. */
+/**
+ * Applied when the typed name matches a vendor exactly — blanks only.
+ *
+ * `amounts: false` is the name added from a receipt (Phase 19): the receipt is where this
+ * expense's amounts come from, through Use these amounts, so the ones last paid are not offered
+ * as well. Filled in first, they would also make Use these amounts ask to replace "the amounts
+ * you typed" when nobody typed any.
+ */
 export function fillFromTypedName(
   current: ExpenseInput,
   vendor: VendorFill,
   activeSources: readonly string[] = [],
   sourceLineItemIds: readonly string[] = [],
+  { amounts = true }: { amounts?: boolean } = {},
 ): ExpenseInput {
   // Something already chosen means the user is past this field; leave the whole form alone.
   if (current.lineItemId || current.description) return current;
@@ -87,9 +95,13 @@ export function fillFromTypedName(
     lineItemId: usableLineItemId(vendor, sourceLineItemIds, current.lineItemId),
     description: vendor.description,
     paymentSource: current.paymentSource || (usablePaymentSource(vendor, activeSources) ?? ""),
-    subtotal: current.subtotal || moneyField(vendor.subtotalCents),
-    tax: current.tax || moneyField(vendor.taxCents),
-    fees: current.fees || moneyField(vendor.feesCents),
+    ...(amounts
+      ? {
+          subtotal: current.subtotal || moneyField(vendor.subtotalCents),
+          tax: current.tax || moneyField(vendor.taxCents),
+          fees: current.fees || moneyField(vendor.feesCents),
+        }
+      : {}),
   };
 }
 

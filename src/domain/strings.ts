@@ -9,6 +9,7 @@
 import type { FeatureRequestStatus } from "@/src/db/schema";
 import type { ReadAmounts } from "@/src/domain/amount-suggestion";
 import { formatMoney } from "@/src/domain/format";
+import type { MissingItem } from "@/src/domain/gate";
 import { SHARE_PASSWORD_MAX, SHARE_PASSWORD_MIN } from "@/src/domain/shared-links";
 
 /** The product name, everywhere it appears in UI copy, page titles and generated-document fallbacks. */
@@ -119,6 +120,21 @@ function amountsLine(amounts: ReadAmounts, totalLabel: string): string {
  *  message inside `UI` can name it before `UI.supportEmail` exists. */
 const SUPPORT_EMAIL = "tech@authenticbusiness.io";
 
+/** The words for each documentation gap in a message that says what to add next (Words rule
+ *  5). Not R4.4's blocking-list phrasing, whose "missing both" is fixed (usability #30, #32). */
+const STILL_MISSING: Record<MissingItem, string> = {
+  proof: "proof of payment",
+  receipt: "a receipt",
+  narrative: "a narrative",
+};
+/** "It's still missing proof of payment and a receipt." (Oxford comma for three.) */
+function stillMissing(missing: readonly MissingItem[]): string {
+  const list = new Intl.ListFormat("en", { type: "conjunction" }).format(
+    missing.map((item) => STILL_MISSING[item]),
+  );
+  return `It's still missing ${list}.`;
+}
+
 export const UI = {
   /** Add Expense reimbursable box (R1.3). */
   reimburseHint: "Sales tax is excluded. The funder does not reimburse it.",
@@ -158,9 +174,75 @@ export const UI = {
   /** A delete sent by a page loaded before the confirmation became the list itself (PR #25). */
   lineItemDeleteReload: "This page is out of date. Reload it, then delete the line item again.",
   lineItemOrderStale: "The list changed since you opened it. Try again on the updated list.",
+  /** The funding limit (R9.6): a line item add or edit that would take the line items further
+   *  over the contract total. Amounts arrive formatted. */
+  fundingLimitExceeded: (lineItemsTotal: string, contractTotal: string) =>
+    `These line items would add up to ${lineItemsTotal}, more than the ${contractTotal} contract total. Lower a line item, or raise the contract value in Settings.`,
+  /** Settings: a contract value that would put the contract total below the line items (R9.6). */
+  contractValueBelowLineItems: (lineItemsTotal: string, contractTotal: string) =>
+    `The line items add up to ${lineItemsTotal}, more than the ${contractTotal} contract total this would give. Lower a line item first, or enter a larger contract value.`,
+  /** Column hints (usability #39, #47): each column's own name, then what it means in plain
+   *  words, shown together in `ColumnHints`. The column names stay the funder's (R7.1). */
+  termScheduledValue: "Scheduled value",
+  hintScheduledValue: "The budget for a line item, including any performances.",
+  termPerformances: "Performances",
+  hintPerformances: "Extra money added to a line item after the budget was set. Add them under Manage.",
+  termPreviouslyBilled: "Previously billed",
+  hintPreviouslyBilled: "What was billed before this month.",
+  termBalanceToFinish: "Balance to finish",
+  hintBalanceToFinish: "What is left to spend.",
+  termBase: "BASE",
+  hintBase: "The heading the funder's form uses for the budget line items.",
+  /** The fold that holds the column hints (user review 2026-09-29). */
+  columnsHelp: "What do these columns mean?",
+  /** m07: the link beside a blocked download, to where the missing documents are listed. */
+  openMonthEndPacket: "Open the Month-End Packet",
+  /** m07 reconciliation card with no advances recorded (R7.4, usability #38). */
+  noAdvancesYet:
+    "No advances received are recorded for this funding source. If your funder paid you in advance, enter the amount in Settings, under Funding sources, and this shows how much of it your expenses have used.",
+  /** Onboarding (m00). */
+  onboardingFundingFirst: "Set up your funding first.",
+  onboardingNoLineItems: "Add at least one line item with an amount.",
+  onboardingCheckRows: "Check the line items marked above.",
+  onboardingRowNeedsAmount: (name: string) => `Enter an amount for ${name}, or remove the row.`,
+  onboardingRowNeedsName: "Enter a name for this line item, or remove the row.",
+  onboardingRowNegative: (name: string) => `The amount for ${name} can't be negative.`,
+  onboardingOverTotal: (lineItemsTotal: string, total: string) =>
+    `These line items add up to ${lineItemsTotal}, more than your total of ${total}. Lower a line item, or go back and change the total amount.`,
+  onboardingPlanned: (planned: string, total: string, rest: string, over: boolean) =>
+    `Planned ${planned} of ${total} · ${rest} ${over ? "over" : "left"}`,
+  onboardingPaymentReceived: "Payment received. Thank you.",
+  onboardingRules: (taxReimbursable: boolean, feesReimbursable: boolean) =>
+    `By default, this funding ${
+      taxReimbursable && feesReimbursable
+        ? "reimburses sales tax and fees"
+        : taxReimbursable
+          ? "reimburses sales tax but not fees"
+          : feesReimbursable
+            ? "reimburses fees but not sales tax"
+            : "doesn't reimburse sales tax or fees"
+    }. You can change this later in Settings, under Funding sources.`,
   signupsClosed: "Sign-ups are closed.",
-  /** m02 — saved, but the documentation gate will still hold this record. */
-  savedMissingProof: "Expense saved. It's still missing proof of payment.",
+  /** m02: after a save. Names every gap the documentation gate will still hold it for (R4.1,
+   *  R4.2); a complete record gets the plain line. */
+  expenseSaved: (missing: readonly MissingItem[] | null): string =>
+    missing && missing.length > 0 ? `Expense saved. ${stillMissing(missing)}` : "Expense saved.",
+  /** m05: after "Add to {month}". A one-click expense starts with no documents on purpose
+   *  (R4.5), and with no narrative when its template has none. */
+  recurringAdded: (name: string, month: string, missing: readonly MissingItem[] | null): string =>
+    missing && missing.length > 0 ? `${name} added to ${month}. ${stillMissing(missing)}` : `${name} added to ${month}.`,
+  /** The action beside `recurringAdded`, opening the expense it just created. */
+  openExpense: "Open expense",
+  /** Sign-up, onboarding step 1 and Add Expense (m02): the summary line while any field carries its own error. */
+  checkHighlightedFields: "Check the highlighted fields.",
+  /** Settings, Users (D-85, D-120). Admin-only today: user management, an expense's History
+   *  (`loadExpenseHistoryAction`), plan and billing (`billing/actions.ts`), and the AI reading
+   *  switch (`setReadAmountsEnabledAction`). Update this line if that list changes. */
+  managerRoleHint:
+    "New users are added as Managers. A Manager can do everything except manage users, change the plan or billing, change AI settings, and see an expense's History.",
+  /** Settings, Users: what the one-time password panel's copy button puts on the clipboard. */
+  newUserSignIn: (signInUrl: string, password: string): string =>
+    `Sign in at ${signInUrl} with your email address and this password: ${password}`,
   /** Add Expense caution (non-blocking) — tax excluded from reimbursable (R1.3), so a large
    *  tax relative to the subtotal isn't a domain-rule violation, just worth a second look. */
   taxExceedsSubtotalWarning: "Tax is more than the subtotal. Double-check this entry.",
@@ -373,13 +455,24 @@ export const UI = {
   dismiss: "Dismiss",
   /** Confirm dialog before "Use these amounts" overwrites fields already typed (Appendix A §2). */
   replaceTypedAmounts: "Replace the amounts you typed?",
+
+  /* ------------------------------------------- Phase 19: a receipt's vendor and date */
+
+  /** The box above the amounts panel: its two rows' labels, the value shown after each. */
+  receiptVendorLabel: "Vendor on this receipt:",
+  receiptDateLabel: "Date on this receipt:",
+  /** Each row's button. Fills Name, or Date; never Month (R2.2). */
+  addReceiptDetail: "Add",
+  /** The buttons' accessible names, since two "Add" buttons side by side say nothing alone. */
+  addReceiptVendorLabel: (vendor: string) => `Add ${vendor} as the name`,
+  addReceiptDateLabel: (date: string) => `Add ${date} as the date`,
   /** Edit Expense button that starts a read on request (Appendix A §3). */
   readAmountsFromDocuments: "Read amounts from documents",
   /** Settings → Organization switch label (Appendix A §4). */
   readAmountsSwitchLabel: "Read amounts from uploaded documents",
   /** Settings → Organization switch help text (Appendix A §4). */
   readAmountsSwitchHelp:
-    "Receipts and proofs of payment are sent to OpenAI to suggest amounts. OpenAI doesn't use them for training. Nothing is saved until you confirm.",
+    "Receipts and proofs of payment are sent to OpenAI to suggest amounts, and a receipt's vendor and date. OpenAI doesn't use them for training. Nothing is saved until you confirm.",
   /** A document with too many pages to read (Phase 10 §3.4; OpenAI bills a PDF per page). */
   /** A file's own row in the panel when it was refused for length — "No amount found" there
    *  reads as the AI having failed (PR #18 review). */
@@ -399,7 +492,7 @@ export const UI = {
   /** The one control that starts the whole thing, on the Add Expense screen. It says what it
    *  does rather than where it goes: pressing it opens the file picker and the charges it
    *  finds replace the form. */
-  invoiceExtractFromInvoice: "Extract From Invoice",
+  invoiceExtractFromInvoice: "Extract from invoice",
   /** An invoice may be the bill itself or a photo of it. iPhone photos are converted before
    *  they reach the server (D-111), so HEIC is accepted without being named here. */
   invoiceFileType: "Upload the invoice as a PDF or a photo.",
@@ -466,9 +559,110 @@ export const UI = {
    *
    * Said, never split across the lines: dividing one figure between twelve charges would invent
    * a number nobody printed, and the ticket puts splitting out of scope.
+   *
+   * Information, not an error (usability #63): shown as a calm note. Empty when there is
+   * neither, and the caller never renders it then.
    */
-  invoiceWholeBillCharge: (amount: string) =>
-    `This invoice charges ${amount} on the whole bill, not on any one line. It is not included in the drafts below. Add it as its own expense if it belongs in this month.`,
+  invoiceWholeBillCharge: (amounts: { tax: string | null; fees: string | null }) => {
+    const { tax, fees } = amounts;
+    if (tax && fees)
+      return `This invoice has ${tax} of tax and ${fees} of fees on the whole bill, not on any one line, so they aren't in the charges below. Add the ${tax} tax and the ${fees} fees as their own expenses if your funder reimburses them.`;
+    if (tax)
+      return `This invoice has ${tax} of tax on the whole bill, not on any one line, so it isn't in the charges below. Add the ${tax} tax as its own expense if your funder reimburses tax.`;
+    if (fees)
+      return `This invoice has ${fees} of fees on the whole bill, not on any one line, so they aren't in the charges below. Add the ${fees} fees as their own expense if your funder reimburses fees.`;
+    return "";
+  },
+  /* ---------------- Usability round 1 (2026-09-29): dashboard, packet, cover sheets, tours, AI screens ---------------- */
+  /** The dashboard's one calm line on an organization whose plan includes AI and whose AI
+   *  reading is on (usability #56). */
+  dashboardAiIntro:
+    "Your plan includes AI. It reads receipt amounts and turns invoices into expenses on Add Expense, and writes your monthly summary on the Month-End Packet page.",
+  /** The same line while AI reading is off (the Settings switch, D-105): only the summary is left. */
+  dashboardAiIntroSummaryOnly: "Your plan includes AI. It writes your monthly summary on the Month-End Packet page.",
+  /** The drafts card's title: drafts waiting for review in this source and month, with their
+   *  total (usability #64). */
+  draftsWaitingTitle: (count: number, amount: string) =>
+    `${count} ${count === 1 ? "draft" : "drafts"} waiting for review · ${amount}`,
+  /** The drafts card's line under the title (usability #64). */
+  draftsWaitingBody: (count: number) =>
+    count === 1
+      ? "It isn't in your totals or the packet until you approve it."
+      : "They aren't in your totals or the packet until you approve them.",
+  /** The same line on a locked month, where approving is refused (R10.7): no promise of
+   *  approval, only why it can't happen yet (usability #64). */
+  draftsWaitingLockedBody: (count: number, month: string) =>
+    `${month} is locked, so ${count === 1 ? "it" : "they"} can't be approved until the month is unlocked.`,
+  /** The link after a drafts notice, to the Expenses page's drafts view (usability #64). */
+  draftsReviewLink: "Review drafts",
+  /** The monthly summary's note that drafts are left out of it (usability #65). */
+  summaryDraftsWaiting: (count: number) =>
+    count === 1
+      ? "1 draft is still waiting for review, so it isn't in this summary."
+      : `${count} drafts are still waiting for review, so they aren't in this summary.`,
+  /** The packet page's next steps once the packet can be downloaded (usability #35). */
+  packetReadyNextSteps:
+    "The packet is ready. Next: 1. Download the packet. 2. Send it to your funder. 3. Mark as submitted. 4. When the signed copy comes back, Lock month.",
+  /** The same place once the month is marked as submitted: only the last step is left (#35). */
+  packetSubmittedNextStep: "The packet is marked as submitted. When the signed copy comes back, Lock month.",
+  /** A page count, singular for one (usability #33). */
+  pageCount: (n: number) => `${n} ${n === 1 ? "page" : "pages"}`,
+  /** The button and the confirm button of the mark-as-submitted dialog (usability #31, #36). */
+  markSubmittedButton: "Mark as submitted",
+  /** The mark-as-submitted dialog's title (usability #31, #36). */
+  markSubmittedTitle: (month: string) => `Mark ${month} as submitted?`,
+  /** What marking does, in every mark-as-submitted dialog (usability #31, #36). */
+  markSubmittedBody:
+    "Do this once you've sent the packet to your funder. The month's figures are saved as they are now, so any later change is shown to you. You can still make corrections.",
+  /** Heads the list of records still missing documents in the mark dialog (usability #36). */
+  markSubmittedMissing: (count: number) =>
+    count === 1
+      ? "1 expense is still missing documents, so the packet can't be downloaded yet:"
+      : `${count} expenses are still missing documents, so the packet can't be downloaded yet:`,
+  /** After that list: marking is still allowed (usability #36, R3.9). */
+  markSubmittedAnyway: "You can still mark the month as submitted.",
+  /** The Undo confirmation's title, worded like the mark dialog's (usability #36). */
+  undoSubmittedTitle: (month: string) => `Undo marking ${month} as submitted?`,
+  /** The Undo confirmation's text (R3.9: the figures captured at submission are discarded). */
+  undoSubmittedBody:
+    "The month goes back to not submitted. If you mark it again later, the figures are saved fresh at that time.",
+  /** What a cover sheet is, on an empty single line item's sheet (usability #41). */
+  coverSheetWhatItIs:
+    "A cover sheet lists this line item's expenses for the month, with each proof of payment. It goes into the packet for your funder.",
+  /** The files the packet puts after an expense's cover sheet, screen only (usability #42). */
+  coverSheetFollowingDocs: (filenames: readonly string[]) =>
+    `In the packet, after this cover sheet: ${filenames.join(", ")}.`,
+  /** Shown in place of Use these amounts while the fields already hold them (usability #58). */
+  amountsUsed: "Amounts used",
+  /** Under the Extract from invoice button, before anything is clicked (usability #60). */
+  invoiceExtractHint: "Upload one invoice. Each charge on it is read out for you to check before anything is saved.",
+  /** The check screen's page title (usability #61). */
+  invoiceCheckHeading: (count: number, vendor: string | null, invoiceNumber: string | null) => {
+    const charges = `${count} ${count === 1 ? "charge" : "charges"}`;
+    const from = vendor?.trim() || null;
+    // Only the number. A label the reader kept is dropped: "Invoice" or "Inv." when a space, "#"
+    // or ":" follows, then "No", "Number" or "ID" (a dot allowed) when a space, "#", ":" or "."
+    // follows. "INVOICE-2210" and "NOV2210" are numbers, kept whole.
+    const number =
+      invoiceNumber
+        ?.trim()
+        .replace(/^(?:(?:invoice|inv\.)(?=[\s#:]))?[\s#:]*(?:(?:no|number|id)\.?(?=[\s#:.]))?[\s#:.]*/i, "") || null;
+    if (from && number) return `${charges} from ${from}, invoice #${number}`;
+    if (from) return `${charges} from ${from}`;
+    if (number) return `${charges} from invoice #${number}`;
+    return `${charges} from this invoice`;
+  },
+  /** Next to Done on the check screen: where unsaved charges go (usability #64). */
+  invoiceDoneHint:
+    "Nothing is saved until you press Done. Then charges marked Saving as expense become expenses, and the rest become drafts waiting for review on the Expenses page.",
+  /** A charge card marked on the check screen: nothing is written until Done (PR #27), so the
+   *  toast says marked, never saved. */
+  invoiceCardMarkedExpense: "Marked as an expense. It's saved when you press Done.",
+  invoiceCardMarkedDraft: "Marked as a draft. It's saved when you press Done.",
+  /** The Dashboard tour's last card: starts the walk through the other tabs (usability #57). */
+  tourContinueButton: "Continue the tour",
+  /** Skip on that same card: it marks every tour seen, not only this one (D-132, usability #57). */
+  tourSkipAllButton: "Skip all tours",
   /* ---------------- Drafts waiting for review (Phase 14) ---------------- */
   /** The section above the month's expenses, and the mark on each of its rows. */
   draftsWaitingHeading: (count: number) => `Waiting for review (${count})`,
@@ -542,8 +736,13 @@ export const UI = {
     "Enter the amounts from the receipt, or use the ones AI finds in the receipt you added above. If it includes tax or fees, you'll be asked whether the funder pays for them.",
   /** Plus upload section note on Add — reading starts on its own (Appendix A §2). */
   aiUploadNoteAdd: "AI reads the amounts when you add a file.",
-  /** Plus upload section note on Edit — reading only on request (Appendix A §3). */
-  aiUploadNoteEdit: "AI reads the amounts when you press Read amounts from documents.",
+  /** Plus upload section note on Edit: a newly added file starts reading, or the button reads
+   *  what is already attached (Phase 19, amends Appendix A §3). */
+  aiUploadNoteEdit:
+    "AI reads the amounts when you add a file, or when you press Read amounts from documents.",
+  /** Plus upload section note on a draft: reading only on request (Appendix A §3), since a
+   *  draft's own files are not read on their own (Phase 19 Q9). */
+  aiUploadNoteDraft: "AI reads the amounts when you press Read amounts from documents.",
   /** A file row's AI status while its read is running. */
   aiFileReading: "Reading amounts…",
   /** Toast while a picked iPhone photo (HEIC) is converted to JPEG in the browser, so it can be
@@ -564,11 +763,11 @@ export const UI = {
    *  itself — carries the same "reason prints on the cover sheet" sentence as the base
    *  `tourReceiptBody` (PR #18 review #14: the Plus variant had dropped it). */
   tourReceiptBodyWithReading:
-    "Add the receipt, invoice or timesheet. With Plus, AI reads its amounts and shows them under Subtotal, Tax and Fees. Nothing is filled in until you press Use these amounts. If there isn't a receipt, check No receipt available and give a reason. The reason prints on the cover sheet.",
+    "Add the receipt, invoice or timesheet. With Plus, AI reads its amounts, vendor and date and shows them for you to add. Nothing is filled in until you choose to use it. If there isn't a receipt, check No receipt available and give a reason. The reason prints on the cover sheet.",
   /** Settings tour step for the Plus reading switch (only shown where the switch exists). */
   tourReadAmountsSwitchTitle: "Read amounts with AI",
   tourReadAmountsSwitchBody:
-    "Included with Plus. When it's on, AI reads the receipts and proofs of payment added to an expense and suggests the amounts. Nothing is filled in until someone chooses to use them. Only an admin can change this.",
+    "Included with Plus. When it's on, AI reads the receipts and proofs of payment added to an expense and suggests the amounts, and a receipt's vendor and date. Nothing is filled in until someone chooses to use them. Only an admin can change this.",
   /** Generic dialog dismiss label — no existing `UI.cancel` before Phase 10; reused here for the
    *  "Replace the amounts you typed?" dialog rather than adding a feature-specific word for it. */
   cancel: "Cancel",
@@ -949,7 +1148,7 @@ export const UI = {
 
   // PHASE-16 Track C (landing, funding-source limit)
   fundingSourceLimitReached:
-    "Reconciliation includes one active funding source. To add more, try Plus.",
+    "Reconciliation includes one active funding source. To add more, switch to Reconciliation + AI.",
   fundingSourceLimitManager:
     "Reconciliation includes one active funding source. Ask your admin about upgrading.",
   /** Archiving the only active funding source (Settings hides Archive on it; the server refuses). */
@@ -1136,9 +1335,21 @@ export const FEATURE_REQUEST_STATUS_DESCRIPTIONS: Record<FeatureRequestStatus, s
   already_requested: "Someone asked for this before. A reply points to the existing request.",
 };
 
-/** Inline explanation beside a disabled download button (m07, R4.3). */
+/** Notice under a disabled download button (m07, R4.3), beside a link to the Month-End Packet
+ *  (`UI.openMonthEndPacket`), so the sentence no longer points at a tab itself. */
 export function downloadBlockedReason(count: number): string {
-  return `Blocked: ${count} ${count === 1 ? "expense is" : "expenses are"} missing documentation. See the Month-End Packet tab.`;
+  return `The summary can't be downloaded yet: ${count} ${count === 1 ? "expense is" : "expenses are"} missing documentation.`;
+}
+
+/** The line items against the contract total, for Line Items and Contract Summary (#46, #37). */
+export function lineItemsAgainstTotal(lineItemsCents: number, contractTotalCents: number): string {
+  if (lineItemsCents > contractTotalCents) {
+    return `Line items total ${formatMoney(lineItemsCents)}, ${formatMoney(lineItemsCents - contractTotalCents)} more than the ${formatMoney(contractTotalCents)} contract total. Lower a line item, or raise the contract value in Settings.`;
+  }
+  if (lineItemsCents < contractTotalCents) {
+    return `Line items total ${formatMoney(lineItemsCents)} of the ${formatMoney(contractTotalCents)} contract total. ${formatMoney(contractTotalCents - lineItemsCents)} is not in a line item yet.`;
+  }
+  return `Line items total ${formatMoney(lineItemsCents)}, the full contract total.`;
 }
 
 /** Refusal message when a line item still has expenses (R9.3). */
