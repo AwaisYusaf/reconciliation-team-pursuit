@@ -70,7 +70,7 @@ describe("every field validateFields can name has its own message and invalid st
 
   it("the invalid state carries aria-invalid and aria-describedby pointing at that message's id", () => {
     expect(form).toMatch(/const errorId = \(field: keyof ExpenseInput\) => fieldId\(`\$\{field\}-error`\)/);
-    expect(form).toContain('fieldErrors[field] ? { "aria-invalid": true as const, "aria-describedby": errorId(field) } : {}');
+    expect(form).toContain("const invalid = (field: keyof ExpenseInput) => invalidProps(errorId(field), fieldErrors[field]);");
     expect(form).toContain("fieldErrors[field] ? <FieldError id={errorId(field)}>{fieldErrors[field]}</FieldError> : null");
   });
 
@@ -84,7 +84,7 @@ describe("every field validateFields can name has its own message and invalid st
     const field = sourceCode("src/components/ui/field.tsx");
     const control = field.slice(field.indexOf("export const CONTROL"), field.indexOf("export function Label"));
     expect(control).toContain("aria-[invalid=true]:border-danger");
-    const money = field.slice(field.indexOf("export function MoneyInput"));
+    const money = sourceCode("src/components/ui/money-input.tsx");
     expect(money).toContain("has-[[aria-invalid=true]]:border-danger");
     expect(sourceCode("src/components/ui/select.tsx")).toMatch(/\$\{CONTROL\} px-3/);
   });

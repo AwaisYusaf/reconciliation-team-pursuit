@@ -3,6 +3,8 @@
  */
 import { describe, expect, it } from "vitest";
 
+import { formatMoneyInput } from "./format";
+
 import {
   aggregateAmountSuggestion,
   aggregateReceiptDetails,
@@ -385,14 +387,22 @@ describe("readingFor (Phase 19)", () => {
  * real `aggregateAmountSuggestion`, the way the form builds them.
  */
 describe("amountsMatchSuggestion", () => {
-  /** What `applySuggestedAmounts` writes into the three fields. */
+  /** What `applySuggestedAmounts` writes into the three fields: grouped, as every box opens. */
   function applied(s: { subtotalCents: number; taxCents: number; feesCents: number }) {
     return {
-      subtotal: (s.subtotalCents / 100).toFixed(2),
-      tax: (s.taxCents / 100).toFixed(2),
-      fees: (s.feesCents / 100).toFixed(2),
+      subtotal: formatMoneyInput(s.subtotalCents),
+      tax: formatMoneyInput(s.taxCents),
+      fees: formatMoneyInput(s.feesCents),
     };
   }
+
+  it("holds for a figure of $1,000 or more written grouped, and after the first edit ungroups it", () => {
+    const large = aggregateAmountSuggestion([receipt("r9", "big.pdf", found(1_234_500, 0, 0, 1_234_500))], false);
+    if (large.state !== "done") throw new Error("expected a done suggestion");
+    expect(applied(large).subtotal).toBe("12,345.00");
+    expect(amountsMatchSuggestion(applied(large), large)).toBe(true);
+    expect(amountsMatchSuggestion({ ...applied(large), subtotal: "12345.00" }, large)).toBe(true);
+  });
   const oneReceipt = aggregateAmountSuggestion([receipt("r1", "a.pdf", found(45000, 2700, 300, 48000))], false);
 
   it("is true once Use has filled empty fields (E40), and while they still hold the suggestion", () => {

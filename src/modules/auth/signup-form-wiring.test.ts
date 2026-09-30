@@ -10,12 +10,12 @@ import { sourceCode } from "@/src/lib/source-code.test-helper";
 describe("each password field has its own Show toggle (#1, AC1, E34)", () => {
   const form = sourceCode("app/(auth)/signup/signup-form.tsx");
 
-  /** The `<Input ... />` element carrying this id. */
+  /** The `<Input ... />` inside the `Field` carrying this id. */
   function inputWithId(id: string): string {
     const at = form.indexOf(`id="${id}"`);
     expect(at, id).toBeGreaterThan(-1);
-    const start = form.lastIndexOf("<Input", at);
-    return form.slice(start, form.indexOf("/>", at));
+    const start = form.indexOf("<Input", at);
+    return form.slice(start, form.indexOf("/>", start));
   }
 
   it("Password reads showPassword and Confirm password reads showConfirm, never a shared type", () => {
@@ -51,5 +51,32 @@ describe("the subtitle names the next step (#3, AC3, E31)", () => {
       /billingEnabled\(\)\s*\?\s*"A few details to start\. Next, you'll choose a plan and set up your budget\."\s*:\s*"A few details to start\. Next, you'll set up your budget\."/,
     );
     expect(page).not.toContain("start recording expenses");
+  });
+});
+
+describe("every sign-up error is marked on its own field, and the first is focused (#2, PR #27)", () => {
+  const form = sourceCode("app/(auth)/signup/signup-form.tsx");
+
+  it.each(["orgName", "name", "email", "password", "confirmPassword"])(
+    "%s is a Field given its own error, and its input takes the Field's props (aria-invalid, describedby)",
+    (id) => {
+      const at = form.indexOf(`id="${id}"`);
+      expect(at, id).toBeGreaterThan(-1);
+      const field = form.slice(form.lastIndexOf("<Field", at), form.indexOf("</Field>", at));
+      expect(field).toContain(`error={fieldErrors.${id}}`);
+      expect(field).toMatch(/\{\(props\) =>[\s\S]*<Input\s+\{\.\.\.props\}/);
+    },
+  );
+
+  it("a refused submit with field errors focuses the first marked field", () => {
+    expect(form).toContain("const formRef = useRef<HTMLFormElement>(null);");
+    expect(form).toMatch(
+      /useEffect\(\(\) => \{\s*if \(!state\.ok && state\.fieldErrors && Object\.keys\(state\.fieldErrors\)\.length > 0\) \{\s*focusFirstInvalid\(formRef\.current\);/,
+    );
+    expect(form).toContain("<form ref={formRef} onSubmit={onSubmit} noValidate>");
+  });
+
+  it("no hand-written error markup is left (Field supplies it)", () => {
+    expect(form).not.toContain("<FieldError");
   });
 });

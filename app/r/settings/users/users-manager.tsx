@@ -14,7 +14,7 @@ import { Button } from "@/src/components/ui/button";
 import { Dialog } from "@/src/components/ui/dialog";
 import { Menu, MenuItem } from "@/src/components/ui/menu";
 import { Helper, Input, Label } from "@/src/components/ui/field";
-import { Card, CARD_PADDING, SectionTitle } from "@/src/components/ui/surfaces";
+import { Card, CARD_PADDING, InfoNote, SectionTitle } from "@/src/components/ui/surfaces";
 import { TableCard, Td, Th } from "@/src/components/ui/table";
 import { formatDateUS, todayIso } from "@/src/domain/dates";
 import { UI } from "@/src/domain/strings";
@@ -56,10 +56,7 @@ function GeneratedPasswordPanel({
   const [copied, setCopied] = useState(false);
 
   return (
-    <div
-      role="status"
-      className="mt-4 rounded-[3px] border border-line bg-section px-3 py-2.5 sm:px-4 sm:py-3 text-[15px] text-ink"
-    >
+    <InfoNote role="status" className="mt-4 border border-line">
       <div className="flex flex-wrap items-center gap-3 justify-between">
         <div>
           <div className="font-bold">Password (shown once): {password}</div>
@@ -85,7 +82,7 @@ function GeneratedPasswordPanel({
           </Button>
         </div>
       </div>
-    </div>
+    </InfoNote>
   );
 }
 

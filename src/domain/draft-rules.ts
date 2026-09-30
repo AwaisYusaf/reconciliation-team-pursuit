@@ -74,3 +74,11 @@ export function draftsReviewHref(sourceId: string | null): string {
     ? `/r/expenses?view=drafts&source=${encodeURIComponent(sourceId)}`
     : "/r/expenses?view=drafts";
 }
+
+/** Where the invoice check screen's Done lands. The drafts view only when every charge became
+ *  a draft (usability #64): it lists drafts alone, so a charge saved as an expense would look
+ *  lost there (PR #27). Otherwise the Expenses list, which shows the expenses and links to the
+ *  drafts with their count. */
+export function invoiceDoneHref(expenseCount: number, draftCount: number): string {
+  return expenseCount === 0 && draftCount > 0 ? draftsReviewHref(null) : "/r/expenses";
+}

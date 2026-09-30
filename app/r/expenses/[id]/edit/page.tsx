@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 
 import { PageTitle, Subtext } from "@/src/components/ui/surfaces";
 import { db } from "@/src/db";
+import { formatMoneyInput } from "@/src/domain/format";
 import { loadSelectableMonths } from "@/src/db/months";
 import { loadExpenseAmounts, loadLineItemBudgets } from "@/src/db/queries";
 import { monthStatuses } from "@/src/db/schema";
@@ -98,7 +99,7 @@ export default async function EditExpensePage({
       ]),
   );
 
-  const toMoney = (cents: number) => (cents / 100).toFixed(2);
+  const toMoney = formatMoneyInput;
 
   return (
     <div>

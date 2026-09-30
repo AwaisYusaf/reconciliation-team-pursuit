@@ -121,8 +121,12 @@ describe("Onboarding (app/(auth)/onboarding)", () => {
     expect(itemsForm).toContain("formatMoney(Math.abs(totalCents - plannedCents))");
   });
 
-  it("#8: each row error stays with its row: read by the server's position key, cleared or moved with that row only", () => {
-    expect(itemsForm).toContain("Array.from({ length: submitted }, (_, i) => result.fieldErrors?.[`row-${i}`])");
+  it("#8: each row error stays with its row: read by the server's position and box keys, cleared or moved with that row only", () => {
+    const read = between(itemsForm, "Array.from({ length: submitted }", "}),\n      );");
+    expect(read).toContain("result.fieldErrors?.[`row-${i}-name`]");
+    expect(read).toContain('return { field: "name", message: name };');
+    expect(read).toContain("result.fieldErrors?.[`row-${i}-amount`]");
+    expect(read).toContain('{ field: "amount", message: amount }');
     expect(between(itemsForm, "function update(", "function remove(")).toContain(
       "rowErrors.map((message, i) => (i === index ? undefined : message))",
     );
@@ -136,8 +140,28 @@ describe("Onboarding (app/(auth)/onboarding)", () => {
       "focusFirstError.current = true;",
     );
     expect(itemsForm).toContain("if (pending || !focusFirstError.current) return;");
-    expect(itemsForm).toContain("document.getElementById(`row-${first}-name`)?.focus()");
+    // The box that is wrong in that row, not always its name (PR #27).
+    expect(itemsForm).toContain("document.getElementById(`row-${first}-${rowErrors[first]!.field}`)?.focus()");
     expect(itemsForm).toContain("id={`row-${index}-name`}");
+    expect(itemsForm).toContain("id={`row-${index}-amount`}");
+  });
+
+  it("PR #27: a row's error marks only the box that is wrong, with its message under that box", () => {
+    expect(itemsForm).toContain('const nameError = rowError?.field === "name" ? rowError.message : undefined;');
+    expect(itemsForm).toContain('const amountError = rowError?.field === "amount" ? rowError.message : undefined;');
+    expect(itemsForm).toContain("{...invalidProps(`row-${index}-name-error`, nameError)}");
+    expect(itemsForm).toContain("{...invalidProps(`row-${index}-amount-error`, amountError)}");
+    expect(itemsForm).toContain("{nameError && <FieldError id={`row-${index}-name-error`}>{nameError}</FieldError>}");
+    expect(itemsForm).toContain("{amountError && <FieldError id={`row-${index}-amount-error`}>{amountError}</FieldError>}");
+  });
+
+  it("PR #27: no minimum width, rows stack below sm, so a 375px phone never scrolls sideways", () => {
+    expect(itemsForm).not.toMatch(/<TableCard minWidth=/);
+    expect(itemsForm).toContain('<TableCard className="max-sm:[&_table]:block max-sm:[&_tbody]:block">');
+    expect(itemsForm).toContain('<tr key={index} className="max-sm:grid max-sm:grid-cols-[minmax(0,1fr)_auto] max-sm:items-start">');
+    expect(itemsForm).toContain('<thead className="max-sm:hidden">');
+    // The name takes the whole first line; amount and Remove share the second.
+    expect(itemsForm).toContain('<Td className="py-2.5! align-top max-sm:col-span-2 max-sm:pb-1! max-sm:border-b-0">');
   });
 
   it("the tab's draft is this organization's own", () => {

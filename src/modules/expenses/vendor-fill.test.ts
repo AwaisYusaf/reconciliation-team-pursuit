@@ -46,11 +46,12 @@ describe("moneyField", () => {
     expect(moneyField(null)).toBe("");
   });
 
-  it("renders cents as a plain editable amount, with no currency symbol", () => {
-    // It goes straight into a money input, which draws its own "$".
+  it("renders cents the way every money box starts (formatMoneyInput), with no currency symbol", () => {
+    // It goes straight into a money input, which draws its own "$" and drops the grouping on
+    // the first edit, so an edited "1,234.56" can never read as a decimal comma (PR #27).
     expect(moneyField(4500)).toBe("45.00");
     expect(moneyField(7)).toBe("0.07");
-    expect(moneyField(123456)).toBe("1234.56");
+    expect(moneyField(123456)).toBe("1,234.56");
   });
 });
 

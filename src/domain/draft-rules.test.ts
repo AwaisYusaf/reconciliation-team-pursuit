@@ -11,6 +11,7 @@ import {
   draftIsReady,
   draftNeeds,
   draftsReviewHref,
+  invoiceDoneHref,
   waitingDraftTotals,
   type DraftReadiness,
 } from "./draft-rules";
@@ -143,5 +144,17 @@ describe("draftsReviewHref", () => {
 
   it("encodes the id, so nothing in it can add a parameter", () => {
     expect(draftsReviewHref("a&view=all")).toBe("/r/expenses?view=drafts&source=a%26view%3Dall");
+  });
+});
+
+describe("invoiceDoneHref (PR #27: Done never hides the charges saved as expenses)", () => {
+  it("every charge a draft: the drafts view", () => {
+    expect(invoiceDoneHref(0, 3)).toBe("/r/expenses?view=drafts");
+  });
+  it("some expenses, some drafts: the Expenses list, where both are found", () => {
+    expect(invoiceDoneHref(1, 2)).toBe("/r/expenses");
+  });
+  it("every charge an expense: the Expenses list", () => {
+    expect(invoiceDoneHref(3, 0)).toBe("/r/expenses");
   });
 });

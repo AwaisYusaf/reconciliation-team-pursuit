@@ -80,7 +80,7 @@ describe("dashboard source section (app/r/source-budget-section.tsx)", () => {
   });
 
   it("the card itself: title, the locked line only when locked, and the review link", () => {
-    const card = code("src/components/drafts-waiting-card.tsx");
+    const card = code("src/components/expense-imports/drafts-waiting-card.tsx");
     expect(card).toContain("{UI.draftsWaitingTitle(count, amount)}");
     expect(card).toContain("{lockedMonth ? UI.draftsWaitingLockedBody(count, lockedMonth) : UI.draftsWaitingBody(count)}");
     expect(card).toContain("{UI.draftsReviewLink}");
@@ -332,9 +332,10 @@ describe("invoice screen (app/r/expenses/new/from-invoice/invoice-upload-screen.
     expect(screen).not.toContain("wholeBillCents");
   });
 
-  it("after Done lands on the drafts view only when drafts were made, and says so beside Done (AC22, E59)", () => {
+  it("after Done lands where every saved charge is visible (invoiceDoneHref), and says so beside Done (AC22, E59, PR #27)", () => {
     expect(screen).toContain("const draftCount = cards.length - expenseCount;");
-    expect(screen).toContain('router.push(draftCount > 0 ? "/r/expenses?view=drafts" : "/r/expenses");');
+    // The rule itself (drafts view only when every charge is a draft) is tested in draft-rules.test.ts.
+    expect(screen).toContain("router.push(invoiceDoneHref(expenseCount, draftCount));");
     expect(screen).toContain("{UI.invoiceDoneHint}");
   });
 });

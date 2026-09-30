@@ -19,7 +19,7 @@ import { Select } from "@/src/components/ui/select";
 import { ACTION_CLEARANCE, DangerPanel, InfoNote, PageTitle, Subtext } from "@/src/components/ui/surfaces";
 import { formatDateUS, monthLabel } from "@/src/domain/dates";
 import { clearCheck, loadCheck, saveCheck } from "@/src/modules/expense-imports/check-draft-store";
-import { draftNeeds } from "@/src/domain/draft-rules";
+import { draftNeeds, invoiceDoneHref } from "@/src/domain/draft-rules";
 import { formatMoney } from "@/src/domain/format";
 import { matchInvoiceLine, type MatchContext, type RecurringMatch, type VendorMatch } from "@/src/domain/invoice-match";
 import { UI } from "@/src/domain/strings";
@@ -514,9 +514,9 @@ export function InvoiceExtract({
         await clearCheck();
         const draftCount = cards.length - expenseCount;
         toast.success(UI.invoiceDoneResult(expenseCount, draftCount));
-        // Straight to the drafts when any were made, so they are found before month end
-        // (usability #64).
-        router.push(draftCount > 0 ? "/r/expenses?view=drafts" : "/r/expenses");
+        // Straight to the drafts when every charge became one (usability #64); with any expense
+        // among them, the Expenses list, so those aren't hidden (PR #27).
+        router.push(invoiceDoneHref(expenseCount, draftCount));
         router.refresh();
       } catch {
         submittingRef.current = false;

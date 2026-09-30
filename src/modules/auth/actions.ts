@@ -422,15 +422,16 @@ export async function saveOnboardingLineItemsAction(
   const amounts = formData.getAll("lineItemBudget").map((value) => String(value));
 
   // One message per row (the first that applies), every row's at once. Blank rows are ignored.
+  // Keyed by the box that is wrong (`row-N-name` / `row-N-amount`), so the form marks and
+  // focuses that box rather than the whole row (PR #27).
   const fieldErrors: Record<string, string> = {};
   const seen = new Set<string>();
   const rows: { name: string; cents: number }[] = [];
   names.forEach((name, index) => {
     const amount = amounts[index] ?? "";
-    const rowKey = `row-${index}`;
     if (name === "" && amount.trim() === "") return;
     if (name === "") {
-      fieldErrors[rowKey] = UI.onboardingRowNeedsName;
+      fieldErrors[`row-${index}-name`] = UI.onboardingRowNeedsName;
       return;
     }
     // Every named row counts as seen, errored or not.
@@ -438,9 +439,9 @@ export async function saveOnboardingLineItemsAction(
     const repeated = seen.has(key);
     seen.add(key);
     const cents = amount.trim() === "" ? null : parseMoneyToCents(amount);
-    if (cents === null) fieldErrors[rowKey] = UI.onboardingRowNeedsAmount(name);
-    else if (cents < 0) fieldErrors[rowKey] = UI.onboardingRowNegative(name);
-    else if (repeated) fieldErrors[rowKey] = UI.lineItemDuplicate;
+    if (cents === null) fieldErrors[`row-${index}-amount`] = UI.onboardingRowNeedsAmount(name);
+    else if (cents < 0) fieldErrors[`row-${index}-amount`] = UI.onboardingRowNegative(name);
+    else if (repeated) fieldErrors[`row-${index}-name`] = UI.lineItemDuplicate;
     else rows.push({ name, cents });
   });
   if (Object.keys(fieldErrors).length > 0) return fail(UI.onboardingCheckRows, fieldErrors);

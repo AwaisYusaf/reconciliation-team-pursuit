@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-import { DraftsWaitingCard } from "@/src/components/drafts-waiting-card";
+import { DraftsWaitingCard } from "@/src/components/expense-imports/drafts-waiting-card";
 import { buttonClassName } from "@/src/components/ui/button";
 import { StatTile } from "@/src/components/ui/stat-tile";
 import {

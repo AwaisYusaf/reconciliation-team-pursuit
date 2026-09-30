@@ -1,5 +1,6 @@
 import { and, asc, count, eq, isNull } from "drizzle-orm";
 
+import { formatMoneyInput } from "@/src/domain/format";
 import { PageTitle, Subtext } from "@/src/components/ui/surfaces";
 import { TourGuide } from "@/src/components/ui/tour";
 import { db } from "@/src/db";
@@ -111,7 +112,7 @@ export default async function RecurringPage() {
 
   // Null means never set, which is a different fact from a genuine zero (D-54), so it shows
   // as an empty field rather than a confident $0.00.
-  const money = (cents: number | null) => (cents === null ? "" : (cents / 100).toFixed(2));
+  const money = (cents: number | null) => (cents === null ? "" : formatMoneyInput(cents));
 
   const rows: RecurringRow[] = items.map((item) => {
     // The recurring item's own id must be passed, exactly as `addRecurringToMonthAction`

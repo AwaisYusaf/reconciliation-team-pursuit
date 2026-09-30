@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition, type FormEvent } from "react";
 
 import { Button } from "@/src/components/ui/button";
-import { FieldError, Input, MoneyInput } from "@/src/components/ui/field";
+import { FieldError, Input, invalidProps, MoneyInput } from "@/src/components/ui/field";
 import { DangerPanel } from "@/src/components/ui/surfaces";
 import { TableCard, Td, Th } from "@/src/components/ui/table";
 import { formatMoney } from "@/src/domain/format";
@@ -13,6 +13,8 @@ import { UI } from "@/src/domain/strings";
 import { saveOnboardingLineItemsAction } from "@/src/modules/auth/actions";
 
 type Row = { name: string; budget: string };
+/** A row's own problem, on the box that is wrong (PR #27). */
+type RowError = { field: "name" | "amount"; message: string };
 
 /** A draft is client data too: only an array of `{ name, budget }` strings is used. */
 function readDraft(key: string): Row[] | null {
@@ -49,7 +51,7 @@ export function OnboardingLineItemsForm({
   const [error, setError] = useState<string | null>(null);
   /** Each row's own error, lined up with `rows`: editing a row clears only its own, removing a
    *  row drops its own and moves the ones below up with their rows. */
-  const [rowErrors, setRowErrors] = useState<(string | undefined)[]>([]);
+  const [rowErrors, setRowErrors] = useState<(RowError | undefined)[]>([]);
 
   /** What this person typed on this step, kept in this tab. The line items are only saved when
    *  Finish succeeds, so without this, going back to fix the total (the step the over-total
@@ -69,18 +71,19 @@ export function OnboardingLineItemsForm({
     return () => cancelAnimationFrame(frame);
   }, [draftKey]);
 
-  /** Set by a refused Finish: once the rows are enabled again, focus goes to the first marked
-   *  row (disabling them while saving dropped it), so a keyboard user lands on what to fix. */
+  /** Set by a refused Finish: once the rows are enabled again, focus goes to the box that is
+   *  wrong in the first marked row (disabling them while saving dropped it), so a keyboard user
+   *  lands on what to fix. */
   const focusFirstError = useRef(false);
   useEffect(() => {
     if (pending || !focusFirstError.current) return;
     focusFirstError.current = false;
     const first = rowErrors.findIndex(Boolean);
-    if (first >= 0) document.getElementById(`row-${first}-name`)?.focus();
+    if (first >= 0) document.getElementById(`row-${first}-${rowErrors[first]!.field}`)?.focus();
   }, [pending, rowErrors]);
 
   /** Every change by the person keeps the draft. Nothing is written on mount. */
-  function change(next: Row[], nextRowErrors: (string | undefined)[]) {
+  function change(next: Row[], nextRowErrors: (RowError | undefined)[]) {
     setRows(next);
     setRowErrors(nextRowErrors);
     // A whole-form refusal is out of date once anything changes; the row one stays while any
@@ -124,15 +127,28 @@ export function OnboardingLineItemsForm({
       if (result.ok) return;
       focusFirstError.current = true;
       setError(result.error);
-      // The server keys row errors by the submitted position (`row-N`), blank rows included.
-      setRowErrors(Array.from({ length: submitted }, (_, i) => result.fieldErrors?.[`row-${i}`]));
+      // The server keys row errors by the submitted position and the box (`row-N-name`,
+      // `row-N-amount`), blank rows included.
+      setRowErrors(
+        Array.from({ length: submitted }, (_, i): RowError | undefined => {
+          const name = result.fieldErrors?.[`row-${i}-name`];
+          if (name) return { field: "name", message: name };
+          const amount = result.fieldErrors?.[`row-${i}-amount`];
+          return amount ? { field: "amount", message: amount } : undefined;
+        }),
+      );
     });
   }
 
   return (
     <form onSubmit={onSubmit}>
-      <TableCard minWidth={600}>
-        <thead>
+      {/* No minimum width: at 375px a row stacks (the name on its own line, then the amount and
+          Remove), so nothing scrolls sideways (PR #27). Below `sm` the table and its body are
+          plain blocks: left as a table, it sized itself to the inputs' natural width and still
+          scrolled inside the card. The heading band is for the columns, which only exist from
+          `sm`. */}
+      <TableCard className="max-sm:[&_table]:block max-sm:[&_tbody]:block">
+        <thead className="max-sm:hidden">
           <tr>
             <Th>Line item</Th>
             <Th align="right" className="w-[220px]">
@@ -146,11 +162,11 @@ export function OnboardingLineItemsForm({
         <tbody>
           {rows.map((row, index) => {
             const rowError = rowErrors[index];
-            const errorId = `row-${index}-error`;
-            const invalid = rowError ? { "aria-invalid": true, "aria-describedby": errorId } : {};
+            const nameError = rowError?.field === "name" ? rowError.message : undefined;
+            const amountError = rowError?.field === "amount" ? rowError.message : undefined;
             return (
-              <tr key={index}>
-                <Td className="py-2.5! align-top">
+              <tr key={index} className="max-sm:grid max-sm:grid-cols-[minmax(0,1fr)_auto] max-sm:items-start">
+                <Td className="py-2.5! align-top max-sm:col-span-2 max-sm:pb-1! max-sm:border-b-0">
                   <Input
                     id={`row-${index}-name`}
                     name="lineItemName"
@@ -159,23 +175,24 @@ export function OnboardingLineItemsForm({
                     aria-label={`Line item ${index + 1} name`}
                     placeholder="Line item name"
                     disabled={pending}
-                    {...invalid}
+                    {...invalidProps(`row-${index}-name-error`, nameError)}
                   />
-                  {/* Under the name, in the column that stays on screen on a phone. */}
-                  {rowError && <FieldError id={errorId}>{rowError}</FieldError>}
+                  {nameError && <FieldError id={`row-${index}-name-error`}>{nameError}</FieldError>}
                 </Td>
-                <Td className="py-2.5! align-top">
+                <Td className="py-2.5! align-top max-sm:pt-1!">
                   <MoneyInput
+                    id={`row-${index}-amount`}
                     name="lineItemBudget"
                     value={row.budget}
                     onChange={(event) => update(index, { budget: event.target.value })}
                     aria-label={`Line item ${index + 1} amount`}
                     placeholder="0.00"
                     disabled={pending}
-                    {...invalid}
+                    {...invalidProps(`row-${index}-amount-error`, amountError)}
                   />
+                  {amountError && <FieldError id={`row-${index}-amount-error`}>{amountError}</FieldError>}
                 </Td>
-                <Td align="right" className="py-2.5! align-top">
+                <Td align="right" className="py-2.5! align-top max-sm:pt-1!">
                   <button
                     type="button"
                     onClick={() => remove(index)}

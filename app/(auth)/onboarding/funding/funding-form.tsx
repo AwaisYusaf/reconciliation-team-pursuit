@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useTransition, type FormEvent } from "react";
+import { useEffect, useRef, useState, useTransition, type FormEvent } from "react";
 
 import { Button } from "@/src/components/ui/button";
-import { FieldError, Helper, Input, Label, MoneyInput } from "@/src/components/ui/field";
+import { Field, focusFirstInvalid, Input, Label, MoneyInput } from "@/src/components/ui/field";
 import { DangerPanel } from "@/src/components/ui/surfaces";
 import { IDLE } from "@/src/lib/action-result";
 import { saveOnboardingFundingAction } from "@/src/modules/auth/actions";
@@ -27,82 +27,61 @@ export function OnboardingFundingForm({ initial, rulesLine }: { initial: Initial
     });
   }
 
-  /** `aria-invalid` and `aria-describedby` for a field with its own error under it. */
-  function invalid(key: string) {
-    return fieldErrors?.[key]
-      ? { "aria-invalid": true, "aria-describedby": `${key}-error` }
-      : {};
-  }
-
-  function errorFor(key: string) {
-    const message = fieldErrors?.[key];
-    return message ? <FieldError id={`${key}-error`}>{message}</FieldError> : null;
-  }
+  // After a refused Continue, the first marked field (PR #27): on a phone it is above the fold.
+  const formRef = useRef<HTMLFormElement>(null);
+  useEffect(() => {
+    if (fieldErrors && Object.keys(fieldErrors).length > 0) focusFirstInvalid(formRef.current);
+  }, [fieldErrors]);
 
   return (
-    <form onSubmit={onSubmit}>
-      <div className="mb-5">
-        <Label htmlFor="fundingName">Funding name</Label>
-        <Input
-          id="fundingName"
-          name="fundingName"
-          defaultValue={initial.name}
-          {...(fieldErrors?.fundingName ? invalid("fundingName") : { "aria-describedby": "fundingName-helper" })}
-        />
-        {fieldErrors?.fundingName ? (
-          errorFor("fundingName")
-        ) : (
-          <Helper id="fundingName-helper">For example, your funder&apos;s or program&apos;s name.</Helper>
-        )}
-      </div>
+    <form ref={formRef} onSubmit={onSubmit}>
+      <Field
+        id="fundingName"
+        label="Funding name"
+        helper="For example, your funder's or program's name."
+        error={fieldErrors?.fundingName}
+        className="mb-5"
+      >
+        {(props) => <Input {...props} name="fundingName" defaultValue={initial.name} />}
+      </Field>
 
-      <div className="mb-5">
-        <Label htmlFor="contractValue">Total amount</Label>
-        <MoneyInput
-          id="contractValue"
-          name="contractValue"
-          defaultValue={initial.total}
-          placeholder="0.00"
-          className="max-w-[320px]"
-          {...(fieldErrors?.contractValue ? invalid("contractValue") : { "aria-describedby": "contractValue-helper" })}
-        />
-        {fieldErrors?.contractValue ? (
-          errorFor("contractValue")
-        ) : (
-          <Helper id="contractValue-helper">
-            The full amount of this funding. Your line items can&apos;t add up to more than this. In Settings, it&apos;s
-            the contract value.
-          </Helper>
+      <Field
+        id="contractValue"
+        label="Total amount"
+        helper="The full amount of this funding. Your line items can't add up to more than this. In Settings, it's the contract value."
+        error={fieldErrors?.contractValue}
+        className="mb-5"
+      >
+        {(props) => (
+          <MoneyInput
+            {...props}
+            name="contractValue"
+            defaultValue={initial.total}
+            placeholder="0.00"
+            className="max-w-[320px]"
+          />
         )}
-      </div>
+      </Field>
 
       <div className="flex flex-wrap gap-5 mb-5">
-        <div className="flex-1 min-w-[220px]">
-          <Label htmlFor="contractStart">
-            Start date <span className="font-normal text-sub">(optional)</span>
-          </Label>
-          <Input
-            id="contractStart"
-            name="contractStart"
-            type="date"
-            defaultValue={initial.start}
-            {...invalid("contractStart")}
-          />
-          {errorFor("contractStart")}
-        </div>
-        <div className="flex-1 min-w-[220px]">
-          <Label htmlFor="contractEnd">
-            End date <span className="font-normal text-sub">(optional)</span>
-          </Label>
-          <Input
-            id="contractEnd"
-            name="contractEnd"
-            type="date"
-            defaultValue={initial.end}
-            {...invalid("contractEnd")}
-          />
-          {errorFor("contractEnd")}
-        </div>
+        <Field
+          id="contractStart"
+          label="Start date"
+          optional
+          error={fieldErrors?.contractStart}
+          className="flex-1 min-w-[220px]"
+        >
+          {(props) => <Input {...props} name="contractStart" type="date" defaultValue={initial.start} />}
+        </Field>
+        <Field
+          id="contractEnd"
+          label="End date"
+          optional
+          error={fieldErrors?.contractEnd}
+          className="flex-1 min-w-[220px]"
+        >
+          {(props) => <Input {...props} name="contractEnd" type="date" defaultValue={initial.end} />}
+        </Field>
       </div>
 
       <div className="mb-5">

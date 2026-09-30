@@ -21,7 +21,8 @@ describe("users-manager.tsx", () => {
   it("AC14: the one-time password panel is neutral, not the danger panel", () => {
     expect(panel.length).toBeGreaterThan(0);
     expect(panel).not.toContain("DangerPanel");
-    expect(panel).toContain('className="mt-4 rounded-[3px] border border-line bg-section');
+    // The shared calm note, not a hand-copied look-alike (PR #27).
+    expect(panel).toContain('<InfoNote role="status" className="mt-4 border border-line">');
     expect(panel).not.toContain("danger");
   });
 

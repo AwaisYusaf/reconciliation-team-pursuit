@@ -39,18 +39,18 @@ export function MonthSelector({
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [showPicker, setShowPicker] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   function apply(month: string) {
-    setError(null);
     startTransition(async () => {
       const result = await setActiveMonthAction(month);
-      if (reportResult(result)) {
-        setShowPicker(false);
-        router.refresh();
-      } else {
-        setError(result.error);
+      // A toast, not a line under the picker: in the header a line of text has no room on a
+      // phone, and it covered the "Other month" box (PR #27).
+      if (!result.ok) {
+        reportResult(result);
+        return;
       }
+      setShowPicker(false);
+      router.refresh();
     });
   }
 
@@ -129,17 +129,6 @@ export function MonthSelector({
         </div>
       )}
 
-      {error && (
-        <div
-          className={
-            compact
-              ? "absolute top-full right-0 mt-1 z-40 text-[13px] text-danger bg-surface border border-danger rounded-[8px] px-2.5 py-1.5 whitespace-nowrap"
-              : "text-[15px] text-danger"
-          }
-        >
-          {error}
-        </div>
-      )}
     </div>
   );
 }

@@ -316,7 +316,7 @@ describe.skipIf(!hasDatabase)("onboarding, funding first (integration, m00, D-13
       expect(await saveOnboardingLineItemsAction(IDLE, rowsForm([["Salary", "100,000.00"], ["Analytical Support", ""]]))).toEqual({
         ok: false,
         error: UI.onboardingCheckRows,
-        fieldErrors: { "row-1": UI.onboardingRowNeedsAmount("Analytical Support") },
+        fieldErrors: { "row-1-amount": UI.onboardingRowNeedsAmount("Analytical Support") },
       });
       expect(await savedRows(fundingSourceId)).toEqual([]);
       expect(await orgState(orgId)).toEqual({ onboarded: false, paymentSources: 0, docTypes: 0 });
@@ -340,11 +340,11 @@ describe.skipIf(!hasDatabase)("onboarding, funding first (integration, m00, D-13
         ok: false,
         error: UI.onboardingCheckRows,
         fieldErrors: {
-          "row-0": UI.onboardingRowNeedsAmount("Salary"),
-          "row-1": UI.lineItemDuplicate,
-          "row-2": UI.onboardingRowNeedsName,
-          "row-3": UI.onboardingRowNegative("Travel"),
-          "row-4": UI.onboardingRowNeedsAmount("Rent"),
+          "row-0-amount": UI.onboardingRowNeedsAmount("Salary"),
+          "row-1-name": UI.lineItemDuplicate,
+          "row-2-name": UI.onboardingRowNeedsName,
+          "row-3-amount": UI.onboardingRowNegative("Travel"),
+          "row-4-amount": UI.onboardingRowNeedsAmount("Rent"),
         },
       });
     });
@@ -354,7 +354,7 @@ describe.skipIf(!hasDatabase)("onboarding, funding first (integration, m00, D-13
       expect(await saveOnboardingLineItemsAction(IDLE, rowsForm([["Salary", "1.00"], ["SALARY", "2.00"]]))).toEqual({
         ok: false,
         error: UI.onboardingCheckRows,
-        fieldErrors: { "row-1": UI.lineItemDuplicate },
+        fieldErrors: { "row-1-name": UI.lineItemDuplicate },
       });
     });
 

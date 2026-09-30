@@ -150,13 +150,15 @@ export function LineItemsManager({
     showError(null);
     startTransition(async () => {
       const result = await work();
-      if (reportResult(result, successMessage)) {
-        onDone?.();
-        router.refresh();
-      } else {
-        // Kept inline as well: a refusal explains a rule and should stay on screen.
+      if (!result.ok) {
+        // Inline only: a refusal explains a rule and should stay on screen, and a toast of the
+        // same words was a second copy of it (PR #27).
         showError(result.error ?? "That change couldn't be saved. Try again.");
+        return;
       }
+      reportResult(result, successMessage);
+      onDone?.();
+      router.refresh();
     });
   }
 
@@ -210,7 +212,8 @@ export function LineItemsManager({
       // Refreshed either way: on success to show the saved order, and on a refusal because the
       // list on screen is out of date (someone added or deleted a line item), so the fresh list
       // is what the person reorders next rather than the same stale one.
-      if (!reportResult(result, "Order updated.")) setError(result.error ?? "That change couldn't be saved. Try again.");
+      if (result.ok) reportResult(result, "Order updated.");
+      else setError(result.error ?? "That change couldn't be saved. Try again.");
       router.refresh();
     });
   }
@@ -221,7 +224,6 @@ export function LineItemsManager({
       const result = await deleteLineItemAction(row.id, false);
       if (!result.ok) {
         setError(result.error);
-        reportResult(result);
         return;
       }
       // The server always asks first (R9.3); the list it returns may be empty, which is why
@@ -260,7 +262,7 @@ export function LineItemsManager({
   return (
     <div>
       {error && (
-        <DangerPanel tone="notice" className="mb-4">
+        <DangerPanel key={error} tone="notice" className="mb-4" reveal={managingId === null}>
           {error}
         </DangerPanel>
       )}
@@ -289,8 +291,10 @@ export function LineItemsManager({
               // dialog doesn't vanish out from under a failure the general error banner is
               // about to show — the dialog would otherwise hide that banner behind its overlay.
               setConfirmDelete(null);
-              if (reportResult(result, "Line item deleted.")) router.refresh();
-              else setError(result.error ?? "The line item couldn't be deleted. Try again.");
+              if (result.ok) {
+                reportResult(result, "Line item deleted.");
+                router.refresh();
+              } else setError(result.error ?? "The line item couldn't be deleted. Try again.");
             });
           },
         }}
@@ -539,7 +543,7 @@ export function LineItemsManager({
 
               {/* The refusal where it happened: the page-level panel is behind this overlay. */}
               {error && (
-                <DangerPanel tone="notice" className="mt-4">
+                <DangerPanel key={error} tone="notice" className="mt-4" reveal>
                   {error}
                 </DangerPanel>
               )}

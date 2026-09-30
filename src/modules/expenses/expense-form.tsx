@@ -9,6 +9,7 @@ import {
   FieldError,
   Helper,
   Input,
+  invalidProps,
   Label,
   MoneyInput,
   Textarea,
@@ -22,7 +23,7 @@ import { setActiveFundingSourceAction } from "@/src/modules/auth/actions";
 import { projectedRemainingCents } from "@/src/domain/budget-math";
 import { compareMonthKeys, formatDateUS, monthLabel } from "@/src/domain/dates";
 import { draftNeeds } from "@/src/domain/draft-rules";
-import { formatMoney } from "@/src/domain/format";
+import { formatMoney, formatMoneyInput } from "@/src/domain/format";
 import {
   parseMoneyToCents,
   parseMoneyToCentsOrZero,
@@ -495,9 +496,9 @@ export function ExpenseForm({
     if (suggestion.state !== "done") return;
     setValues((current) => ({
       ...current,
-      subtotal: (suggestion.subtotalCents / 100).toFixed(2),
-      tax: (suggestion.taxCents / 100).toFixed(2),
-      fees: (suggestion.feesCents / 100).toFixed(2),
+      subtotal: formatMoneyInput(suggestion.subtotalCents),
+      tax: formatMoneyInput(suggestion.taxCents),
+      fees: formatMoneyInput(suggestion.feesCents),
     }));
     // The panel stays: it shows "✓ Amounts used" while the fields match (usability #58).
     // Only Dismiss hides it.
@@ -844,8 +845,7 @@ export function ExpenseForm({
   const fieldId = useCallback((field: string) => `${field}-${uid}`, [uid]);
   const errorId = (field: keyof ExpenseInput) => fieldId(`${field}-error`);
   /** Wires a control to its error for screen readers (#24). */
-  const invalid = (field: keyof ExpenseInput) =>
-    fieldErrors[field] ? { "aria-invalid": true as const, "aria-describedby": errorId(field) } : {};
+  const invalid = (field: keyof ExpenseInput) => invalidProps(errorId(field), fieldErrors[field]);
   const errorFor = (field: keyof ExpenseInput) =>
     fieldErrors[field] ? <FieldError id={errorId(field)}>{fieldErrors[field]}</FieldError> : null;
 
@@ -1021,7 +1021,7 @@ export function ExpenseForm({
         // expense was saved. Add the file again below." — three statements, two of them untrue.
         // The files are already mirrored to the card by `onQueuedChange` and travel with Done.
         setStatus(null);
-        toast.success(savedMessage());
+        toast.success(UI.invoiceCardMarkedExpense);
         embedded.onSaved("expense");
         return;
       }
@@ -1067,7 +1067,7 @@ export function ExpenseForm({
         showFailure(result);
         return;
       }
-      toast.success("Draft saved.");
+      toast.success(UI.invoiceCardMarkedDraft);
       embedded.onSaved("draft");
     });
   }

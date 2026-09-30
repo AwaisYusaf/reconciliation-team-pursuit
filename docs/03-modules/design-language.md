@@ -100,6 +100,7 @@ non-technical, and some of these words reach the City on signed documents.
    proper names and keep Title Case: Dashboard, Add Expense, Expenses, Cover Sheets, Month-End
    Packet, Contract Summary, Line Items, Recurring, Settings.
 7. **Full sentences end with a period**, toasts included. Labels, buttons and headings don't.
+   A refusal is said once: inline where it happened, or a toast when nothing inline shows it, never both. A toast never says "saved" before anything is saved (PR #27).
 8. **Contractions are fine in messages** ("can't", "won't").
 9. **"…" (one character) for work in progress:** "Saving…", "Preparing the packet…".
 10. **City-approved document wording keeps its words:** the tax and fees notes, "Please see

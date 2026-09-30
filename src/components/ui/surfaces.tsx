@@ -266,25 +266,39 @@ export function Eyebrow({ className, ...props }: ComponentProps<"div">) {
   );
 }
 
+/** Stable, so it runs when the panel appears, not on every render while someone types. */
+function scrollIntoViewOnShow(node: HTMLDivElement | null) {
+  node?.scrollIntoView({ block: "nearest" });
+}
+
 /**
  * Blocking / error panel. `tone="blocking"` is the 2px-bordered treatment the rules
  * require for states that stop an action (R4.3); `tone="notice"` is the lighter strip.
+ *
+ * `reveal` scrolls it into view when it appears: for a page-level refusal shown only here (no
+ * toast), whose cause can be a row far down the list. Give it a `key` of the message so a new
+ * refusal scrolls again.
  */
 export function DangerPanel({
   tone = "blocking",
   title,
   children,
   className,
+  reveal = false,
 }: {
   tone?: "blocking" | "notice";
   title?: ReactNode;
   children?: ReactNode;
   className?: string;
+  reveal?: boolean;
 }) {
   return (
     <div
+      ref={reveal ? scrollIntoViewOnShow : undefined}
       className={cn(
         "bg-danger-bg text-danger rounded-[3px]",
+        // Stops below the sticky header when it scrolls into view, as focused controls do.
+        reveal && "scroll-mt-24",
         tone === "blocking" ? "border-2 border-danger p-4 sm:p-5" : "border border-danger px-3 py-2.5 sm:px-4 sm:py-3",
         className,
       )}

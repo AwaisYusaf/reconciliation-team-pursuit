@@ -15,7 +15,7 @@
  * amount is the one field that is genuinely new each time, so a figure already typed is never
  * replaced by a remembered one.
  */
-import { centsToDollars } from "@/src/domain/money";
+import { formatMoneyInput } from "@/src/domain/format";
 
 import type { ExpenseInput } from "./actions";
 
@@ -37,7 +37,7 @@ export type VendorFill = {
  * only `null` means the library has nothing to say.
  */
 export function moneyField(cents: number | null): string {
-  return cents === null ? "" : centsToDollars(cents).toFixed(2);
+  return cents === null ? "" : formatMoneyInput(cents);
 }
 
 /**

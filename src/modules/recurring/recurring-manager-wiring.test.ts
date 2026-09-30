@@ -43,8 +43,8 @@ describe("recurring-manager.tsx", () => {
     expect(add).toContain("toastWithAction(UI.recurringAdded(row.name, monthLabel, result.data.missing), {");
     expect(add).toContain("label: UI.openExpense,");
     expect(add).toContain("onAction: () => router.push(`/r/expenses/${result.data.id}/edit`),");
-    // A refusal is reported the way it always was.
-    expect(add.slice(refusal, flash)).toContain("reportResult(result);");
+    // A refusal is shown inline only, never toasted as well (PR #27).
+    expect(add.slice(refusal, flash)).not.toContain("reportResult(");
     expect(add.slice(refusal, flash)).toContain("setError(result.error);");
   });
 });

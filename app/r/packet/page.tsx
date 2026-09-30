@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-import { DraftsWaitingCard } from "@/src/components/drafts-waiting-card";
+import { DraftsWaitingCard } from "@/src/components/expense-imports/drafts-waiting-card";
 import { BlockingPanel } from "@/src/components/ui/blocking-panel";
 import { PickFundingSource } from "@/src/components/app-shell/pick-funding-source";
 import { TourSequenceSkip } from "@/src/components/app-shell/tour-sequence-skip";

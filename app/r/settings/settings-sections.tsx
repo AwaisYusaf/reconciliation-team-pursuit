@@ -224,16 +224,23 @@ export function SettingsSections({
   const [org, setOrg] = useState(organisation);
   const [readAmountsEnabled, setReadAmountsEnabled] = useState(readAmounts?.enabled ?? false);
 
+  /** `refusalShownInline`: the caller puts a refusal in its own form, so it is not toasted as
+   *  well; the same words twice was PR #27's finding. */
   function run(
     work: () => Promise<ActionResult<unknown>>,
     successMessage: string,
     onDone?: () => void,
+    refusalShownInline = false,
   ) {
     startTransition(async () => {
-      if (reportResult(await work(), successMessage)) {
-        onDone?.();
-        router.refresh();
+      const result = await work();
+      if (!result.ok) {
+        if (!refusalShownInline) reportResult(result);
+        return;
       }
+      reportResult(result, successMessage);
+      onDone?.();
+      router.refresh();
     });
   }
 
@@ -600,6 +607,7 @@ function FundingSourcesSection({
     work: () => Promise<ActionResult<unknown>>,
     successMessage: string,
     onDone?: () => void,
+    refusalShownInline?: boolean,
   ) => void;
   /** Null means unlimited (Phase 6 core, C8). */
   limit: number | null;
@@ -643,6 +651,8 @@ function FundingSourcesSection({
   }
 
   function save() {
+    // Cleared first, so a second refusal with the same words visibly comes back (no toast now).
+    setFormError(null);
     const work =
       editingId === NEW_FUNDING_SOURCE
         ? () => createFundingSourceAction(draft)
@@ -657,6 +667,7 @@ function FundingSourcesSection({
       },
       editingId === NEW_FUNDING_SOURCE ? "Funding source added." : "Funding source saved.",
       () => setEditingId(null),
+      true,
     );
   }
 
@@ -1265,23 +1276,27 @@ function AccountSection({
       <div className="flex justify-end mt-4">
         <Button
           disabled={pending}
-          onClick={() =>
+          onClick={() => {
+            // Cleared before the request, so a second refusal with the same words visibly
+            // comes back rather than looking like nothing happened (no toast carries it now).
+            setError(null);
             startTransition(async () => {
-              setError(null);
               const result = await changePasswordAction({
                 currentPassword: current,
                 newPassword: next,
                 confirmPassword: confirm,
               });
-              if (reportResult(result, "Password changed. Your other devices were signed out.")) {
-                setCurrent("");
-                setNext("");
-                setConfirm("");
-              } else {
+              // A refusal is shown in the form only, not toasted as well (PR #27).
+              if (!result.ok) {
                 setError(result.error);
+                return;
               }
-            })
-          }
+              reportResult(result, "Password changed. Your other devices were signed out.");
+              setCurrent("");
+              setNext("");
+              setConfirm("");
+            });
+          }}
         >
           Change password
         </Button>

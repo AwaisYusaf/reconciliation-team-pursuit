@@ -655,6 +655,10 @@ export const UI = {
   /** Next to Done on the check screen: where unsaved charges go (usability #64). */
   invoiceDoneHint:
     "Nothing is saved until you press Done. Then charges marked Saving as expense become expenses, and the rest become drafts waiting for review on the Expenses page.",
+  /** A charge card marked on the check screen: nothing is written until Done (PR #27), so the
+   *  toast says marked, never saved. */
+  invoiceCardMarkedExpense: "Marked as an expense. It's saved when you press Done.",
+  invoiceCardMarkedDraft: "Marked as a draft. It's saved when you press Done.",
   /** The Dashboard tour's last card: starts the walk through the other tabs (usability #57). */
   tourContinueButton: "Continue the tour",
   /** Skip on that same card: it marks every tour seen, not only this one (D-132, usability #57). */
