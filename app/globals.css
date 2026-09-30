@@ -208,6 +208,16 @@ body {
   outline: none;
 }
 
+/*
+ * The header floats over the page with no bar of its own (D-121), so a control the browser
+ * scrolls to (Tab, Shift+Tab, a focused error) has to stop below it, not under the nav pill
+ * (usability #27). 6rem clears the header at every width, collapsed or not. Form controls in
+ * `main` only: listbox options and the nav's own links scroll inside their own boxes.
+ */
+main :is(input, textarea, select, button) {
+  scroll-margin-top: 6rem;
+}
+
 @media print {
   .no-print {
     display: none !important;

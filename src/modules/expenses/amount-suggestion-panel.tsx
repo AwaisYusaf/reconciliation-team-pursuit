@@ -179,9 +179,10 @@ export function ReceiptDetailsSuggestion({
   vendor: string | null;
   /** Already formatted for display (9/12/2026). */
   date: string | null;
-  /** `fromKeyboard`: pressed with Enter or Space rather than clicked. */
-  onAddVendor: (fromKeyboard: boolean) => void;
-  onAddDate: (fromKeyboard: boolean) => void;
+  /** `fromKeyboard`: pressed with Enter or Space rather than clicked. `at`: the press's own
+   *  `event.timeStamp`, so the form can tell a double-click from two choices. */
+  onAddVendor: (fromKeyboard: boolean, at: number) => void;
+  onAddDate: (fromKeyboard: boolean, at: number) => void;
 }) {
   if (vendor === null && date === null) return null;
 
@@ -228,7 +229,7 @@ function DetailRow({
   label: string;
   value: string;
   addLabel: string;
-  onAdd: (fromKeyboard: boolean) => void;
+  onAdd: (fromKeyboard: boolean, at: number) => void;
 }) {
   return (
     <li className="flex flex-wrap items-center gap-x-3 gap-y-1">
@@ -237,7 +238,7 @@ function DetailRow({
         {label} <span className="font-semibold">{value}</span>
       </span>
       {/* A button pressed with Enter or Space sends a click with no count (`detail` 0). */}
-      <Button variant="quiet" aria-label={addLabel} onClick={(event) => onAdd(event.detail === 0)}>
+      <Button variant="quiet" aria-label={addLabel} onClick={(event) => onAdd(event.detail === 0, event.timeStamp)}>
         {UI.addReceiptDetail}
       </Button>
     </li>

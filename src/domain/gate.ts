@@ -44,8 +44,13 @@ function hasAttached(documents: readonly DocumentState[], kind: DocumentState["k
  * Proof of payment is always required (R4.1). A receipt or justification is required too,
  * unless the expense is explicitly marked "no receipt available" with a reason, which the
  * cover sheet then discloses (R4.2, R6.7).
+ *
+ * Reads only the three fields it needs, so a save message can ask about an expense that has no
+ * id yet; the rest of a `GateExpense` may still be passed, as the list callers do.
  */
-export function documentationStatus(expense: GateExpense): DocumentationStatus {
+export function documentationStatus(
+  expense: Pick<GateExpense, "noReceipt" | "hasNarrative" | "documents"> & Partial<GateExpense>,
+): DocumentationStatus {
   const hasProof = hasAttached(expense.documents, "proof");
   const hasReceipt = expense.noReceipt || hasAttached(expense.documents, "receipt");
   const hasNarrative = expense.hasNarrative;

@@ -6,6 +6,7 @@ import { useCallback, useEffect, useId, useRef, useState, useTransition } from "
 import { Button } from "@/src/components/ui/button";
 import { Dialog } from "@/src/components/ui/dialog";
 import {
+  FieldError,
   Helper,
   Input,
   Label,
@@ -38,7 +39,7 @@ import {
 } from "@/src/domain/amount-suggestion";
 import { sameName } from "@/src/domain/vendor-match";
 import { exclusionNote, UI } from "@/src/domain/strings";
-import { SESSION_EXPIRED, type ActionResult } from "@/src/lib/action-result";
+import { SESSION_EXPIRED, type ActionResult, type FieldErrors } from "@/src/lib/action-result";
 import { cn } from "@/src/lib/cn";
 
 import { AmountSuggestionPanel, ReceiptDetailsSuggestion } from "./amount-suggestion-panel";
@@ -58,6 +59,7 @@ import {
 } from "./actions";
 import type { AttachedDocument } from "./queries";
 import { canSave } from "./can-save";
+import { savedMessage as savedMessageFor } from "./saved-message";
 import { UploadField, type PendingUpload } from "./upload-field";
 import type { DocumentScope } from "@/src/services/storage/keys";
 
@@ -273,6 +275,9 @@ export function ExpenseForm({
     },
   );
   const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
+  const formRef = useRef<HTMLFormElement>(null);
+  const focusFirstError = useRef(false);
   const [autofilled, setAutofilled] = useState(false);
   const [suggestions, setSuggestions] = useState<VendorFill[]>([]);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
@@ -280,6 +285,17 @@ export function ExpenseForm({
   // the save deletes every one of them (R4.2). It used to only warn, and the tick immediately
   // hid the list, so the files were out of sight before the warning was read.
   const [confirmingNoReceipt, setConfirmingNoReceipt] = useState(false);
+
+  // After a refused save, bring the first field in error into view and focus it (#24). Centred,
+  // so the floating header can never sit on it. Only after a save: typing clears errors too, and
+  // that must not move the cursor.
+  useEffect(() => {
+    if (!focusFirstError.current) return;
+    focusFirstError.current = false;
+    const first = formRef.current?.querySelector<HTMLElement>('[aria-invalid="true"]');
+    first?.scrollIntoView({ block: "center" });
+    first?.focus({ preventScroll: true });
+  }, [fieldErrors]);
 
   const attachedReceipts =
     existing?.documents.filter((doc) => doc.kind === "receipt") ?? [];
@@ -292,6 +308,14 @@ export function ExpenseForm({
       setQueued((current) =>
         current.filter((item) => item.scope !== "receipt"),
       );
+    // The reason field disappears, so its error must not linger in the summary.
+    else
+      setFieldErrors((current) => {
+        if (!("noReceiptReason" in current)) return current;
+        const next = { ...current };
+        delete next.noReceiptReason;
+        return next;
+      });
   }
 
   // The active labels, plus whatever this expense was actually saved with. A retired label
@@ -440,12 +464,11 @@ export function ExpenseForm({
 
   // Add removes its own row, and the next row moves up under the pointer: a second press within
   // half a second is the rest of a double-click, not a choice to add that one too.
-  const lastReceiptAdd = useRef(0);
+  const lastReceiptAdd = useRef(-Infinity);
   // Where focus goes once the row that held it is gone (read by the effect below `fieldId`).
   const receiptBoxRef = useRef<HTMLDivElement>(null);
   const refocusAfterAdd = useRef<{ field: "name" | "date"; fromKeyboard: boolean } | null>(null);
-  function receiptAdd(field: "name" | "date", fromKeyboard: boolean, apply: () => void) {
-    const now = Date.now();
+  function receiptAdd(field: "name" | "date", fromKeyboard: boolean, now: number, apply: () => void) {
     if (now - lastReceiptAdd.current < 500) return;
     lastReceiptAdd.current = now;
     apply();
@@ -453,16 +476,16 @@ export function ExpenseForm({
     refocusAfterAdd.current = { field, fromKeyboard };
   }
 
-  function addReceiptVendor(vendor: string, fromKeyboard: boolean) {
-    receiptAdd("name", fromKeyboard, () => {
+  function addReceiptVendor(vendor: string, fromKeyboard: boolean, now: number) {
+    receiptAdd("name", fromKeyboard, now, () => {
       nameFromReceipt.current = vendor.trim();
       set("name", vendor);
     });
   }
 
-  function addReceiptDate(date: string, fromKeyboard: boolean) {
+  function addReceiptDate(date: string, fromKeyboard: boolean, now: number) {
     // Date only. The reporting month is chosen separately and stays as it is (R2.2).
-    receiptAdd("date", fromKeyboard, () => set("date", date));
+    receiptAdd("date", fromKeyboard, now, () => set("date", date));
   }
 
   function applySuggestedAmounts() {
@@ -487,10 +510,38 @@ export function ExpenseForm({
   }
 
   const set = useCallback(
-    <K extends keyof ExpenseInput>(key: K, value: ExpenseInput[K]) =>
-      setValues((current) => ({ ...current, [key]: value })),
+    <K extends keyof ExpenseInput>(key: K, value: ExpenseInput[K]) => {
+      setValues((current) => ({ ...current, [key]: value }));
+      // Typing into a field clears that field's own error (#24).
+      setFieldErrors((current) => {
+        if (!(key in current)) return current;
+        const next = { ...current };
+        delete next[key];
+        return next;
+      });
+    },
     [],
   );
+
+  // Vendor autofill, the funding-source change and "Use these amounts" write values without
+  // going through `set`, so a field they fill must lose its error too: any field whose value
+  // changed since the last render drops its error, whichever path changed it.
+  const previousValues = useRef(values);
+  useEffect(() => {
+    const previous = previousValues.current;
+    previousValues.current = values;
+    setFieldErrors((current) => {
+      const changed = Object.keys(current).filter(
+        (key) =>
+          key in values &&
+          values[key as keyof ExpenseInput] !== previous[key as keyof ExpenseInput],
+      );
+      if (changed.length === 0) return current;
+      const next = { ...current };
+      for (const key of changed) delete next[key];
+      return next;
+    });
+  }, [values]);
 
   const subtotalCents = parseMoneyToCentsOrZero(values.subtotal);
 
@@ -690,17 +741,16 @@ export function ExpenseForm({
   /**
    * What to say after a successful save.
    *
-   * A record with no proof of payment will be held by the gate at month end, so the moment
-   * it is captured is when saying so is cheapest to act on (m02).
+   * A record the gate will hold at month end (no proof of payment, no receipt, or both) is
+   * cheapest to fix the moment it is captured, so the toast names every gap (m02, #30).
    */
   function savedMessage(): string {
-    const hasProof =
-      queued.some((item) => item.scope === "proof") ||
-      (existing?.documents ?? []).some(
-        (document) =>
-          document.kind === "proof" && document.status === "attached",
-      );
-    return hasProof ? "Expense saved." : UI.savedMissingProof;
+    return savedMessageFor({
+      noReceipt: values.noReceipt,
+      attached: existing?.documents ?? [],
+      queued,
+      invoiceIsReceipt: invoiceReceipt !== undefined && !values.noReceipt,
+    });
   }
 
   /** `owner` is the expense these files belong to, or the draft when the form is editing one:
@@ -788,6 +838,22 @@ export function ExpenseForm({
    */
   const uid = useId();
   const fieldId = useCallback((field: string) => `${field}-${uid}`, [uid]);
+  const errorId = (field: keyof ExpenseInput) => fieldId(`${field}-error`);
+  /** Wires a control to its error for screen readers (#24). */
+  const invalid = (field: keyof ExpenseInput) =>
+    fieldErrors[field] ? { "aria-invalid": true as const, "aria-describedby": errorId(field) } : {};
+  const errorFor = (field: keyof ExpenseInput) =>
+    fieldErrors[field] ? <FieldError id={errorId(field)}>{fieldErrors[field]}</FieldError> : null;
+
+  /** A refusal either names fields (each shown under its own field, #24) or is one message. */
+  function showFailure(result: { error: string; fieldErrors?: FieldErrors }) {
+    if (result.fieldErrors && Object.keys(result.fieldErrors).length > 0) {
+      focusFirstError.current = true;
+      setFieldErrors(result.fieldErrors);
+    } else {
+      setError(result.error);
+    }
+  }
 
   // After a receipt's Add has re-rendered the box: focus the Add that is left, or, when the box
   // has gone, the field just filled. That field sits at the top of the form, so the page only
@@ -827,6 +893,7 @@ export function ExpenseForm({
    */
   function saveAndApprove() {
     setError(null);
+    setFieldErrors({});
     setStatus(null);
     if (selectedMonthLocked) {
       setError(UI.monthLocked(monthLabel(values.month)));
@@ -835,7 +902,7 @@ export function ExpenseForm({
     startTransition(async () => {
       const saved = await saveAction!({ ...values, id: existing!.id });
       if (!saved.ok) {
-        setError(saved.error);
+        showFailure(saved);
         return;
       }
       const uploadError = await uploadQueued(existing!.id, "draft");
@@ -867,6 +934,7 @@ export function ExpenseForm({
 
   function save() {
     setError(null);
+    setFieldErrors({});
     setStatus(null);
     // Refused client-side too, matching what the server would say — a courtesy, not the
     // guarantee: the server checks again inside the same transaction as the write itself
@@ -879,7 +947,7 @@ export function ExpenseForm({
       if (saveAction) {
         const result = await saveAction({ ...values, id: existing!.id });
         if (!result.ok) {
-          setError(result.error);
+          showFailure(result);
           return;
         }
         // The draft owns these files until it is approved, so they go to its own table
@@ -893,7 +961,7 @@ export function ExpenseForm({
           router.refresh();
           return;
         }
-        // Not `savedMessage()`: that one nags about a missing proof of payment, which a draft
+        // Not `savedMessage()`: that one nags about missing documents, which a draft
         // is not blocked by (ticket §5) — a draft is in no gate and no packet until it is
         // approved. No `UI.draft*` string covers this line, so it reads plainly here.
         toast.success("Draft saved.");
@@ -912,7 +980,7 @@ export function ExpenseForm({
           id: existing!.id,
         });
         if (!result.ok) {
-          setError(result.error);
+          showFailure(result);
           return;
         }
         // A real expense owns its files directly — `expense_documents`, the default owner.
@@ -938,7 +1006,7 @@ export function ExpenseForm({
       if (embedded) {
         const created = await embedded.save.action(values);
         if (!created.ok) {
-          setError(created.error);
+          showFailure(created);
           return;
         }
         // No upload here, exactly like the draft branch below. Marking a charge card writes
@@ -956,7 +1024,7 @@ export function ExpenseForm({
 
       const created = await createExpenseAction(values);
       if (!created.ok) {
-        setError(created.error);
+        showFailure(created);
         return;
       }
       const uploadError = await uploadQueued(created.data.id);
@@ -983,6 +1051,7 @@ export function ExpenseForm({
   function saveDraft() {
     if (!embedded) return;
     setError(null);
+    setFieldErrors({});
     setStatus(null);
     if (selectedMonthLocked) {
       setError(UI.monthLocked(monthLabel(values.month)));
@@ -991,7 +1060,7 @@ export function ExpenseForm({
     startTransition(async () => {
       const result = await embedded.draft.action(values);
       if (!result.ok) {
-        setError(result.error);
+        showFailure(result);
         return;
       }
       toast.success("Draft saved.");
@@ -1106,7 +1175,9 @@ export function ExpenseForm({
               onChange={(event) =>
                 set("noReceiptReason", event.target.value)
               }
+              {...invalid("noReceiptReason")}
             />
+            {errorFor("noReceiptReason")}
             {attachedReceipts.length > 0 && (
               <Helper className="text-danger">
                 Saving with this checked removes the{" "}
@@ -1148,6 +1219,7 @@ export function ExpenseForm({
         ))}
 
       <form
+        ref={formRef}
         onSubmit={(event) => {
           event.preventDefault();
           if (canSave(queued, pending)) save();
@@ -1185,7 +1257,9 @@ export function ExpenseForm({
               autoComplete="off"
               onChange={(event) => set("name", event.target.value)}
               placeholder="Vendor, person, or a short label"
+              {...invalid("name")}
             />
+            {errorFor("name")}
             {suggestions.length > 0 && (
               <div className="absolute left-0 right-0 top-full mt-1 bg-surface border border-line rounded-[3px] z-10 max-h-[220px] overflow-y-auto">
                 {suggestions.map((row) => {
@@ -1244,6 +1318,7 @@ export function ExpenseForm({
             ) : (
               <Select
                 id={fieldId("fundingSource")}
+                {...invalid("fundingSourceId")}
                 value={values.fundingSourceId}
                 onValueChange={(value) => {
                   const nextSource = options.fundingSources.find((s) => s.id === value);
@@ -1270,6 +1345,7 @@ export function ExpenseForm({
                 ))}
               </Select>
             )}
+            {errorFor("fundingSourceId")}
           </div>
           )}
 
@@ -1280,6 +1356,7 @@ export function ExpenseForm({
             <Select
               id={fieldId("lineItem")}
               aria-labelledby={fieldId("lineItem-label")}
+              {...invalid("lineItemId")}
               value={values.lineItemId}
               className={highlight}
               onValueChange={(value) => set("lineItemId", value)}
@@ -1294,6 +1371,7 @@ export function ExpenseForm({
                 );
               })}
             </Select>
+            {errorFor("lineItemId")}
           </div>
 
           <div>
@@ -1303,6 +1381,7 @@ export function ExpenseForm({
             <Select
               id={fieldId("paymentSource")}
               aria-labelledby={fieldId("paymentSource-label")}
+              {...invalid("paymentSource")}
               value={values.paymentSource}
               onValueChange={(value) => set("paymentSource", value)}
             >
@@ -1320,6 +1399,7 @@ export function ExpenseForm({
                 </option>
               ))}
             </Select>
+            {errorFor("paymentSource")}
           </div>
 
           {/*
@@ -1332,11 +1412,12 @@ export function ExpenseForm({
             {!embedded && (
             <div className="flex-1 min-w-[220px]">
               <Label id={fieldId("month-label")} htmlFor={fieldId("month")}>
-                Month
+                Reporting month
               </Label>
               <Select
                 id={fieldId("month")}
                 aria-labelledby={fieldId("month-label")}
+                {...invalid("month")}
                 value={values.month}
                 onValueChange={(value) => {
                   set("month", value);
@@ -1350,6 +1431,8 @@ export function ExpenseForm({
                   </option>
                 ))}
               </Select>
+              {errorFor("month")}
+              <Helper>The month whose packet this expense goes in. It can differ from the date.</Helper>
             </div>
             )}
             <div className="flex-1 min-w-[220px]">
@@ -1360,15 +1443,15 @@ export function ExpenseForm({
                 type="date"
                 value={values.date}
                 onChange={(event) => set("date", event.target.value)}
+                {...invalid("date")}
               />
+              {errorFor("date")}
             </div>
           </div>
           </div>
 
           <div data-tour="add-expense-description">
-            <Label htmlFor={fieldId("description")}>
-              Description / role (prints on the cover sheet exactly as typed)
-            </Label>
+            <Label htmlFor={fieldId("description")}>Description / role</Label>
             <Textarea
               id={fieldId("description")}
               rows={2}
@@ -1376,6 +1459,10 @@ export function ExpenseForm({
               value={values.description}
               onChange={(event) => set("description", event.target.value)}
             />
+            <Helper>
+              Prints in the cover sheet table next to the name, exactly as typed. For a salary, the
+              person&apos;s role.
+            </Helper>
           </div>
 
           {/* The fieldset pauses here for the upload fields. A disabled fieldset disables
@@ -1400,11 +1487,13 @@ export function ExpenseForm({
                   {field}
                 </Label>
                 <MoneyInput
-                  id={field}
+                  id={fieldId(field)}
                   value={values[field]}
                   placeholder="0.00"
                   onChange={(event) => set(field, event.target.value)}
+                  {...invalid(field)}
                 />
+                {errorFor(field)}
               </div>
             ))}
           </div>
@@ -1427,8 +1516,8 @@ export function ExpenseForm({
             containerRef={receiptBoxRef}
             vendor={vendorToOffer}
             date={dateToOffer ? formatDateUS(dateToOffer) : null}
-            onAddVendor={(fromKeyboard) => vendorToOffer && addReceiptVendor(vendorToOffer, fromKeyboard)}
-            onAddDate={(fromKeyboard) => dateToOffer && addReceiptDate(dateToOffer, fromKeyboard)}
+            onAddVendor={(fromKeyboard, at) => vendorToOffer && addReceiptVendor(vendorToOffer, fromKeyboard, at)}
+            onAddDate={(fromKeyboard, at) => dateToOffer && addReceiptDate(dateToOffer, fromKeyboard, at)}
           />
 
           {showAmountSuggestionPanel && (
@@ -1565,30 +1654,38 @@ export function ExpenseForm({
               onChange={(event) => set("note", event.target.value)}
             />
             <Helper>
-              {/* Says what will actually print. It used to promise the tax note "whenever tax is
-                entered", which stopped being true once tax became reimbursable (R6.5a). */}
+              {/* Says where it prints (R6.5), and names the automatic disclosure only when one will
+                actually print beside it (R6.5a), since tax can be reimbursable. */}
               {autoNote
-                ? `This note prints in addition to the automatic disclosure: ${autoNote}`
-                : "Anything you leave out of the reimbursement is disclosed here automatically."}
+                ? `A short extra remark, highlighted next to this expense on the cover sheet. The automatic note prints too: ${autoNote}`
+                : "A short extra remark, highlighted next to this expense on the cover sheet."}
             </Helper>
           </div>
 
           <div>
-            <Label htmlFor={fieldId("narrative")}>Narrative</Label>
+            <Label htmlFor={fieldId("narrative")}>
+              Narrative <span className="font-normal text-sub">(required)</span>
+            </Label>
             <Textarea
               id={fieldId("narrative")}
               rows={3}
               value={values.narrative}
               onChange={(event) => set("narrative", event.target.value)}
+              {...invalid("narrative")}
             />
+            {errorFor("narrative")}
             <Helper>
-              Prints as a paragraph under this expense on the cover sheet.
+              A sentence or two on what this was for. Prints as a paragraph under this expense on the
+              cover sheet.
             </Helper>
           </div>
 
           </fieldset>
 
           {error && <DangerPanel>{error}</DangerPanel>}
+          {!error && Object.keys(fieldErrors).length > 0 && (
+            <DangerPanel>{UI.checkHighlightedFields}</DangerPanel>
+          )}
           {status && <div className="text-[15px] text-sub">{status}</div>}
 
           <div className="flex flex-wrap items-center gap-5">

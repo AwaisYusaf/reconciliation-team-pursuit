@@ -28,7 +28,7 @@ Final prompt = `[PREAMBLE]` + blank line + `[module file → "Claude Design prom
 | Body | 15–16px | Tables 15–16px, column headers 13px uppercase letterspaced in white on the header band |
 | Cards | white, 1px `line` border, radius 10px | `Card`; soft shadow only on raised elements (menus, the nav pill) |
 | Table header | `accent-dark` → `plus-light` gradient band, white text | Set once on the header row so it runs as one band across every column |
-| Controls | min-height 44px (buttons 48px), radius 3px | Primary: accent bg/white text; Secondary: white bg/accent border+text. Header selectors are compact pills |
+| Controls | min-height 44px (buttons 48px), radius 3px | Primary: accent bg/white text; Secondary: white bg/accent border+text. Header selectors are compact pills. An invalid field (`aria-invalid="true"`) gets a `danger` border and its own message directly under it (`FieldError`), wired with `aria-describedby` |
 | Focus | 2px ring, `accent`; `primary-fixed` inside `surface-dark` | Always visible, on every surface |
 
 ## Responsive scale
@@ -62,6 +62,10 @@ Layout rules that follow from the scale:
   `xl` it is a single menu button naming the current screen, which opens the full list; it is
   never a wrapped or scrolling row of nine tabs. The header has no bar of its own: the mark,
   the nav, the month and funding-source pills, and the account menu sit on the page.
+  Because of that, every form control in `main` carries a 6rem `scroll-margin-top`
+  (`app/globals.css`), so a control the browser scrolls to (Tab, Shift+Tab, a focused error)
+  stops below the header instead of under the nav pill (usability #27). Scrolling by hand still
+  passes content under the pill, by design.
 - A screen's title, subtext and controls go through `PageHeader`. Putting a control in a
   `justify-between` row with the title makes the subtext wrap below it on a phone, orphaning
   it from the heading it describes.

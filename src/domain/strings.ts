@@ -9,6 +9,7 @@
 import type { FeatureRequestStatus } from "@/src/db/schema";
 import type { ReadAmounts } from "@/src/domain/amount-suggestion";
 import { formatMoney } from "@/src/domain/format";
+import type { MissingItem } from "@/src/domain/gate";
 import { SHARE_PASSWORD_MAX, SHARE_PASSWORD_MIN } from "@/src/domain/shared-links";
 
 /** The product name, everywhere it appears in UI copy, page titles and generated-document fallbacks. */
@@ -119,6 +120,21 @@ function amountsLine(amounts: ReadAmounts, totalLabel: string): string {
  *  message inside `UI` can name it before `UI.supportEmail` exists. */
 const SUPPORT_EMAIL = "tech@authenticbusiness.io";
 
+/** The words for each documentation gap in a message that says what to add next (Words rule
+ *  5). Not R4.4's blocking-list phrasing, whose "missing both" is fixed (usability #30, #32). */
+const STILL_MISSING: Record<MissingItem, string> = {
+  proof: "proof of payment",
+  receipt: "a receipt",
+  narrative: "a narrative",
+};
+/** "It's still missing proof of payment and a receipt." (Oxford comma for three.) */
+function stillMissing(missing: readonly MissingItem[]): string {
+  const list = new Intl.ListFormat("en", { type: "conjunction" }).format(
+    missing.map((item) => STILL_MISSING[item]),
+  );
+  return `It's still missing ${list}.`;
+}
+
 export const UI = {
   /** Add Expense reimbursable box (R1.3). */
   reimburseHint: "Sales tax is excluded. The funder does not reimburse it.",
@@ -158,24 +174,6 @@ export const UI = {
   /** A delete sent by a page loaded before the confirmation became the list itself (PR #25). */
   lineItemDeleteReload: "This page is out of date. Reload it, then delete the line item again.",
   lineItemOrderStale: "The list changed since you opened it. Try again on the updated list.",
-  signupsClosed: "Sign-ups are closed.",
-  /** m02 — saved, but the documentation gate will still hold this record. */
-  savedMissingProof: "Expense saved. It's still missing proof of payment.",
-  /** Sign-up and onboarding step 1: the summary line while any field carries its own error. */
-  checkHighlightedFields: "Check the highlighted fields.",
-  /** Add Expense caution (non-blocking) — tax excluded from reimbursable (R1.3), so a large
-   *  tax relative to the subtotal isn't a domain-rule violation, just worth a second look. */
-  taxExceedsSubtotalWarning: "Tax is more than the subtotal. Double-check this entry.",
-  /** Add Expense caution (non-blocking) — a $0.00 subtotal is allowed, but unusual enough to
-   *  flag rather than save silently. */
-  subtotalIsZeroWarning: "Subtotal is $0.00. Double-check this entry.",
-  /** Refusal on every §2 write to a locked month (R10.7, D-96). */
-  monthLocked: (monthLabel: string) =>
-    `${monthLabel} is locked. Unlock it on the Month-End Packet tab to make changes.`,
-  /** Lock button/upload refusal while the blocking panel shows (R10.7). */
-  lockNeedsDocuments: "Add the missing documents before locking this month.",
-  /** Lock upload refusal for anything but a PDF (R10.7). */
-  lockNotPdf: "Upload the signed packet as a PDF.",
   /** The funding limit (R9.6): a line item add or edit that would take the line items further
    *  over the contract total. Amounts arrive formatted. */
   fundingLimitExceeded: (lineItemsTotal: string, contractTotal: string) =>
@@ -224,6 +222,25 @@ export const UI = {
             ? "reimburses fees but not sales tax"
             : "doesn't reimburse sales tax or fees"
     }. You can change this later in Settings, under Funding sources.`,
+  signupsClosed: "Sign-ups are closed.",
+  /** m02: after a save. Names every gap the documentation gate will still hold it for (R4.1,
+   *  R4.2); a complete record gets the plain line. */
+  expenseSaved: (missing: readonly MissingItem[] | null): string =>
+    missing && missing.length > 0 ? `Expense saved. ${stillMissing(missing)}` : "Expense saved.",
+  checkHighlightedFields: "Check the highlighted fields.",
+  /** Add Expense caution (non-blocking) — tax excluded from reimbursable (R1.3), so a large
+   *  tax relative to the subtotal isn't a domain-rule violation, just worth a second look. */
+  taxExceedsSubtotalWarning: "Tax is more than the subtotal. Double-check this entry.",
+  /** Add Expense caution (non-blocking) — a $0.00 subtotal is allowed, but unusual enough to
+   *  flag rather than save silently. */
+  subtotalIsZeroWarning: "Subtotal is $0.00. Double-check this entry.",
+  /** Refusal on every §2 write to a locked month (R10.7, D-96). */
+  monthLocked: (monthLabel: string) =>
+    `${monthLabel} is locked. Unlock it on the Month-End Packet tab to make changes.`,
+  /** Lock button/upload refusal while the blocking panel shows (R10.7). */
+  lockNeedsDocuments: "Add the missing documents before locking this month.",
+  /** Lock upload refusal for anything but a PDF (R10.7). */
+  lockNotPdf: "Upload the signed packet as a PDF.",
   /** Lock upload refusal — the row was already locked by someone else. */
   monthAlreadyLocked: "This month is already locked.",
   /** Unlock refusal — nothing to undo. */

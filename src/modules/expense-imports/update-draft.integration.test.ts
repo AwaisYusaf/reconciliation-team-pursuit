@@ -250,4 +250,20 @@ describe.skipIf(!hasDatabase)("updateDraftAction (integration)", async () => {
     if (result.ok) throw new Error("unreachable");
     expect(result.error).toBe("Choose a line item.");
   });
+
+  it("a field of the wrong type is refused as a stale request, not read or thrown; the row is unchanged", async () => {
+    asOrg(orgId, userId);
+    const id = await insertDraft("Malformed Target");
+    const before = await draftById(id);
+
+    // `validate` is shared with create, update and the invoice route: "false" is truthy text,
+    // and `.trim()` on a number would throw past the ActionResult contract (review ledger).
+    for (const overrides of [{ noReceipt: "false" }, { narrative: 42 }, { name: null }]) {
+      expect(await updateDraftAction(baseInput(id, overrides)), JSON.stringify(overrides)).toEqual({
+        ok: false,
+        error: UI.requestRefused,
+      });
+    }
+    expect(await draftById(id)).toEqual(before);
+  });
 });

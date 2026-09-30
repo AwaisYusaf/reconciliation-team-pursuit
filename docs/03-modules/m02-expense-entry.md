@@ -16,22 +16,22 @@ Writes `expenses`, `expense_documents`, upserts `vendor_defaults` (R8.2). Reads 
 | Name | Free text (payee/label). Type-ahead: substring suggestions max 6; exact match autofills line item + description with `#F3E9DD` flash (still editable) — the remembered line item only applies if it belongs to the currently selected funding source, otherwise the field is left empty (D-93). |
 | Line item | Select, required. Lists only the selected funding source's line items, each labelled `"{name} · {amount} remaining"` (D-93, Appendix A §4). |
 | Payment source | Select of the org's active payment-source labels (R5.1), required. As of D-93 this only records *how* something was paid — it no longer drives the reimbursement flags. |
-| Month | Select, defaults to the active month (R2.2); editable in add and edit. Moving months never moves S3 objects (keys are historical). |
+| Reporting month | Select labelled `Reporting month`, defaults to the active month (R2.2); editable in add and edit. Helper: `The month whose packet this expense goes in. It can differ from the date.` (usability #28). Not shown on an invoice card, where the invoice fixes the month. Moving months never moves S3 objects (keys are historical). |
 | Date | Date input, defaults today in America/Detroit (R2.5), any date allowed. |
-| Description / role | Textarea, label: `Description / role (prints on the cover sheet exactly as typed)`. |
-| Subtotal / Tax / Fees | Money inputs; negatives allowed (refunds). |
+| Description / role | Textarea, label `Description / role`, helper: `Prints in the cover sheet table next to the name, exactly as typed. For a salary, the person's role.` (usability #26). |
+| Subtotal / Tax / Fees | Money inputs; negatives allowed (refunds). Each input carries the per-form id its label points at, so each is programmatically labelled (usability #29). |
 | Include in reimbursement | Tax / Fees checkboxes, shown only when that amount is non-zero; defaults from the selected **funding source** (R1.3, D-93 — no longer the payment source) |
 | Reimbursable box | Live reimbursable per R1.3, with the receipt total beneath it and the shortfall named when they differ (R1.3a) |
 | Projection line | `Remaining on {line item} after this expense: {amount}` — red/bold when negative (R3.7). |
 | Proof of payment | Multi-file upload (images/PDF), 1–n, thumbnails, remove; required to be documentation-complete. Files count only after server-side process & attach succeeds (R4.6) — failed files show the R12 `upload-failed` chip. |
 | Receipt / justification | Multi-file upload (receipt, invoice, or timesheet) — OR checkbox `No receipt available` revealing a required reason textarea (empty → R12 `no-receipt-reason-required`; prints per R6.7). Checking it hides the upload; already-attached receipt files are kept until save, then deleted (confirmation inline) — service rejects the combined state (R4.2). |
 | Supporting documents | Repeatable: type select (R11.1) + file; list with remove. |
-| Note (inline) | Optional single-line; overrides auto tax note (R6.5). Helper shows the auto note that will print when tax > 0 and note empty. |
-| Narrative | Required textarea (R4.7, prints per R6.6), helper: "Prints as a paragraph under this expense on the cover sheet." |
+| Note (inline) | Optional single-line, label `Note (optional)`; prints highlighted on the heading beside any exclusion note (R6.5). Helper: `A short extra remark, highlighted next to this expense on the cover sheet.`, followed by `The automatic note prints too: {note}` when an exclusion note will print (R6.5a, usability #26). |
+| Narrative | Required textarea (R4.7, prints per R6.6), label `Narrative (required)` in the muted style of Note's "(optional)", helper: `A sentence or two on what this was for. Prints as a paragraph under this expense on the cover sheet.` (usability #26). |
 
 ## Behavior
-- Save validation: name, line item, payment source, and narrative are required — error: `Enter a name, choose a line item, and choose a payment source.` for the first three, `Enter a narrative for this expense.` (R4.7) when narrative is blank. Amounts default 0. `No receipt available` requires reason.
-- Saving without proofs/receipt is **allowed** (capture-first philosophy) — the record is simply documentation-incomplete and shows up in gates (R4.5 pattern). The form shows a passive notice when saving incomplete: "Expense saved. It's still missing proof of payment." Narrative has no such passive path: unlike proof/receipt, it blocks the save itself (R4.7) rather than only gating the download later. Expenses saved before R4.7 existed keep whatever narrative they have (possibly none) and are not rejected on read, only on the next save.
+- Save validation (usability #24, #25): the server checks every rule at once (`validateFields` in `src/modules/expenses/validation.ts`) and returns every problem in one result, keyed by field. Each invalid field shows its own red message directly under it, gets a red border, `aria-invalid="true"` and `aria-describedby` pointing at that message; the first one is scrolled to the middle of the screen and focused; and `Check the highlighted fields.` shows above Save. Typing into a field clears its message. The per-field messages: `Enter a name.`, `Choose a funding source.`, `Choose a line item.`, `Choose a payment source.`, `Choose a month.`, `Enter a valid date.`, `Enter a valid subtotal, like 1234.56.` (tax and fees alike), `Enter the reason no receipt is available.`, `Enter a narrative for this expense.` (R4.7). Amounts default 0. A refusal that is not about one field (locked month, archived source, a line item deleted mid-save, session expired) shows as one panel message instead. The draft and invoice paths keep one sentence (`validate`, derived from the same rules), with `Enter a name, choose a line item, and choose a payment source.` for the first three. Before any rule, every path (create, update, draft save, invoice import) checks the request is shaped like the form's: text fields are strings and checkboxes real booleans. Anything else (the text "false" for No receipt available, a number for a text field, no object at all) is refused as one panel message, `That couldn't be completed. Reload the page and try again.` (`UI.requestRefused`), never read as true or thrown.
+- Saving without proofs/receipt is **allowed** (capture-first philosophy) — the record is simply documentation-incomplete and shows up in gates (R4.5 pattern). The toast after a save names every gap the gate will still hold it for, counting files queued in the form (usability #30): `Expense saved. It's still missing proof of payment and a receipt.`, `... missing proof of payment.`, `... missing a receipt.`, or plain `Expense saved.` when complete (a ticked "No receipt available", or an invoice card's invoice, covers the receipt). A draft save keeps `Draft saved.`. Narrative has no such passive path: unlike proof/receipt, it blocks the save itself (R4.7) rather than only gating the download later. Expenses saved before R4.7 existed keep whatever narrative they have (possibly none) and are not rejected on read, only on the next save.
 - Uploads: presigned POST direct to S3 (server-generated docId keys under the client-generated expense uuid), then `attachDocument(docId)` runs process & attach (R4.6) with progress + per-file status chips. `createExpense` receives the expense uuid + the list of attached docIds — never raw S3 keys. Abandoned drafts are removed by the nightly sweep (>24 h, no expense row).
 - Document removals (chips' ×) are immediate and labeled "Removed now — not undone by Cancel"; Cancel discards field edits only.
 - After save: to Expenses list, new row highlighted. Edit mode identical, prefilled, plus Delete (confirm dialog). Projection uses the edit-mode formula (R3.7). Editing a month marked Submitted shows the R10.6 warning banner — keyed by `{fundingSourceId}:{month}` (D-93), so it fires if either the current or a newly chosen source has that month submitted.
@@ -99,10 +99,11 @@ Fields in order:
    on this and the description field.
 3. "Payment source" select, value "Paid by us, reimbursement requested" (other options:
    "Invoiced to fiduciary in advance", "Paid directly by fiduciary").
-4. Side-by-side row: "Month" select (value "March 2026") and "Date" date input (value
+4. Side-by-side row: "Reporting month" select (value "March 2026", helper "The month whose
+   packet this expense goes in. It can differ from the date.") and "Date" date input (value
    03/02/2026).
-5. "Description / role (prints on the cover sheet exactly as typed)" textarea, value
-   "Director".
+5. "Description / role" textarea, value "Director", helper "Prints in the cover sheet table
+   next to the name, exactly as typed. For a salary, the person's role."
 6. Row of three money inputs: Subtotal $9,211.50 · Tax $0.00 · Fees $0.00.
 7. A bordered emphasis box (2px #211B16 border, white): "Reimbursable amount: $9,211.50" in
    24px bold, under it 15px #5B5147 "Sales tax is excluded. The funder does not reimburse it."
@@ -118,12 +119,12 @@ Fields in order:
 11. "Supporting documents" — a row with a type select (options: Check copy, Request form,
     Vendor invoice, Event flyer, Narrative, Other) + file button; below, one attached row
     "Event flyer — connections-gems-retreat.pdf" with Remove.
-12. "Note (optional)" text input, helper "If tax is entered and this is empty, the standard
-    tax note prints automatically."
-13. "Narrative" textarea (required), helper "Prints as a paragraph under this expense on the
-    cover sheet."
+12. "Note (optional)" text input, helper "A short extra remark, highlighted next to this
+    expense on the cover sheet."
+13. "Narrative (required)" textarea, "(required)" in muted regular weight, helper "A sentence
+    or two on what this was for. Prints as a paragraph under this expense on the cover sheet."
 
 Bottom: primary "Save expense" button and a quiet "Cancel" link. Also show the validation
-error style once: red text "Enter a name, choose a line item, and choose a payment
-source." above the save button.
+error style once: the Name input with a red border and red text "Enter a name." directly under
+it, and a red panel "Check the highlighted fields." above the save button.
 ```
