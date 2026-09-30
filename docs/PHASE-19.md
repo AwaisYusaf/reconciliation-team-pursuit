@@ -189,6 +189,10 @@ remembered $50.00 + $3.00):
   - With two receipts dated 9/12, it offered the date.
 - **Unchanged screens:**
   - An invoice card's added receipt reads amounts as before and shows no box.
+  - Fixed after the 2026-09-30 browser test: on Edit of an expense approved from an invoice,
+    adding a proof read the whole invoice (its receipt), offered the invoice's vendor as the
+    charge's name and the bill's $800.30 as its amounts. The imported invoice (`fromInvoice`,
+    same object as an `expense_imports` row of the org) is now left out of every read.
   - Draft edit reads nothing on opening or when a file is added. Its button reads amounts only
     and shows no box.
   - The draft's own file came back 404, "No amount found": the existing bug recorded as TASKS R16,

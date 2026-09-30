@@ -40,7 +40,7 @@ const hasDatabase = Boolean(process.env.DATABASE_URL);
 
 describe.skipIf(!hasDatabase)("read amounts (integration, Phase 10)", async () => {
   const { db } = await import("@/src/db");
-  const { aiUsageEvents, expenseDocuments, expenses, lineItems, organizations, supportingDocTypes } = await import(
+  const { aiUsageEvents, expenseDocuments, expenseImports, expenses, lineItems, organizations, supportingDocTypes } = await import(
     "@/src/db/schema"
   );
   const { createTestOrg } = await import("@/src/db/test-org");
@@ -499,6 +499,35 @@ describe.skipIf(!hasDatabase)("read amounts (integration, Phase 10)", async () =
       form.set("documentId", ingested.documentId);
       const response = await POST(readRequest(form));
       expect(response.status).toBe(400);
+    });
+
+    it("an attached receipt that is the org's imported invoice → 400, never read (the whole bill, not this charge)", async () => {
+      const expenseId = await makeExpense(orgId, fundingSourceId, lineItemId);
+      const ingested = await ingestExpenseDocument({ orgId, expenseId, scope: "receipt", file: await jpegFile() });
+      if (!ingested.ok) throw new Error(ingested.error);
+      const [doc] = await db
+        .select({ s3Key: expenseDocuments.s3Key })
+        .from(expenseDocuments)
+        .where(eq(expenseDocuments.id, ingested.documentId));
+      // Approval re-points the invoice's own object as the charge's receipt: same key, same org.
+      await db.insert(expenseImports).values({
+        orgId,
+        fundingSourceId,
+        month: "2026-09",
+        s3Key: doc.s3Key,
+        filename: "invoice.jpg",
+        mimeType: "image/jpeg",
+        sha256: "c".repeat(64),
+      });
+
+      asSession(orgId, userId);
+      readAmountsMock.mockClear();
+      const form = new FormData();
+      form.set("documentId", ingested.documentId);
+      const response = await POST(readRequest(form));
+      expect(response.status).toBe(400);
+      expect(await response.json()).toMatchObject({ error: "That document type is not read." });
+      expect(readAmountsMock).not.toHaveBeenCalled();
     });
 
     it("trashed expense's document → 404", async () => {

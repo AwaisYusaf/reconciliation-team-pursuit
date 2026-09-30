@@ -213,3 +213,11 @@ describe("controls the browser scrolls to stop below the floating header (#27, A
     expect(css).toMatch(/main :is\(input, textarea, select, button\) \{\s*scroll-margin-top: 6rem;\s*\}/);
   });
 });
+
+describe("an imported invoice is never read as one charge's receipt", () => {
+  it("the attached files the form reads leave out an imported invoice, before the read and the vendor box see them", () => {
+    expect(form).toMatch(
+      /\.\.\.\(existing\?\.documents \?\? \[\]\)\s*\.filter\(\(doc\) => \(doc\.kind === "receipt" \|\| doc\.kind === "proof"\) && doc\.status === "attached"\)\s*\.filter\(\(doc\) => !doc\.fromInvoice\)/,
+    );
+  });
+});

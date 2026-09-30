@@ -3,7 +3,7 @@ import "server-only";
 /**
  * Expense reads for m02 and m03.
  */
-import { and, asc, desc, eq, inArray, isNotNull, isNull } from "drizzle-orm";
+import { and, asc, desc, eq, exists, inArray, isNotNull, isNull, sql, type AnyColumn } from "drizzle-orm";
 
 import { db } from "@/src/db";
 import { isUuid } from "@/src/lib/ids";
@@ -11,6 +11,7 @@ import {
   expenseAuditAction,
   expenseAuditEvents,
   expenseDocuments,
+  expenseImports,
   expenses,
   fundingSources,
   lineItems,
@@ -31,7 +32,24 @@ export type AttachedDocument = {
   mimeType: string;
   pageCount: number | null;
   status: "pending" | "attached" | "failed";
+  /** The whole invoice this charge was imported from (its object is an `expense_imports` row's).
+   *  Never read for amounts or a vendor: they are the bill's, not this one charge's. */
+  fromInvoice: boolean;
 };
+
+/** True when a document row's stored object is one of the organisation's imported invoices:
+ *  approval re-points the invoice itself as each charge's receipt rather than copying it.
+ *  ponytail: one EXISTS per document row, found through the org_id prefix of
+ *  `expense_imports_org_source_month_idx`; add an (org_id, s3_key) index if an org's imports
+ *  ever run into the thousands. */
+export function isImportedInvoice(document: { orgId: AnyColumn; s3Key: AnyColumn }) {
+  return sql<boolean>`${exists(
+    db
+      .select({ one: sql`1` })
+      .from(expenseImports)
+      .where(and(eq(expenseImports.orgId, document.orgId), eq(expenseImports.s3Key, document.s3Key))),
+  )}`;
+}
 
 export type ExpenseDetail = {
   id: string;
@@ -138,6 +156,7 @@ async function documentsFor(orgId: string, expenseIds: string[]): Promise<Map<st
       mimeType: expenseDocuments.mimeType,
       pageCount: expenseDocuments.pageCount,
       status: expenseDocuments.status,
+      fromInvoice: isImportedInvoice(expenseDocuments),
     })
     .from(expenseDocuments)
     // Only these expenses' files, found by `expense_documents_expense_idx` (Phase 0 B7). It used to

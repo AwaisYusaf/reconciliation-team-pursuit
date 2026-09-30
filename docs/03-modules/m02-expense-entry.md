@@ -44,8 +44,11 @@ When `canReadAmounts` is true for the organisation, a panel appears directly und
 Subtotal/Tax/Fees row. On Add, reading starts as soon as a receipt or proof is chosen; on Edit,
 nothing reads on opening, but choosing a new receipt or proof starts reading every file on the
 expense, the attached ones too, exactly as "Read amounts from documents" does (Phase 19; hidden
-when the expense has no receipt/proof queued or attached, or the month is locked). A draft
-reads only on the button, and an invoice card as on Add. When is decided in one place,
+when the expense has no receipt/proof queued or attached, its only receipt is the imported
+invoice, or the month is locked). A draft
+reads only on the button, and an invoice card as on Add. An expense made from an invoice never
+reads that invoice (its receipt is the whole bill, `fromInvoice` on the document): its total and
+vendor are not this one charge's, and the charge keeps its own name (D-135). When is decided in one place,
 `readingFor` in `src/domain/amount-suggestion.ts`. The panel shows "Reading N
 documents…" while any file is still in flight, nothing when none could be read (each file row
 already says "No amount found"), or the found amounts per file plus a

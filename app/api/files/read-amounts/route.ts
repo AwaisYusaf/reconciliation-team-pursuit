@@ -15,6 +15,7 @@ import { matchLibraryVendor } from "@/src/domain/vendor-match";
 import { isUuid } from "@/src/lib/ids";
 import { sameOrigin } from "@/src/lib/same-origin";
 import { readAmountsAllowedForOrg } from "@/src/modules/ai/access";
+import { isImportedInvoice } from "@/src/modules/expenses/queries";
 import { beginRead, endRead } from "@/src/modules/amount-reading/in-flight";
 import { MAX_PAGES_READ } from "@/src/modules/amount-reading/page-cap";
 import { consume } from "@/src/services/rate-limit";
@@ -205,6 +206,7 @@ async function resolveInput(orgId: string, userId: string, form: FormData): Prom
       pageCount: expenseDocuments.pageCount,
       mimeType: expenseDocuments.mimeType,
       kind: expenseDocuments.kind,
+      fromInvoice: isImportedInvoice(expenseDocuments),
     })
     .from(expenseDocuments)
     .innerJoin(expenses, eq(expenses.id, expenseDocuments.expenseId))
@@ -219,7 +221,10 @@ async function resolveInput(orgId: string, userId: string, form: FormData): Prom
     )
     .limit(1);
   if (!row) return { ok: false, status: 404, error: "That document no longer exists." };
-  if (row.kind !== "receipt" && row.kind !== "proof") {
+  // An imported invoice is the whole bill, never one charge's receipt: its total and vendor would
+  // be offered for this one charge. The form leaves it out too; this also covers a tab opened
+  // before it did.
+  if ((row.kind !== "receipt" && row.kind !== "proof") || row.fromInvoice) {
     return { ok: false, status: 400, error: "That document type is not read." };
   }
   // Same ceiling as a freshly-picked file. A row that predates page counting has `null`, which is

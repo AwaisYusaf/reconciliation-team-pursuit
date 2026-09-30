@@ -375,7 +375,8 @@ export function ExpenseForm({
 
   // Every queued or already-attached receipt/proof — never supporting documents (Appendix A
   // §1). A ticked "No receipt available" drops receipt files entirely, so an expense that is
-  // proofs-only reads as exactly that.
+  // proofs-only reads as exactly that. An imported invoice is left out: it is the whole bill, so
+  // its total and vendor are not this one charge's (D-135 keeps the charge's own name).
   const readableFiles: AmountReadInput[] = [
     ...queued
       .filter((item) => item.scope === "receipt" || item.scope === "proof")
@@ -391,6 +392,7 @@ export function ExpenseForm({
       })),
     ...(existing?.documents ?? [])
       .filter((doc) => (doc.kind === "receipt" || doc.kind === "proof") && doc.status === "attached")
+      .filter((doc) => !doc.fromInvoice)
       .filter((doc) => !(values.noReceipt && doc.kind === "receipt"))
       .map((doc) => ({
         key: `doc:${doc.id}`,
