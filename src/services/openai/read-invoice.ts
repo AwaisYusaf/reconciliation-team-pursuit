@@ -25,6 +25,8 @@ export type InvoiceLine = {
 
 export type ReadInvoice = {
   vendor: string | null;
+  /** For the check screen's heading only (usability #61); never stored. */
+  invoiceNumber: string | null;
   invoiceDate: string | null;
   billTaxCents: number | null;
   billFeesCents: number | null;
@@ -72,10 +74,11 @@ const LINE_SCHEMA = {
 const RESPONSE_SCHEMA = {
   type: "object",
   additionalProperties: false,
-  required: ["found", "vendor", "invoice_date", "bill_tax", "bill_fees", "lines"],
+  required: ["found", "vendor", "invoice_number", "invoice_date", "bill_tax", "bill_fees", "lines"],
   properties: {
     found: { type: "boolean" },
     vendor: { type: ["string", "null"] },
+    invoice_number: { type: ["string", "null"] },
     invoice_date: { type: ["string", "null"] },
     // A tax or fee shown once for the whole bill rather than per line — surfaced as a note only
     // (Phase 14 assumptions), never split across lines.
@@ -98,8 +101,9 @@ const INSTRUCTION =
   "Use the description the invoice actually prints for that line. Leave it empty when the " +
   "invoice prints none; never write a placeholder or repeat the line's own name. " +
   "Every amount must be a plain decimal string like \"120.00\", with a leading minus for a " +
-  "refund or credit, or null when that field does not apply. Report the vendor name and invoice " +
-  "date when shown, and a whole-bill tax or fee only when it is not already broken out per line. " +
+  "refund or credit, or null when that field does not apply. Report the vendor name, the invoice " +
+  "number and the invoice date when shown, and a whole-bill tax or fee only when it is not " +
+  "already broken out per line. " +
   // The prompt and the parser are two paths that must agree (invariants H): whatever shape is
   // asked for here has to be one `isoDateFromPrinted` accepts, or the date is dropped and every charge
   // silently takes today's date instead of the bill's.
@@ -236,6 +240,8 @@ export function parseReadInvoiceResponse(json: unknown): ReadInvoiceResult {
   if (lines.length === 0) return { outcome: "none", ...usage };
 
   const vendor = toNullableString(parsed.vendor) ?? null;
+  // Display only (usability #61): capped, and blank or wrong-typed reads as none.
+  const invoiceNumber = toNullableString(parsed.invoice_number)?.trim().slice(0, 40) || null;
   // ISO downstream, whatever the model wrote: see `isoDateFromPrinted` (moved to the dates
   // module in Phase 19 so the receipt reader shares one parser).
   const invoiceDate = isoDateFromPrinted(toNullableString(parsed.invoice_date));
@@ -248,7 +254,7 @@ export function parseReadInvoiceResponse(json: unknown): ReadInvoiceResult {
 
   return {
     outcome: "found",
-    invoice: { vendor, invoiceDate, billTaxCents, billFeesCents, lines },
+    invoice: { vendor, invoiceNumber, invoiceDate, billTaxCents, billFeesCents, lines },
     truncated,
     unreadableLines,
     ...usage,

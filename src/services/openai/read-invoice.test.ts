@@ -522,3 +522,60 @@ describe("the invoice date is normalised to ISO", () => {
     expect(dateFrom("last Tuesday")).toBeNull();
   });
 });
+
+/**
+ * The invoice number (usability #61): read for the check screen's heading only, never stored.
+ * The schema and prompt are checked through the real request `readInvoice` sends (fetch mocked).
+ */
+describe("invoice number", () => {
+  function invoiceNumberFrom(value: unknown, present = true): string | null | undefined {
+    const overrides = present ? { invoice_number: value } : {};
+    const result = parseReadInvoiceResponse(responsesBody(invoiceBody([line()], overrides)));
+    if (result.outcome !== "found") throw new Error(`expected found, got ${result.outcome}`);
+    return result.invoice.invoiceNumber;
+  }
+
+  it("is read as printed, trimmed", () => {
+    expect(invoiceNumberFrom("INV-2210")).toBe("INV-2210");
+    expect(invoiceNumberFrom("  #2210 ")).toBe("#2210");
+  });
+
+  it("is null when missing, null, empty, blank or not a string (E51)", () => {
+    expect(invoiceNumberFrom(undefined, false)).toBeNull();
+    expect(invoiceNumberFrom(null)).toBeNull();
+    expect(invoiceNumberFrom("")).toBeNull();
+    expect(invoiceNumberFrom("   ")).toBeNull();
+    expect(invoiceNumberFrom(123)).toBeNull();
+  });
+
+  it("is cut to its first 40 characters (E51)", () => {
+    const sixty = "N".repeat(20) + "0123456789".repeat(4);
+    expect(invoiceNumberFrom(sixty)).toBe(sixty.slice(0, 40));
+    expect(invoiceNumberFrom("A".repeat(40))).toBe("A".repeat(40));
+  });
+
+  it("does not stop the charges being read when it is wrong-typed", () => {
+    const result = parseReadInvoiceResponse(responsesBody(invoiceBody([line()], { invoice_number: { n: 1 } })));
+    expect(result.outcome).toBe("found");
+    if (result.outcome === "found") expect(result.invoice.lines).toHaveLength(1);
+  });
+
+  it("is required by the schema sent to OpenAI, as a string or null, and the prompt asks for it", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(responsesBody({ found: false })));
+    await readInvoice(
+      { body: Buffer.from("pdf-bytes"), mimeType: "application/pdf" },
+      { fetch: fetchMock, env: baseEnv() },
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body as string);
+    const schema = body.text.format.schema;
+    expect(schema.required).toContain("invoice_number");
+    expect(schema.properties.invoice_number).toEqual({ type: ["string", "null"] });
+    // Strict mode needs every property listed as required, the new one included.
+    expect([...schema.required].sort()).toEqual(Object.keys(schema.properties).sort());
+    expect(body.input[0].content[0].text).toContain("the invoice number");
+    // Unchanged by this: nothing retained, same output cap.
+    expect(body.store).toBe(false);
+    expect(body.max_output_tokens).toBe(4000);
+  });
+});

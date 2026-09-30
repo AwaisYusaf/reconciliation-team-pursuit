@@ -16,7 +16,7 @@ import { Button, buttonClassName } from "@/src/components/ui/button";
 import { Dialog } from "@/src/components/ui/dialog";
 import { Label } from "@/src/components/ui/field";
 import { Select } from "@/src/components/ui/select";
-import { ACTION_CLEARANCE, DangerPanel, Subtext } from "@/src/components/ui/surfaces";
+import { ACTION_CLEARANCE, DangerPanel, InfoNote, PageTitle, Subtext } from "@/src/components/ui/surfaces";
 import { formatDateUS, monthLabel } from "@/src/domain/dates";
 import { clearCheck, loadCheck, saveCheck } from "@/src/modules/expense-imports/check-draft-store";
 import { draftNeeds } from "@/src/domain/draft-rules";
@@ -34,6 +34,7 @@ import { MAX_UPLOAD_BYTES } from "@/src/services/storage/keys";
 
 type ReadInvoiceData = {
   vendor: string | null;
+  invoiceNumber: string | null;
   invoiceDate: string | null;
   billTaxCents: number | null;
   billFeesCents: number | null;
@@ -112,6 +113,9 @@ type CheckState = {
   file: File;
   invoiceDate: string | null;
   vendor: string | null;
+  /** For the heading only, never stored (usability #61). A check kept in the browser store
+   *  from before this field existed has none, so every read uses `?? null`. */
+  invoiceNumber: string | null;
   billTaxCents: number | null;
   billFeesCents: number | null;
   truncated: boolean;
@@ -176,7 +180,7 @@ export function InvoiceExtract({
   /** Remaining budget per line item, for the live projection each card's own form shows
    *  (R3.7) — the same figures `new/page.tsx` already computes for the plain Add Expense form. */
   remaining: RemainingByLineItem;
-  matchContext: { recurringItems: RecurringMatch[]; vendors: VendorMatch[] };
+  matchContext: { recurringItems: RecurringMatch[]; vendors: VendorMatch[]; earlierVendors: string[] };
   lockedMonths: string[];
   activeMonth: string;
   today: string;
@@ -283,6 +287,8 @@ export function InvoiceExtract({
         sourceLineItemIds: (options.lineItemsBySource[fundingSourceId] ?? []).map((item) => item.id),
         invoiceDate: invoice.invoiceDate ?? today,
         month: activeMonth,
+        vendor: invoice.vendor,
+        earlierVendors: matchContext.earlierVendors,
       };
 
       const sha256 = await sha256Hex(file);
@@ -298,6 +304,7 @@ export function InvoiceExtract({
         file,
         invoiceDate: invoice.invoiceDate,
         vendor: invoice.vendor,
+        invoiceNumber: invoice.invoiceNumber ?? null,
         billTaxCents: invoice.billTaxCents,
         billFeesCents: invoice.billFeesCents,
         truncated: Boolean(data.truncated),
@@ -350,9 +357,8 @@ export function InvoiceExtract({
   }
 
   /**
-   * Drop a charge from the screen. Removing an unsaved one is the only way to leave it out of
-   * the import; removing a saved one only takes it off this list — the expense or draft it
-   * already wrote stays exactly as saved, so a saved card gets a confirmation that says so.
+   * Drop a charge from the screen, which leaves it out of the import. Nothing is written until
+   * Done (see `saveCard`), so a marked card loses what it was marked as: it asks first.
    */
   function requestRemove(card: ChargeCard) {
     if (card.saved === null) {
@@ -506,8 +512,11 @@ export function InvoiceExtract({
         // Cleared explicitly rather than relying on `setCheck(null)`, because this navigates
         // away and the effect that mirrors state to the store may not run first.
         await clearCheck();
-        toast.success(UI.invoiceDoneResult(expenseCount, cards.length - expenseCount));
-        router.push("/r/expenses");
+        const draftCount = cards.length - expenseCount;
+        toast.success(UI.invoiceDoneResult(expenseCount, draftCount));
+        // Straight to the drafts when any were made, so they are found before month end
+        // (usability #64).
+        router.push(draftCount > 0 ? "/r/expenses?view=drafts" : "/r/expenses");
         router.refresh();
       } catch {
         submittingRef.current = false;
@@ -573,14 +582,22 @@ export function InvoiceExtract({
                 if (chosen) void readInvoice(chosen);
               }}
             />
+            {/* Says what the button does before anything is clicked (PHASE-14 C9, usability
+                #60), as a tooltip and a screen-reader description: a visible line here
+                wrapped into the header beside the month selector. */}
             <Button
               variant="secondary"
               data-tour="add-expense-from-invoice"
+              title={UI.invoiceExtractHint}
+              aria-describedby="invoice-extract-hint"
               onClick={() => fileInputRef.current?.click()}
               disabled={reading || monthLockedForSelected}
             >
               {reading ? UI.invoiceReadingButton : UI.invoiceExtractFromInvoice}
             </Button>
+            <span id="invoice-extract-hint" className="sr-only">
+              {UI.invoiceExtractHint}
+            </span>
             {monthLockedForSelected && (
               <Subtext className="max-w-[260px] text-right">
                 {UI.monthLocked(monthLabel(activeMonth))}
@@ -592,17 +609,18 @@ export function InvoiceExtract({
     );
   }
 
-  const wholeBillCents = (check.billTaxCents ?? 0) + (check.billFeesCents ?? 0);
   const showWholeBillCharge =
     (check.billTaxCents !== null && check.billTaxCents !== 0) ||
     (check.billFeesCents !== null && check.billFeesCents !== 0);
-  const unsavedCount = check.rows.filter((row) => row.saved === null).length;
 
   return (
     // Matches the standalone Add Expense form. 720px was set when each card was a single
     // column of fields; now that the fields pair up, the cards need the same room the form
     // they contain does.
     <div className="max-w-[720px] lg:max-w-[940px]">
+      <PageTitle className="mb-2">
+        {UI.invoiceCheckHeading(check.rows.length, check.vendor, check.invoiceNumber ?? null)}
+      </PageTitle>
       {check.invoiceDate && <Subtext className="mb-4">Invoice date: {formatDateUS(check.invoiceDate)}</Subtext>}
 
       {check.duplicate && (
@@ -624,9 +642,13 @@ export function InvoiceExtract({
       )}
 
       {showWholeBillCharge && (
-        <DangerPanel tone="notice" className="mb-4">
-          {UI.invoiceWholeBillCharge(formatMoney(wholeBillCents))}
-        </DangerPanel>
+        // Information, not an error (usability #63).
+        <InfoNote className="mb-4">
+          {UI.invoiceWholeBillCharge({
+            tax: check.billTaxCents ? formatMoney(check.billTaxCents) : null,
+            fees: check.billFeesCents ? formatMoney(check.billFeesCents) : null,
+          })}
+        </InfoNote>
       )}
 
       <div className="flex flex-col gap-4 mb-6">
@@ -743,15 +765,16 @@ export function InvoiceExtract({
           // Back throws away the whole read — every card, every narrative typed and every file
           // queued — so it asks first whenever there is anything to lose. Nothing has been
           // written at this point: the charges only reach the database when Done is pressed.
-          onClick={() => (unsavedCount > 0 ? setConfirmLeaveUnsaved(true) : setCheck(null))}
+          onClick={() => (check.rows.length > 0 ? setConfirmLeaveUnsaved(true) : setCheck(null))}
         >
           Back
         </Button>
+        <Subtext className="basis-full">{UI.invoiceDoneHint}</Subtext>
       </div>
 
       <Dialog
         open={confirmRemove !== null}
-        title="Remove this charge from the screen?"
+        title="Remove this charge?"
         dismissLabel="Keep it"
         onDismiss={() => setConfirmRemove(null)}
         confirm={{
@@ -762,13 +785,12 @@ export function InvoiceExtract({
           },
         }}
       >
-        {confirmRemove &&
-          `It only removes this card from the screen. The ${confirmRemove.saved === "expense" ? "expense" : "draft"} it already saved stays exactly as saved.`}
+        {confirmRemove && "This charge won't be added when you press Done."}
       </Dialog>
 
       <Dialog
         open={confirmLeaveUnsaved}
-        title="Leave without saving every charge?"
+        title="Go back without adding these charges?"
         dismissLabel="Keep editing"
         onDismiss={() => setConfirmLeaveUnsaved(false)}
         confirm={{
@@ -779,7 +801,7 @@ export function InvoiceExtract({
           },
         }}
       >
-        {`${unsavedCount} ${unsavedCount === 1 ? "charge has" : "charges have"} not been marked yet. Going back reads nothing into the month, and the invoice would have to be read again.`}
+        Nothing is saved until you press Done. Going back throws away every charge on this screen, and the invoice would have to be read again.
       </Dialog>
     </div>
   );

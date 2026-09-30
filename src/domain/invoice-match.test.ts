@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import {
   matchInvoiceLine,
+  withInvoiceVendor,
+  withoutInvoiceVendors,
   type InvoiceLine,
   type MatchContext,
   type RecurringMatch,
@@ -50,6 +52,8 @@ function ctx(overrides: Partial<MatchContext> = {}): MatchContext {
     sourceLineItemIds: ["software"],
     invoiceDate: "2026-09-15",
     month: "2026-09",
+    vendor: null,
+    earlierVendors: [],
     ...overrides,
   };
 }
@@ -233,5 +237,187 @@ describe("matchInvoiceLine", () => {
     const result = matchInvoiceLine(line(), ctx({ month: "2027-01", invoiceDate: "2027-01-05" }));
     expect(result.month).toBe("2027-01");
     expect(result.date).toBe("2027-01-05");
+  });
+});
+
+/**
+ * The invoice's vendor in each charge's description (usability #62), so the cover sheet's Role
+ * column says who was paid. The name stays the line's own: matching keys on it (PHASE-14 §5).
+ */
+describe("withInvoiceVendor", () => {
+  it("puts the vendor in front of the line's description (E53)", () => {
+    expect(withInvoiceVendor("Dinner", "Eastside Catering", "Dinner for 40", [])).toBe("Eastside Catering: Dinner");
+  });
+
+  it("is the vendor alone when the description is empty or blank (E54)", () => {
+    expect(withInvoiceVendor("", "Eastside Catering", "Dinner", [])).toBe("Eastside Catering");
+    expect(withInvoiceVendor("   ", "Eastside Catering", "Dinner", [])).toBe("Eastside Catering");
+  });
+
+  it("leaves a description that already names the vendor, in any case (E55)", () => {
+    expect(withInvoiceVendor("Catering by eastside catering", "Eastside Catering", "Dinner", [])).toBe(
+      "Catering by eastside catering",
+    );
+  });
+
+  it("leaves the description when the invoice named no vendor, or a blank one (E56)", () => {
+    expect(withInvoiceVendor("Dinner", null, "Dinner", [])).toBe("Dinner");
+    expect(withInvoiceVendor("Dinner", "   ", "Dinner", [])).toBe("Dinner");
+    expect(withInvoiceVendor("", null, "Dinner", [])).toBe("");
+  });
+
+  it("leaves the description when the line's name already is the vendor, ignoring case and spaces (E57)", () => {
+    expect(withInvoiceVendor("Monthly plan", "Adobe", " adobe ", [])).toBe("Monthly plan");
+  });
+
+  it("trims the vendor it adds and the description it keeps", () => {
+    expect(withInvoiceVendor("  Dinner  ", "  Eastside Catering ", "Food", [])).toBe("Eastside Catering: Dinner");
+  });
+
+  it("swaps an earlier invoice's vendor for this one, never stacking them (review: second import)", () => {
+    const earlier = ["Eastside Catering"];
+    expect(withInvoiceVendor("Eastside Catering: Box lunches", "Westside Deli", "Box lunches", earlier)).toBe(
+      "Westside Deli: Box lunches",
+    );
+    // Any case, and a description that was only the earlier vendor (a line with none of its own).
+    expect(withInvoiceVendor("EASTSIDE CATERING: Box lunches", "Westside Deli", "Box lunches", earlier)).toBe(
+      "Westside Deli: Box lunches",
+    );
+    expect(withInvoiceVendor("Eastside Catering", "Westside Deli", "Box lunches", earlier)).toBe("Westside Deli");
+  });
+
+  it("drops only a leading 'vendor: ', never the vendor named inside the text or a shorter name", () => {
+    expect(
+      withInvoiceVendor("Lunches, same as Eastside Catering", "Westside Deli", "Box lunches", ["Eastside Catering"]),
+    ).toBe("Westside Deli: Lunches, same as Eastside Catering");
+    expect(withInvoiceVendor("Eastside: office", "Westside Deli", "Rent", ["Eastside Catering"])).toBe(
+      "Westside Deli: Eastside: office",
+    );
+    // A blank entry in the list strips nothing.
+    expect(withInvoiceVendor("Box lunches", "Westside Deli", "Box lunches", ["  "])).toBe("Westside Deli: Box lunches");
+  });
+
+  it("strips the other vendor before checking whether this one is already named (review: Uber vs Uber Eats)", () => {
+    // "Uber" is inside "Uber Eats", but that was another vendor's prefix, not this one's name.
+    expect(withInvoiceVendor("Uber Eats: Team lunch", "Uber", "Team lunch", ["Uber Eats"])).toBe("Uber: Team lunch");
+    expect(withInvoiceVendor("Eastside Catering: Box lunches", "Eastside", "Box lunches", ["Eastside Catering"])).toBe(
+      "Eastside: Box lunches",
+    );
+  });
+
+  it("strips an earlier vendor even when the line's name is this invoice's vendor", () => {
+    expect(withInvoiceVendor("Eastside Catering: Monthly plan", "Adobe", "Adobe", ["Eastside Catering"])).toBe(
+      "Monthly plan",
+    );
+  });
+
+  it("strips 'Vendor:' with or without a space, and repeated prefixes left by older imports", () => {
+    expect(withInvoiceVendor("Eastside Catering:Box lunches", "Westside Deli", "Box lunches", ["Eastside Catering"])).toBe(
+      "Westside Deli: Box lunches",
+    );
+    expect(
+      withInvoiceVendor("Northside Deli: Eastside Catering: Box lunches", "Westside Deli", "Box lunches", [
+        "Eastside Catering",
+        "Northside Deli",
+      ]),
+    ).toBe("Westside Deli: Box lunches");
+  });
+
+  it("keeps this vendor's own prefix from an earlier invoice as it is (same vendor twice)", () => {
+    expect(
+      withInvoiceVendor("Eastside Catering: Box lunches", "Eastside Catering", "Box lunches", ["Eastside Catering"]),
+    ).toBe("Eastside Catering: Box lunches");
+    // Even when the line's name is that vendor: only another vendor's prefix is dropped.
+    expect(withInvoiceVendor("Adobe: Monthly plan", "Adobe", "Adobe", ["Adobe"])).toBe("Adobe: Monthly plan");
+  });
+});
+
+/** What the vendor library learns (`learnVendor`), and the strip `withInvoiceVendor` uses. */
+describe("withoutInvoiceVendors", () => {
+  it("drops a leading invoice vendor, in any case, with or without a space after the colon", () => {
+    expect(withoutInvoiceVendors("Eastside Catering: Box lunches", ["Eastside Catering"])).toBe("Box lunches");
+    expect(withoutInvoiceVendors("eastside catering:Box lunches", ["Eastside Catering"])).toBe("Box lunches");
+  });
+
+  it("is empty when the text is only an invoice vendor, and unchanged without one", () => {
+    expect(withoutInvoiceVendors("Eastside Catering", ["Eastside Catering"])).toBe("");
+    expect(withoutInvoiceVendors("Box lunches", ["Eastside Catering"])).toBe("Box lunches");
+    expect(withoutInvoiceVendors("Box lunches", [])).toBe("Box lunches");
+  });
+
+  it("leaves a vendor named later in the text, and a name that only starts the same way", () => {
+    expect(withoutInvoiceVendors("Lunch from Eastside Catering", ["Eastside Catering"])).toBe(
+      "Lunch from Eastside Catering",
+    );
+    expect(withoutInvoiceVendors("Eastside Cateringco: x", ["Eastside Catering"])).toBe("Eastside Cateringco: x");
+  });
+});
+
+describe("matchInvoiceLine: every tier carries the invoice's vendor (E58)", () => {
+  it("prefixes the recurring tier's remembered description", () => {
+    const result = matchInvoiceLine(line(), ctx({ recurringItems: [recurring()], vendor: "Adobe Inc." }));
+    expect(result.narrative).toBe("Monthly design subscription"); // proves the recurring tier ran
+    expect(result.description).toBe("Adobe Inc.: Design tools");
+    expect(result.name).toBe("Adobe");
+  });
+
+  it("prefixes the vendor-library tier's remembered description", () => {
+    const result = matchInvoiceLine(line(), ctx({ vendors: [vendor()], vendor: "Adobe Inc." }));
+    expect(result.lineItemId).toBe("software"); // proves the vendor tier ran
+    expect(result.narrative).toBeNull();
+    expect(result.description).toBe("Adobe Inc.: Vendor default description");
+  });
+
+  it("prefixes an unmatched line's own description", () => {
+    const result = matchInvoiceLine(
+      line({ name: "Dinner for 40", description: "Dinner" }),
+      ctx({ vendor: "Eastside Catering" }),
+    );
+    expect(result.lineItemId).toBeNull(); // proves nothing matched
+    expect(result.description).toBe("Eastside Catering: Dinner");
+    expect(result.name).toBe("Dinner for 40");
+  });
+
+  it("gives an unmatched line with no description the vendor alone", () => {
+    const result = matchInvoiceLine(line({ name: "Dinner", description: null }), ctx({ vendor: "Eastside Catering" }));
+    expect(result.description).toBe("Eastside Catering");
+  });
+
+  it("replaces an earlier invoice's vendor the library learned, in every tier (review: second import)", () => {
+    const learned = "Eastside Catering: Box lunches";
+    const earlierVendors = ["Eastside Catering"];
+    const fromVendor = matchInvoiceLine(
+      line({ name: "Box lunches" }),
+      ctx({
+        vendors: [vendor({ name: "Box lunches", defaultDescription: learned })],
+        vendor: "Westside Deli",
+        earlierVendors,
+      }),
+    );
+    expect(fromVendor.lineItemId).toBe("software"); // proves the vendor tier ran
+    expect(fromVendor.description).toBe("Westside Deli: Box lunches");
+
+    const fromRecurring = matchInvoiceLine(
+      line({ name: "Box lunches" }),
+      ctx({
+        recurringItems: [recurring({ name: "Box lunches", defaultDescription: learned })],
+        vendor: "Westside Deli",
+        earlierVendors,
+      }),
+    );
+    expect(fromRecurring.narrative).toBe("Monthly design subscription"); // proves the recurring tier ran
+    expect(fromRecurring.description).toBe("Westside Deli: Box lunches");
+
+    const unmatched = matchInvoiceLine(
+      line({ name: "Box lunches", description: learned }),
+      ctx({ vendor: "Westside Deli", earlierVendors }),
+    );
+    expect(unmatched.lineItemId).toBeNull(); // proves nothing matched
+    expect(unmatched.description).toBe("Westside Deli: Box lunches");
+  });
+
+  it("changes nothing when the line's name is the vendor (a matched recurring item named for it)", () => {
+    const result = matchInvoiceLine(line(), ctx({ recurringItems: [recurring()], vendor: "ADOBE" }));
+    expect(result.description).toBe("Design tools");
   });
 });

@@ -451,7 +451,7 @@ export function SettingsSections({
                       // Straight to the Dashboard rather than leaving the user on Settings.
                       // This button brings back *every* walkthrough, and the walkthrough has an
                       // order: the Dashboard tour is `TOUR_SEQUENCE`'s first stop and the one
-                      // that arms the self-chaining run through the rest. Staying put instead
+                      // that offers the run through the rest. Staying put instead
                       // restarted the guide from its last screen and skipped the chaining
                       // entirely, so "show the app guide again" showed only Settings' own tour.
                       () => router.push(TOUR_SEQUENCE[0].href),

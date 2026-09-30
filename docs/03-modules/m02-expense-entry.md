@@ -51,8 +51,10 @@ documents…" while any file is still in flight, nothing when none could be read
 already says "No amount found"), or the found amounts per file plus a
 combined total — receipts summed as the suggestion, proofs summed as a check against them
 ("✓ matches" or the "Receipts add up to… but proofs show…" warning). "Use these amounts" fills
-only Subtotal/Tax/Fees, after a confirm if the fields already hold a non-zero value; Dismiss
-hides the panel until the set of files changes. Nothing is ever sent to OpenAI unless the
+only Subtotal/Tax/Fees, after a confirm if the fields already hold a non-zero value, and keeps
+the panel open: while the three fields equal the suggestion (parsed the way the form parses
+them), "✓ Amounts used" replaces the button, which returns once a field or the suggestion
+changes (usability #58, 2026-09-29). Dismiss hides the panel until the set of files changes. Nothing is ever sent to OpenAI unless the
 organisation's plan, its Settings switch, and the server's OpenAI key/model are all present
 (`src/modules/ai/access.ts`).
 

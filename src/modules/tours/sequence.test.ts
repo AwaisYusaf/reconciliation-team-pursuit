@@ -3,6 +3,9 @@
  * guided tour follows. Pure logic, extracted from `tour.tsx` the same way `resolve-steps.ts`
  * was, so it's testable without a jsdom harness this repo doesn't have.
  */
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { tourKey } from "@/src/db/schema";
@@ -31,10 +34,11 @@ describe("TOUR_SEQUENCE", () => {
   });
 
   it("starts at the Dashboard — two places depend on it being first", () => {
-    // `tour.tsx` arms the self-chaining walkthrough when the *Dashboard* tour shows its first
-    // step, and Settings' "Show the app guide again" sends the user to `TOUR_SEQUENCE[0]` to
-    // restart the guide from the beginning. Reordering this list without moving the Dashboard
-    // back to the front would quietly break both.
+    // `tour.tsx` offers "Continue the tour" (the one control that starts the walkthrough) only
+    // on the *Dashboard* tour's last card (usability #57), and Settings' "Show the app guide
+    // again" sends the user to `TOUR_SEQUENCE[0]` to restart the guide from the beginning.
+    // Reordering this list without moving the Dashboard back to the front would quietly break
+    // both.
     expect(TOUR_SEQUENCE[0]).toEqual({ tour: "dashboard", href: "/r" });
   });
 });
@@ -203,18 +207,85 @@ describe("the walkthrough flag", () => {
 });
 
 describe("startsWalkthrough", () => {
-  it("starts on the first step the Dashboard tour shows", () => {
-    expect(startsWalkthrough("dashboard", { firstStep: true, replay: false })).toBe(true);
+  it("is offered by the Dashboard tour's first run", () => {
+    expect(startsWalkthrough("dashboard", { replay: false })).toBe(true);
   });
 
-  it("does not start on a replay of the Dashboard tour", () => {
+  it("is not offered on a replay of the Dashboard tour", () => {
     // The reported bug: (i) on the Dashboard reset the tour's "shown anything yet" state, so a
     // replay looked like a first run and Done carried the user off to Add Expense.
-    expect(startsWalkthrough("dashboard", { firstStep: true, replay: true })).toBe(false);
+    expect(startsWalkthrough("dashboard", { replay: true })).toBe(false);
   });
 
-  it("does not start from any later step, or from any other tab's tour", () => {
-    expect(startsWalkthrough("dashboard", { firstStep: false, replay: false })).toBe(false);
-    expect(startsWalkthrough("packet", { firstStep: true, replay: false })).toBe(false);
+  it("is not offered by any other tab's tour", () => {
+    expect(startsWalkthrough("packet", { replay: false })).toBe(false);
+  });
+
+  it("is offered again after Settings' 'Show the app guide again', which lands on TOUR_SEQUENCE[0] as a first run (E19)", () => {
+    // The reset clears the seen flags and pushes to the first tab. It never fires the replay
+    // event, the one thing that marks a run as a replay (`replayRef` in tour.tsx), so the
+    // Dashboard tour it lands on is a first run and offers Continue the tour.
+    const root = fileURLToPath(new URL("../../../", import.meta.url));
+    const settings = readFileSync(`${root}app/r/settings/settings-sections.tsx`, "utf8");
+    expect(settings).toMatch(
+      /\(\) => resetToursAction\(\),[\s\S]{0,900}?\(\) => router\.push\(TOUR_SEQUENCE\[0\]\.href\),/,
+    );
+    expect(settings).not.toContain("TOUR_REPLAY_EVENT");
+    expect(startsWalkthrough(TOUR_SEQUENCE[0].tour, { replay: false })).toBe(true);
+  });
+
+  it("is offered by no tour other than the Dashboard's, first run or replay", () => {
+    for (const { tour } of TOUR_SEQUENCE.slice(1)) {
+      expect(startsWalkthrough(tour, { replay: false }), tour).toBe(false);
+      expect(startsWalkthrough(tour, { replay: true }), tour).toBe(false);
+    }
+  });
+});
+
+/**
+ * `tour.tsx` wiring for usability #57, read from source (this repo has no jsdom; the same style
+ * as `tour-dismiss.test.ts`). Done must never start the walkthrough: only the last card's
+ * "Continue the tour" does, and only when `startsWalkthrough` said so.
+ */
+describe("tour.tsx: the walkthrough starts only from Continue the tour (usability #57)", () => {
+  const repoRoot = fileURLToPath(new URL("../../../", import.meta.url));
+  const source = readFileSync(`${repoRoot}src/components/ui/tour.tsx`, "utf8");
+  /** The source with comments removed, so a sentence mentioning a call can't satisfy a check. */
+  const code = source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
+
+  it("calls startTourSequence() exactly once, inside the Continue button's handler", () => {
+    const calls = [...code.matchAll(/startTourSequence\(\)/g)];
+    expect(calls).toHaveLength(1);
+    const handler = code.match(
+      /\{isLast && offerWalkthrough && \(\s*<Button[\s\S]*?onClick=\{\(\) => \{\s*startTourSequence\(\);\s*finish\(false\);\s*\}\}[\s\S]*?\{UI\.tourContinueButton\}/,
+    );
+    expect(handler, "Continue must be gated on isLast && offerWalkthrough and start then finish").not.toBeNull();
+  });
+
+  it("the per-step resolver only records the offer, it never starts the walkthrough", () => {
+    const start = code.indexOf("const el = resolveOneStep(step, findByDataTour);");
+    const end = code.indexOf("setCurrent({ el, step });", start);
+    expect(start).toBeGreaterThan(-1);
+    expect(end).toBeGreaterThan(start);
+    const resolver = code.slice(start, end);
+    expect(resolver).toContain("setOfferWalkthrough(startsWalkthrough(tour, { replay: replayRef.current }));");
+    expect(resolver).not.toContain("startTourSequence");
+  });
+
+  it("Skip reads 'Skip all tours' only on the card that offers the walkthrough, and still skips everything", () => {
+    expect(code).toMatch(
+      /<Button variant="quiet" onClick=\{\(\) => finish\(true\)\}>\s*\{isLast && offerWalkthrough \? UI\.tourSkipAllButton : "Skip"\}\s*<\/Button>/,
+    );
+  });
+
+  it("Done stays the primary button with the focus ref, and finish(false) does not start anything", () => {
+    expect(code).toMatch(/ref=\{primaryRef\}\s*onClick=\{\(\) => \(isLast \? finish\(false\) : setStepIndex\(\(i\) => i \+ 1\)\)\}/);
+    const finishStart = code.indexOf("function finish(skipped: boolean) {");
+    const finishEnd = code.indexOf("function goBack()", finishStart);
+    expect(finishStart).toBeGreaterThan(-1);
+    const finishBody = code.slice(finishStart, finishEnd);
+    expect(finishBody).not.toContain("startTourSequence");
+    // Carrying on is only for a walkthrough already running (unchanged behaviour).
+    expect(finishBody).toContain("continueTourSequence(tour, router);");
   });
 });

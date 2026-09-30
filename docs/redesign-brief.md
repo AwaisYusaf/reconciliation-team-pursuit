@@ -329,7 +329,9 @@ Everything recorded for the month, what each one is still missing, and the way i
 - h1 **"Add Expense"**, subtext "Enter one expense for {Month YYYY}. It will appear on the
   Expenses list and the matching cover sheet right away."
 - On the right, stacked: a **Funding source** select (only when the header is on "All" or holds
-  an archived source), and **"Extract From Invoice"** (secondary), whose label becomes
+  an archived source), and **"Extract from invoice"** (secondary, with "Upload one invoice. Each
+  charge on it is read out for you to check before anything is saved." beneath it, usability
+  #60), whose label becomes
   **"Reading the invoice…"** while the read runs. It accepts PDF, JPEG, PNG, WebP and HEIC, and
   is disabled on a locked month with the locked sentence beneath.
 - **On the base plan neither control exists** and the screen is exactly the heading plus the
@@ -357,9 +359,10 @@ Replaces the whole page once a read succeeds. Max-width 720px.
 4. **Marking a card writes nothing.** The screen only records intent; everything is written when
    **Done** is pressed.
 5. Footer: **Done** (primary, label becomes "Saving the charges…") and **Back** (quiet).
-6. Dialogs: "Remove this charge from the screen?" and "Leave without saving every charge?"
-   ("{n} charges have not been marked yet. Going back reads nothing into the month, and the
-   invoice would have to be read again.")
+6. Dialogs: "Remove this charge?" ("This charge won't be added when you press Done.", asked
+   only for a marked card) and "Go back without adding these charges?" (asked whenever the screen
+   has charges: "Nothing is saved until you press Done. Going back throws away every charge on
+   this screen, and the invoice would have to be read again.")
 7. **A read survives a page reload**, scoped to that month and funding source, and is cleared
    once Done succeeds.
 
@@ -671,7 +674,7 @@ cause, so a probe learns nothing).
 |---|---|
 | **Single funding source** | No source selector in the header; no Funding source column anywhere; no source filter; the form's source field is static text. |
 | **Header on "All funding sources"** | Dashboard shows one section per source with no combined total. Expenses and Trash gain a source filter. Cover Sheets, Packet, Contract Summary, Line Items and Monthly summary all show a **PickFundingSource** panel instead of the screen. |
-| **Plus plan** (`reconciliation_ai`, the Settings switch on, and OpenAI configured) | The Plus badge, the "Extract From Invoice" button, the amount suggestion panel, uploads moved above the amounts, the reading switch in Settings, and a usable Monthly summary. All absent on the base plan. |
+| **Plus plan** (`reconciliation_ai`, the Settings switch on, and OpenAI configured) | The Plus badge, the "Extract from invoice" button, the amount suggestion panel, uploads moved above the amounts, the reading switch in Settings, and a usable Monthly summary. All absent on the base plan. |
 | **Admin vs manager** | Admin only: expense **History**, the Settings **Users** section, `/r/settings/users`, and toggling the read-amounts switch. |
 | **Locked month** | Expense Delete, Trash Restore and Delete permanently, Recurring Add and Remove, and the invoice button are all disabled with "{Month} is locked. Unlock it on the Month-End Packet tab to make changes."; the expense form is fully disabled; month documents go read-only; the packet header shows Reconciled with **View signed packet** and **Unlock**. |
 | **Archived funding source** | Still selectable so its history stays reachable. Month documents go read-only. Line Items does not offer it; Cover Sheets, Packet, Contract Summary and Monthly summary do. |

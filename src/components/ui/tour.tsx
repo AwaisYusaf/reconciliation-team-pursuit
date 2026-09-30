@@ -30,6 +30,7 @@ import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 
 import { Button } from "@/src/components/ui/button";
 import type { TourKey } from "@/src/db/schema";
+import { UI } from "@/src/domain/strings";
 import { completeTourAction, skipAllToursAction } from "@/src/modules/tours/actions";
 import {
   countResolvableAfter,
@@ -108,14 +109,16 @@ export function TourGuide({
   // effect below.
   const primaryRef = useRef<HTMLButtonElement>(null);
   // Whether the current run came from the replay (i) button — a one-off view of one screen,
-  // which must never start the walkthrough. See `startsWalkthrough`.
+  // which must never offer the walkthrough. See `startsWalkthrough`.
   const replayRef = useRef(false);
+  // Whether the last card offers "Continue the tour" (usability #57). State, set when a step is
+  // shown, so render never reads `replayRef`.
+  const [offerWalkthrough, setOfferWalkthrough] = useState(false);
   const titleId = useId();
   const bodyId = useId();
   const router = useRouter();
-  // Whether this tour has successfully shown at least one step yet — decides both the
-  // "never showed anything, don't mark seen" rule below and, for Dashboard specifically, when
-  // the guided walkthrough sequence begins (see the resolution effect).
+  // Whether this tour has successfully shown at least one step yet — decides the "never showed
+  // anything, don't mark seen" rule below.
   const shownAnyRef = useRef(false);
   // The indices actually shown so far, oldest first. Back walks *this*, not `stepIndex - 1`:
   // a step that was dropped on the way forward (its target wasn't on the page) is not a step
@@ -193,11 +196,10 @@ export function TourGuide({
           setStepIndex((i) => i + 1);
           return;
         }
-        if (startsWalkthrough(tour, { firstStep: !shownAnyRef.current, replay: replayRef.current })) {
-          // Every brand-new user's very first tour passes through here, so this is where the
-          // guided walkthrough begins — never on a replay (see `startsWalkthrough`).
-          startTourSequence();
-        }
+        // Nothing starts the walkthrough here any more: the Dashboard tour's last card offers
+        // "Continue the tour", and only that button starts it, never on a replay (see
+        // `startsWalkthrough`, usability #57).
+        setOfferWalkthrough(startsWalkthrough(tour, { replay: replayRef.current }));
         shownAnyRef.current = true;
         historyRef.current = pushShownStep(historyRef.current, stepIndex);
         setRemaining(countResolvableAfter(steps, stepIndex, findByDataTour));
@@ -295,7 +297,8 @@ export function TourGuide({
   }, [running]);
 
   // Keep keyboard focus on the card's primary button (Next/Done) on every step, not just the
-  // first. Enter then always means "continue the tour", and a step's `autoOpen` can't leave focus
+  // first. Enter then always means Next, or Done on the last card (never "Continue the tour",
+  // which only a deliberate click starts, usability #57), and a step's `autoOpen` can't leave focus
   // somewhere real — a row menu used to take focus onto "Edit", so Enter opened the expense and
   // ArrowDown + Enter reached Delete (review fix; `Menu` also no longer moves focus on a scripted
   // open). Keyed on the step, and on the card existing at all — it isn't rendered until its
@@ -341,8 +344,10 @@ export function TourGuide({
    * `skipped` decides what happens to the guided walkthrough, not just this one tour. Skip (or
    * Escape) is "stop guiding me": it marks every tour seen (`skipAllToursAction`), so no other
    * tab's tour appears later, and ends the walkthrough outright rather than carrying the user
-   * to the next tab. Finishing marks only this tour seen and, with the walkthrough on this tab,
-   * navigates on to `TOUR_SEQUENCE`'s next tab, whose own `TourGuide` picks up from there.
+   * to the next tab. Finishing marks only this tour seen and, only when a walkthrough is
+   * running and on this tab, navigates on to `TOUR_SEQUENCE`'s next tab, whose own `TourGuide`
+   * picks up from there. With none running (the Dashboard tour's Done), it stays on the page:
+   * the walkthrough starts only from "Continue the tour" (usability #57).
    */
   function finish(skipped: boolean) {
     setCurrent(null);
@@ -501,13 +506,31 @@ export function TourGuide({
         <div id={bodyId} className="text-[15px] text-ink leading-relaxed">
           {current.step.body}
         </div>
+        {/* The one control that starts the walkthrough (usability #57): the walkthrough is
+            recorded first so `finish` carries the user on to the next tab. Done stays put. Its
+            own full-width row: beside Skip, Back and Done it pushed Done onto a line of its own
+            on the 340px card. */}
+        {isLast && offerWalkthrough && (
+          <Button
+            variant="secondary"
+            className="w-full mt-4"
+            onClick={() => {
+              startTourSequence();
+              finish(false);
+            }}
+          >
+            {UI.tourContinueButton}
+          </Button>
+        )}
         {/* A hairline above the controls rather than bare space: at the narrow card width the
             body text and the buttons otherwise crowd into one block. */}
-        <div className="flex items-center justify-between gap-3 mt-4 pt-3.5 border-t border-line">
+        <div className="flex flex-wrap items-center justify-between gap-3 mt-4 pt-3.5 border-t border-line">
+          {/* On the card that offers the other tabs' tours, Skip says what it does there: it
+              marks every tour seen (D-132), where Done only finishes this one (usability #57). */}
           <Button variant="quiet" onClick={() => finish(true)}>
-            Skip
+            {isLast && offerWalkthrough ? UI.tourSkipAllButton : "Skip"}
           </Button>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap justify-end gap-2">
             {shownSoFar > 1 && (
               <Button variant="secondary" onClick={goBack}>
                 Back

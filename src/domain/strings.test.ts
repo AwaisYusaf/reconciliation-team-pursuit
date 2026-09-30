@@ -513,10 +513,36 @@ function sampleUiTexts(): string[] {
         case "complimentaryUntil":
         case "complimentaryEnded":
           return [(value as (date: string) => string)("1 Jan 2027")];
-        // The two entries that take a list rather than a string: called with a real one, or
+        // The entries that take a list rather than a string: called with a real one, or
         // the generic "x" below would sample a sentence about a file named undefined.
         case "draftSavedNotApproved":
           return [(value as (needs: string[]) => string)(["Needs a line item", "Needs a narrative"])];
+        case "coverSheetFollowingDocs":
+          return [(value as (filenames: string[]) => string)(["receipt.pdf", "check.pdf"])];
+        // Usability round 1: an object argument, and count-first entries sampled at 1 and many,
+        // so every sentence each can produce reaches the dash and spelling guards.
+        case "invoiceWholeBillCharge":
+          return [
+            { tax: "$12.00", fees: null },
+            { tax: null, fees: "$3.50" },
+            { tax: "$12.00", fees: "$3.50" },
+          ].map((sample) => (value as (a: { tax: string | null; fees: string | null }) => string)(sample));
+        case "draftsWaitingTitle":
+          return [1, 3].map((n) => (value as (c: number, a: string) => string)(n, "$120.00"));
+        case "draftsWaitingLockedBody":
+          return [1, 3].map((n) => (value as (c: number, m: string) => string)(n, "September 2026"));
+        case "draftsWaitingBody":
+        case "summaryDraftsWaiting":
+        case "markSubmittedMissing":
+        case "pageCount":
+          return [1, 3].map((n) => (value as (c: number) => string)(n));
+        case "invoiceCheckHeading":
+          return [
+            [1, "Eastside Catering", "2210"],
+            [3, "Eastside Catering", null],
+            [3, null, "2210"],
+            [3, null, null],
+          ].map((args) => (value as (...a: unknown[]) => string)(...args));
         case "invoiceFilesNotAttached":
           return [
             [{ filename: "timesheet.png", reason: "Choose a document type first." }],
@@ -566,6 +592,14 @@ function sampleUiTexts(): string[] {
             "Trial",
             "Active",
           )];
+        case "expenseSaved":
+          return [null, ["proof", "receipt", "narrative"] as const].map((missing) =>
+            (value as (m: readonly string[] | null) => string)(missing),
+          );
+        case "recurringAdded":
+          return [null, ["proof", "receipt", "narrative"] as const].map((missing) =>
+            (value as (n: string, mo: string, m: readonly string[] | null) => string)("Adobe", "September 2026", missing),
+          );
         case "historyComplimentaryGrantedUntil":
         case "historyComplimentaryChangedUntil":
           return [(value as (date: string) => string)("30 Jun 2027")];
@@ -661,5 +695,221 @@ describe("feature requests copy (PHASE-17, Appendix A verbatim)", () => {
       "Already requested",
     ]);
     expect(FEATURE_REQUEST_STATUS_DESCRIPTIONS.not_planned).toBe("It won't be built. A reply says why.");
+  });
+});
+
+describe("usability round 1, batch A copy (#30, #44, #49, #51)", () => {
+  const DASH = /[–—]/;
+
+  it("expenseSaved: the plain line when nothing is missing (null or empty)", () => {
+    expect(UI.expenseSaved(null)).toBe("Expense saved.");
+    expect(UI.expenseSaved([])).toBe("Expense saved.");
+  });
+
+  it("expenseSaved: one, two and three gaps, Oxford comma for three, never R4.4's 'both'", () => {
+    expect(UI.expenseSaved(["proof"])).toBe("Expense saved. It's still missing proof of payment.");
+    expect(UI.expenseSaved(["receipt"])).toBe("Expense saved. It's still missing a receipt.");
+    expect(UI.expenseSaved(["proof", "receipt"])).toBe(
+      "Expense saved. It's still missing proof of payment and a receipt.",
+    );
+    expect(UI.expenseSaved(["proof", "receipt", "narrative"])).toBe(
+      "Expense saved. It's still missing proof of payment, a receipt, and a narrative.",
+    );
+    expect(UI.expenseSaved(["proof", "receipt"])).not.toMatch(/\bboth\b/);
+  });
+
+  it("recurringAdded: names the item, the month and every gap", () => {
+    expect(UI.recurringAdded("Adobe", "September 2026", null)).toBe("Adobe added to September 2026.");
+    expect(UI.recurringAdded("Adobe", "September 2026", [])).toBe("Adobe added to September 2026.");
+    expect(UI.recurringAdded("Adobe", "September 2026", ["proof", "receipt"])).toBe(
+      "Adobe added to September 2026. It's still missing proof of payment and a receipt.",
+    );
+    expect(UI.recurringAdded("Adobe", "September 2026", ["proof", "receipt", "narrative"])).toBe(
+      "Adobe added to September 2026. It's still missing proof of payment, a receipt, and a narrative.",
+    );
+  });
+
+  it("newUserSignIn: one ready-to-send sentence with the link and the password", () => {
+    expect(UI.newUserSignIn("https://app.example.org/login", "Pw-123456789")).toBe(
+      "Sign in at https://app.example.org/login with your email address and this password: Pw-123456789",
+    );
+  });
+
+  it("pins the fixed lines", () => {
+    expect(UI.openExpense).toBe("Open expense");
+    expect(UI.checkHighlightedFields).toBe("Check the highlighted fields.");
+    expect(UI.managerRoleHint).toBe(
+      "New users are added as Managers. A Manager can do everything except manage users, change the plan or billing, change AI settings, and see an expense's History.",
+    );
+  });
+
+  it("no em or en dash in any of them", () => {
+    const all = [
+      UI.expenseSaved(null),
+      UI.expenseSaved(["proof", "receipt", "narrative"]),
+      UI.recurringAdded("A", "B", ["proof", "receipt", "narrative"]),
+      UI.newUserSignIn("u", "p"),
+      UI.openExpense,
+      UI.checkHighlightedFields,
+      UI.managerRoleHint,
+    ];
+    for (const line of all) expect(line).not.toMatch(DASH);
+    expect(all).toHaveLength(7);
+  });
+});
+
+describe("usability round 1 copy: dashboard, packet, cover sheets, tours, AI screens (2026-09-29)", () => {
+  it("fixed lines, verbatim", () => {
+    expect(UI.dashboardAiIntro).toBe(
+      "Your plan includes AI. It reads receipt amounts and turns invoices into expenses on Add Expense, and writes your monthly summary on the Month-End Packet page.",
+    );
+    expect(UI.dashboardAiIntroSummaryOnly).toBe(
+      "Your plan includes AI. It writes your monthly summary on the Month-End Packet page.",
+    );
+    expect(UI.draftsReviewLink).toBe("Review drafts");
+    expect(UI.packetReadyNextSteps).toBe(
+      "The packet is ready. Next: 1. Download the packet. 2. Send it to your funder. 3. Mark as submitted. 4. When the signed copy comes back, Lock month.",
+    );
+    expect(UI.packetSubmittedNextStep).toBe(
+      "The packet is marked as submitted. When the signed copy comes back, Lock month.",
+    );
+    expect(UI.markSubmittedButton).toBe("Mark as submitted");
+    expect(UI.markSubmittedBody).toBe(
+      "Do this once you've sent the packet to your funder. The month's figures are saved as they are now, so any later change is shown to you. You can still make corrections.",
+    );
+    expect(UI.markSubmittedAnyway).toBe("You can still mark the month as submitted.");
+    expect(UI.undoSubmittedBody).toBe(
+      "The month goes back to not submitted. If you mark it again later, the figures are saved fresh at that time.",
+    );
+    expect(UI.coverSheetWhatItIs).toBe(
+      "A cover sheet lists this line item's expenses for the month, with each proof of payment. It goes into the packet for your funder.",
+    );
+    expect(UI.amountsUsed).toBe("Amounts used");
+    expect(UI.invoiceExtractFromInvoice).toBe("Extract from invoice");
+    expect(UI.invoiceExtractHint).toBe(
+      "Upload one invoice. Each charge on it is read out for you to check before anything is saved.",
+    );
+    expect(UI.invoiceDoneHint).toBe(
+      "Nothing is saved until you press Done. Then charges marked Saving as expense become expenses, and the rest become drafts waiting for review on the Expenses page.",
+    );
+    expect(UI.tourContinueButton).toBe("Continue the tour");
+    expect(UI.tourSkipAllButton).toBe("Skip all tours");
+  });
+
+  it("the Continue button names no plan at all", () => {
+    expect(UI.tourContinueButton).not.toMatch(/Plus|Reconciliation|AI/);
+  });
+
+  it("the limit text names the plan in full, not Plus (#23, P18)", () => {
+    expect(UI.fundingSourceLimitReached).toContain("switch to Reconciliation + AI.");
+    expect(UI.fundingSourceLimitReached).not.toContain("Plus");
+  });
+
+  it("drafts card: title singular at one, plural otherwise, the amount as given (E10, E14)", () => {
+    expect(UI.draftsWaitingTitle(1, "$120.00")).toBe("1 draft waiting for review · $120.00");
+    expect(UI.draftsWaitingTitle(3, "$0.00")).toBe("3 drafts waiting for review · $0.00");
+    expect(UI.draftsWaitingTitle(2, "-$10.00")).toBe("2 drafts waiting for review · -$10.00");
+    expect(UI.draftsWaitingBody(1)).toBe("It isn't in your totals or the packet until you approve it.");
+    expect(UI.draftsWaitingBody(3)).toBe("They aren't in your totals or the packet until you approve them.");
+  });
+
+  it("drafts card on a locked month: no promise of approval, singular and plural", () => {
+    expect(UI.draftsWaitingLockedBody(1, "September 2026")).toBe(
+      "September 2026 is locked, so it can't be approved until the month is unlocked.",
+    );
+    expect(UI.draftsWaitingLockedBody(3, "September 2026")).toBe(
+      "September 2026 is locked, so they can't be approved until the month is unlocked.",
+    );
+    expect(UI.draftsWaitingLockedBody(3, "September 2026")).not.toContain("until you approve");
+  });
+
+  it("summaryDraftsWaiting: singular at one, plural otherwise", () => {
+    expect(UI.summaryDraftsWaiting(1)).toBe("1 draft is still waiting for review, so it isn't in this summary.");
+    expect(UI.summaryDraftsWaiting(4)).toBe("4 drafts are still waiting for review, so they aren't in this summary.");
+  });
+
+  it("pageCount: '1 page', '0 pages', '2 pages' (E28)", () => {
+    expect(UI.pageCount(1)).toBe("1 page");
+    expect(UI.pageCount(0)).toBe("0 pages");
+    expect(UI.pageCount(2)).toBe("2 pages");
+  });
+
+  it("markSubmittedTitle and markSubmittedMissing, singular and plural (E23, E24)", () => {
+    expect(UI.markSubmittedTitle("September 2026")).toBe("Mark September 2026 as submitted?");
+    // Undo is worded the same way, naming the month (usability #36).
+    expect(UI.undoSubmittedTitle("September 2026")).toBe("Undo marking September 2026 as submitted?");
+    expect(UI.markSubmittedMissing(1)).toBe(
+      "1 expense is still missing documents, so the packet can't be downloaded yet:",
+    );
+    expect(UI.markSubmittedMissing(3)).toBe(
+      "3 expenses are still missing documents, so the packet can't be downloaded yet:",
+    );
+  });
+
+  it("coverSheetFollowingDocs lists the files in the order given (E38)", () => {
+    expect(UI.coverSheetFollowingDocs(["receipt.pdf", "check.pdf"])).toBe(
+      "In the packet, after this cover sheet: receipt.pdf, check.pdf.",
+    );
+  });
+
+  it("invoiceCheckHeading: vendor and number, either, or neither; one charge; never '##' (E48)", () => {
+    expect(UI.invoiceCheckHeading(3, "Eastside Catering", "2210")).toBe(
+      "3 charges from Eastside Catering, invoice #2210",
+    );
+    expect(UI.invoiceCheckHeading(3, "Eastside Catering", null)).toBe("3 charges from Eastside Catering");
+    expect(UI.invoiceCheckHeading(3, null, "2210")).toBe("3 charges from invoice #2210");
+    expect(UI.invoiceCheckHeading(3, null, null)).toBe("3 charges from this invoice");
+    expect(UI.invoiceCheckHeading(1, "Eastside Catering", null)).toBe("1 charge from Eastside Catering");
+    expect(UI.invoiceCheckHeading(2, null, "#2210")).toBe("2 charges from invoice #2210");
+    expect(UI.invoiceCheckHeading(2, null, "## 2210")).toBe("2 charges from invoice #2210");
+  });
+
+  it("invoiceCheckHeading drops a label the reader kept with the number, never part of the number (review)", () => {
+    expect(UI.invoiceCheckHeading(2, "Eastside", "Invoice #2210")).toBe("2 charges from Eastside, invoice #2210");
+    expect(UI.invoiceCheckHeading(2, "Eastside", "invoice no. 2210")).toBe("2 charges from Eastside, invoice #2210");
+    expect(UI.invoiceCheckHeading(2, "Eastside", "No. 2210")).toBe("2 charges from Eastside, invoice #2210");
+    expect(UI.invoiceCheckHeading(2, "Eastside", "Invoice number: 2210")).toBe("2 charges from Eastside, invoice #2210");
+    // "No", "Number" and "ID", with or without a dot, before a space, "#", ":" or ".".
+    const labelled = ["No.2210", "No 2210", "no: 2210", "Number #2210", "ID: 2210", "ID.2210", "Invoice ID 2210"];
+    for (const input of labelled) {
+      expect(UI.invoiceCheckHeading(2, "Eastside", input), input).toBe("2 charges from Eastside, invoice #2210");
+    }
+    // "Invoice" or "Inv." only before a space, "#" or ":".
+    expect(UI.invoiceCheckHeading(2, "Eastside", "Inv. 2210")).toBe("2 charges from Eastside, invoice #2210");
+    expect(UI.invoiceCheckHeading(2, "Eastside", "Invoice: 2210")).toBe("2 charges from Eastside, invoice #2210");
+    // A number that merely starts with letters is the number itself.
+    const whole = ["INV-2210", "INVOICE-2210", "NOV2210", "Number2210", "IDA-5", "Inv.2210"];
+    for (const input of whole) {
+      expect(UI.invoiceCheckHeading(2, "Eastside", input), input).toBe(`2 charges from Eastside, invoice #${input}`);
+    }
+    // Only a label, no number: none.
+    expect(UI.invoiceCheckHeading(2, "Eastside", "Invoice #")).toBe("2 charges from Eastside");
+    expect(UI.invoiceCheckHeading(2, "Eastside", "Invoice No.")).toBe("2 charges from Eastside");
+  });
+
+  it("invoiceCheckHeading treats a blank vendor or number as none", () => {
+    expect(UI.invoiceCheckHeading(2, "   ", "  ")).toBe("2 charges from this invoice");
+    expect(UI.invoiceCheckHeading(2, "  Eastside  ", "#")).toBe("2 charges from Eastside");
+  });
+
+  it("invoiceCheckHeading on a check kept from before the field existed (E49)", () => {
+    // An old stored check has no invoiceNumber at all: the function itself copes with undefined,
+    // whatever the screen passes (the screen also reads `check.invoiceNumber ?? null`).
+    expect(UI.invoiceCheckHeading(2, "Eastside Catering", undefined as unknown as null)).toBe(
+      "2 charges from Eastside Catering",
+    );
+  });
+
+  it("invoiceWholeBillCharge: tax only, fees only, both, neither (E52)", () => {
+    expect(UI.invoiceWholeBillCharge({ tax: "$12.00", fees: null })).toBe(
+      "This invoice has $12.00 of tax on the whole bill, not on any one line, so it isn't in the charges below. Add the $12.00 tax as its own expense if your funder reimburses tax.",
+    );
+    expect(UI.invoiceWholeBillCharge({ tax: null, fees: "$3.50" })).toBe(
+      "This invoice has $3.50 of fees on the whole bill, not on any one line, so they aren't in the charges below. Add the $3.50 fees as their own expense if your funder reimburses fees.",
+    );
+    expect(UI.invoiceWholeBillCharge({ tax: "$12.00", fees: "$3.50" })).toBe(
+      "This invoice has $12.00 of tax and $3.50 of fees on the whole bill, not on any one line, so they aren't in the charges below. Add the $12.00 tax and the $3.50 fees as their own expenses if your funder reimburses them.",
+    );
+    expect(UI.invoiceWholeBillCharge({ tax: null, fees: null })).toBe("");
   });
 });

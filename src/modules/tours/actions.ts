@@ -52,7 +52,8 @@ export async function completeTourAction(tour: TourKey): Promise<ActionResult> {
  * Skip (or Escape) on any walkthrough: marks **every** tour seen for this user, so none shows on
  * another tab afterwards. Skipping used to mark only the current tab's tour, so someone who
  * skipped on Settings was walked through Add Expense on their next visit there. Finishing a tour
- * still marks only that one (`completeTourAction`) and carries on to the next tab. "Show the app
+ * still marks only that one (`completeTourAction`), and carries on to the next tab only while a
+ * walkthrough started from "Continue the tour" is running (D-135). "Show the app
  * guide again" (`resetToursAction`) and the replay button bring them back.
  */
 export async function skipAllToursAction(): Promise<ActionResult> {

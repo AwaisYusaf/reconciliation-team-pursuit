@@ -5,6 +5,7 @@ import type { Ref } from "react";
 import { Button } from "@/src/components/ui/button";
 import { PLUS_FRAME_STYLE, PlusBadge, SparkleIcon } from "@/src/components/ui/plus-badge";
 import { Helper } from "@/src/components/ui/field";
+import { SavedTick } from "@/src/components/ui/surfaces";
 import { formatMoney } from "@/src/domain/format";
 import { amountFigures, UI } from "@/src/domain/strings";
 import type { AmountSuggestion, SuggestionLine } from "@/src/domain/amount-suggestion";
@@ -15,10 +16,14 @@ import type { AmountSuggestion, SuggestionLine } from "@/src/domain/amount-sugge
  */
 export function AmountSuggestionPanel({
   suggestion,
+  applied,
   onUse,
   onDismiss,
 }: {
   suggestion: AmountSuggestion;
+  /** Subtotal, Tax and Fees already hold these amounts: "✓ Amounts used" replaces the Use
+   *  button, and the button comes back once a field or the suggestion changes (usability #58). */
+  applied: boolean;
   onUse: () => void;
   onDismiss: () => void;
 }) {
@@ -67,7 +72,11 @@ export function AmountSuggestionPanel({
           {suggestion.someMissing && <Helper className="mt-2.5">{UI.amountsLeftOut}</Helper>}
 
           <div className="flex flex-wrap gap-x-5 gap-y-1 items-center mt-3.5">
-            <Button onClick={onUse}>{UI.useTheseAmounts}</Button>
+            {applied ? (
+              <SavedTick>{UI.amountsUsed}</SavedTick>
+            ) : (
+              <Button onClick={onUse}>{UI.useTheseAmounts}</Button>
+            )}
             <Button variant="quiet" onClick={onDismiss}>
               {UI.dismiss}
             </Button>
@@ -161,8 +170,8 @@ function DocumentIcon() {
 
 /**
  * A receipt's vendor and date, each with an Add button (Phase 19). Its own box, just above the
- * amounts panel, rather than rows inside it: Use these amounts hides that panel, and it draws
- * nothing when no amount was found, while a receipt can still name who was paid and when.
+ * amounts panel, rather than rows inside it: that panel can be dismissed, and it draws nothing
+ * when no amount was found, while a receipt can still name who was paid and when.
  *
  * Renders nothing when there is nothing to offer. A row the form already holds is passed as
  * null by the form, so pressing Add is what makes its row go away.

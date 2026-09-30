@@ -2,9 +2,11 @@ import type { TourKey } from "@/src/db/schema";
 
 /**
  * Route ↔ tour, in the same left-to-right order as the primary nav (`app-nav.tsx`'s
- * `NAV_ITEMS`). Two things read this list: the full first-run walkthrough (`tour.tsx` — on
- * Finish, not Skip, it navigates to the next entry's `href` so a brand-new user is carried
- * from tour to tour rather than having to click into each tab themselves) and the header's
+ * `NAV_ITEMS`). Two things read this list: the full first-run walkthrough (`tour.tsx` — it
+ * starts only from the Dashboard tour's "Continue the tour" button, never on its own; once
+ * running, each later tour's Done, not Skip, navigates to the next entry's `href` so the user
+ * is carried from tour to tour rather than having to click into each tab themselves;
+ * usability #57) and the header's
  * "replay this screen's tour" button (`tour-replay-button.tsx`, matches the current pathname
  * against `href` the same way `AppNav` picks its active tab).
  */
@@ -89,19 +91,19 @@ export function startTourSequence(): void {
 }
 
 /**
- * Whether showing a step should start the walkthrough: only the first step shown by the first
- * tab's tour, and never on a replay.
+ * Whether the tour's LAST card offers "Continue the tour", the one control that starts the
+ * walkthrough: only the first tab's tour, and never on a replay (usability #57).
+ *
+ * Done no longer carries anyone off on its own: a first-time user who pressed Done on the
+ * Dashboard tour was dragged through a second tour they had not asked for. Continuing is now a
+ * choice on that last card.
  *
  * The replay (i) button resets the tour's "shown anything yet" state so it can run again, which
- * made a replayed Dashboard tour look exactly like a brand-new user's first one — so pressing
- * Done after a replay carried the user off to Add Expense and through every tab (review fix).
- * A replay is always a one-off view of one screen.
+ * made a replayed Dashboard tour look exactly like a brand-new user's first one (review fix).
+ * A replay is always a one-off view of one screen, so it never offers the walkthrough.
  */
-export function startsWalkthrough(
-  tour: TourKey,
-  { firstStep, replay }: { firstStep: boolean; replay: boolean },
-): boolean {
-  return tour === TOUR_SEQUENCE[0].tour && firstStep && !replay;
+export function startsWalkthrough(tour: TourKey, { replay }: { replay: boolean }): boolean {
+  return tour === TOUR_SEQUENCE[0].tour && !replay;
 }
 
 /**

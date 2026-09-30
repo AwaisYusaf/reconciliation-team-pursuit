@@ -49,7 +49,7 @@ Rules:
 - A row disappears once the field already holds that value. For example, Name is already "home depot" (capitals and spaces don't matter), or Date is already 9/12/2026.
 - **Several receipts:** the vendor row shows only if they all name the same vendor, and the date row only if they all show the same date. Otherwise that row is not shown.
 - "No receipt available" ticked: no box.
-- Pressing **Use these amounts** hides the amounts box, as today. It does not hide this box.
+- ~~Pressing **Use these amounts** hides the amounts box, as today.~~ **Amended 2026-09-29 (usability #58):** the amounts box now stays open after Use and shows "✓ Amounts used"; only Dismiss hides it (PHASE-10). Neither hides this box.
 - On a locked month, the Add buttons are disabled like the rest of the form.
 
 ## 3. What Add does

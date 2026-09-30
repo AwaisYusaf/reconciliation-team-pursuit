@@ -226,8 +226,12 @@ Panel rules that Appendix A leaves open, settled here so every state is consiste
 
 Panel lifecycle:
 - **Dismiss** hides the panel until the set of receipt/proof files changes.
-- **Use these amounts** (after the confirm if needed) fills the fields and hides the panel the
-  same way; it reappears only if the files change.
+- ~~**Use these amounts** (after the confirm if needed) fills the fields and hides the panel the
+  same way; it reappears only if the files change.~~ **Amended 2026-09-29 (usability #58):** Use
+  these amounts (after the confirm if needed) fills the fields and keeps the panel open. While
+  Subtotal, Tax and Fees equal the suggestion (`amountsMatchSuggestion`, parsed the way the form
+  parses them), "✓ Amounts used" (`SavedTick`) stands in place of the button; editing a field, or
+  a file change that moves the totals, brings the button back. Only Dismiss hides the panel.
 - While some files are still reading and others are done, the panel stays in the reading state
   ("Reading N documents…") — no partial totals, so a half-finished total is never offered.
 - A read refused because the feature was switched off meanwhile counts as "No amount found".

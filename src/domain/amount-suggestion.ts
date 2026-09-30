@@ -6,7 +6,7 @@
  * Money stays integer cents throughout, matching `src/domain/money.ts`.
  */
 import type { IsoDate } from "@/src/domain/dates";
-import { sumCents } from "@/src/domain/money";
+import { parseMoneyToCentsOrZero, sumCents } from "@/src/domain/money";
 import { vendorKey } from "@/src/domain/vendor-match";
 
 export type ReadKind = "receipt" | "proof";
@@ -261,4 +261,18 @@ export function panelVisible(input: {
   hasFiles: boolean;
 }): boolean {
   return input.enabled && input.hasFiles && input.dismissedFor !== input.signature;
+}
+
+/** Whether the three fields already hold the suggestion, so there is nothing left to use
+ *  (usability #58). Parsed the way the form parses them, so "450" equals $450.00. */
+export function amountsMatchSuggestion(
+  values: { subtotal: string; tax: string; fees: string },
+  suggestion: AmountSuggestion,
+): boolean {
+  return (
+    suggestion.state === "done" &&
+    parseMoneyToCentsOrZero(values.subtotal) === suggestion.subtotalCents &&
+    parseMoneyToCentsOrZero(values.tax) === suggestion.taxCents &&
+    parseMoneyToCentsOrZero(values.fees) === suggestion.feesCents
+  );
 }

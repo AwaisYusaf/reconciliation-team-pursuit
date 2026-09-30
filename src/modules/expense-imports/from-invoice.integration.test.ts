@@ -62,6 +62,7 @@ describe.skipIf(!hasDatabase)("create drafts from an invoice (integration, Phase
   const { MAX_ORG_BYTES } = await import("@/src/services/storage/documents");
   const { MAX_PAGES_READ } = await import("@/src/modules/amount-reading/page-cap");
   const { loadInvoiceMatchContext } = await import("@/src/modules/expense-imports/match-context");
+  const { matchInvoiceLine } = await import("@/src/domain/invoice-match");
   const { checkDuplicateInvoiceAction } = await import("@/src/modules/expense-imports/import-actions");
   const { UI } = await import("@/src/domain/strings");
   const { monthLabel } = await import("@/src/domain/dates");
@@ -838,6 +839,105 @@ describe.skipIf(!hasDatabase)("create drafts from an invoice (integration, Phase
       expect(recurring?.defaultNarrative).toBe("Every month");
       const vendor = context.vendors.find((v) => v.name === "Acme Vendor");
       expect(vendor?.defaultLineItemId).toBe(lineItemId);
+    });
+
+    it("returns the vendors this org's earlier invoices named, once each, never another org's (usability #62)", async () => {
+      const file = await pdfFile();
+      const posted = await POST(
+        postRequest(
+          buildForm({
+            file,
+            fundingSourceId,
+            rows: [row({ name: "Box lunches", kind: "expense", narrative: "Lunch for the youth night." })],
+            vendorName: "Eastside Catering Match Test",
+            invoiceDate: "2095-11-01",
+          }),
+        ),
+      );
+      expect(posted.status).toBe(200);
+
+      // Another organization's invoice from a vendor nobody here has used, a second invoice of
+      // this org's from the same vendor (so "once each" can fail), and one with no vendor read
+      // at all. Inserted after the POST, whose orphan sweep would otherwise remove them first.
+      const [otherSource] = await db
+        .select({ id: fundingSources.id })
+        .from(fundingSources)
+        .where(eq(fundingSources.orgId, otherOrgId))
+        .limit(1);
+      const importRow = (org: string, source: string, vendorName: string | null) => ({
+        orgId: org,
+        fundingSourceId: source,
+        month: "2095-11",
+        s3Key: `org/${org}/imports/match-test.pdf`,
+        filename: "match-test.pdf",
+        mimeType: "application/pdf",
+        sha256: "0".repeat(64),
+        vendorName,
+      });
+      await db.insert(expenseImports).values([
+        importRow(otherOrgId, otherSource.id, "Other Org Only Vendor"),
+        importRow(orgId, fundingSourceId, "Eastside Catering Match Test"),
+        importRow(orgId, fundingSourceId, null),
+      ]);
+
+      const { earlierVendors } = await loadInvoiceMatchContext(orgId);
+      expect(earlierVendors.filter((name) => name === "Eastside Catering Match Test")).toHaveLength(1);
+      expect(earlierVendors).not.toContain("Other Org Only Vendor");
+      expect(earlierVendors.every((name) => typeof name === "string" && name.length > 0)).toBe(true);
+    });
+
+    it("the vendor library learns an imported charge's description without the invoice's vendor (usability #62)", async () => {
+      const file = await pdfFile();
+      const posted = await POST(
+        postRequest(
+          buildForm({
+            file,
+            fundingSourceId,
+            rows: [
+              row({
+                name: "Library strip lunches",
+                kind: "expense",
+                description: "Library Strip Catering: Box lunches",
+                narrative: "Lunch for the youth night.",
+              }),
+            ],
+            vendorName: "Library Strip Catering",
+            invoiceDate: "2095-11-02",
+          }),
+        ),
+      );
+      expect(posted.status).toBe(200);
+      expect((await posted.json()).ok).toBe(true);
+
+      // The expense keeps who was paid; the library keeps only what the charge was.
+      const [saved] = await db
+        .select({ description: expenses.description })
+        .from(expenses)
+        .where(and(eq(expenses.orgId, orgId), eq(expenses.name, "Library strip lunches")));
+      expect(saved.description).toBe("Library Strip Catering: Box lunches");
+      const [learned] = await db
+        .select({ description: vendorDefaults.defaultDescription })
+        .from(vendorDefaults)
+        .where(and(eq(vendorDefaults.orgId, orgId), eq(vendorDefaults.name, "Library strip lunches")));
+      expect(learned.description).toBe("Box lunches");
+
+      // So nothing depends on that import surviving: with no earlier vendors at all (every
+      // import swept), another vendor's invoice for the same line still reads right.
+      const { vendors } = await loadInvoiceMatchContext(orgId);
+      const draft = matchInvoiceLine(
+        { name: "Library strip lunches", description: null, amountCents: 1000, taxCents: null, feesCents: null },
+        {
+          recurringItems: [],
+          vendors,
+          activePaymentSources: ["Operating account"],
+          sourceLineItemIds: [lineItemId],
+          invoiceDate: "2095-11-03",
+          month: "2095-11",
+          vendor: "Westside Deli",
+          earlierVendors: [],
+        },
+      );
+      expect(draft.description).toBe("Westside Deli: Box lunches");
     });
   });
 

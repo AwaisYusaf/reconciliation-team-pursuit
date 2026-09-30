@@ -33,6 +33,7 @@ import {
 import {
   aggregateAmountSuggestion,
   aggregateReceiptDetails,
+  amountsMatchSuggestion,
   panelVisible,
   readingFor,
   type ReadableFile,
@@ -496,7 +497,8 @@ export function ExpenseForm({
       tax: (suggestion.taxCents / 100).toFixed(2),
       fees: (suggestion.feesCents / 100).toFixed(2),
     }));
-    setDismissedFor(amountReadSignature);
+    // The panel stays: it shows "✓ Amounts used" while the fields match (usability #58).
+    // Only Dismiss hides it.
     setConfirmingUseFor(null);
   }
 
@@ -1523,6 +1525,7 @@ export function ExpenseForm({
           {showAmountSuggestionPanel && (
             <AmountSuggestionPanel
               suggestion={suggestion}
+              applied={amountsMatchSuggestion(values, suggestion)}
               onUse={useSuggestedAmounts}
               onDismiss={() => setDismissedFor(amountReadSignature)}
             />

@@ -25,7 +25,9 @@ import {
   vendorDefaults,
   type ExpenseAuditSnapshot,
 } from "@/src/db/schema";
+import { withoutInvoiceVendors } from "@/src/domain/invoice-match";
 import { parseMoneyToCentsOrZero } from "@/src/domain/money";
+import { loadEarlierInvoiceVendors } from "@/src/modules/expense-imports/match-context";
 
 import { claimReferenceSeq, type Executor } from "./references";
 
@@ -146,10 +148,16 @@ export function snapshotOf(
  * tax is a fact worth remembering, and is distinct from the null that means nothing has been
  * learned yet.
  *
+ * The description is learned without an invoice vendor in front of it (usability #62): an
+ * imported charge's description starts with the invoice's vendor, which says who was paid on
+ * that one bill, not what this payee's charges are. Learned with it, the next invoice from
+ * another vendor, or a manual entry, would be offered the wrong vendor.
+ *
  * Callers are responsible for having established `orgId` from the session; nothing here can
  * check it, which is exactly why this must not be a `"use server"` export.
  */
 export async function learnVendor(orgId: string, row: ExpenseRow): Promise<void> {
+  const defaultDescription = withoutInvoiceVendors(row.description, await loadEarlierInvoiceVendors(orgId));
   // Uniqueness is a lower(name) expression index, which Drizzle's typed onConflict cannot
   // target, so the upsert is explicit. Latest write wins (R8.2).
   const existing = await db
@@ -169,7 +177,7 @@ export async function learnVendor(orgId: string, row: ExpenseRow): Promise<void>
       .set({
         name: row.name,
         defaultLineItemId: row.lineItemId,
-        defaultDescription: row.description,
+        defaultDescription,
         defaultPaymentSource: row.paymentSource,
         defaultSubtotalCents: row.subtotalCents,
         defaultTaxCents: row.taxCents,
@@ -185,7 +193,7 @@ export async function learnVendor(orgId: string, row: ExpenseRow): Promise<void>
       orgId,
       name: row.name,
       defaultLineItemId: row.lineItemId,
-      defaultDescription: row.description,
+      defaultDescription,
       defaultPaymentSource: row.paymentSource,
       defaultSubtotalCents: row.subtotalCents,
       defaultTaxCents: row.taxCents,

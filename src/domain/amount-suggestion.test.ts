@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import {
   aggregateAmountSuggestion,
   aggregateReceiptDetails,
+  amountsMatchSuggestion,
   fileSetSignature,
   nextKeysToRead,
   panelVisible,
@@ -375,5 +376,79 @@ describe("readingFor (Phase 19)", () => {
       reading: false,
       offerDetails: false,
     });
+  });
+});
+
+/**
+ * `amountsMatchSuggestion` (usability #58): while Subtotal, Tax and Fees hold the suggestion,
+ * the panel shows "Amounts used" in place of the Use button. Suggestions are built with the
+ * real `aggregateAmountSuggestion`, the way the form builds them.
+ */
+describe("amountsMatchSuggestion", () => {
+  /** What `applySuggestedAmounts` writes into the three fields. */
+  function applied(s: { subtotalCents: number; taxCents: number; feesCents: number }) {
+    return {
+      subtotal: (s.subtotalCents / 100).toFixed(2),
+      tax: (s.taxCents / 100).toFixed(2),
+      fees: (s.feesCents / 100).toFixed(2),
+    };
+  }
+  const oneReceipt = aggregateAmountSuggestion([receipt("r1", "a.pdf", found(45000, 2700, 300, 48000))], false);
+
+  it("is true once Use has filled empty fields (E40), and while they still hold the suggestion", () => {
+    if (oneReceipt.state !== "done") throw new Error("expected a done suggestion");
+    expect(amountsMatchSuggestion({ subtotal: "", tax: "", fees: "" }, oneReceipt)).toBe(false);
+    expect(amountsMatchSuggestion(applied(oneReceipt), oneReceipt)).toBe(true);
+  });
+
+  it("is false again once any one field is edited after use (E42)", () => {
+    expect(amountsMatchSuggestion({ subtotal: "450.01", tax: "27.00", fees: "3.00" }, oneReceipt)).toBe(false);
+    expect(amountsMatchSuggestion({ subtotal: "450.00", tax: "27.01", fees: "3.00" }, oneReceipt)).toBe(false);
+    expect(amountsMatchSuggestion({ subtotal: "450.00", tax: "27.00", fees: "3.01" }, oneReceipt)).toBe(false);
+    expect(amountsMatchSuggestion({ subtotal: "450.00", tax: "27.00", fees: "3.00" }, oneReceipt)).toBe(true);
+  });
+
+  it("stays true when a proof is added and the totals do not change: the reported case (E43)", () => {
+    const withProof = aggregateAmountSuggestion(
+      [receipt("r1", "a.pdf", found(45000, 2700, 300, 48000)), proof("p1", "bank.png", found(0, 0, 0, 48000))],
+      false,
+    );
+    if (withProof.state !== "done") throw new Error("expected a done suggestion");
+    // The suggestion itself is not the same object (a proof line was added)...
+    expect(withProof.lines).toHaveLength(2);
+    // ...but the fields filled from the first read still hold its amounts.
+    expect(amountsMatchSuggestion(applied({ subtotalCents: 45000, taxCents: 2700, feesCents: 300 }), withProof)).toBe(true);
+  });
+
+  it("is false when a new receipt changes the totals (E44)", () => {
+    const twoReceipts = aggregateAmountSuggestion(
+      [receipt("r1", "a.pdf", found(45000, 2700, 300, 48000)), receipt("r2", "b.pdf", found(1000, 0, 0, 1000))],
+      false,
+    );
+    expect(amountsMatchSuggestion(applied({ subtotalCents: 45000, taxCents: 2700, feesCents: 300 }), twoReceipts)).toBe(false);
+  });
+
+  it("is true for an all-zero suggestion and empty fields: nothing left to apply (E45)", () => {
+    const zero = aggregateAmountSuggestion([receipt("r1", "a.pdf", found(0, 0, 0, 0))], false);
+    expect(zero.state).toBe("done");
+    expect(amountsMatchSuggestion({ subtotal: "", tax: "", fees: "" }, zero)).toBe(true);
+  });
+
+  it("parses the fields the way the form does: '1,234.50' and '450' match (E46)", () => {
+    const big = aggregateAmountSuggestion([receipt("r1", "a.pdf", found(123450, 0, 45000, 168450))], false);
+    expect(amountsMatchSuggestion({ subtotal: "1,234.50", tax: "0", fees: "450" }, big)).toBe(true);
+  });
+
+  it("matches a refund's negative amounts as Use writes them", () => {
+    const refund = aggregateAmountSuggestion([receipt("r1", "a.pdf", found(-14500, 0, 0, -14500))], false);
+    if (refund.state !== "done") throw new Error("expected a done suggestion");
+    expect(amountsMatchSuggestion(applied(refund), refund)).toBe(true);
+  });
+
+  it("is false in every state that has no amounts, even with fields that are all zero", () => {
+    const empty = { subtotal: "", tax: "", fees: "" };
+    expect(amountsMatchSuggestion(empty, aggregateAmountSuggestion([], false))).toBe(false);
+    expect(amountsMatchSuggestion(empty, aggregateAmountSuggestion([receipt("r1", "a.pdf", none)], false))).toBe(false);
+    expect(amountsMatchSuggestion(empty, aggregateAmountSuggestion([receipt("r1", "a.pdf", pending)], false))).toBe(false);
   });
 });

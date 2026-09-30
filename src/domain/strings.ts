@@ -233,6 +233,7 @@ export const UI = {
     missing && missing.length > 0 ? `${name} added to ${month}. ${stillMissing(missing)}` : `${name} added to ${month}.`,
   /** The action beside `recurringAdded`, opening the expense it just created. */
   openExpense: "Open expense",
+  /** Sign-up, onboarding step 1 and Add Expense (m02): the summary line while any field carries its own error. */
   checkHighlightedFields: "Check the highlighted fields.",
   /** Settings, Users (D-85, D-120). Admin-only today: user management, an expense's History
    *  (`loadExpenseHistoryAction`), plan and billing (`billing/actions.ts`), and the AI reading
@@ -491,7 +492,7 @@ export const UI = {
   /** The one control that starts the whole thing, on the Add Expense screen. It says what it
    *  does rather than where it goes: pressing it opens the file picker and the charges it
    *  finds replace the form. */
-  invoiceExtractFromInvoice: "Extract From Invoice",
+  invoiceExtractFromInvoice: "Extract from invoice",
   /** An invoice may be the bill itself or a photo of it. iPhone photos are converted before
    *  they reach the server (D-111), so HEIC is accepted without being named here. */
   invoiceFileType: "Upload the invoice as a PDF or a photo.",
@@ -558,9 +559,20 @@ export const UI = {
    *
    * Said, never split across the lines: dividing one figure between twelve charges would invent
    * a number nobody printed, and the ticket puts splitting out of scope.
+   *
+   * Information, not an error (usability #63): shown as a calm note. Empty when there is
+   * neither, and the caller never renders it then.
    */
-  invoiceWholeBillCharge: (amount: string) =>
-    `This invoice charges ${amount} on the whole bill, not on any one line. It is not included in the drafts below. Add it as its own expense if it belongs in this month.`,
+  invoiceWholeBillCharge: (amounts: { tax: string | null; fees: string | null }) => {
+    const { tax, fees } = amounts;
+    if (tax && fees)
+      return `This invoice has ${tax} of tax and ${fees} of fees on the whole bill, not on any one line, so they aren't in the charges below. Add the ${tax} tax and the ${fees} fees as their own expenses if your funder reimburses them.`;
+    if (tax)
+      return `This invoice has ${tax} of tax on the whole bill, not on any one line, so it isn't in the charges below. Add the ${tax} tax as its own expense if your funder reimburses tax.`;
+    if (fees)
+      return `This invoice has ${fees} of fees on the whole bill, not on any one line, so they aren't in the charges below. Add the ${fees} fees as their own expense if your funder reimburses fees.`;
+    return "";
+  },
   /* ---------------- Usability round 1 (2026-09-29): dashboard, packet, cover sheets, tours, AI screens ---------------- */
   /** The dashboard's one calm line on an organization whose plan includes AI and whose AI
    *  reading is on (usability #56). */
@@ -620,6 +632,33 @@ export const UI = {
   /** The files the packet puts after an expense's cover sheet, screen only (usability #42). */
   coverSheetFollowingDocs: (filenames: readonly string[]) =>
     `In the packet, after this cover sheet: ${filenames.join(", ")}.`,
+  /** Shown in place of Use these amounts while the fields already hold them (usability #58). */
+  amountsUsed: "Amounts used",
+  /** Under the Extract from invoice button, before anything is clicked (usability #60). */
+  invoiceExtractHint: "Upload one invoice. Each charge on it is read out for you to check before anything is saved.",
+  /** The check screen's page title (usability #61). */
+  invoiceCheckHeading: (count: number, vendor: string | null, invoiceNumber: string | null) => {
+    const charges = `${count} ${count === 1 ? "charge" : "charges"}`;
+    const from = vendor?.trim() || null;
+    // Only the number. A label the reader kept is dropped: "Invoice" or "Inv." when a space, "#"
+    // or ":" follows, then "No", "Number" or "ID" (a dot allowed) when a space, "#", ":" or "."
+    // follows. "INVOICE-2210" and "NOV2210" are numbers, kept whole.
+    const number =
+      invoiceNumber
+        ?.trim()
+        .replace(/^(?:(?:invoice|inv\.)(?=[\s#:]))?[\s#:]*(?:(?:no|number|id)\.?(?=[\s#:.]))?[\s#:.]*/i, "") || null;
+    if (from && number) return `${charges} from ${from}, invoice #${number}`;
+    if (from) return `${charges} from ${from}`;
+    if (number) return `${charges} from invoice #${number}`;
+    return `${charges} from this invoice`;
+  },
+  /** Next to Done on the check screen: where unsaved charges go (usability #64). */
+  invoiceDoneHint:
+    "Nothing is saved until you press Done. Then charges marked Saving as expense become expenses, and the rest become drafts waiting for review on the Expenses page.",
+  /** The Dashboard tour's last card: starts the walk through the other tabs (usability #57). */
+  tourContinueButton: "Continue the tour",
+  /** Skip on that same card: it marks every tour seen, not only this one (D-132, usability #57). */
+  tourSkipAllButton: "Skip all tours",
   /* ---------------- Drafts waiting for review (Phase 14) ---------------- */
   /** The section above the month's expenses, and the mark on each of its rows. */
   draftsWaitingHeading: (count: number) => `Waiting for review (${count})`,
