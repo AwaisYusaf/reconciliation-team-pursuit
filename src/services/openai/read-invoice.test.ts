@@ -2,6 +2,7 @@
  * OpenAI invoice reader (Phase 14 §2): the pure response parser, and `readInvoice` with a mocked
  * `fetch`. No real network call is ever made.
  */
+import sharp from "sharp";
 import { describe, expect, it, vi } from "vitest";
 
 import { MAX_INVOICE_LINES, parseReadInvoiceResponse, readInvoice } from "./read-invoice";
@@ -375,6 +376,17 @@ function baseEnv(): NodeJS.ProcessEnv {
 }
 
 describe("readInvoice", () => {
+  it("a small invoice photo is sent enlarged and cleaned up, not as picked (PHASE-20)", async () => {
+    const small = await sharp({ create: { width: 335, height: 597, channels: 3, background: "#c87828" } })
+      .jpeg()
+      .toBuffer();
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(responsesBody({ found: false })));
+    await readInvoice({ body: small, mimeType: "image/jpeg" }, { fetch: fetchMock, env: baseEnv() });
+    const filePart = JSON.parse(fetchMock.mock.calls[0][1].body).input[0].content[1];
+    const sent = Buffer.from(filePart.image_url.replace("data:image/jpeg;base64,", ""), "base64");
+    expect((await sharp(sent).metadata()).height).toBe(2000);
+  });
+
   it("reads a photo of the invoice as an image, not a file", async () => {
     // An invoice is often a phone photo rather than the PDF. A HEIC never reaches here as
     // HEIC: inspectUpload decodes it to JPEG first (D-111), which is why only these three
@@ -390,6 +402,7 @@ describe("readInvoice", () => {
       const part = body.input[0].content[1];
       expect(part.type).toBe("input_image");
       expect(part.image_url).toBe(`data:${mimeType};base64,${Buffer.from("img-bytes").toString("base64")}`);
+      expect(part.detail).toBe("high");
       // A photo carries no filename at all, so the user's own can never be sent.
       expect(part.filename).toBeUndefined();
     }

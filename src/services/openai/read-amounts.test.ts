@@ -2,6 +2,7 @@
  * OpenAI Responses API reader (Phase 10 §3.3): the pure response parser, the fetch-driving
  * `readAmounts` with a mocked `fetch`, and `costMicroUsd`. No real network call is ever made.
  */
+import sharp from "sharp";
 import { describe, expect, it, vi } from "vitest";
 
 import { parseReadAmountsResponse, readAmounts } from "./read-amounts";
@@ -237,7 +238,7 @@ describe("readAmounts", () => {
     expect(body.store).toBe(false);
     expect(body.text.format.type).toBe("json_schema");
     expect(body.text.format.strict).toBe(true);
-    expect(body.max_output_tokens).toBe(600);
+    expect(body.max_output_tokens).toBe(2000);
   });
 
   it("PDF → input_file with the generic filename 'document.pdf', never the user's own", async () => {
@@ -253,6 +254,17 @@ describe("readAmounts", () => {
     expect(filePart.file_data).toContain("data:application/pdf;base64,");
   });
 
+  it("a small photo is sent enlarged and cleaned up, not as picked (PHASE-20)", async () => {
+    const small = await sharp({ create: { width: 335, height: 597, channels: 3, background: "#c87828" } })
+      .jpeg()
+      .toBuffer();
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(responsesBody({ found: false })));
+    await readAmounts({ body: small, mimeType: "image/jpeg", kind: "receipt" }, { fetch: fetchMock, env: baseEnv() });
+    const filePart = JSON.parse(fetchMock.mock.calls[0][1].body).input[0].content[1];
+    const sent = Buffer.from(filePart.image_url.replace("data:image/jpeg;base64,", ""), "base64");
+    expect((await sharp(sent).metadata()).height).toBe(2000);
+  });
+
   it("PNG/JPEG → input_image with a data URL", async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(responsesBody({ found: false })));
     for (const mimeType of ["image/png", "image/jpeg"] as const) {
@@ -265,6 +277,7 @@ describe("readAmounts", () => {
       const filePart = body.input[0].content[1];
       expect(filePart.type).toBe("input_image");
       expect(filePart.image_url).toContain(`data:${mimeType};base64,`);
+      expect(filePart.detail).toBe("high");
     }
   });
 
@@ -527,7 +540,7 @@ describe("receipt vendor and date (Phase 19)", () => {
     expect(schema.properties).not.toHaveProperty("date");
     expect(body.input[0].content[0].text).not.toContain("vendor");
     // The one thing a proof shares with the receipt change: the raised output cap.
-    expect(body.max_output_tokens).toBe(600);
+    expect(body.max_output_tokens).toBe(2000);
   });
 
   it("reads the vendor and date alongside the amounts", () => {
