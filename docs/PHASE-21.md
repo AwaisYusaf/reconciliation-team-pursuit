@@ -149,14 +149,21 @@ it stopped at the first white pixel, and LibreOffice leaves one anti-aliased whi
 the band and the hairline. It now reads a fixed 3 pt window below the band, and fails with the old
 edge on both LibreOffice builds.
 
-**Checks run** (after the rebase, 2026-10-01): `npm run typecheck`, `npm run lint`, `npm run
-build` (all clean); the render tests (`cover-sheet-render`, `docx-to-pdf`, `pdf-anchors`, 21 tests)
-and `scripts/render-smoke.ts` on LibreOffice 7.4.7 in Docker, all passing; the February packet
-rebuilt, 90 pages. The full suite in the worktree: 11 failures, all in sign-up and the two AI read
-routes, and the same 11 fail on `main`'s own code (9082903) in a worktree: those tests read
-`.env.local` from the working directory, which a worktree does not have (secrets are never
-copied), so they see sign-ups closed and the AI routes switched off. Before the rebase,
-`src/generation` and `src/domain` ran 49 files and 731 tests, none skipped.
+**Checks run** (after the rebase onto `main` 9082903, 2026-10-01):
+- `npm run typecheck`, `npm run lint`, `npm run build`: clean.
+- The full suite with `.env.local` loaded into the process (read in place, never copied into the
+  worktree): 237 files, 3,319 passed, 0 failed, 1 skipped. The skip is `main`'s onboarding E40,
+  which skips itself when the local database's collation does not fold the names it compares.
+  Without the env loaded, 11 sign-up and AI-read tests fail identically on `main`'s own code.
+- The render tests (`cover-sheet-render`, `docx-to-pdf`, `pdf-anchors`, 21 tests) and
+  `scripts/render-smoke.ts` on LibreOffice 7.4.7 in Docker: all pass. The February packet, rebuilt:
+  90 pages.
+- The local database is at `main`'s migration level (44 of 44); this branch adds none.
+- **In the app** (the branch on :3100, signed in, local Mantaq, November 2026): Cover Sheets shows the
+  restyled preview together with `main`'s new "In the packet, after this cover sheet: ..." line
+  (columns measured 24.0 / 57.9 / 18.0 %). Download Word and Download PDF return 200 through the real
+  route, and the stored .docx has the brown band and tint fills and no yellow or highlight. The
+  Month-End Packet screen estimates 5 pages; the packet downloaded through its route is 5 pages.
 
 **Render results** (February fixture, 39 expenses, through the production image):
 
