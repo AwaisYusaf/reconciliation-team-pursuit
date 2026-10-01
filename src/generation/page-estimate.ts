@@ -15,7 +15,9 @@ const PAGE_HEIGHT_PX = inchesToDocxPixels(COVER_TEXT_HEIGHT_IN);
 
 /** 10 pt line plus 6 pt of paragraph spacing, converted to 96-DPI pixels. */
 const LINE_PX = Math.round(((10 + 6) * 96) / 72);
-const TITLE_PX = Math.round(((12 + 6) * 96) / 72) + 16;
+/** The title's 1.5 pt rule sits 6 pt under it (D-137); it moves the table down by both. */
+const TITLE_RULE_PX = Math.round(((1.5 + 6) * 96) / 72);
+const TITLE_PX = Math.round(((12 + 6) * 96) / 72) + 16 + TITLE_RULE_PX;
 const TABLE_HEADER_PX = 34;
 const TABLE_ROW_PX = 30;
 const IMAGE_GAP_PX = 8;

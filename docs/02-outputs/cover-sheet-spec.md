@@ -1,6 +1,6 @@
 # Output Spec — Cover Sheet ("Breakdown" document)
 
-One per line item per month **per funding source** (D-93, Phase 6) — the source's own line items only, never another source's — generated as **.docx** (canonical) and **.pdf** (converted from the docx — see architecture §generation). Golden references: `context/manual packet/*.docx` and packet pages 31–32, 43–44, 71–72, 94, 99. We match their look while applying the standardizations in domain-rules (R1.2, R6.3, no filler rows). Typography below was verified against the golden docx internals (docDefaults → theme minorHAnsi = Aptos; all table cells `jc=center`) — see review-2026-08-16 A2.
+One per line item per month **per funding source** (D-93, Phase 6) — the source's own line items only, never another source's — generated as **.docx** (canonical) and **.pdf** (converted from the docx — see architecture §generation). Golden references: `context/manual packet/*.docx` and packet pages 31–32, 43–44, 71–72, 94, 99. We match their structure while applying the standardizations in domain-rules (R1.2, R6.3, no filler rows). Typography below was verified against the golden docx internals (docDefaults → theme minorHAnsi = Aptos; all table cells `jc=center`) — see review-2026-08-16 A2.
 
 `docName` in the title and filename below is the source's own `doc_name`, falling back to the organisation's if the source has none (R10.3, §14) — the printed **title** never gains a separate source-name segment, only the **filename** does, and only once the organisation has more than one source (R10.3, decision 2.12).
 
@@ -9,15 +9,16 @@ One per line item per month **per funding source** (D-93, Phase 6) — the sourc
 | Property | Value |
 |---|---|
 | Page | US Letter portrait, 1" margins |
-| Base font | **Aptos 10 pt** (what the golden docs' text actually uses — their `docDefaults` say 11 pt, but every run overrides to 10 pt; see `04-engineering/review-2026-08-20-february.md`), black. In environments without Aptos (the Linux/LibreOffice container) it must resolve to **Carlito**, which is metric-compatible with Calibri. OOXML names one family per run — there is no fallback chain — so this is the container's job, and installing Carlito alone does **not** do it: fontconfig ships Carlito as a substitute for *Calibri*, so Aptos fell through to DejaVu Sans until the image aliased it explicitly (D-78). The Dockerfile fails the build if `fc-match Aptos` does not return Carlito |
-| Title | Bold, centered, 12 pt: `{docName} {Month YYYY} {Line Item} Breakdown` (e.g. `Team Pursuit February 2026 Analytical Support Breakdown`) |
+| Base font | **Aptos 10 pt** (what the golden docs' text actually uses — their `docDefaults` say 11 pt, but every run overrides to 10 pt; see `04-engineering/review-2026-08-20-february.md`), ink `#211B16` (black until D-137). In environments without Aptos (the Linux/LibreOffice container) it must resolve to **Carlito**, which is metric-compatible with Calibri. OOXML names one family per run — there is no fallback chain — so this is the container's job, and installing Carlito alone does **not** do it: fontconfig ships Carlito as a substitute for *Calibri*, so Aptos fell through to DejaVu Sans until the image aliased it explicitly (D-78). The Dockerfile fails the build if `fc-match Aptos` does not return Carlito |
+| Title | Bold, centered, 12 pt: `{docName} {Month YYYY} {Line Item} Breakdown` (e.g. `Team Pursuit February 2026 Analytical Support Breakdown`), over a 1.5 pt `#5B3A29` rule 6 pt below it (D-137) |
 | Spacing | Single line spacing; 6 pt after paragraphs; one empty line between title and table |
+| Colours | The app's palette (D-137), from `src/generation/document-theme.ts`: text ink `#211B16`; a 1.5 pt `#5B3A29` rule 6 pt under the title, across the text width; the table and notes as below. No yellow anywhere. Brown marks the title rule, the header band, the total's rule and the note text only, so the sheet prints and photocopies cleanly. The title rule adds 7.5 pt above the table; no other spacing changed |
 
 ## Table (immediately after title)
 
 - 3 columns, full text width. Widths: Name 24%, Role 58%, Amount 18%. Fixed layout, so every
   renderer sizes the columns identically rather than to its own font metrics. All borders:
-  0.5 pt solid black, all cells.
+  0.5 pt solid, warm grey `#D8D0C4` (header cells: `#5B3A29`, the band's own colour), all cells.
   - Amount was 15% until D-76. `ROLE_CHARS_PER_LINE` in `page-estimate.ts` is derived from the
     Role width and moves with it.
   - The width was only half the story, and the first explanation for it was wrong. D-76 blamed
@@ -26,16 +27,16 @@ One per line item per month **per funding source** (D-93, Phase 6) — the sourc
     aliased Aptos. At 15% that wrapped even a realistic $458,692.46 — which is precisely what
     the client reported. With the alias in place, 18% clears a figure a full digit longer than
     any amount the column can hold.
-- Header row: cells shaded `#FFFF00`, text bold, centered: `Name | Role | Amount`.
+- Header row: cells filled `#5B3A29`, text bold white, centered: `Name | Role | Amount`. Repeats on every page the table reaches.
 - Body rows: one per expense in `sort_order`. **All cells centered** (matching the golden docs — Name, Role, and Amount alike). Amounts formatted per R1.2. Cell padding ~4 pt. **No empty filler rows** (manual docs had them; we don't).
-- Total row: Name and Role cells empty (borders kept); Amount cell shaded `#FFFF00`, bold, centered = Σ reimbursable of the rows.
+- Total row: Name and Role cells empty (borders kept); all three cells filled `#F1ECE2` under a 1 pt `#5B3A29` rule; Amount bold, centered = Σ reimbursable of the rows. (Until D-137 the header and the total amount were pure yellow `#FFFF00` with a black grid, copying the golden documents.)
 
 ## Below the table
 
 1. One blank line, then the canonical sentence (R6.3), regular weight:
    `Please see below for additional information for some of the above items.`
 2. For **every** expense, in table order:
-   - **Heading paragraph:** bold `{Name} ({reference}):` (D-83; the reference makes the heading unique on the sheet, which the packet's links depend on — a name alone repeats when one person has two pay periods) — followed inline (same paragraph, bold, highlight `yellow`), in R6.5 order: the custom note if set, then the auto tax note whenever `tax > 0` (both print when both apply — D-22), then the no-receipt note per R6.7 if applicable. Example:
+   - **Heading paragraph:** bold `{Name} ({reference}):` (D-83; the reference makes the heading unique on the sheet, which the packet's links depend on — a name alone repeats when one person has two pay periods) — followed inline (same paragraph, bold `#5B3A29` on a `#F1ECE2` run background, D-137; yellow highlight until then), in R6.5 order: the custom note if set, then the auto tax note whenever `tax > 0` (both print when both apply — D-22), then the no-receipt note per R6.7 if applicable. Example:
      `Kroger (2026-02-014): (Note: Statement includes tax which was excluded from reimbursement amount)`
      The note names whatever was actually excluded and is omitted when nothing was (R6.5a).
    - **Narrative paragraph** (if `narrative` set): regular weight, no highlight, full width (R6.6).
@@ -58,4 +59,4 @@ Downloads for a line item are blocked while any of its expenses in the month is 
 
 ## Acceptance
 
-Generate the February 2026 Analytical Support sheet from re-entered data and diff against `context/manual packet/…analytical support Breakdown March (1).docx` (structure) + packet pp. 31–32 (visual): identical table shape/colors/alignment (all-centered), identical heading+crop pattern; differences limited to the recorded standardizations (money format, canonical wordings, no filler rows, complete proof blocks). Word and Google Docs both render correctly; the PDF version is visually identical to the docx (D-08 spike); page estimates from `layout-constants.ts` match the real renderer within ±1 page per sheet.
+Generate the February 2026 Analytical Support sheet from re-entered data and diff against `context/manual packet/…analytical support Breakdown March (1).docx` (structure) + packet pp. 31–32 (visual): identical table shape/alignment (all-centered), identical heading+crop pattern; differences limited to the recorded standardizations (money format, canonical wordings, no filler rows, complete proof blocks) and, since D-137, the app's colours in place of the golden documents' yellow and black grid. Word and Google Docs both render correctly; the PDF version is visually identical to the docx (D-08 spike); page estimates from `layout-constants.ts` match the real renderer within ±1 page per sheet.

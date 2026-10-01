@@ -23,6 +23,8 @@ import { formatMoney } from "@/src/domain/format";
 import { reimbursableCents } from "@/src/domain/money";
 import { expenseReference, packetIndexTitle } from "@/src/domain/strings";
 
+import { DOCUMENT_THEME, channels } from "./document-theme";
+import { strokeOpenTop } from "./pdf-grid";
 import { PACKET_MARGIN_IN, inchesToPoints } from "./layout-constants";
 import type { MonthSnapshot } from "./month-snapshot";
 import { winAnsiSafe } from "./pdf-text";
@@ -33,9 +35,11 @@ const MARGIN = inchesToPoints(PACKET_MARGIN_IN);
 /** The width the columns must sum to; asserted in the tests rather than derived here. */
 export const INDEX_CONTENT_WIDTH = PAGE_WIDTH - MARGIN * 2;
 
-const BLACK = rgb(0, 0, 0);
-const HEADER_FILL = rgb(0.945, 0.925, 0.886);
-const LINE = rgb(0.85, 0.82, 0.77);
+// The cover sheet's palette (D-137): a brown header band with white text, a warm grey grid.
+const INK = rgb(...channels(DOCUMENT_THEME.ink));
+const HEADER_FILL = rgb(...channels(DOCUMENT_THEME.accent));
+const HEADER_INK = rgb(...channels(DOCUMENT_THEME.onAccent));
+const LINE = rgb(...channels(DOCUMENT_THEME.line));
 
 const TITLE_SIZE = 14;
 const SUBTITLE_SIZE = 9;
@@ -105,14 +109,11 @@ function drawRow(
     if (options.fill) {
       page.drawRectangle({ x, y: bottom, width: column.width, height, color: HEADER_FILL });
     }
-    page.drawRectangle({
-      x,
-      y: bottom,
-      width: column.width,
-      height,
-      borderColor: LINE,
-      borderWidth: 0.5,
-    });
+    if (options.fill) {
+      page.drawRectangle({ x, y: bottom, width: column.width, height, borderColor: HEADER_FILL, borderWidth: 0.5 });
+    } else {
+      strokeOpenTop(page, { x, y: bottom, width: column.width, height }, LINE);
+    }
 
     const text = fit(values[index] ?? "", font, size, column.width - CELL_PAD * 2);
     const textWidth = font.widthOfTextAtSize(text, size);
@@ -121,7 +122,7 @@ function drawRow(
       y: bottom + (height - size) / 2 + 1,
       size,
       font,
-      color: BLACK,
+      color: options.fill ? HEADER_INK : INK,
     });
     x += column.width;
   });
@@ -197,14 +198,22 @@ export async function buildIndexSection(
         y: y - TITLE_SIZE,
         size: TITLE_SIZE,
         font: fonts.bold,
-        color: BLACK,
+        color: INK,
       });
-      y -= TITLE_SIZE + 8;
+      y -= TITLE_SIZE + 6;
+      // A brown rule under the title, across the content width, as on the cover sheet.
+      page.drawLine({
+        start: { x: MARGIN, y },
+        end: { x: MARGIN + INDEX_CONTENT_WIDTH, y },
+        thickness: 1.5,
+        color: HEADER_FILL,
+      });
+      y -= 8;
       page.drawText(
         winAnsiSafe(
           `${rows.length} expense${rows.length === 1 ? "" : "s"}. Every receipt, invoice and proof of payment in this packet is filed under its reference below.`,
         ),
-        { x: MARGIN, y: y - SUBTITLE_SIZE, size: SUBTITLE_SIZE, font: fonts.regular, color: BLACK },
+        { x: MARGIN, y: y - SUBTITLE_SIZE, size: SUBTITLE_SIZE, font: fonts.regular, color: INK },
       );
       y -= SUBTITLE_SIZE + 14;
     }
@@ -223,7 +232,7 @@ export async function buildIndexSection(
       y: y - 18,
       size: BODY_SIZE,
       font: fonts.regular,
-      color: BLACK,
+      color: INK,
     });
   }
 
@@ -262,7 +271,7 @@ export async function buildIndexSection(
       y -= 16;
       page.drawText(
         winAnsiSafe("Expenses with no receipt available:"),
-        { x: MARGIN, y, size: NOTE_SIZE, font: fonts.bold, color: BLACK },
+        { x: MARGIN, y, size: NOTE_SIZE, font: fonts.bold, color: INK },
       );
       y -= 14;
     }
@@ -281,7 +290,7 @@ export async function buildIndexSection(
         y,
         size: NOTE_SIZE,
         font: fonts.regular,
-        color: BLACK,
+        color: INK,
       });
       y -= NOTE_SIZE + 3;
     }

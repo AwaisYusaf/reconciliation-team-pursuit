@@ -16,6 +16,7 @@ import { coverSheetRows, type CoverSheetExpense } from "@/src/domain/cover-sheet
 import { SEE_BELOW, TAX_NOTE } from "@/src/domain/strings";
 
 import { buildCoverSheetDocx, type CoverImage } from "./cover-sheet-docx";
+import { DOCUMENT_THEME as THEME } from "./document-theme";
 
 const MONTH = "2026-02" as MonthKey;
 const EXPENSES: CoverSheetExpense[] = [
@@ -157,11 +158,60 @@ describe("table (R6.2)", () => {
     expect(rows).toHaveLength(5);
   });
 
-  it("shades the header and the total amount yellow", async () => {
+  /** Every table cell's properties, in document order: header, three rows, total. */
+  async function cellProperties(): Promise<string[]> {
     const xml = await documentXml();
-    const shaded = xml.match(/w:fill="FFFF00"/g) ?? [];
-    // Three header cells plus the single total amount cell.
-    expect(shaded).toHaveLength(4);
+    const table = xml.slice(xml.indexOf("<w:tbl>"), xml.indexOf("</w:tbl>"));
+    const cells = table.match(/<w:tcPr>.*?<\/w:tcPr>/g) ?? [];
+    // Three columns across five rows. Asserted here so no check below can pass on an empty list.
+    expect(cells).toHaveLength(15);
+    return cells;
+  }
+
+  it("fills the header row with the brown band, in bold white (D-137)", async () => {
+    const cells = await cellProperties();
+    for (const cell of cells.slice(0, 3)) {
+      expect(cell).toContain(`w:fill="${THEME.accent}"`);
+      expect(cell).toContain(`<w:top w:val="single" w:color="${THEME.accent}" w:sz="4"/>`);
+      // The band's bottom edge is the only line between it and the first row (see below).
+      expect(cell).toContain(`<w:bottom w:val="single" w:color="${THEME.accent}" w:sz="4"/>`);
+    }
+    const xml = await documentXml();
+    for (const label of ["Name", "Role", "Amount"]) {
+      const at = xml.indexOf(`>${label}</w:t>`);
+      const run = xml.slice(xml.lastIndexOf("<w:r>", at), at);
+      expect(run, label).toContain("<w:b/>");
+      expect(run, label).toContain(`<w:color w:val="${THEME.onAccent}"/>`);
+    }
+  });
+
+  it("tints the whole total row, with a brown rule above it (D-137)", async () => {
+    const cells = await cellProperties();
+    for (const cell of cells.slice(12)) {
+      expect(cell).toContain(`w:fill="${THEME.section}"`);
+      expect(cell).toContain(`<w:top w:val="single" w:color="${THEME.accent}" w:sz="8"/>`);
+    }
+    // Body rows stay white: only the header and the total are filled.
+    for (const cell of cells.slice(3, 12)) expect(cell).not.toContain("w:fill=");
+  });
+
+  it("gives body cells no top edge, so the header's brown and the grid's grey never tie", async () => {
+    // Word breaks an equal-width tie toward the darker colour and LibreOffice toward the lower
+    // cell, so a grey top edge drew a hairline under the band in the PDF and not in Word.
+    const cells = await cellProperties();
+    for (const cell of cells.slice(3, 12)) expect(cell).toContain('<w:top w:val="nil"');
+  });
+
+  it("leaves no yellow anywhere in the document (D-137)", async () => {
+    const xml = await documentXml();
+    expect(xml).not.toMatch(/FFFF00/i);
+    expect(xml).not.toContain("<w:highlight");
+  });
+
+  it("rules the title in brown, across the text width (D-137)", async () => {
+    const xml = await documentXml();
+    const title = xml.slice(xml.lastIndexOf("<w:p>", xml.indexOf(TITLE.replace("&", "&amp;"))), xml.indexOf(TITLE.replace("&", "&amp;")));
+    expect(title).toContain(`<w:pBdr><w:bottom w:val="single" w:color="${THEME.accent}" w:sz="12" w:space="6"/></w:pBdr>`);
   });
 
   it("uses the documented column widths", async () => {
@@ -179,10 +229,11 @@ describe("table (R6.2)", () => {
     expect(xml).toContain('<w:tblLayout w:type="fixed"/>');
   });
 
-  it("borders every cell at 0.5 pt", async () => {
+  it("borders every cell at 0.5 pt, in the warm grey grid colour", async () => {
     const xml = await documentXml();
     // Word border widths are eighths of a point, so 0.5 pt is sz="4".
-    expect(xml).toMatch(/<w:top w:val="single" w:color="000000" w:sz="4"\/>/);
+    expect(xml).toMatch(new RegExp(`<w:bottom w:val="single" w:color="${THEME.line}" w:sz="4"/>`));
+    expect(xml).not.toContain('w:color="000000"');
     const bordered = xml.match(/<w:tcBorders>/g) ?? [];
     // Three columns across five rows, every one bordered.
     expect(bordered).toHaveLength(15);
@@ -246,9 +297,22 @@ describe("notes below the table (R6.3 – R6.7)", () => {
     );
   });
 
-  it("highlights the notes yellow but not the name", async () => {
+  it("tints the notes and sets them in brown, but not the name (D-137)", async () => {
     const xml = await documentXml();
-    expect(xml).toContain('<w:highlight w:val="yellow"/>');
+    const runOf = (text: string) => {
+      const at = xml.indexOf(text);
+      return xml.slice(xml.lastIndexOf("<w:r>", at), at);
+    };
+    for (const note of [TAX_NOTE, "(Note: No receipt available."]) {
+      const run = runOf(note);
+      expect(run, note).toContain(`<w:shd w:fill="${THEME.section}" w:color="auto" w:val="clear"/>`);
+      expect(run, note).toContain(`<w:color w:val="${THEME.accent}"/>`);
+      expect(run, note).toContain("<w:b/>");
+    }
+    // The heading's name and reference stay plain bold ink: the tint marks the disclosure only.
+    const heading = runOf(coverSheetHeading(EXPENSES[0].name, expenseReference(MONTH, 1)));
+    expect(heading).not.toContain("<w:shd");
+    expect(heading).not.toContain("<w:color");
   });
 
   it("renders the narrative as a plain paragraph (R6.6)", async () => {
@@ -256,10 +320,11 @@ describe("notes below the table (R6.3 – R6.7)", () => {
     const narrative = "Staff paid for these items personally and were reimbursed in one transfer.";
     expect(xml).toContain(narrative);
 
-    // The narrative run must not be highlighted — it is context, not a warning.
+    // The narrative run must not be tinted — it is context, not a warning.
     const at = xml.indexOf(narrative);
     const run = xml.slice(xml.lastIndexOf("<w:r>", at), at);
     expect(run).not.toContain("highlight");
+    expect(run).not.toContain("<w:shd");
   });
 });
 

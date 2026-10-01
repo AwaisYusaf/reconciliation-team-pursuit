@@ -20,6 +20,7 @@ import path from "node:path";
 import { PDFDocument } from "pdf-lib";
 
 import { FEB, FEB_EXPENSES, LINE_ITEMS, SETTINGS } from "@/src/domain/fixtures";
+import { TAX_NOTE } from "@/src/domain/strings";
 import { buildIndexSectionPdf } from "@/src/generation/packet-index-pdf";
 import { buildSummarySectionPdf } from "@/src/generation/packet-summary-pdf";
 import { buildCoverSheetDocx } from "@/src/generation/cover-sheet-docx";
@@ -156,7 +157,8 @@ async function main(): Promise<void> {
         name: "Marcus Wainwright-Delacroix",
         role: "Community Violence Intervention Outreach Specialist and Team Lead",
         amountCents: WIDEST,
-        notes: [],
+        // A tinted note on the heading line (D-137), so the anchor is found beside one here too.
+        notes: [TAX_NOTE],
         narrative: null,
       },
     ],

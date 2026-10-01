@@ -19,8 +19,8 @@ Final prompt = `[PREAMBLE]` + blank line + `[module file → "Claude Design prom
 | primary-fixed | `#FFDBCB` | Focus ring inside a dark container (`surface-dark`) |
 | danger | `#8A2A22` / bg `#F6E7E4` | Errors, missing docs, negative/low budget |
 | success | `#2F4F3E` | Added/complete states |
-| doc-yellow | `#FFFF00` | ONLY inside document-preview tables (mimics the real submission docs) |
 | section-bg | `#F1ECE2` | Table section header rows |
+| Documents | ink, sub, line, accent, section | Generated documents and their previews, from `src/generation/document-theme.ts` (D-137): accent header band and title rule, section-tinted total and notes, line grid |
 | autofill | `#F3E9DD` | Autofilled field flash |
 | Type | Plus Jakarta Sans, everything on screen | Headings keep the `font-serif` role name (Georgia is only the fallback). Documents and their previews use `--font-document` |
 | Headings | Bold, ink | See the responsive scale below. `gradient` on a heading primitive sets it in `GRADIENT_TEXT`; used for the staff pages' titles and the Settings "Organization" title, not for the app's page titles |
@@ -123,9 +123,9 @@ Primary text #211B16, secondary #5B5147. Accent (primary buttons, links): deep b
 hover #3E2719. Gradient: #3E2719 to #94603F, used for table header rows (one band across the
 row, white uppercase text), as text on modal titles, quiet text buttons and the dashboard's
 headline figures, and on a highlighted stat tile — nowhere else. Page titles stay ink.
-Danger/red #8A2A22 with soft background #F6E7E4. Success green #2F4F3E. Pure yellow #FFFF00 is
-reserved exclusively for cells inside document previews that mimic the real submission
-documents (header rows and total cells) — never use it for UI chrome.
+Danger/red #8A2A22 with soft background #F6E7E4. Success green #2F4F3E. Document previews that mimic the
+real submission documents use the documents' own palette (D-137): a solid #5B3A29 header row
+with white text, #D8D0C4 grid, #F1ECE2 total row and notes. No yellow anywhere.
 
 Typography: Plus Jakarta Sans throughout. Page titles 28px bold, section titles 20px bold,
 body 15-16px, table text 15-16px, column headers 13px uppercase with slight letter-spacing.

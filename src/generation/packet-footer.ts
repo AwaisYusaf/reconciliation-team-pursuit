@@ -7,13 +7,15 @@ import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf
 
 import { packetFooter } from "@/src/domain/strings";
 
+import { DOCUMENT_THEME, channels } from "./document-theme";
 import { inchesToPoints } from "./layout-constants";
 import type { PacketNavigation, PacketPage } from "./packet-pdf";
 import { addInternalLink, addOutline, type OutlineItem, type Target } from "./pdf-links";
 import { winAnsiSafe } from "./pdf-text";
 
 const FOOTER_SIZE = 9;
-const FOOTER_COLOR = rgb(0.47, 0.47, 0.47); // #787878
+/** The app's secondary text colour: softer than the body, and still clear on a photocopy. */
+const FOOTER_COLOR = rgb(...channels(DOCUMENT_THEME.sub));
 const FOOTER_FROM_BOTTOM = inchesToPoints(0.35);
 
 /** DocuSign's envelope ceiling. */
